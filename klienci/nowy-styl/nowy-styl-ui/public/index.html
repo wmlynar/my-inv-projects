@@ -83,6 +83,10 @@
       color: #e5e7eb;
       background: transparent;
       transition: background-color 0.15s ease, color 0.15s ease;
+      touch-action: none;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
     }
 
     .tab-button:hover {
@@ -175,6 +179,10 @@
       font-size: 11px;
       flex: 1 1 0;
       width: 100%;
+      touch-action: none;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
     }
 
     .slot:hover {
@@ -503,6 +511,8 @@
     ];
 
     const allSlots = [];
+    const lastLocalChange = {};
+    const LOCAL_UPDATE_GRACE_MS = 500;
 
     async function syncSlotToRds(slotId, filled) {
       try {
@@ -523,6 +533,119 @@
       }
     }
 
+    function setupPressAction(button, handler) {
+      if (!button) return;
+
+      const END_SLOP_PX = 22;
+      const IGNORE_CLICK_MS = 800;
+
+      let isDown = false;
+      let activePointerId = null;
+      let lastActivateTs = 0;
+      let activatedOnDown = false;
+
+      const run = (e) => {
+        const res = handler(e);
+        if (res && typeof res.catch === "function") {
+          res.catch((err) => console.error("Button action failed:", err));
+        }
+      };
+
+      const activate = (e) => {
+        lastActivateTs = Date.now();
+        run(e);
+      };
+
+      button.addEventListener("contextmenu", (e) => e.preventDefault());
+
+      const hasPointer = typeof window !== "undefined" && "PointerEvent" in window;
+      if (hasPointer) {
+        button.addEventListener("pointerdown", (e) => {
+          if (typeof e.button === "number" && e.button !== 0) return;
+          const isTouchLike = e.pointerType === "touch" || e.pointerType === "pen";
+          if (isTouchLike) e.preventDefault();
+
+          isDown = true;
+          activePointerId = e.pointerId;
+          try {
+            button.setPointerCapture(e.pointerId);
+          } catch {
+            // ignore
+          }
+
+          if (isTouchLike) {
+            activatedOnDown = true;
+            activate(e);
+          }
+        });
+
+        button.addEventListener("pointercancel", () => {
+          isDown = false;
+          activePointerId = null;
+          activatedOnDown = false;
+        });
+
+        button.addEventListener("pointerup", (e) => {
+          if (!isDown || e.pointerId !== activePointerId) return;
+
+          isDown = false;
+          activePointerId = null;
+
+          try {
+            button.releasePointerCapture(e.pointerId);
+          } catch {
+            // ignore
+          }
+
+          if (activatedOnDown && (e.pointerType === "touch" || e.pointerType === "pen")) {
+            activatedOnDown = false;
+            return;
+          }
+
+          const rect = button.getBoundingClientRect();
+          const inside =
+            e.clientX >= rect.left - END_SLOP_PX &&
+            e.clientX <= rect.right + END_SLOP_PX &&
+            e.clientY >= rect.top - END_SLOP_PX &&
+            e.clientY <= rect.bottom + END_SLOP_PX;
+          if (!inside) return;
+
+          activate(e);
+        });
+      } else {
+        let activeTouch = false;
+        button.addEventListener("touchstart", (e) => {
+          activeTouch = true;
+          e.preventDefault();
+          activate(e);
+        });
+        button.addEventListener("touchend", (e) => {
+          if (!activeTouch) return;
+          activeTouch = false;
+          e.preventDefault();
+        });
+        button.addEventListener("touchcancel", () => {
+          activeTouch = false;
+        });
+      }
+
+      button.addEventListener("click", (e) => {
+        if (Date.now() - lastActivateTs < IGNORE_CLICK_MS) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        activate(e);
+      });
+
+      button.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          activate(e);
+        }
+      });
+    }
+
     function createSlotButton(slot, slotType) {
       const btn = document.createElement("button");
       btn.className = "slot " + (slot.filled ? "slot-filled" : "slot-empty");
@@ -535,12 +658,13 @@
         <div class="slot-status">${slot.filled ? "Zajęte" : "Wolne"}</div>
       `;
 
-      btn.addEventListener("click", () => {
+      setupPressAction(btn, () => {
         const s = allSlots.find((x) => x.id === slot.id);
         if (!s) return;
 
         // optymistyczna zmiana w UI
         s.filled = s.filled ? 0 : 1;
+        lastLocalChange[s.id] = Date.now();
 
         btn.classList.toggle("slot-filled", !!s.filled);
         btn.classList.toggle("slot-empty", !s.filled);
@@ -603,7 +727,7 @@
       const corridorB = document.getElementById("corridor-b");
 
       tabs.forEach((tab) => {
-        tab.addEventListener("click", () => {
+        setupPressAction(tab, () => {
           tabs.forEach((t) => t.classList.remove("active"));
           tab.classList.add("active");
 
@@ -639,6 +763,9 @@
         allSlots.forEach((slot) => {
           const newFilled = stateMap[slot.id];
           if (typeof newFilled !== "boolean") return;
+
+          const lastTs = lastLocalChange[slot.id] || 0;
+          if (Date.now() - lastTs < LOCAL_UPDATE_GRACE_MS) return;
 
           if (!!slot.filled !== newFilled) {
             slot.filled = newFilled;
