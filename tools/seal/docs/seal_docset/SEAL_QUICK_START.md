@@ -74,12 +74,14 @@ Domyślnie `seal release`:
 - **domyślnie bezpiecznie minifikuje HTML/CSS** (public/**/*.html, public/**/*.css), poziom: `safe`,
 - **domyślnie wykonuje hardening**:
   - **SEA**: pakuje backend bundle do „loadera” (Brotli/Gzip) zanim trafi do SEA blobu (bez plaintext JS),
-  - **fallback**: gzip + loader (brak `app.bundle.cjs` w prostym podglądzie),
+  - **fallback** (jawnie włączony): gzip + loader (brak `app.bundle.cjs` w prostym podglądzie),
   - **UPX/strip**: dostępne jako opcje, ale **OFF by default**, bo potrafią psuć postject-ed binarki.
 - uruchamia `seal check` (fail-fast),
 - buduje artefakt do `seal-out/<app>-<buildId>.tgz`,
 - rozpakowuje build do `seal-out/release/` (zawsze tylko ostatni release).
 - czyści `seal-out/` przed buildem (jak `target/`), więc zawsze zostaje tylko ostatni build.
+
+Fallback jest wyłączony domyślnie; włącz go jawnie przez `build.allowFallback=true` albo `--packager fallback`.
 
 ### Krok B: sprawdź artefakt (czy „naprawdę jest sealed”)
 

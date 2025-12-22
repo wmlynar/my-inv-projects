@@ -41,10 +41,22 @@ function sshUserHost(targetCfg) {
   if (targetCfg.installDir && !/^\/[A-Za-z0-9._/-]+$/.test(targetCfg.installDir)) {
     throw new Error(`Invalid installDir: ${targetCfg.installDir} (must be absolute path without spaces)`);
   }
+  if (targetCfg.serviceUser && /\s/.test(targetCfg.serviceUser)) {
+    throw new Error(`Invalid serviceUser: ${targetCfg.serviceUser} (whitespace not allowed)`);
+  }
+  if (targetCfg.serviceGroup && /\s/.test(targetCfg.serviceGroup)) {
+    throw new Error(`Invalid serviceGroup: ${targetCfg.serviceGroup} (whitespace not allowed)`);
+  }
   if (/\s/.test(user)) {
     throw new Error(`Invalid user: ${user} (whitespace not allowed)`);
   }
   return { user, host };
+}
+
+function serviceUserGroup(targetCfg, fallbackUser) {
+  const user = targetCfg.serviceUser || fallbackUser || "root";
+  const group = targetCfg.serviceGroup || user;
+  return { user, group };
 }
 
 function targetLabel(targetCfg) {
@@ -162,7 +174,8 @@ function bootstrapSsh(targetCfg) {
 }
 
 function installServiceSsh(targetCfg) {
-  const { user, host } = sshUserHost(targetCfg);
+  const { user: sshUser, host } = sshUserHost(targetCfg);
+  const { user: serviceUser, group: serviceGroup } = serviceUserGroup(targetCfg, sshUser);
   const layout = remoteLayout(targetCfg);
 
   const runnerScript = `#!/usr/bin/env bash
@@ -189,6 +202,8 @@ After=network.target
 
 [Service]
 Type=simple
+User=${serviceUser}
+Group=${serviceGroup}
 WorkingDirectory=${layout.installDir}
 ExecStart=${layout.runner}
 Restart=always
@@ -200,14 +215,14 @@ StandardError=journal
 WantedBy=multi-user.target
 `;
 
-  const sudoCheck = sshExec({ user, host, args: ["bash", "-lc", "sudo -n true"], stdio: "pipe" });
+  const sudoCheck = sshExec({ user: sshUser, host, args: ["bash", "-lc", "sudo -n true"], stdio: "pipe" });
   if (!sudoCheck.ok) {
     const sudoOut = `${sudoCheck.stdout}\n${sudoCheck.stderr}`.trim();
     const sudoLine = sudoOut.split(/\r?\n/).slice(0, 2).join(" | ");
     const msg = [
       "Service install requires passwordless sudo on the server (BatchMode).",
       `sudo -n true failed: ${sudoLine || "no output"}`,
-      `Fix: configure NOPASSWD for ${user} and rerun: seal deploy ${targetLabel(targetCfg)} --bootstrap`,
+      `Fix: configure NOPASSWD for ${sshUser} and rerun: seal deploy ${targetLabel(targetCfg)} --bootstrap`,
     ].join("\n");
     throw new Error(msg);
   }
@@ -226,7 +241,7 @@ sudo -n systemctl daemon-reload
 `
   ];
 
-  const res = sshExec({ user, host, args: cmd, stdio: "pipe" });
+  const res = sshExec({ user: sshUser, host, args: cmd, stdio: "pipe" });
   if (!res.ok) {
     const out = `${res.stdout}\n${res.stderr}`.trim();
     throw new Error(`install service failed (status=${res.status})${out ? `: ${out}` : ""}`);
@@ -423,8 +438,12 @@ function runSshForeground(targetCfg, opts = {}) {
     `APP=${shQuote(appName)}`,
     opts.kill ? "KILL_ON_START=1" : "KILL_ON_START=0",
     opts.sudo ? "RUN_AS_ROOT=1" : "RUN_AS_ROOT=0",
-    "if sudo -n systemctl list-unit-files \"$UNIT\" >/dev/null 2>&1; then",
-    "  sudo -n systemctl stop \"$UNIT\" || true",
+    "if sudo -n true >/dev/null 2>&1; then",
+    "  if sudo -n systemctl list-unit-files \"$UNIT\" >/dev/null 2>&1; then",
+    "    sudo -n systemctl stop \"$UNIT\" || true",
+    "  fi",
+    "else",
+    "  echo \"[seal] WARN: sudo not available; skipping systemd stop\" 1>&2",
     "fi",
     "if [ \"$KILL_ON_START\" = \"1\" ] && [ -f \"$ROOT/current.buildId\" ]; then",
     "  CUR=\"$(cat \"$ROOT/current.buildId\" || true)\"",
@@ -448,6 +467,42 @@ function runSshForeground(targetCfg, opts = {}) {
 
   const res = sshExec({ user, host, args: ["bash","-lc", script], stdio: "inherit", tty: true });
   if (!res.ok) throw new Error(`run failed (status=${res.status})`);
+}
+
+function ensureCurrentReleaseSsh(targetCfg) {
+  const { user, host } = sshUserHost(targetCfg);
+  const layout = remoteLayout(targetCfg);
+  const cmd = ["bash", "-lc", `
+set -euo pipefail
+ROOT=${shQuote(layout.installDir)}
+if [ ! -d "$ROOT" ]; then echo "__SEAL_MISSING_ROOT__"; exit 0; fi
+if [ ! -f "$ROOT/current.buildId" ]; then echo "__SEAL_NO_CURRENT__"; exit 0; fi
+CUR="$(cat "$ROOT/current.buildId" || true)"
+if [ -z "$CUR" ]; then echo "__SEAL_NO_CURRENT__"; exit 0; fi
+REL="$ROOT/releases/$CUR"
+if [ ! -d "$REL" ]; then echo "__SEAL_MISSING_REL__:$REL"; exit 0; fi
+echo "__SEAL_OK__"
+`];
+
+  const res = sshExec({ user, host, args: cmd, stdio: "pipe" });
+  if (!res.ok) {
+    const out = `${res.stdout}\n${res.stderr}`.trim();
+    throw new Error(`ssh preflight failed (status=${res.status})${out ? `: ${out}` : ""}`);
+  }
+
+  const out = `${res.stdout}\n${res.stderr}`.trim();
+  if (out.includes("__SEAL_OK__")) return true;
+  if (out.includes("__SEAL_MISSING_ROOT__")) {
+    throw new Error(`Missing installDir on ${host}: ${layout.installDir}. Deploy first.`);
+  }
+  if (out.includes("__SEAL_NO_CURRENT__")) {
+    throw new Error(`Missing current.buildId on ${host} (${layout.installDir}). Deploy first.`);
+  }
+  if (out.includes("__SEAL_MISSING_REL__")) {
+    const rel = (out.split("__SEAL_MISSING_REL__:")[1] || "").split(/\r?\n/)[0];
+    throw new Error(`Missing release dir on ${host}: ${rel || "(unknown)"}. Deploy again.`);
+  }
+  throw new Error(`Unexpected preflight output: ${out || "(empty)"}`);
 }
 
 function rollbackSsh(targetCfg) {
@@ -575,6 +630,7 @@ module.exports = {
   disableSsh,
   rollbackSsh,
   runSshForeground,
+  ensureCurrentReleaseSsh,
   uninstallSsh,
   downSsh,
   configDiffSsh,

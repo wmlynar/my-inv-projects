@@ -91,7 +91,8 @@ Seal powinien mieć interfejs packagera, aby można było podmieniać metodę pa
 
 **F) Hardening/pack (domyślnie włączone)**
 - Domyślnie SEAL próbuje wykonać `strip` (Linux) oraz spakować binarkę przez `upx` (jeśli dostępny).
-- Gdy SEA nie jest możliwe i używany jest fallback, backend bundle jest pakowany do `app.bundle.cjs.gz` i uruchamiany przez mały loader (żeby nie leżał czytelny plik JS).
+- Gdy SEA nie jest możliwe i **fallback jest jawnie włączony**, backend bundle jest pakowany do `app.bundle.cjs.gz` i uruchamiany przez mały loader (żeby nie leżał czytelny plik JS).
+- Fallback wymaga jawnego włączenia: `build.allowFallback=true` lub `packager=fallback`.
 - Hardening można wyłączyć w `seal-config/project.json5` (`build.hardening.enabled=false`).
 - (MAY w przyszłości) self-integrity / anti-tamper jako opt-in.
 

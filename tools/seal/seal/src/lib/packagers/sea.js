@@ -9,7 +9,7 @@ const { fileExists, copyFile } = require("../fsextra");
  * SEA packager (Linux-friendly baseline).
  * Tries to build a single executable using Node SEA blob + postject injection.
  *
- * If it fails (unsupported Node, missing postject, platform issues) caller should fallback.
+ * If it fails (unsupported Node, missing postject, platform issues) caller may fallback if explicitly allowed.
  */
 function packSea({ stageDir, releaseDir, appName, mainRel }) {
   try {
@@ -51,11 +51,13 @@ function packSea({ stageDir, releaseDir, appName, mainRel }) {
     const fuse = "NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2";
 
     // postject is optional in v0.6. If it's not installed, SEA is skipped.
-const localPostject = path.join(__dirname, "..", "..", "..", "node_modules", ".bin", "postject");
-let postjectCmd = null;
+    const localPostject = path.join(__dirname, "..", "..", "..", "node_modules", ".bin", "postject");
+    const parentPostject = path.join(__dirname, "..", "..", "..", "..", "node_modules", ".bin", "postject");
+    let postjectCmd = null;
 
-if (fileExists(localPostject)) postjectCmd = localPostject;
-else postjectCmd = "postject"; // try PATH (npm i -g postject)
+    if (fileExists(localPostject)) postjectCmd = localPostject;
+    else if (fileExists(parentPostject)) postjectCmd = parentPostject;
+    else postjectCmd = "postject"; // try PATH (npm i -g postject)
 
 const inj = spawnSyncSafe(postjectCmd, [outBin, "NODE_SEA_BLOB", blobPath, "--sentinel-fuse", fuse], { cwd: stageDir, stdio: "pipe" });
 if (!inj.ok) {

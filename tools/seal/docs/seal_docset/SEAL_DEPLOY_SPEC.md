@@ -352,11 +352,12 @@ Ta sekcja jest celowo krótka: ma umożliwić szybkie zrozumienie *dlaczego* Sea
 6) **Baseline hardening systemd (minimalny)**  
    Bo daje realny wzrost kosztu „łatwych” ataków (NODE_OPTIONS, core dumps) bez rozwalania integracji.
 
-7) **Pack bundla domyślnie (SEA + fallback)**  
+7) **Pack bundla domyślnie (SEA, fallback tylko jawnie)**  
    Bo usuwa „czytelny kod” z artefaktów bez ryzykownych modyfikacji binarki:
    - **SEA**: main script jest spakowany (Brotli/Gzip loader) zanim trafi do blobu.
-   - **fallback**: `app.bundle.cjs` jest zastąpione przez `.gz` + loader.
+   - **fallback** (jawnie włączony): `app.bundle.cjs` jest zastąpione przez `.gz` + loader.
    UPX/strip są dostępne jako opcje, ale **OFF by default** (kompatybilność zależna od platformy i postject).
+   Fallback wymaga jawnego włączenia: `build.allowFallback=true` lub `packager=fallback`.
 
 8) **Publiczne `/healthz` i `/status`**  
    Bo aplikacje w tym kontekście bywają wdrażane „normalnie”, a UI i serwis potrzebują tych endpointów na standardowym porcie.
@@ -768,7 +769,7 @@ Warstwy (od najbardziej praktycznych):
 2) **Bundle do 1 pliku + agresywna obfuskacja** → nawet jeśli ktoś wyciąga logikę z runtime, dostaje „zupę” trudną do zrozumienia.
 3) **Baseline hardening systemd** → utrudnia szybkie sztuczki typu `NODE_OPTIONS=--inspect`, core dumpy, itp.
 4) **(Opcjonalnie) Anti‑copy / licencja** → utrudnia uruchomienie skopiowanej binarki na innym hoście.
-5) **(Domyślnie) Pack bundla (SEA + fallback)** → brak plaintext kodu w artefaktach (SEA main packing + gzip loader w fallback).
+5) **(Domyślnie) Pack bundla (SEA, fallback tylko jawnie)** → brak plaintext kodu w artefaktach (SEA main packing + gzip loader w fallback, gdy włączony).
 6) **(Opcjonalnie) UPX/strip** → eksperymentalne i OFF by default (postject-ed binarki potrafią się po tym wykrzaczyć).
 
 W praktyce:
@@ -784,7 +785,7 @@ W praktyce:
 - **Obfuskacja agresywna**: zaciemnianie przepływu, string encoding, dead code.
 - **Bundlowanie**: ograniczenie liczby plików.
 - **Single artifact**: preferowany jeden plik uruchomieniowy.
-- **Domyślnie**: pack bundla (SEA main packing + gzip loader w fallback) – bez plaintext JS w artefaktach.
+- **Domyślnie**: pack bundla (SEA main packing + gzip loader w fallback, gdy włączony) – bez plaintext JS w artefaktach.
 
 **Opcjonalnie**: UPX/strip – OFF by default (kompatybilność zależna od platformy i postject).
 

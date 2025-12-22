@@ -58,6 +58,7 @@ function loadProjectConfig(projectRoot) {
   cfg.defaultTarget = cfg.defaultTarget || "local";
   cfg.build = cfg.build || {};
   cfg.build.packager = cfg.build.packager || "auto"; // auto|sea|fallback
+  if (cfg.build.allowFallback === undefined) cfg.build.allowFallback = false;
   cfg.build.obfuscationProfile = cfg.build.obfuscationProfile || "balanced";
   cfg.build.includeDirs = cfg.build.includeDirs || ["public", "data"];
   // Frontend obfuscation: enabled by default (can be set to false)

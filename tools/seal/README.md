@@ -198,7 +198,7 @@ Uwaga: `html.stripComments` usuwa tylko puste komentarze HTML (`<!--   -->`), a 
 SEAL domyślnie dokłada dodatkową warstwę "anti-peek" (utrudnia proste podglądanie zawartości plików):
 
 - **SEA (binarka)**: pakuje backend bundle do „loadera” (Brotli/Gzip) *przed* generacją blobu SEA – w binarce nie ma plaintext JS.
-- **Fallback** (gdy SEA nie jest możliwe): backendowy bundle jest domyślnie pakowany do `app.bundle.cjs.gz` + mały loader (`seal.loader.cjs`), żeby nie leżał obok czytelny plik JS.
+- **Fallback** (opcja jawna): backendowy bundle jest pakowany do `app.bundle.cjs.gz` + mały loader (`seal.loader.cjs`), żeby nie leżał obok czytelny plik JS.
 
 Opcjonalnie (EXPERIMENTAL): `strip`/`upx` na binarce SEA – **OFF by default**, bo postject-ed binarki potrafią się po tym wysypać.
 
@@ -216,6 +216,7 @@ Możesz też sterować szczegółami:
 
 ```json5
 build: {
+  allowFallback: false, // ustaw true jeśli chcesz jawnie zezwolić na fallback
   hardening: {
     enabled: true,
     seaMainPacking: true,
@@ -253,7 +254,7 @@ Gdzie są artefakty:
 
 - Deploy zdalny przez SSH jest dodany jako „baseline”, ale nie jest jeszcze „battle tested”.
 - SEA w Node jest funkcją eksperymentalną (Node wypisze warning). To normalne.
-- Jeśli SEA nie zadziała z jakiegoś powodu środowiskowego, SEAL automatycznie przełącza się na fallback (obfuskowany bundle uruchamiany przez `node`).
+- Jeśli SEA nie zadziała, build kończy się błędem, chyba że fallback jest jawnie włączony (`build.allowFallback=true` lub `--packager fallback`).
 
 ---
 

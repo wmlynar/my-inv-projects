@@ -25,6 +25,15 @@ function hasCommand(cmd) {
   return !!r.ok;
 }
 
+function resolvePostjectBin() {
+  const localPostject = path.join(__dirname, "..", "..", "node_modules", ".bin", "postject");
+  const parentPostject = path.join(__dirname, "..", "..", "..", "node_modules", ".bin", "postject");
+  if (fileExists(localPostject)) return localPostject;
+  if (fileExists(parentPostject)) return parentPostject;
+  if (hasCommand("postject")) return "postject";
+  return null;
+}
+
 function remoteLayout(targetCfg) {
   const installDir = targetCfg.installDir || `/opt/${targetCfg.appName || "app"}`;
   return {
@@ -176,9 +185,14 @@ async function cmdCheck(cwd, targetArg, opts) {
   }
 
   // Toolchain checks
+  const allowFallback = !!(targetCfg?.allowFallback ?? proj?.build?.allowFallback ?? false);
+  const packagerRequested = String(targetCfg?.packager || proj?.build?.packager || "auto").toLowerCase();
+  const seaNeeded = packagerRequested !== "fallback";
   const major = nodeMajor();
   if (major < 18) errors.push(`Node too old: ${process.version} (need >= 18; SEA needs >= 20)`);
-  if (major < 20) warnings.push(`Node < 20: SEA may not work (fallback packager will be used). Node=${process.version}`);
+  if (seaNeeded && major < 20) {
+    warnings.push(`Node < 20: SEA may not work. ${allowFallback ? "Fallback is enabled." : "Build will fail unless fallback is explicitly enabled (build.allowFallback=true or packager=fallback)."} Node=${process.version}`);
+  }
 
   // Dependencies present?
   try {
@@ -196,12 +210,14 @@ async function cmdCheck(cwd, targetArg, opts) {
   }
 
   // SEA tools
-  if ((targetCfg.packager || proj?.build?.packager || "auto") !== "fallback") {
+  if (seaNeeded) {
     try {
       require("postject");
-      ok("postject: OK (SEA injection)");
+      const postjectBin = resolvePostjectBin();
+      if (postjectBin) ok("postject: OK (SEA injection)");
+      else warnings.push(`postject module installed but CLI not found in node_modules/.bin or PATH – SEA may fail. ${allowFallback ? "Fallback is enabled." : "Build will fail unless fallback is explicitly enabled (build.allowFallback=true or packager=fallback)."}`);
     } catch {
-      warnings.push("postject not installed – SEA may fail, fallback will be used");
+      warnings.push(`postject not installed – SEA may fail. ${allowFallback ? "Fallback is enabled." : "Build will fail unless fallback is explicitly enabled (build.allowFallback=true or packager=fallback)."}`);
     }
   }
 

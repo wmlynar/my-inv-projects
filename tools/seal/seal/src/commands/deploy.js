@@ -9,8 +9,8 @@ const { fileExists } = require("../lib/fsextra");
 const { info, warn, ok, hr } = require("../lib/ui");
 
 const { cmdRelease } = require("./release");
-const { deployLocal, bootstrapLocal, statusLocal, logsLocal, enableLocal, startLocal, restartLocal, stopLocal, disableLocalOnly, disableLocal, rollbackLocal, downLocal, uninstallLocal, runLocalForeground } = require("../lib/deploy");
-const { deploySsh, bootstrapSsh, installServiceSsh, statusSsh, logsSsh, enableSsh, startSsh, restartSsh, stopSsh, disableSshOnly, disableSsh, rollbackSsh, downSsh, uninstallSsh, runSshForeground } = require("../lib/deploySsh");
+const { deployLocal, bootstrapLocal, statusLocal, logsLocal, enableLocal, startLocal, restartLocal, stopLocal, disableLocalOnly, disableLocal, rollbackLocal, downLocal, uninstallLocal, runLocalForeground, ensureCurrentReleaseLocal } = require("../lib/deploy");
+const { deploySsh, bootstrapSsh, installServiceSsh, statusSsh, logsSsh, enableSsh, startSsh, restartSsh, stopSsh, disableSshOnly, disableSsh, rollbackSsh, downSsh, uninstallSsh, runSshForeground, ensureCurrentReleaseSsh } = require("../lib/deploySsh");
 
 function resolveTarget(projectRoot, targetArg) {
   const proj = loadProjectConfig(projectRoot);
@@ -151,11 +151,15 @@ async function cmdRemote(cwd, targetArg, action) {
     case "up":
       if (isSsh) {
         bootstrapSsh(targetCfg);
+        ensureCurrentReleaseSsh(targetCfg);
         installServiceSsh(targetCfg);
         enableSsh(targetCfg);
         startSsh(targetCfg);
       } else {
+        ensureCurrentReleaseLocal(targetCfg);
         bootstrapLocal(targetCfg);
+        enableLocal(targetCfg);
+        startLocal(targetCfg);
       }
       return;
     case "enable":

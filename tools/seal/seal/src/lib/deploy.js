@@ -45,6 +45,34 @@ function localInstallLayout(targetCfg) {
   return { installDir, releasesDir, sharedDir, currentFile, runner };
 }
 
+function localServiceUserGroup(targetCfg) {
+  const scope = (targetCfg.serviceScope || "user").toLowerCase();
+  if (scope !== "system") return { user: null, group: null };
+
+  let user = targetCfg.serviceUser || null;
+  let group = targetCfg.serviceGroup || null;
+
+  if (user && /\s/.test(user)) {
+    throw new Error(`Invalid serviceUser: ${user} (whitespace not allowed)`);
+  }
+  if (group && /\s/.test(group)) {
+    throw new Error(`Invalid serviceGroup: ${group} (whitespace not allowed)`);
+  }
+
+  if (!user) {
+    try { user = os.userInfo().username; } catch { user = null; }
+  }
+  if (user && /\s/.test(user)) {
+    throw new Error(`Invalid serviceUser: ${user} (whitespace not allowed)`);
+  }
+  if (!group && user) group = user;
+  if (group && /\s/.test(group)) {
+    throw new Error(`Invalid serviceGroup: ${group} (whitespace not allowed)`);
+  }
+
+  return { user, group };
+}
+
 function writeRunnerScript(layout, targetCfg) {
   const script = `#!/usr/bin/env bash
 set -euo pipefail
@@ -70,13 +98,18 @@ exec "$REL/appctl" run
 
 function writeServiceFile(targetCfg, layout) {
   const name = targetCfg.serviceName || targetCfg.appName || "app";
+  const scope = (targetCfg.serviceScope || "user").toLowerCase();
+  const { user: serviceUser, group: serviceGroup } = localServiceUserGroup(targetCfg);
+  const userGroupLines = (scope === "system" && (serviceUser || serviceGroup))
+    ? [serviceUser ? `User=${serviceUser}` : null, serviceGroup ? `Group=${serviceGroup}` : null].filter(Boolean).join("\n") + "\n"
+    : "";
   const unit = `[Unit]
 Description=SEAL app ${name}
 After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=${layout.installDir}
+${userGroupLines}WorkingDirectory=${layout.installDir}
 ExecStart=${layout.runner}
 Restart=always
 RestartSec=1
@@ -104,10 +137,9 @@ function bootstrapLocal(targetCfg) {
   writeRunnerScript(layout, targetCfg);
   const svcPath = writeServiceFile(targetCfg, layout);
 
-  // enable service
+  // reload systemd (install only)
   const ctl = systemctlArgs(targetCfg);
   spawnSyncSafe(ctl[0], ctl.slice(1).concat(["daemon-reload"]), { stdio: "inherit" });
-  spawnSyncSafe(ctl[0], ctl.slice(1).concat(["enable", "--now", `${targetCfg.serviceName}.service`]), { stdio: "inherit" });
 
   ok(`Bootstrap OK (service file: ${svcPath})`);
   return layout;
@@ -170,6 +202,22 @@ function deployLocal({ targetCfg, artifactPath, repoConfigPath, pushConfig }) {
   return { layout, extractedDir, folderName };
 }
 
+function ensureCurrentReleaseLocal(targetCfg) {
+  const layout = localInstallLayout(targetCfg);
+  if (!fileExists(layout.currentFile)) {
+    throw new Error(`Missing current.buildId in ${layout.installDir}. Deploy first.`);
+  }
+  const current = fs.readFileSync(layout.currentFile, "utf-8").trim();
+  if (!current) {
+    throw new Error(`Missing current.buildId in ${layout.installDir}. Deploy first.`);
+  }
+  const rel = path.join(layout.releasesDir, current);
+  if (!fileExists(rel)) {
+    throw new Error(`Missing release dir: ${rel}. Deploy again.`);
+  }
+  return { layout, current, rel };
+}
+
 function statusLocal(targetCfg) {
   const ctl = systemctlArgs(targetCfg);
   spawnSyncSafe(ctl[0], ctl.slice(1).concat(["status", `${targetCfg.serviceName}.service`, "--no-pager"]), { stdio: "inherit" });
@@ -222,10 +270,33 @@ function disableLocal(targetCfg) {
 }
 
 function runLocalForeground(targetCfg, opts = {}) {
-  const layout = localInstallLayout(targetCfg);
-  const current = fileExists(layout.currentFile) ? fs.readFileSync(layout.currentFile, "utf-8").trim() : null;
-  if (!current) throw new Error("No current.buildId – deploy first.");
-  const rel = path.join(layout.releasesDir, current);
+  const { layout, rel } = ensureCurrentReleaseLocal(targetCfg);
+  const unit = `${targetCfg.serviceName}.service`;
+  const ctl = systemctlArgs(targetCfg);
+  const scope = (targetCfg.serviceScope || "user").toLowerCase();
+
+  const list = spawnSyncSafe(ctl[0], ctl.slice(1).concat(["list-unit-files", unit, "--no-legend"]), { stdio: "pipe" });
+  if (list.ok && (list.stdout || "").includes(unit)) {
+    spawnSyncSafe(ctl[0], ctl.slice(1).concat(["stop", unit]), { stdio: "inherit" });
+  } else if (!list.ok && scope === "system") {
+    warn("sudo not available; skipping systemd stop");
+  }
+
+  if (opts.kill) {
+    const appName = targetCfg.appName || targetCfg.serviceName || "app";
+    const patterns = [
+      path.join(rel, appName),
+      path.join(rel, "seal.loader.cjs"),
+      path.join(rel, "app.bundle.cjs"),
+    ];
+    for (const pattern of patterns) {
+      if (scope === "system") {
+        spawnSyncSafe("sudo", ["-n", "pkill", "-f", pattern], { stdio: "pipe" });
+      }
+      spawnSyncSafe("pkill", ["-f", pattern], { stdio: "pipe" });
+    }
+  }
+
   const appctl = path.join(rel, "appctl");
   if (!fileExists(appctl)) throw new Error(`Missing appctl: ${appctl}`);
   // copy config
@@ -310,5 +381,6 @@ module.exports = {
   rollbackLocal,
   downLocal,
   uninstallLocal,
+  ensureCurrentReleaseLocal,
   runLocalForeground,
 };

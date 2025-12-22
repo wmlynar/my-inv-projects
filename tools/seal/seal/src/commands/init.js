@@ -106,6 +106,7 @@ async function cmdInit(cwd, opts) {
       defaultTarget: "local",
       build: {
         packager: "auto",
+        allowFallback: false,
         obfuscationProfile: "balanced",
         frontendObfuscation: { enabled: true, profile: "balanced" },
         frontendMinify: { enabled: true, level: "safe", html: true, css: true },

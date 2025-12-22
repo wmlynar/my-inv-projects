@@ -674,6 +674,7 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
 
   
 const packagerRequested = (packagerOverride || targetCfg.packager || projectCfg.build.packager || "auto").toLowerCase();
+const allowFallback = !!(targetCfg.allowFallback ?? projectCfg.build.allowFallback ?? false);
 
 // Normalize hardening config early (used for SEA main packing)
 const hardCfgRaw = projectCfg.build.hardening;
@@ -705,6 +706,7 @@ if (seaMainPackingEnabled) {
 
   let packOk = false;
   let packError = null;
+  let packErrorShort = null;
 
   if (packagerRequested === "sea" || packagerRequested === "auto") {
     const res = packSea({ stageDir, releaseDir, appName, mainRel: seaMainRel });
@@ -714,11 +716,18 @@ if (seaMainPackingEnabled) {
       ok("Packager SEA OK");
     } else {
       packError = res.error;
+      packErrorShort = res.errorShort;
       warn(`SEA packager failed: ${res.errorShort}`);
     }
   }
 
   if (!packOk) {
+    const fallbackAllowed = packagerRequested === "fallback" || allowFallback;
+    if (!fallbackAllowed) {
+      const hint = "Set build.allowFallback=true in seal-config/project.json5 or use --packager fallback.";
+      const reason = packErrorShort ? `Reason: ${packErrorShort}.` : "Reason: SEA packager failed.";
+      throw new Error(`SEA packager failed and fallback is disabled. ${reason} ${hint}`);
+    }
     const res = packFallback({ stageDir, releaseDir, appName, obfPath });
     if (!res.ok) {
       throw new Error(`Fallback packager failed: ${res.errorShort}`);
@@ -840,6 +849,8 @@ fi
 
 SERVICE_NAME="$APP_NAME"
 SERVICE_SCOPE=""  # auto: user (home) / system (else)
+SERVICE_USER=""
+SERVICE_GROUP=""
 
 _trim() { tr -d '\r\n'; }
 
@@ -903,14 +914,26 @@ _detect_existing_service() {
   local name="$(basename "$found" | sed 's/\.service$//')"
   SERVICE_NAME="$name"
   SERVICE_SCOPE="$scope"
+  if [ -f "$found" ]; then
+    local unit_user=""
+    local unit_group=""
+    unit_user="$(grep -E '^User=' "$found" | head -n1 | cut -d= -f2- | _trim)"
+    unit_group="$(grep -E '^Group=' "$found" | head -n1 | cut -d= -f2- | _trim)"
+    if [ -n "$unit_user" ]; then SERVICE_USER="$unit_user"; fi
+    if [ -n "$unit_group" ]; then SERVICE_GROUP="$unit_group"; fi
+  fi
 
   mkdir -p "$ROOT" 2>/dev/null || true
   if [ "$(id -u)" -ne 0 ] && [ "$SERVICE_SCOPE" = "system" ]; then
     echo "$SERVICE_NAME" | sudo tee "$ROOT/service.name" >/dev/null
     echo "$SERVICE_SCOPE" | sudo tee "$ROOT/service.scope" >/dev/null
+    if [ -n "$SERVICE_USER" ]; then echo "$SERVICE_USER" | sudo tee "$ROOT/service.user" >/dev/null; fi
+    if [ -n "$SERVICE_GROUP" ]; then echo "$SERVICE_GROUP" | sudo tee "$ROOT/service.group" >/dev/null; fi
   else
     echo "$SERVICE_NAME" > "$ROOT/service.name"
     echo "$SERVICE_SCOPE" > "$ROOT/service.scope"
+    if [ -n "$SERVICE_USER" ]; then echo "$SERVICE_USER" > "$ROOT/service.user"; fi
+    if [ -n "$SERVICE_GROUP" ]; then echo "$SERVICE_GROUP" > "$ROOT/service.group"; fi
   fi
 }
 
@@ -918,11 +941,20 @@ _load_service_settings() {
   if [ -n "$ROOT" ]; then
     if [ -f "$ROOT/service.name" ]; then SERVICE_NAME="$(cat "$ROOT/service.name" | _trim)"; fi
     if [ -f "$ROOT/service.scope" ]; then SERVICE_SCOPE="$(cat "$ROOT/service.scope" | _trim)"; fi
+    if [ -f "$ROOT/service.user" ]; then SERVICE_USER="$(cat "$ROOT/service.user" | _trim)"; fi
+    if [ -f "$ROOT/service.group" ]; then SERVICE_GROUP="$(cat "$ROOT/service.group" | _trim)"; fi
   fi
 
   _detect_existing_service
 
   if [ -z "$SERVICE_SCOPE" ]; then SERVICE_SCOPE="$(_auto_scope)"; fi
+  if [ "$SERVICE_SCOPE" = "system" ]; then
+    if [ -z "$SERVICE_USER" ] && [ "$(id -u)" -ne 0 ]; then
+      SERVICE_USER="$(id -un)"
+      SERVICE_GROUP="$(id -gn)"
+    fi
+    if [ -z "$SERVICE_GROUP" ] && [ -n "$SERVICE_USER" ]; then SERVICE_GROUP="$SERVICE_USER"; fi
+  fi
 }
 
 _as_root() {
@@ -1056,6 +1088,8 @@ case "$cmd" in
     # Persist service settings for convenience
     echo "$SERVICE_NAME" | _tee_file "$ROOT/service.name"
     echo "$SERVICE_SCOPE" | _tee_file "$ROOT/service.scope"
+    if [ -n "$SERVICE_USER" ]; then echo "$SERVICE_USER" | _tee_file "$ROOT/service.user"; fi
+    if [ -n "$SERVICE_GROUP" ]; then echo "$SERVICE_GROUP" | _tee_file "$ROOT/service.group"; fi
 
     # Ensure layout
     _as_root mkdir -p "$ROOT/releases" "$ROOT/shared"
@@ -1120,6 +1154,10 @@ StandardError=journal
 WantedBy=default.target
 EOF
       else
+        USER_LINE=""
+        GROUP_LINE=""
+        if [ -n "$SERVICE_USER" ]; then USER_LINE="User=$SERVICE_USER"; fi
+        if [ -n "$SERVICE_GROUP" ]; then GROUP_LINE="Group=$SERVICE_GROUP"; fi
         cat <<EOF | _tee_file "$svc_path"
 [Unit]
 Description=SEAL app $SERVICE_NAME
@@ -1127,6 +1165,8 @@ After=network.target
 
 [Service]
 Type=simple
+$USER_LINE
+$GROUP_LINE
 WorkingDirectory=$ROOT
 ExecStart=$ROOT/run-current.sh
 Restart=always
