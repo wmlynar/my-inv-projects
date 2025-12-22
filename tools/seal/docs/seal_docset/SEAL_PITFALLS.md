@@ -51,6 +51,26 @@
   - Polling do `/api/status` ma timeout (AbortController), aby zawieszone requesty nie blokowaly kolejnych prob.
   - `?debug=1` moze pokazywac badge `buildId` i toast przed reloadem.
 
+## UI input / tablety (klik, long-press, scroll)
+
+- Blad: klik/long-press na przyciskach i tabach nie reagowal (dlugie przytrzymanie lub lekki ruch palca).
+  - Wymaganie: uzywaj wspolnego `setupPressAction`:
+    - `pointerdown` (touch/pen) uruchamia akcje od razu; `pointerup` dla myszy.
+    - `setPointerCapture` + "slop" (np. 22px) i sprawdzenie `inside` na `pointerup`.
+    - ignoruj zdublowane `click` (okno 600-800 ms).
+    - `contextmenu` -> `preventDefault`.
+  - CSS dla `.btn`/`.tab`: `touch-action: none`, `user-select: none`, `-webkit-touch-callout: none`, `-webkit-tap-highlight-color: transparent`.
+
+- Blad: klik na panelu/boxach gasl po chwili (drag/long-press).
+  - Wymaganie: akcja toggle albo na `pointerdown` (touch) albo na `pointerup` z "slopem".
+  - Nie polegaj na samym `click` na tabletach.
+
+- Blad: scroll blokowal sie po lekkim ruchu w bok (poziomy pan "przejmowal" gest).
+  - Wymaganie (CSS): `touch-action: pan-y; overflow-x: hidden; overscroll-behavior-x: none; -webkit-overflow-scrolling: touch` na kontenerze scrolla.
+  - Wymaganie (JS): `setupTouchScrollAssist` dla kontenera scrolla:
+    - nasluch `touchstart`/`touchmove`, start tylko poza `.btn/.tab`.
+    - po przekroczeniu progu (np. 8px) wymus `preventDefault()` i aktualizuj `scrollTop`.
+
 ## Co sprawdzac po zmianach (checklist)
 
 - `seal release` bez `postject` musi failowac (chyba ze fallback jawnie wlaczony).
@@ -58,4 +78,5 @@
 - `installDir` w targetach jest w `/home/admin/apps/...`.
 - `config.runtime.json5` jest obecny i poprawny JSON5.
 - UI: overlay po 2s braku polaczenia, reload tylko po zmianie `buildId`.
+- UI (tablet): klik/long-press dziala na `.btn/.tab` i scroll nie blokuje sie po ruchu w bok.
 - Logi nie zawieraja `JSESSIONID` ani danych auth.
