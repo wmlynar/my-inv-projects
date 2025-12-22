@@ -14,6 +14,9 @@
 ### Frontend hardening (P1)
 - **Bezpieczna minifikacja HTML/CSS:** domyślnie włączona, z poziomami `safe`/`minimal` i override per‑sekcja.
 
+### Docs (P1)
+- **SEAL_PITFALLS v0.5:** zebrane realne błędy i wymagania, aby ich nie powtarzać.
+
 ## Docset v0.5 (względem v0.4)
 
 ### UX / prostota (P0)

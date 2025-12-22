@@ -506,13 +506,14 @@
 
     async function syncSlotToRds(slotId, filled) {
       try {
-        const resp = await fetch(
+        const resp = await fetchWithTimeout(
           `/api/slots/${encodeURIComponent(slotId)}/set-filled`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ filled: !!filled })
-          }
+          },
+          4000
         );
         if (!resp.ok) {
           console.error("Błąd /api/slots:", await resp.text());
@@ -621,7 +622,7 @@
     // Auto-refresh z RDS / backendu co 500 ms
     async function refreshStateFromServer() {
       try {
-        const resp = await fetch("/api/state");
+        const resp = await fetchWithTimeout("/api/state");
         if (!resp.ok) {
           // można ewentualnie zalogować raz na jakiś czas
           return;
@@ -664,6 +665,7 @@
       reloadPending: false
     };
 
+    const FETCH_TIMEOUT_MS = 2500;
     const BACKEND_POLL_MS = 1000;
     const BACKEND_GRACE_MS = 2000;
 
@@ -708,11 +710,22 @@
       overlay.setAttribute("aria-hidden", visible ? "false" : "true");
     }
 
+    async function fetchWithTimeout(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
+      if (typeof AbortController === "undefined") return fetch(url, options);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        return await fetch(url, { ...options, signal: controller.signal });
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
     async function pollBackendStatus() {
       if (backendMonitor.inFlight) return;
       backendMonitor.inFlight = true;
       try {
-        const resp = await fetch("/api/status", { cache: "no-store" });
+        const resp = await fetchWithTimeout("/api/status", { cache: "no-store" });
         if (!resp.ok) throw new Error(`status ${resp.status}`);
         const data = await resp.json();
         backendMonitor.lastOkAt = Date.now();

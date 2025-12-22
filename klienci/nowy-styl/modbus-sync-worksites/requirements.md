@@ -71,28 +71,13 @@
   - Błąd wywołania API:
     - `console.error` z `siteId` i kontekstem.
 
-- Usługa systemd:
-  - Unit w `/etc/systemd/system/modbus-sync-worksites.service`:
-    - `Type=simple`,
-    - `User=admin`, `Group=admin`,
-    - `WorkingDirectory=/home/admin/modbus-sync-worksites`,
-    - `ExecStart=/usr/bin/nodejs /home/admin/modbus-sync-worksites/modbus-sync-worksites.js`,
-    - `Restart=always`, `RestartSec=5`,
-    - `After=network-online.target`, `Wants=network-online.target`,
-    - `Environment=NODE_ENV=production`.
-  - Skrypt instalacyjny `install-modbus-sync-worksites-service.sh`:
-    - tworzy unit w `/etc/systemd/system/`,
-    - wykonuje `systemctl daemon-reload`,
-    - `systemctl enable`,
-    - `systemctl start`.
+- Wdrożenie przez SEAL (systemd):
+  - Pierwszy raz: `seal deploy prod --bootstrap` – tworzy katalogi, instaluje usługę i runner.
+  - Usługa: `modbus-sync-worksites.service`, `installDir=/home/admin/apps/modbus-sync-worksites`.
+  - Sterowanie: `seal remote prod up|down|start|stop|restart|status|logs` lub `appctl` w katalogu release.
 
-- Skrypty operatorskie:
-  - `logs-follow.sh` – podgląd logów na żywo (`journalctl -u ... -f`).
-  - `logs-last-hour.sh` – logi z ostatniej godziny (`journalctl --since "-1 hour"`).
-  - `service-status.sh` – status usługi (`systemctl status ...`).
-  - `service-restart.sh` – restart + status.
-  - `run-foreground.sh` – uruchomienie usługi w foreground (debug).
-  - `modbus-test.sh` – uruchomienie prostego testu Modbus.
+- Skrypty operatorskie (legacy):
+  - Stare skrypty przeniesione do `old/scripts/` – nieużywane w produkcji po przejściu na SEAL.
 
 - Test Modbus:
   - `modbus-read-test.js`: prosty skrypt Node:
@@ -102,7 +87,7 @@
 
 - Repozytorium:
   - Projekt w git + GitHub.
-  - Commitowane: kod (`*.js`), skrypty bash, `package.json`, `package-lock.json`, `.gitignore`, dokumentacja (`SERVICE_REQUIREMENTS.md`).
+  - Commitowane: kod (`*.js`), `seal-config/`, `config/*.json5`, skrypty bash (legacy), `package.json`, `package-lock.json`, `.gitignore`, dokumentacja (`requirements.md`).
   - `.gitignore` ignoruje `node_modules/`, logi, śmieci edytorów, `.env` itp.
 
 ---
@@ -112,6 +97,8 @@
 - Konfiguracja:
   - wszystkie istotne parametry (hosty, timeouty, interwały) zebrane w jednym miejscu,
   - loginy/hasła/language dla RDS są stałymi w kodzie (świadomy wyjątek),
+  - `config.runtime.json5` (JSON5) jest wymagany – brak/niepoprawny plik kończy proces z błędem,
+  - nie używamy `.env` jako runtime configu w produkcji; config kopiuje się do `config.runtime.json5`,
   - walidacja konfiguracji przy starcie (duplikaty, zakresy, brakujące pola).
 
 - Logowanie:
@@ -119,6 +106,7 @@
   - jeden język logów (np. angielski),
   - log błędu zawsze zawiera: co, gdzie, dla kogo (`siteId`, adres, itp.),
   - brak parsowania stringów błędów – logika rozróżnia przypadki, nie tekst komunikatu.
+  - **Nie logujemy danych uwierzytelniających ani sesji** (np. `JSESSIONID`, login/logout).
 
 - Obsługa błędów:
   - każdy błąd z systemu zewnętrznego (Modbus, HTTP, DB) jest:
@@ -144,6 +132,14 @@
   - `WorkingDirectory` ustawione na katalog projektu,
   - obsługa `SIGINT`/`SIGTERM` (sprzątanie połączeń, czyste wyjście).
 
+- Aplikacje UI (frontend):
+  - UI nie może przeładować się na błąd backendu (żeby nie pokazać strony błędu w przeglądarce).
+  - Backend wystawia `/api/status` z `buildId` (z SEAL lub `version.json`).
+  - UI pokazuje overlay „brak połączenia” dopiero po ~2s braku kontaktu (krótkie przerwy bez bannera).
+  - UI odświeża się **tylko** po zmianie `buildId` i tylko po odzyskaniu połączenia.
+  - Polling do `/api/status` ma **timeout** (AbortController), żeby zawieszone requesty nie blokowały kolejnych prób.
+  - `?debug=1` może pokazywać znacznik `buildId` i krótki toast przed reloadem.
+
 - Obserwowalność:
   - możliwość:
     - podglądu logów na żywo,
@@ -160,8 +156,13 @@
 
 - Testy / narzędzia:
   - osobny, prosty skrypt testowy komunikacji z systemem zewnętrznym (Modbus, DB, HTTP),
-  - skrypty operatorskie: logi, restart, status, test.
+  - narzędzia operatorskie (SEAL/appctl): logi, restart, status, test.
+
+- Budowanie / SEAL:
+  - brak `postject` (SEA) to **błąd**, a fallback jest dozwolony tylko jawnie (`build.allowFallback=true` lub `--packager fallback`),
+  - `installDir` dla usług w `/home/admin/apps/...` (unikamy małych partycji typu `/opt`).
 
 - Repozytorium:
   - kod w gicie,
-  - powtarzalny sposób wdrożenia (np. `git pull && npm ci && systemctl restart ...`).
+  - powtarzalny sposób wdrożenia przez SEAL (release + deploy),
+  - `seal-config/` i `config/*.json5` są wersjonowane; `.env` nie.

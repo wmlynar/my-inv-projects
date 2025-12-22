@@ -12,6 +12,7 @@
 - [SEAL_DEPLOY_REFERENCE.md](SEAL_DEPLOY_REFERENCE.md)
 - [SEAL_STANDARD.md](SEAL_STANDARD.md)
 - [SEAL_CONTRACT_AI.md](SEAL_CONTRACT_AI.md)
+- [SEAL_PITFALLS.md](SEAL_PITFALLS.md)
 - [SEAL_CHANGELOG.md](SEAL_CHANGELOG.md)
 
 ## Co jest w docsecie
@@ -24,6 +25,7 @@ Docset v0.5 składa się z:
 - **SEAL_DEPLOY_REFERENCE v0.5** – referencyjna implementacja i przykłady (REF).
 - **SEAL_STANDARD v1.3** – standard jakości aplikacji sealowanych.
 - **SEAL_CONTRACT_AI v1.3** – krótki kontrakt „promptable” dla generatorów kodu.
+- **SEAL_PITFALLS v0.5** – lista realnych błędów do uniknięcia + wymagania zapobiegawcze.
 - **SEAL_CHANGELOG v0.5** – changelog całego docsetu.
 
 ## Zasady wersjonowania
@@ -47,4 +49,3 @@ Docset v0.5 składa się z:
 - **Lokalne testowanie zabezpieczenia jest first‑class:** `seal release` tworzy artefakt + folder do inspekcji, a `seal run-local` uruchamia sealed build lokalnie.
 - **Airgap/CI ma oficjalny flow:** build artefaktu i deploy artefaktu to osobne scenariusze.
 - **Są scenariusze lifecycle:** lista release, rollback, uninstall/cleanup, multi‑target.
-

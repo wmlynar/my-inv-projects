@@ -207,6 +207,7 @@ const backendMonitor = {
   reloadPending: false
 };
 
+const FETCH_TIMEOUT_MS = 2500;
 const BACKEND_POLL_MS = 1000;
 const BACKEND_GRACE_MS = 2000;
 
@@ -251,11 +252,22 @@ function setBackendOverlay(visible) {
   overlay.setAttribute("aria-hidden", visible ? "false" : "true");
 }
 
+async function fetchWithTimeout(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
+  if (typeof AbortController === "undefined") return fetch(url, options);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function pollBackendStatus() {
   if (backendMonitor.inFlight) return;
   backendMonitor.inFlight = true;
   try {
-    const resp = await fetch("/api/status", { cache: "no-store" });
+    const resp = await fetchWithTimeout("/api/status", { cache: "no-store" });
     if (!resp.ok) throw new Error(`status ${resp.status}`);
     const data = await resp.json();
     backendMonitor.lastOkAt = Date.now();
@@ -294,7 +306,7 @@ function startBackendMonitor() {
 
 async function fetchRobotStateFromServer() {
   try {
-    const resp = await fetch("/api/robot/state");
+    const resp = await fetchWithTimeout("/api/robot/state");
     if (!resp.ok) {
       console.error("Błąd /api/robot/state:", await resp.text());
       return;
@@ -311,7 +323,7 @@ async function fetchRobotStateFromServer() {
 async function callDispatchEndpoint(path) {
   resetIdleTimer();
   try {
-    const resp = await fetch(path, { method: "POST" });
+    const resp = await fetchWithTimeout(path, { method: "POST" }, 4000);
     if (!resp.ok) {
       const txt = await resp.text().catch(() => "");
       console.error("Błąd wywołania", path, resp.status, txt);
@@ -327,7 +339,7 @@ async function callRobotAction(path) {
   resetIdleTimer();
   console.log("[UI] callRobotAction start:", path);
   try {
-    const resp = await fetch(path, { method: "POST" });
+    const resp = await fetchWithTimeout(path, { method: "POST" }, 4000);
     console.log("[UI] callRobotAction response:", path, "status =", resp.status);
     if (!resp.ok) {
       const txt = await resp.text().catch(() => "");
@@ -974,7 +986,7 @@ function setupControls() {
     btnDumpStatus.addEventListener("click", async () => {
       resetIdleTimer();
       try {
-        const resp = await fetch("/api/robot/raw");
+        const resp = await fetchWithTimeout("/api/robot/raw", {}, 4000);
         if (!resp.ok) {
           alert("Nie udało się pobrać danych getRobotListRaw");
           return;
