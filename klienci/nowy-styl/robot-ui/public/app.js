@@ -200,6 +200,68 @@ function setupIdleReset() {
   });
 }
 
+function setupTouchScrollAssist() {
+  const main = document.getElementById("main-scroll");
+  if (!main) return;
+
+  const ACTIVATE_PX = 8;
+
+  let tracking = false;
+  let active = false;
+  let startY = 0;
+  let startScrollTop = 0;
+
+  const isInteractiveTarget = (target) => {
+    if (!target || typeof target.closest !== "function") return false;
+    return !!target.closest(".btn, .tab");
+  };
+
+  main.addEventListener(
+    "touchstart",
+    (e) => {
+      if (e.touches.length !== 1) return;
+      if (isInteractiveTarget(e.target)) return;
+
+      tracking = true;
+      active = false;
+      const t = e.touches[0];
+      startY = t.clientY;
+      startScrollTop = main.scrollTop;
+    },
+    { passive: true }
+  );
+
+  main.addEventListener(
+    "touchmove",
+    (e) => {
+      if (!tracking || e.touches.length !== 1) return;
+      if (isInteractiveTarget(e.target)) return;
+
+      const t = e.touches[0];
+      const dy = t.clientY - startY;
+
+      if (!active) {
+        if (Math.abs(dy) < ACTIVATE_PX) return;
+        active = true;
+        startY = t.clientY;
+        startScrollTop = main.scrollTop;
+      }
+
+      e.preventDefault();
+      main.scrollTop = startScrollTop - (t.clientY - startY);
+    },
+    { passive: false }
+  );
+
+  const stop = () => {
+    tracking = false;
+    active = false;
+  };
+
+  main.addEventListener("touchend", stop, { passive: true });
+  main.addEventListener("touchcancel", stop, { passive: true });
+}
+
 const backendMonitor = {
   lastOkAt: Date.now(),
   lastBuildId: null,
@@ -1327,6 +1389,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupTabs();
   setupControls();
   setupIdleReset();
+  setupTouchScrollAssist();
   setupSpeedToggle();
   startBackendMonitor();
 
