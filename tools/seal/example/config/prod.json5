@@ -1,0 +1,19 @@
+{
+  appName: "seal-example",
+  http: {
+    host: "0.0.0.0",
+    port: 8080,
+  },
+
+  log: {
+    level: "error",
+    file: "./logs/app.log",
+  },
+
+  external: {
+    echoUrl: "https://postman-echo.com/get?source=seal-example-prod",
+    timeoutMs: 5000,
+  },
+
+  featuresFile: "./data/feature_flags.json",
+}

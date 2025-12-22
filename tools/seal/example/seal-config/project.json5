@@ -1,0 +1,26 @@
+{
+  appName: "seal-example",
+  entry: "src/index.js",
+  defaultTarget: "local",
+  build: {
+    packager: "auto",
+    obfuscationProfile: "balanced",
+    frontendObfuscation: { enabled: true, profile: "balanced" },
+    hardening: {
+      enabled: true,
+      // SEA: pack main bundle into compressed loader (no plain JS inside SEA blob)
+      seaMainPacking: true,
+      seaMainPackingMethod: "brotli",
+      seaMainPackingChunkSize: 8000,
+
+      // Fallback: hide app.bundle.cjs behind gzip + loader
+      bundlePacking: true,
+
+      // Binary repack is experimental for postject-ed SEA binaries; OFF by default.
+      strip: false,
+      upx: false,
+    },
+    includeDirs: ["public", "data"],
+    keepLocalOut: true,
+  },
+}

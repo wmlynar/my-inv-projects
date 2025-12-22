@@ -1,0 +1,12 @@
+{
+  "name": "seal-monorepo-v0.6.0",
+  "private": true,
+  "workspaces": [
+    "seal",
+    "example"
+  ],
+  "scripts": {
+    "dev": "npm --workspace example run dev",
+    "release": "npm --workspace example run seal:release"
+  }
+}

@@ -1,0 +1,2324 @@
+Project Structure and File Contents
+================================================================================
+
+
+file: .gitignore
+--------------------------------------------------------------------------------
+# Node dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Logs
+*.log
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+
+# Env / secrets (if you ever add them)
+.env
+.env.*
+
+--------------------------------------------------------------------------------
+
+file: api-client.js
+--------------------------------------------------------------------------------
+// api-client.js
+
+// Jeśli używasz Node.js w wersji starszej niż 18, odkomentuj poniższą linię oraz zainstaluj node-fetch:
+// const fetch = require('node-fetch');
+
+const md5 = require('md5');
+
+
+function extractCookie(setCookieHeader, name) {
+  if (!setCookieHeader) return null;
+  // Set-Cookie może zawierać wiele ciastek, rozdzielonych przecinkami
+  const parts = setCookieHeader.split(/,(?=[^ ;]+=)/);
+  for (const part of parts) {
+    const m = part.match(new RegExp(`${name}=([^;]+)`));
+    if (m) return m[1];
+  }
+  return null;
+}
+
+class APIClient {
+
+  // Lista statusów uznawanych za aktywne
+  static ACTIVE_STATUSES = ["1000", "1002", "1004", "1005", "1006"];
+  
+  // Słowniki statusów z kluczami językowymi
+  static statusDescriptions = {
+    en: {
+      1000: "Running",
+      1001: "Terminated",
+      1002: "Suspended",
+      1003: "Finished",
+      1004: "Abnormally Finished",
+      1005: "Restart Exception",
+      1006: "Abnormal Interruption"
+    },
+    pl: {
+      1000: "Uruchomiony",
+      1001: "Przerwany",
+      1002: "Zawieszony",
+      1003: "Zakończony",
+      1004: "Nieprawidłowo Zakończony",
+      1005: "Błąd Restartu",
+      1006: "Nieprawidłowe Przerwanie"
+    }
+  };
+
+  static taskStatusDescriptions = {
+    en: {
+      1000: "Running",
+      1001: "Terminated",
+      1002: "Paused",
+      1003: "Finished",
+      1004: "Exceptional End",
+      1005: "Restart exception",
+      1006: "Abnormal Interruption",
+      1007: "End Manually"
+    },
+    pl: {
+      1000: "Uruchomiony",
+      1001: "Zakończony",
+      1002: "Pauza",
+      1003: "Zakończony",
+      1004: "Wyjątkowe zakończenie",
+      1005: "Błąd restartu",
+      1006: "Nieprawidłowe przerwanie",
+      1007: "Zakończony ręcznie"
+    }
+  };
+
+  static relocStatusDescriptions = {
+    en: {
+      0: "FAILED",
+      1: "SUCCESS",
+      2: "RELOCING",
+      3: "COMPLETED"
+    },
+    pl: {
+      0: "NIEUDANE",
+      1: "SUKCES",
+      2: "RELOKOWANIE",
+      3: "UKOŃCZONE"
+    }
+  };
+
+  static robotTaskStatusDescriptions = {
+    en: {
+      0: "NONE",
+      1: "WAITING",
+      2: "RUNNING",
+      3: "SUSPENDED",
+      4: "COMPLETED",
+      5: "FAILED",
+      6: "CANCELED"
+    },
+    pl: {
+      0: "BRAK",
+      1: "OCZEKIWANIE",
+      2: "URUCHOMIONY",
+      3: "ZAWIESZONY",
+      4: "UKOŃCZONY",
+      5: "BŁĄD",
+      6: "ANULOWANY"
+    }
+  };
+
+  static dispatchableStatusDescriptions = {
+    en: {
+      0: "Dispatchable",
+      1: "Undispatchable and Online",
+      2: "Undispatchable and Offline"
+    },
+    pl: {
+      0: "Dyspozycyjny",
+      1: "Niedyspozycyjny Online",
+      2: "Niedyspozycyjny Offline"
+    }
+  };
+  
+  static levelDescriptions = {
+    en: {
+      1: "Normal",
+      2: "Terminated",
+      3: "Error",
+      4: "Waiting"
+    },
+    pl: {
+      1: "Normalny",
+      2: "Zakończony",
+      3: "Błąd",
+      4: "Oczekiwanie"
+    }
+  };
+  
+  constructor(apiHost, username, password, language = "en") {
+    this.apiHost = apiHost;
+    this.username = username;
+    this.password = password;
+    this.sessionId = null;
+    this.language = language;
+  }
+
+  async login() {
+    const url = `${this.apiHost}/admin/login`;
+    const requestData = { username: this.username, password: this.encryptPassword(this.password) };
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestData)
+    });
+    if (!response.ok) {
+      throw new Error(`Logowanie nie powiodło się: ${response.status}`);
+    }
+    const setCookieHeader = response.headers.get("set-cookie");
+    const match = setCookieHeader && setCookieHeader.match(/JSESSIONID=([^;]+)/);
+    this.sessionId = match ? match[1] : null;
+    if (!this.sessionId) {
+      throw new Error("Nie udało się pobrać JSESSIONID z ciasteczka.");
+    }
+    await response.json(); // Ignorujemy treść odpowiedzi – wystarczy ciasteczko
+    console.log("Zalogowano, JSESSIONID:", this.sessionId);
+  }
+
+  async logout() {
+    const url = `${this.apiHost}/admin/logout`;
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { "Cookie": `JSESSIONID=${this.sessionId}` }
+    });
+    if (!response.ok) {
+      throw new Error(`Wylogowanie nie powiodło się: ${response.status}`);
+    }
+    console.log("Wylogowano poprawnie.");
+    this.sessionId = null;
+  }
+
+
+async apiCall(path, options = {}) {
+  const url = this.apiHost + path;
+
+  // Upewniamy się, że mamy obiekt nagłówków
+  options.headers = options.headers || {};
+
+  // Jeśli mamy sesję, dokładamy ciasteczko JSESSIONID
+  if (this.sessionId) {
+    options.headers["Cookie"] = `JSESSIONID=${this.sessionId}`;
+  }
+
+  // Domyślny Language, jeśli nie został ustawiony ręcznie
+  if (!("Language" in options.headers) && !("language" in options.headers)) {
+    options.headers["Language"] = this.language || "en";
+  }
+
+  let response = await fetch(url, options);
+
+  // UWAGA: TYLKO 401/403 traktujemy jako problem z sesją.
+  // 400 już tutaj NIE MA.
+  if ([401, 403].includes(response.status)) {
+    console.log("Sesja wygasła lub ciasteczko nieprawidłowe, ponowne logowanie...");
+    await this.login();
+    if (this.sessionId) {
+      options.headers["Cookie"] = `JSESSIONID=${this.sessionId}`;
+    }
+    response = await fetch(url, options);
+  }
+
+  // Jeśli dalej jest błąd — zrzucamy status i body do wyjątku
+  if (!response.ok) {
+    let body = "";
+    try {
+      body = await response.text();
+    } catch (_) {
+      body = "";
+    }
+    throw new Error(`Błąd wywołania API: ${response.status}, body=${body}`);
+  }
+
+  // Sukces — próbujemy sparsować JSON, w razie czego zwracamy surowy tekst
+  const text = await response.text();
+  if (!text) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+async apiCall(path, options = {}) {
+  // 1. Upewniamy się, że mamy sesję
+  if (!this.sessionId) {
+    await this.login();
+  }
+
+  // 2. Nagłówki
+  options.headers = options.headers || {};
+  options.headers["Content-Type"] = "application/json";
+  options.headers["Cookie"] = `JSESSIONID=${this.sessionId}`;
+  options.headers["Language"] = "en"; // albo this.language, jeśli chcesz
+
+  const url = `${this.apiHost}${path}`;
+
+  // 3. Pierwsze wywołanie
+  let response = await fetch(url, options);
+
+  // UWAGA: już BEZ 400 – tylko 401/403 jako "wygasła sesja"
+  if ([401, 403].includes(response.status)) {
+    console.log("Sesja wygasła lub ciasteczko nieprawidłowe, ponowne logowanie...");
+    await this.login();
+    options.headers["Cookie"] = `JSESSIONID=${this.sessionId}`;
+    response = await fetch(url, options);
+  }
+
+  // 4. Obsługa błędów
+  if (!response.ok) {
+    // Specjalne logowanie treści przy 400
+    if (response.status === 400) {
+      let body = "";
+      try {
+        body = await response.text();
+      } catch (_) {
+        body = "";
+      }
+      console.error("Błąd 400, treść odpowiedzi:", body);
+    }
+    throw new Error(`Błąd wywołania API: ${response.status}`);
+  }
+
+  // 5. Sukces – parsujemy JSON
+  return response.json();
+}
+
+/*
+  async apiCall(path, options = {}) {
+    if (!this.sessionId) {
+      await this.login();
+    }
+    options.headers = options.headers || {};
+    options.headers["Content-Type"] = "application/json";
+    options.headers["Cookie"] = `JSESSIONID=${this.sessionId}`;
+    options.headers["Language"] = 'en'; //this.language;
+    const url = `${this.apiHost}${path}`;
+    let response = await fetch(url, options);
+    if ([400, 401, 403].includes(response.status)) {
+      console.log("Sesja wygasła lub ciasteczko nieprawidłowe, ponowne logowanie...");
+      await this.login();
+      options.headers["Cookie"] = `JSESSIONID=${this.sessionId}`;
+      response = await fetch(url, options);
+    }
+    if (!response.ok) {
+      throw new Error(`Błąd wywołania API: ${response.status}`);
+    }
+    return response.json();
+  }
+*/
+
+/*
+async apiCall(path, options = {}) {
+  const url = this.apiHost + path;
+  options.headers = options.headers || {};
+
+  // jeśli nie mamy sesji – zaloguj
+  if (!this.sessionId) {
+    await this.login();
+  }
+
+  // ZAWSZE dodajemy ciasteczko sesji
+  options.headers["Cookie"] = `JSESSIONID=${this.sessionId}`;
+
+  // Language – z dużej litery (tak jak chcesz)
+  if (!("Language" in options.headers) && !("language" in options.headers)) {
+    options.headers["Language"] = this.language || "en";
+  }
+
+  // serviceauth – jak w GUI
+  if (
+    !("serviceauth" in options.headers) &&
+    !("Serviceauth" in options.headers) &&
+    !("ServiceAuth" in options.headers)
+  ) {
+    options.headers["serviceauth"] = "Y";
+  }
+
+  // Content-Type dla POST, jeśli nie ustawiono
+  const method = (options.method || "GET").toUpperCase();
+  if (
+    method === "POST" &&
+    !("Content-Type" in options.headers) &&
+    !("content-type" in options.headers)
+  ) {
+    options.headers["Content-Type"] = "application/json";
+  }
+
+  let response = await fetch(url, options);
+
+  // 400 NIE traktujemy jako problemu z sesją – tylko 401/403
+  if ([401, 403].includes(response.status)) {
+    console.log("Sesja wygasła lub ciasteczko nieprawidłowe, ponowne logowanie...");
+    this.sessionId = null;
+    await this.login();
+    options.headers["Cookie"] = `JSESSIONID=${this.sessionId}`;
+    response = await fetch(url, options);
+  }
+
+  if (!response.ok) {
+    throw new Error(`Błąd wywołania API: ${response.status}`);
+  }
+
+  const text = await response.text();
+  if (!text) return null;
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+*/
+
+  async getWorkSiteList() {
+    const path = "/api/work-sites/sites";
+    const requestData = {};
+    const responseJson = await this.apiCall(path, { method: "POST", body: JSON.stringify(requestData) });
+    return responseJson.data.map(site => ({
+      workSiteId: site.id,
+      workSiteName: site.siteId,
+      filled: site.filled === 1,
+      locked: site.locked === 1,
+      lockedBy: site.lockedBy || "",
+      content: site.content || "",
+      groupName: site.groupName || "",
+      tags: site.tags || "",
+      displayName: site.siteName || ""
+    }));
+  }
+
+  async getWorkSiteListRaw() {
+    const path = "/api/work-sites/sites";
+    const requestData = {};
+    return this.apiCall(path, { method: "POST", body: JSON.stringify(requestData) });
+  }
+
+  async setWorkSiteFilled(worksiteName) {
+    const path = "/api/work-sites/worksiteFiled";
+    const requestData = { workSiteIds: [worksiteName] };
+    return this.apiCall(path, { method: "POST", body: JSON.stringify(requestData) });
+  }
+
+  async setWorkSiteEmpty(worksiteName) {
+    const path = "/api/work-sites/worksiteUnFiled";
+    const requestData = { workSiteIds: [worksiteName] };
+    return this.apiCall(path, { method: "POST", body: JSON.stringify(requestData) });
+  }
+
+  async setWorkSiteLocked(worksiteName, lockedBy) {
+    const path = "/api/work-sites/lockedSites";
+    const requestData = { siteIdList: [worksiteName], lockedBy: lockedBy };
+    return this.apiCall(path, { method: "POST", body: JSON.stringify(requestData) });
+  }
+
+  async setWorkSiteUnlocked(worksiteName) {
+    const path = "/api/work-sites/unLockedSites";
+    const requestData = [worksiteName];
+    return this.apiCall(path, { method: "POST", body: JSON.stringify(requestData) });
+  }
+
+  async setWorksiteContent(worksiteName, content) {
+    const path = "/api/work-sites/setWorksiteContent";
+    const requestData = { workSiteIds: [worksiteName], content: content };
+    return this.apiCall(path, { method: "POST", body: JSON.stringify(requestData) });
+  }
+
+  async setWorksiteTags(worksiteName, tags) {
+    const path = "/api/work-sites/setWorksiteLabel";
+    const requestData = { workSiteIds: [worksiteName], label: tags };
+    return this.apiCall(path, { method: "POST", body: JSON.stringify(requestData) });
+  }
+
+  async setWorksiteNumber(worksiteName, number) {
+    const path = "/api/work-sites/setWorksiteNumber";
+    const requestData = { workSiteIds: [worksiteName], number: number };
+    return this.apiCall(path, { method: "POST", body: JSON.stringify(requestData) });
+  }
+
+  async enableWorksite(workSiteId) {
+    const path = "/api/work-sites/enableWorksite";
+    const requestData = { workSiteIds: [workSiteId] };
+    return this.apiCall(path, { method: "POST", body: JSON.stringify(requestData) });
+  }
+
+  async disableWorksite(workSiteId) {
+    const path = "/api/work-sites/disableWorksite";
+    const requestData = { workSiteIds: [workSiteId] };
+    return this.apiCall(path, { method: "POST", body: JSON.stringify(requestData) });
+  }
+
+  async clearWorksiteSyncFailed(workSiteId) {
+    const path = "/api/work-sites/clearSyncFailed";
+    const requestData = { workSiteIds: [workSiteId] };
+    return this.apiCall(path, { method: "POST", body: JSON.stringify(requestData) });
+  }
+  
+  async updateWorkSite(worksiteId, worksiteName, filled, locked, lockedBy, area, groupName) {
+    const workSiteData = {
+      id: worksiteId,
+      siteId: worksiteName,
+      siteName: null,
+      working: null,
+      locked: locked,
+      lockedBy: lockedBy,
+      filled: filled,
+      disabled: 0,
+      syncFailed: 0,
+      content: "",
+      area: area,
+      rowNum: null,
+      colNum: null,
+      level: null,
+      depth: null,
+      no: null,
+      agvId: null,
+      tags: null,
+      type: 1,
+      groupName: groupName,
+      attrList: []
+    };
+    const path = "/api/work-sites/saveOrUpdateWorkSite";
+    return this.apiCall(path, { method: "POST", body: JSON.stringify(workSiteData) });
+  }
+
+  async deleteWorksite(workSiteId) {
+    const path = "/api/work-sites/deleteWorkSite";
+    const requestData = { siteId: workSiteId }; // dokładnie taki format, jak testowałeś ręcznie
+    return this.apiCall(path, {
+      method: "POST",
+      body: JSON.stringify(requestData)
+    });
+  }
+
+  // Uproszczona metoda getTasks – zakładamy poprawną strukturę odpowiedzi
+  async getTasks() {
+    const path = "/api/queryTaskRecord";
+    const requestData = {
+      currentPage: 1,
+      pageSize: 1000000,
+      queryParam: {
+        taskRecordId: null,
+        outOrderNo: null,
+        agvId: null,
+        taskLabel: null,
+        startDate: null,
+        endDate: null,
+        ifParentOrChildOrAll: null,
+        ifPeriodTask: 0,
+        agvIdList: [],
+        stateDescription: null
+      }
+    };
+    const responseJson = await this.apiCall(path, { method: "POST", body: JSON.stringify(requestData) });
+    return responseJson.data.pageList.map(task => ({
+      id: task.id,
+      def_id: task.def_id,
+      agv_id: task.agv_id,
+      priority: task.priority,
+      status: task.status,
+      status_description: APIClient.taskStatusDescriptions[this.language][task.status],
+      def_label: task.def_label,
+      input_params_summary: Object.fromEntries(
+        JSON.parse(task.input_params).map(param => [param.name, param.defaultValue])
+      ),
+      executor_time: task.executor_time,
+      created_on: task.created_on,
+      first_executor_time: task.first_executor_time,
+      ended_on: task.ended_on
+    }));
+  }
+
+  // Uproszczona metoda getActiveTasks – status "1005" został usunięty już z activeStatuses
+  async getActiveTasks() {
+    const activeStatuses = ["1000", "1002", "1004", "1005", "1006"];
+    const path = "/api/queryTaskRecord";
+    const fetchTasksForStatus = async (status) => {
+      const requestData = {
+        currentPage: 1,
+        pageSize: 1000000,
+        queryParam: {
+          taskRecordId: null,
+          outOrderNo: null,
+          agvId: null,
+          status: status,
+          taskLabel: null,
+          startDate: null,
+          endDate: null,
+          ifParentOrChildOrAll: null,
+          ifPeriodTask: 0,
+          agvIdList: [],
+          stateDescription: null
+        }
+      };
+      const responseJson = await this.apiCall(path, { method: "POST", body: JSON.stringify(requestData) });
+      return responseJson.data.pageList;
+    };
+
+    const tasksArrays = await Promise.all(activeStatuses.map(status => fetchTasksForStatus(status)));
+    const tasks = tasksArrays.flat();
+    return tasks.map(task => ({
+      id: task.id,
+      def_id: task.def_id,
+      agv_id: task.agv_id,
+      priority: task.priority,
+      status: task.status,
+      status_description: APIClient.taskStatusDescriptions[this.language][task.status],
+      def_label: task.def_label,
+      input_params_summary: Object.fromEntries(
+        JSON.parse(task.input_params).map(param => [param.name, param.defaultValue])
+      ),
+      executor_time: task.executor_time,
+      created_on: task.created_on,
+      first_executor_time: task.first_executor_time,
+      ended_on: task.ended_on
+    }));
+  }
+
+  // Uproszczona metoda getTasksRaw – zakładamy, że apiCall zwróci poprawny obiekt
+  async getTasksRaw() {
+    const path = "/api/queryTaskRecord";
+    const requestData = {
+      currentPage: 1,
+      pageSize: 1000000,
+      queryParam: {
+        taskRecordId: null,
+        outOrderNo: null,
+        agvId: null,
+        taskLabel: null,
+        startDate: null,
+        endDate: null,
+        ifParentOrChildOrAll: null,
+        ifPeriodTask: 0,
+        agvIdList: [],
+        stateDescription: null
+      }
+    };
+    return this.apiCall(path, { method: "POST", body: JSON.stringify(requestData) });
+  }
+
+  async suspendTask(def_id, id) {
+    const path = `/api/suspend-task/${def_id}/${id}`;
+    return this.apiCall(path, { method: "GET" });
+  }
+
+  // Metoda resumeTask zmieniona na GET
+  async resumeTask(def_id, id) {
+    const path = `/api/start-task/${def_id}/${id}`;
+    return this.apiCall(path, { method: "GET" });
+  }
+
+  async terminateTask(def_id, id) {
+    const path = "/api/stop-all-task";
+    const requestData = { releaseSite: 1, stopTaskList: [{ taskId: def_id, taskRecordId: id }] };
+    return this.apiCall(path, { method: "POST", body: JSON.stringify(requestData) });
+  }
+
+  async terminateAllTasks() {
+    const path = "/api/stop-all-task";
+    const requestData = { releaseSite: 1, stopTaskList: [] };
+    return this.apiCall(path, { method: "POST", body: JSON.stringify(requestData) });
+  }
+
+  async deleteTask(id) {
+    const path = "/api/delete-task";
+    return this.apiCall(path, { method: "POST", body: JSON.stringify([id]) });
+  }
+
+  async deleteAllTasks() {
+    const path = "/api/delete-all-task";
+    return this.apiCall(path, { method: "GET" });
+  }
+
+  // Zmieniona metoda setTaskPriority przyjmująca (id, priority)
+  async setTaskPriority(id, priority) {
+    const path = "/api/setTaskPriority";
+    const requestData = { priority: priority, taskRecordIds: [id] };
+    return this.apiCall(path, { method: "POST", body: JSON.stringify(requestData) });
+  }
+
+  async getTaskCacheData() {
+    const path = "/system/getCacheData";
+    const requestData = { currentPage: 1, pageSize: 1000000, queryParam: {} };
+    const responseJson = await this.apiCall(path, { method: "POST", body: JSON.stringify(requestData) });
+    return responseJson.data;
+  }
+
+  async getTaskLogs(taskRecordId, onlyErrors = false) {
+    const path = "/api/queryLogsByTaskRecordIdPageAble";
+    const requestData = {
+      currentPage: 1,
+      pageSize: 1000000,
+      queryParam: {
+        taskRecordId: taskRecordId,
+        levels: onlyErrors ? ["2", "3", "4"] : []
+      }
+    };
+
+    const rawResponse = await this.apiCall(path, { 
+      method: "POST", 
+      body: JSON.stringify(requestData) 
+    });
+
+    return rawResponse.data.pageList.map(log => ({
+      level: log.level,
+      message: log.message,
+      level_description: APIClient.levelDescriptions[this.language][log.level] || "Unknown"
+    }));
+  }
+
+async getTaskDefForId(id) {
+  const path = "/api/queryTaskRecord";
+  const requestData = {
+    currentPage: 1,
+    pageSize: 1,
+    queryParam: {
+      taskRecordId: id,
+      outOrderNo: null,
+      agvId: null,
+      taskLabel: null,
+      startDate: null,
+      endDate: null,
+      ifParentOrChildOrAll: null,
+      ifPeriodTask: 0,
+      agvIdList: [],
+      stateDescription: null
+    }
+  };
+
+  const responseJson = await this.apiCall(path, { 
+    method: "POST", 
+    body: JSON.stringify(requestData) 
+  });
+
+  const pageList = responseJson.data?.pageList;
+  if (pageList && pageList.length > 0) {
+    return pageList[0].def_id;
+  } else {
+    throw new Error(`Nie znaleziono zadania o id ${id}`);
+  }
+}
+
+  async getTaskLogsRaw(taskRecordId, onlyErrors = false) {
+    const path = "/api/queryLogsByTaskRecordIdPageAble";
+    const requestData = {
+      currentPage: 1,
+      pageSize: 1000000,
+      queryParam: {
+        taskRecordId: taskRecordId,
+        levels: onlyErrors ? ["2", "3", "4"] : []
+      }
+    };
+    return this.apiCall(path, { method: "POST", body: JSON.stringify(requestData) });
+  }
+
+  // Uproszczona metoda getRobotList – zakładamy, że struktura odpowiedzi zawsze jest kompletna
+  async getRobotList() {
+    const path = "/api/agv-report/core";
+    const responseJson = await this.apiCall(path, { method: "GET" });
+    const report = responseJson.data.report;
+    return report.map(robot => ({
+      vehicle: {
+        dispatchable: robot.dispatchable,
+        is_error: robot.is_error,
+        isLoaded: robot.isLoaded,
+        vehicle_id: robot.vehicle_id,
+        connection_status: robot.connection_status
+      },
+      current_order: {
+        id: robot.current_order.id,
+        state: robot.current_order.state,
+        externalId: robot.current_order.externalId,
+        msg: robot.current_order.msg,
+        error: robot.current_order.error,
+        complete: robot.current_order.complete
+      },
+      rbk_report: {
+        emergency: robot.rbk_report.emergency,
+        blocked: robot.rbk_report.blocked,
+        reloc_status: robot.rbk_report.reloc_status,
+        reloc_status_description: APIClient.relocStatusDescriptions[this.language][robot.rbk_report.reloc_status],
+        battery_level: robot.rbk_report.battery_level,
+        confidence: robot.rbk_report.confidence,
+        task_status: robot.rbk_report.task_status,
+        task_status_description: APIClient.robotTaskStatusDescriptions[this.language][robot.rbk_report.task_status],
+        charging: robot.rbk_report.charging,
+        soft_emc: robot.rbk_report.soft_emc
+      },
+      rbk_report_alarms: {
+        notices: robot.rbk_report.alarms.notices,
+        warnings: robot.rbk_report.alarms.warnings,
+        errors: robot.rbk_report.alarms.errors,
+        fatals: robot.rbk_report.alarms.fatals
+      },
+      undispatchable_reason: {
+        disconnect: robot.undispatchable_reason.disconnect,
+        unconfirmed_reloc: robot.undispatchable_reason.unconfirmed_reloc,
+        // Zmienione: zamiast unlock, używamy control_released, true gdy unlock === 1
+        control_released: robot.undispatchable_reason.unlock === 1,
+        low_battery: robot.undispatchable_reason.low_battery,
+        current_map_invalid: robot.undispatchable_reason.current_map_invalid,
+        dispatchable_status: robot.undispatchable_reason.dispatchable_status,
+        dispatchable_status_description: APIClient.dispatchableStatusDescriptions[this.language][robot.undispatchable_reason.dispatchable_status],
+        suspended: robot.undispatchable_reason.suspended
+      }
+    }));
+  }
+
+  async getRobotListRaw() {
+    const path = "/api/agv-report/core";
+    return this.apiCall(path, { method: "GET" });
+  }
+
+  // Funkcje operujące na robotach przyjmujące vehicle_id jako argument
+  async robotSetDispatchable(vehicle_id) {
+    const path = `/api/controlled-agv/${vehicle_id}/dispatchable/dispatchable`;
+    return this.apiCall(path, { method: "POST" });
+  }
+
+  async robotSetUndispatchableOnline(vehicle_id) {
+    const path = `/api/controlled-agv/${vehicle_id}/dispatchable/undispatchable_unignore`;
+    return this.apiCall(path, { method: "POST" });
+  }
+
+  async robotSetUndispatchableOffline(vehicle_id) {
+    const path = `/api/controlled-agv/${vehicle_id}/dispatchable/undispatchable_ignore`;
+    return this.apiCall(path, { method: "POST" });
+  }
+
+  async robotSeizeControl(vehicle_id) {
+    const path = `/api/controlled-agv/${vehicle_id}/lock`;
+    return this.apiCall(path, { method: "POST" });
+  }
+
+  async robotReleaseControl(vehicle_id) {
+    const path = `/api/controlled-agv/${vehicle_id}/unlock`;
+    return this.apiCall(path, { method: "POST" });
+  }
+
+  async robotPause(vehicle_id) {
+    const path = `/api/controlled-agv/${vehicle_id}/goto-site/pause`;
+    return this.apiCall(path, { method: "POST" });
+  }
+
+  async robotResume(vehicle_id) {
+    const path = `/api/controlled-agv/${vehicle_id}/goto-site/resume`;
+    return this.apiCall(path, { method: "POST" });
+  }
+
+  async robotConfirmLocation(vehicle_id) {
+    const path = `/api/controlled-agv/${vehicle_id}/confirm-re-loc`;
+    return this.apiCall(path, { method: "POST" });
+  }
+
+  async robotClearAllErrors(vehicle_id) {
+    const path = `/api/controlled-agv/${vehicle_id}/clear-robot-all-errors`;
+    return this.apiCall(path, { method: "POST" });
+  }
+
+  async setForkHeight(vehicle_id, height) {
+    const path = `/api/setForkHeight`;
+    const requestData = {
+      vehicle: vehicle_id,
+      height: height
+    };
+    return this.apiCall(path, {
+      method: "POST",
+      body: JSON.stringify(requestData)
+    });
+  }
+
+  async stopFork(vehicle_id) {
+    const path = `/api/stopFork`;
+    const requestData = {
+      vehicle: vehicle_id
+    };
+    return this.apiCall(path, {
+      method: "POST",
+      body: JSON.stringify(requestData)
+    });
+  }
+
+  /**
+   * Niskopoziomowe sterowanie ruchem wózka.
+   * @param {string} vehicle_id - vehicle_id / uuid robota
+   * @param {object} options
+   * @param {number} options.vx
+   * @param {number} options.vy
+   * @param {number} options.w
+   * @param {number} options.real_steer
+   * @param {number} options.steer
+   * @param {number} options.duration
+   */
+  async controlMotion(vehicle_id, options = {}) {
+    if (!vehicle_id || typeof vehicle_id !== "string") {
+      throw new Error("controlMotion: 'vehicle_id' musi być niepustym stringiem.");
+    }
+
+    const payload = {
+      vehicle: vehicle_id,
+      vx: options.vx ?? 0.0,
+      vy: options.vy ?? 0.0,
+      w: options.w ?? 0.0,
+      real_steer: options.real_steer ?? 0.0,
+      steer: options.steer ?? 0.0,
+      duration: options.duration ?? 0.0
+    };
+
+    return this.apiCall("/api/controlMotion", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+  }
+
+  /**
+   * Sterowanie otwartą pętlą: /api/controlled-agv/{id}/open-loop
+   * @param {string} vehicle_id - vehicle_id / uuid robota
+   * @param {object} options
+   * @param {number} options.vx
+   * @param {number} options.vy
+   * @param {number} options.w
+   * @param {number} options.steer
+   * @param {number} options.realSteer
+   */
+  async openLoop(vehicle_id, options = {}) {
+    if (!vehicle_id || typeof vehicle_id !== "string") {
+      throw new Error("openLoop: 'vehicle_id' musi być niepustym stringiem.");
+    }
+
+    const payload = {
+      vx: options.vx ?? 0.0,
+      vy: options.vy ?? 0.0,
+      w: options.w ?? 0.0,
+      steer: options.steer ?? 0.0,
+      realSteer: options.realSteer ?? 0.0
+    };
+
+    const path = `/api/controlled-agv/${vehicle_id}/open-loop`;
+
+    return this.apiCall(path, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+  }
+
+  /**
+   * Ustawia software emergency (soft EMG) dla robota.
+   * @param {string} vehicle_id - ID pojazdu (vehicle_id / uuid)
+   * @param {boolean} value - true = enable, false = disable
+   */
+  async setSoftEmc(vehicle_id, value) {
+    if (!vehicle_id || typeof vehicle_id !== "string") {
+      throw new Error("setSoftEmc: 'vehicle_id' musi być niepustym stringiem.");
+    }
+
+    const path = `/api/agv/setSoftIOEMC`;
+    const requestData = {
+      vehicle: vehicle_id,
+      status: !!value
+    };
+
+    return this.apiCall(path, {
+      method: "POST",
+      body: JSON.stringify(requestData)
+    });
+  }
+
+  async robotTerminateAndSetUndispatchable(vehicle_id) {
+    // Wywołuje RDS:
+    // POST {RDS_API_HOST}/api/terminateAndIsExec/{vehicle_id}/true
+    const path = `/api/terminateAndIsExec/${vehicle_id}/true`;
+    return this.apiCall(path, { method: "POST" });
+  }
+
+  /**
+   * Terminates a transport order and unlocks sites.
+   * @param {string} transportOrderId - ID transport ordera (np. current_order.id z getRobotListRaw)
+   */
+  async terminateTransportOrder(transportOrderId, setUndispatchable = true) {
+    if (!transportOrderId || typeof transportOrderId !== "string") {
+      throw new Error("terminateTransportOrder: 'transportOrderId' musi być niepustym stringiem.");
+    }
+
+    const path = `/api/terminateAndUnlockSites`;
+    const body = {
+      agvArray: transportOrderId,
+      disable: setUndispatchable,
+      taskRecordArray: "",
+      isUnlockSite: true
+    };
+
+    return this.apiCall(path, {
+      method: "POST",
+      body: JSON.stringify(body)
+    });
+  }
+
+  // Funkcje związane z użytkownikami
+
+  // Funkcja szyfrująca hasło – pozostaje, jeśli będzie potrzebna gdzie indziej
+  encryptPassword(password) {
+    return md5(password);
+  }
+
+  // getUserList nie przyjmuje parametrów – wysyła domyślne zapytanie
+  async getUserList() {
+    const query = { currentPage: 1, pageSize: 20, queryparam: {} };
+    const path = "/admin/user/queryUser";
+    return this.apiCall(path, { method: "POST", body: JSON.stringify(query) });
+  }
+
+  // addUser przyjmuje (username, password, roles) – rola to tablica nazw (np. ["test1"]). Nie szyfrujemy hasła.
+  async addUser(username, password, roles) {
+    const user = {
+      username: username,
+      password: password,
+      roles: roles.map(name => ({ name: name })),
+      type: 2,
+      status: 0
+    };
+    const path = "/admin/user/addUser";
+    return this.apiCall(path, { method: "POST", body: JSON.stringify(user) });
+  }
+
+  // updateUser przyjmuje (id, username, password, roles, disabled) – gdy disabled true, status = 1, inaczej 0.
+  // Nie szyfrujemy hasła.
+  async updateUser(id, username, password, roles, disabled) {
+    const user = {
+      id: id,
+      username: username,
+      password: password,
+      status: disabled ? 1 : 0,
+      type: 2,
+      roles: roles.map(name => ({ name: name }))
+    };
+    const path = "/admin/user/updateUser";
+    return this.apiCall(path, { method: "POST", body: JSON.stringify(user) });
+  }
+
+  // deleteUser – przyjmuje nazwę użytkownika, wysyła tablicę z nazwą
+  async deleteUser(username) {
+    const path = "/admin/user/deleteUsers";
+    return this.apiCall(path, { method: "POST", body: JSON.stringify([username]) });
+  }
+  
+  
+
+_matchesRequiredParams(task, requiredParams) {
+  if (!requiredParams || typeof requiredParams !== "object") return true;
+
+  // Ujednolicenie źródła parametrów do prostego obiektu { key: value }
+  const normalize = (src) => {
+    if (!src) return {};
+
+    // Jeśli to już obiekt (ale nie tablica) -> użyj wprost
+    if (typeof src === "object" && !Array.isArray(src)) {
+      return src;
+    }
+
+    // Jeśli to tablica [{ name, defaultValue/value, ... }, ...] -> zamień na obiekt
+    const arrayToObj = (arr) => {
+      const obj = {};
+      for (const item of arr) {
+        if (item && typeof item === "object") {
+          const key = item.name ?? item.label; // czasem bywa 'label'
+          if (key !== undefined) {
+            const val = item.defaultValue ?? item.value ?? item.val ?? "";
+            obj[key] = val;
+          }
+        }
+      }
+      return obj;
+    };
+
+    // Jeśli to string – może być JSON-em
+    if (typeof src === "string") {
+      try {
+        const parsed = JSON.parse(src);
+        if (Array.isArray(parsed)) return arrayToObj(parsed);
+        if (parsed && typeof parsed === "object") return parsed;
+        return {};
+      } catch {
+        // nieparsowalny string – nie mamy z niego kluczy
+        return {};
+      }
+    }
+
+    // Jeśli to tablica
+    if (Array.isArray(src)) {
+      return arrayToObj(src);
+    }
+
+    // Inne typy – ignorujemy
+    return {};
+  };
+
+  const sources = [
+    normalize(task.input_params),
+    normalize(task.input_params_summary)
+  ];
+
+  const containsAll = (src) =>
+    Object.entries(requiredParams).every(([k, v]) => {
+      if (!(k in src)) return false;
+      return String(src[k]) === String(v);
+    });
+
+  // Wystarczy, że jeden z możliwych „source” ma wszystkie wymagane pary
+  return sources.some(containsAll);
+}
+
+
+
+  async findTasksByStatusAndParams(statuses = [], requiredParams = {}) {
+  
+    // ⇩ PUSTA lista = WSZYSTKIE STATUSY → zrobimy jedno zapytanie z status: null
+    const normalizedStatuses = (Array.isArray(statuses) && statuses.length > 0)
+      ? statuses.map(s => s == null ? null : String(s))
+      : [null];
+  
+    const path = "/api/queryTaskRecord";
+    const fetchTasksForStatus = async (status) => {
+      const requestData = {
+        currentPage: 1,
+        pageSize: 1000000,
+        queryParam: {
+          taskRecordId: null,
+          outOrderNo: null,
+          agvId: null,
+          status: status,
+          taskLabel: null,
+          startDate: null,
+          endDate: null,
+          ifParentOrChildOrAll: null,
+          ifPeriodTask: 0,
+          agvIdList: [],
+          stateDescription: null
+        }
+      };
+      const responseJson = await this.apiCall(path, { method: "POST", body: JSON.stringify(requestData) });
+      return responseJson.data.pageList;
+    };
+
+    const tasksArrays = await Promise.all(normalizedStatuses.map(status => fetchTasksForStatus(status)));
+    const tasks = tasksArrays.flat();
+    
+    // filtr po wymaganych parametrach
+    const filtered = tasks.filter(task => this._matchesRequiredParams(task, requiredParams));
+    
+    return filtered.map(task => ({
+      id: task.id,
+      def_id: task.def_id,
+      agv_id: task.agv_id,
+      priority: task.priority,
+      status: task.status,
+      status_description: APIClient.taskStatusDescriptions[this.language][task.status],
+      def_label: task.def_label,
+      input_params_summary: Object.fromEntries(
+        JSON.parse(task.input_params).map(param => [param.name, param.defaultValue])
+      ),
+      executor_time: task.executor_time,
+      created_on: task.created_on,
+      first_executor_time: task.first_executor_time,
+      ended_on: task.ended_on
+    }));
+  }
+
+/**
+ * Tworzy nowe zadanie.
+ * @param {string} taskLabel - etykieta zadania (np. "test")
+ * @param {object|string} inputParams - obiekt z parametrami lub już zserializowany JSON
+ * @returns {Promise<{code:number,msg?:string,data?:any}>}
+ */
+async createTask(taskLabel, inputParams = {}) {
+  if (!taskLabel || typeof taskLabel !== "string" || !taskLabel.trim()) {
+    throw new Error("createTask: 'taskLabel' musi być niepustym stringiem.");
+  }
+
+  // inputParams w API musi być stringiem JSON
+  let inputParamsStr;
+  if (typeof inputParams === "string") {
+    // opcjonalnie: walidacja JSON
+    try { JSON.parse(inputParams); } catch { throw new Error("createTask: 'inputParams' jako string musi być poprawnym JSON-em."); }
+    inputParamsStr = inputParams;
+  } else if (inputParams && typeof inputParams === "object") {
+    inputParamsStr = JSON.stringify(inputParams);
+  } else {
+    throw new Error("createTask: 'inputParams' musi być obiektem lub stringiem JSON.");
+  }
+
+  const path = "/api/set-order";
+  const payload = { taskLabel, inputParams: inputParamsStr };
+
+  const res = await this.apiCall(path, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+
+  if (res?.code !== 200) {
+    throw new Error(`createTask: błąd API (code=${res?.code}, msg=${res?.msg || "?"})`);
+  }
+  return res; // { code:200, msg:"SUCCESS", data:null }
+}
+
+
+/**
+ * Znajdź zadania o wybranych statusach i z zadanym def_label (taskLabel).
+ * Pusta lista statusów oznacza "wszystkie" (status=null w queryParam).
+ *
+ * @param {Array<string|number>} statuses - np. ["1001","1003"] lub []
+ * @param {string} defLabel - dokładnie taki def_label jak w zadaniu
+ * @param {number} pageSize - domyślnie 1e6
+ * @returns {Promise<Array<Object>>}
+ */
+async findTasksByStatusesAndLabel(statuses = [], defLabel, pageSize = 1000000) {
+  if (!defLabel || typeof defLabel !== "string" || !defLabel.trim()) {
+    throw new Error("findTasksByStatusesAndLabel: 'defLabel' musi być niepustym stringiem.");
+  }
+
+  const path = "/api/queryTaskRecord";
+
+  // [] => wszystkie statusy -> jedno zapytanie z status:null
+  const normalizedStatuses = (Array.isArray(statuses) && statuses.length > 0)
+    ? statuses.map(s => (s == null ? null : String(s)))
+    : [null];
+
+  const fetchTasksForStatus = async (status) => {
+    const requestData = {
+      currentPage: 1,
+      pageSize,
+      queryParam: {
+        taskRecordId: null,
+        outOrderNo: null,
+        agvId: null,
+        status: status,         // null => wszystkie
+        taskLabel: defLabel,    // filtr po etykiecie
+        startDate: null,
+        endDate: null,
+        ifParentOrChildOrAll: null,
+        ifPeriodTask: 0,
+        agvIdList: [],
+        stateDescription: null
+      }
+    };
+    const res = await this.apiCall(path, { method: "POST", body: JSON.stringify(requestData) });
+    return (res?.data?.pageList) || [];
+  };
+
+  // pobierz i spłaszcz
+  const tasksArrays = await Promise.all(normalizedStatuses.map(fetchTasksForStatus));
+  const tasks = tasksArrays.flat();
+
+  // defensywnie dodatkowy filtr po def_label (na wypadek, gdyby backend zignorował taskLabel)
+  const filtered = tasks.filter(t => String(t.def_label) === String(defLabel));
+
+  const mapping =
+    (APIClient.taskStatusDescriptions?.[this.language]) ||
+    (APIClient.statusDescriptions?.[this.language]) || {};
+
+  return filtered.map(task => ({
+    id: task.id,
+    def_id: task.def_id,
+    agv_id: task.agv_id,
+    priority: task.priority,
+    status: task.status,
+    status_description: mapping[task.status] || "Unknown",
+    def_label: task.def_label,
+    input_params_summary: this._paramsToObject
+      ? this._paramsToObject(task.input_params_summary, task.input_params)
+      : (() => {
+          // fallback: spróbuj zparsować input_params jako JSON array [{name, defaultValue}, ...]
+          try {
+            const arr = typeof task.input_params === "string" ? JSON.parse(task.input_params) : (Array.isArray(task.input_params) ? task.input_params : []);
+            return Object.fromEntries((arr || []).map(p => [p.name ?? p.label, p.defaultValue ?? p.value ?? ""]));
+          } catch { return {}; }
+        })(),
+    executor_time: task.executor_time,
+    created_on: task.created_on,
+    first_executor_time: task.first_executor_time,
+    ended_on: task.ended_on
+  }));
+}
+
+
+
+
+/**
+ * Zakończ (terminate) wszystkie zadania, które pasują do podanych statusów i parametrów.
+ * - korzysta z findTasksByStatusAndParams ([] w statuses => wszystkie statusy)
+ * - próbuje zakończyć każde zadanie osobno (kontynuuje mimo błędów)
+ *
+ * @param {Array<string|number>} statuses
+ * @param {Object} requiredParams - np. { param1: "aa", param2: "bb" }
+ * @returns {Promise<{requested:number,succeeded:number,failed:number,results:Array}>}
+ */
+async terminateTasksByStatusAndParams(statuses = [], requiredParams = {}) {
+  // 1) Znajdź pasujące zadania
+  const tasks = await this.findTasksByStatusAndParams(statuses, requiredParams);
+  if (!Array.isArray(tasks) || tasks.length === 0) {
+    return { requested: 0, succeeded: 0, failed: 0, results: [] };
+  }
+
+  // 2) Terminate per task (odporne na błędy)
+  const results = [];
+  let succeeded = 0;
+
+  for (const t of tasks) {
+    try {
+      const res = await this.terminateTask(t.def_id, t.id);
+      const ok = res?.code === 200;
+      if (ok) succeeded++;
+      results.push({
+        id: t.id,
+        def_id: t.def_id,
+        ok,
+        response: res
+      });
+    } catch (err) {
+      results.push({
+        id: t.id,
+        def_id: t.def_id,
+        ok: false,
+        error: String(err?.message || err)
+      });
+    }
+  }
+
+  return {
+    requested: tasks.length,
+    succeeded,
+    failed: tasks.length - succeeded,
+    results
+  };
+}
+
+
+
+/**
+ * Zakończ (terminate) wszystkie zadania pasujące do statusów i def_label.
+ * - korzysta z findTasksByStatusesAndLabel ([] w statuses => wszystkie statusy)
+ * - próbuje zakończyć każdy task osobno (kontynuuje mimo błędów)
+ *
+ * @param {Array<string|number>} statuses
+ * @param {string} defLabel
+ * @returns {Promise<{requested:number,succeeded:number,failed:number,results:Array}>}
+ */
+async terminateTasksByStatusesAndLabel(statuses = [], defLabel) {
+  if (!defLabel || typeof defLabel !== "string" || !defLabel.trim()) {
+    throw new Error("terminateTasksByStatusesAndLabel: 'defLabel' musi być niepustym stringiem.");
+  }
+
+  // 1) znajdź pasujące zadania
+  const tasks = await this.findTasksByStatusesAndLabel(statuses, defLabel);
+  if (!Array.isArray(tasks) || tasks.length === 0) {
+    return { requested: 0, succeeded: 0, failed: 0, results: [] };
+  }
+
+  // 2) terminate per-task
+  const results = [];
+  let succeeded = 0;
+
+  for (const t of tasks) {
+    try {
+      const res = await this.terminateTask(t.def_id, t.id);
+      const ok = res?.code === 200;
+      if (ok) succeeded++;
+      results.push({ id: t.id, def_id: t.def_id, ok, response: res });
+    } catch (err) {
+      results.push({ id: t.id, def_id: t.def_id, ok: false, error: String(err?.message || err) });
+    }
+  }
+
+  return {
+    requested: tasks.length,
+    succeeded,
+    failed: tasks.length - succeeded,
+    results
+  };
+}
+
+
+/**
+ * Pobierz jeden rekord zadania po taskRecordId (z dowolnym statusem).
+ * Zwraca obiekt w tej samej strukturze, której używamy w find*().
+ */
+async getTaskByRecordId(taskRecordId) {
+  if (!taskRecordId) throw new Error("getTaskByRecordId: taskRecordId is required.");
+  const path = "/api/queryTaskRecord";
+  const requestData = {
+    currentPage: 1,
+    pageSize: 1,
+    queryParam: {
+      taskRecordId,
+      outOrderNo: null,
+      agvId: null,
+      status: null,            // null => wszystkie statusy
+      taskLabel: null,
+      startDate: null,
+      endDate: null,
+      ifParentOrChildOrAll: null,
+      ifPeriodTask: 0,
+      agvIdList: [],
+      stateDescription: null
+    }
+  };
+  const res = await this.apiCall(path, { method: "POST", body: JSON.stringify(requestData) });
+  const t = res?.data?.pageList?.[0];
+  if (!t) return null;
+
+  const mapping =
+    (APIClient.taskStatusDescriptions?.[this.language]) ||
+    (APIClient.statusDescriptions?.[this.language]) || {};
+
+  // spróbuj zamienić input_params na prosty obiekt {key: val}
+  let paramsObj = {};
+  try {
+    const arr = typeof t.input_params === "string"
+      ? JSON.parse(t.input_params)
+      : (Array.isArray(t.input_params) ? t.input_params : []);
+    paramsObj = Object.fromEntries((arr || []).map(p => [p.name ?? p.label, p.defaultValue ?? p.value ?? ""]));
+  } catch {}
+
+  return {
+    id: t.id,
+    def_id: t.def_id,
+    agv_id: t.agv_id,
+    priority: t.priority,
+    status: t.status,
+    status_description: mapping[t.status] || "Unknown",
+    def_label: t.def_label,
+    input_params_summary: paramsObj,
+    executor_time: t.executor_time,
+    created_on: t.created_on,
+    first_executor_time: t.first_executor_time,
+    ended_on: t.ended_on
+  };
+}
+
+
+  /**
+   * Tworzy nowy worksite lub aktualizuje istniejący.
+   * Backend rozpoznaje tryb create/update po obecności pola "id".
+   *
+   * @param {string} worksiteId  - identyfikator (siteId)
+   * @param {0|1|boolean} filled - 1/true = zajęty, 0/false = pusty
+   * @param {string} groupName   - nazwa grupy
+   */
+  async createOrUpdateWorkSite(worksiteId, filled = 0, groupName = "") {
+    if (!worksiteId || typeof worksiteId !== "string") {
+      throw new Error("createOrUpdateWorkSite: 'worksiteId' musi być niepustym stringiem.");
+    }
+
+    const payload = {
+      siteId: worksiteId,
+      groupName: groupName || "",
+      type: 0,
+      filled: filled ? 1 : 0
+    };
+
+    return this.apiCall("/api/work-sites/saveOrUpdateWorkSite", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+  }
+
+}
+
+//module.exports = APIClient;
+module.exports = { APIClient };
+
+
+
+
+--------------------------------------------------------------------------------
+
+file: install-modbus-sync-worksites-service.sh
+--------------------------------------------------------------------------------
+#!/bin/bash
+# install-modbus-sync-worksites-service.sh
+#
+# This script installs modbus-sync-worksites.js as a systemd service.
+# Run as:
+#   sudo bash install-modbus-sync-worksites-service.sh
+
+set -e
+
+SERVICE_NAME="modbus-sync-worksites.service"
+SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}"
+
+# Path to project and Node binary.
+# Adjust NODE_BIN if your Node is not /usr/bin/nodejs (check with: which nodejs)
+PROJECT_DIR="/home/admin/modbus-sync-worksites"
+NODE_BIN="/usr/bin/nodejs"
+
+echo "Installing systemd service to ${SERVICE_FILE} ..."
+
+cat > "${SERVICE_FILE}" <<EOF
+[Unit]
+Description=Modbus -> RDS worksites sync service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=admin
+Group=admin
+WorkingDirectory=${PROJECT_DIR}
+ExecStart=${NODE_BIN} ${PROJECT_DIR}/modbus-sync-worksites.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+echo "Reloading systemd daemon..."
+systemctl daemon-reload
+
+echo "Enabling service ${SERVICE_NAME} to start on boot..."
+systemctl enable "${SERVICE_NAME}"
+
+echo "Starting service ${SERVICE_NAME}..."
+systemctl start "${SERVICE_NAME}"
+
+echo
+echo "Service status:"
+systemctl status "${SERVICE_NAME}" --no-pager -l
+echo
+echo "Follow logs with:"
+echo "  journalctl -u ${SERVICE_NAME} -f"
+
+--------------------------------------------------------------------------------
+
+file: logs-follow.sh
+--------------------------------------------------------------------------------
+#!/bin/bash
+# logs-follow.sh
+#
+# Follow service logs in real time.
+# Usage:
+#   ./logs-follow.sh
+# (if needed: sudo ./logs-follow.sh)
+
+SERVICE_NAME="modbus-sync-worksites.service"
+
+journalctl -u "${SERVICE_NAME}" -f -n 50
+
+--------------------------------------------------------------------------------
+
+file: logs-last-hour.sh
+--------------------------------------------------------------------------------
+#!/bin/bash
+# logs-last-hour.sh
+#
+# Show logs from the last hour.
+# Usage:
+#   ./logs-last-hour.sh
+# (if needed: sudo ./logs-last-hour.sh)
+
+SERVICE_NAME="modbus-sync-worksites.service"
+
+journalctl -u "${SERVICE_NAME}" --since "-1 hour" --no-pager
+
+--------------------------------------------------------------------------------
+
+file: modbus-read-test.js
+--------------------------------------------------------------------------------
+// modbus-one-input-test.js
+//
+// Minimal Modbus test: read discrete inputs and print raw data array.
+//
+// Adjust IP, PORT, SLAVE_ID, OFFSET and LENGTH if needed.
+// Usage:
+//   node modbus-one-input-test.js
+
+const ModbusRTU = require("modbus-serial");
+
+// --- CONFIG ---
+const IP          = "10.6.44.70";
+const PORT        = 502;
+const SLAVE_ID    = 255;
+const OFFSET      = 0;   // starting discrete input address
+const LENGTH      = 16;  // how many inputs to read
+const INTERVAL_MS = 1000;
+
+async function main() {
+  const client = new ModbusRTU();
+  client.setTimeout(1000); // 1s timeout
+
+  try {
+    console.log(`Connecting to Modbus TCP ${IP}:${PORT} (slaveId=${SLAVE_ID})...`);
+
+    await new Promise((resolve, reject) => {
+      client.connectTCP(IP, { port: PORT }, (err) => {
+        if (err) return reject(err);
+        resolve();
+      });
+    });
+
+    client.setID(SLAVE_ID);
+
+    console.log(
+      `Connected. Reading discrete inputs from offset=${OFFSET}, length=${LENGTH} ` +
+      `every ${INTERVAL_MS} ms. Press Ctrl+C to stop.`
+    );
+
+    setInterval(async () => {
+      try {
+        const res = await client.readDiscreteInputs(OFFSET, LENGTH);
+        console.log("readDiscreteInputs data:", res && res.data);
+      } catch (err) {
+        console.error(
+          "Error in readDiscreteInputs:",
+          err && err.message ? err.message : err
+        );
+      }
+    }, INTERVAL_MS);
+  } catch (err) {
+    console.error(
+      "Error while connecting to Modbus:",
+      err && err.message ? err.message : err
+    );
+    try { client.close(); } catch (_) {}
+  }
+}
+
+main().catch((err) => {
+  console.error("Fatal error in main():", err && err.stack ? err.stack : err);
+});
+
+--------------------------------------------------------------------------------
+
+file: modbus-sync-worksites.js
+--------------------------------------------------------------------------------
+// modbus-sync-worksites.js
+//
+// Synchronize RDS worksites (FILLED / EMPTY) based on Modbus discrete inputs.
+// Each site has:
+//   - Modbus mapping (ip, port, slaveId, offset)
+//   - default logical state (EMPTY / FILLED)
+// Debounce:
+//   - state stays "default" unless sensor is stably opposite to default for FILL_DEBOUNCE_MS.
+
+const { APIClient } = require("./api-client");
+const ModbusRTU = require("modbus-serial");
+
+// --- DEBUG LOGGING -----------------------------------------------------------
+
+const DEBUG_LOG = false;
+
+function dlog(...args) {
+  if (DEBUG_LOG) console.log(...args);
+}
+
+// --- GLOBAL ERROR HANDLERS ---------------------------------------------------
+
+process.on("unhandledRejection", (err) => {
+  console.error("UNHANDLED REJECTION:", err && err.stack ? err.stack : err);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("UNCAUGHT EXCEPTION:", err && err.stack ? err.stack : err);
+});
+
+// --- RDS CONFIG --------------------------------------------------------------
+
+const RDS_HOST = "http://10.6.44.2:8080";
+const RDS_USER = "admin";
+const RDS_PASS = "123456";
+const RDS_LANG = "en";
+
+// --- MODBUS CONFIG -----------------------------------------------------------
+
+const MODBUS_REQUEST_TIMEOUT_MS = 1000; // timeout of a single Modbus request (ms)
+const POLL_INTERVAL_MS         = 500;  // how often we run syncOnce (ms)
+const RECONNECT_BACKOFF_MS     = 5000; // min time between connect attempts (per group)
+
+// --- DEBOUNCE CONFIG ---------------------------------------------------------
+
+const FILL_DEBOUNCE_MS = 2000; // ms of stable opposite signal to accept change
+
+// --- LOGICAL STATES ----------------------------------------------------------
+
+const EMPTY  = "EMPTY";
+const FILLED = "FILLED";
+
+// --- WORKSITE -> MODBUS MAPPING ---------------------------------------------
+//
+// offset = Modbus discrete input address / index
+//
+// default:
+//   - what state we assume when:
+//       * Modbus is down
+//       * debounce time is not yet satisfied
+//
+// Examples:
+//   - pick locations: default = EMPTY  – assume nothing to pick until sensor confirms,
+//   - drop locations: default = FILLED – assume you cannot drop until sensor confirms empty.
+
+const SITES = [
+  { siteId: "PICK-01", ip: "10.6.44.70", port: 502, slaveId: 255, offset: 0, default: EMPTY },
+  { siteId: "PICK-02", ip: "10.6.44.70", port: 502, slaveId: 255, offset: 1, default: EMPTY },
+  { siteId: "PICK-03", ip: "10.6.44.70", port: 502, slaveId: 255, offset: 2, default: EMPTY },
+  { siteId: "PICK-04", ip: "10.6.44.70", port: 502, slaveId: 255, offset: 3, default: EMPTY },
+  { siteId: "PICK-05", ip: "10.6.44.70", port: 502, slaveId: 255, offset: 4, default: EMPTY },
+  { siteId: "PICK-06", ip: "10.6.44.70", port: 502, slaveId: 255, offset: 5, default: EMPTY },
+  { siteId: "PICK-07", ip: "10.6.44.70", port: 502, slaveId: 255, offset: 6, default: EMPTY },
+  { siteId: "PICK-08", ip: "10.6.44.70", port: 502, slaveId: 255, offset: 7, default: EMPTY },
+  { siteId: "PICK-09", ip: "10.6.44.70", port: 502, slaveId: 255, offset: 8, default: EMPTY },
+  { siteId: "PICK-10", ip: "10.6.44.70", port: 502, slaveId: 255, offset: 9, default: EMPTY },
+  { siteId: "PICK-11", ip: "10.6.44.70", port: 502, slaveId: 255, offset: 10, default: EMPTY },
+  { siteId: "PICK-12", ip: "10.6.44.70", port: 502, slaveId: 255, offset: 11, default: EMPTY },
+  { siteId: "PICK-13", ip: "10.6.44.70", port: 502, slaveId: 255, offset: 12, default: EMPTY },
+  { siteId: "PICK-14", ip: "10.6.44.70", port: 502, slaveId: 255, offset: 13, default: EMPTY },
+  { siteId: "PICK-15", ip: "10.6.44.70", port: 502, slaveId: 255, offset: 14, default: EMPTY },
+  { siteId: "PICK-16", ip: "10.6.44.70", port: 502, slaveId: 255, offset: 15, default: EMPTY },
+  // { siteId: "DROP-01", ip: "10.6.44.70", port: 502, slaveId: 255, offset: 11, default: FILLED },
+];
+
+// --- CONFIG VALIDATION -------------------------------------------------------
+
+function validateConfig() {
+  const ids = new Set();
+  for (const s of SITES) {
+    if (!s.siteId || typeof s.siteId !== "string") {
+      throw new Error(`Invalid siteId in SITES: ${JSON.stringify(s)}`);
+    }
+    if (ids.has(s.siteId)) {
+      throw new Error(`Duplicate siteId in SITES: ${s.siteId}`);
+    }
+    ids.add(s.siteId);
+
+    if (!Number.isInteger(s.offset) || s.offset < 0) {
+      throw new Error(`Invalid offset for ${s.siteId}: ${s.offset}`);
+    }
+
+    if (![EMPTY, FILLED].includes(s.default)) {
+      throw new Error(`Invalid default state for ${s.siteId}: ${s.default}`);
+    }
+  }
+}
+
+validateConfig();
+
+// --- GROUP SITES BY MODBUS CONNECTION ---------------------------------------
+//
+// group = { key, ip, port, slaveId, sites[], minOffset, length }
+
+function groupSitesByConnection(sites) {
+  const map = new Map();
+
+  for (const s of sites) {
+    const key = `${s.ip}:${s.port}:${s.slaveId}`;
+    let g = map.get(key);
+    if (!g) {
+      g = {
+        key,
+        ip: s.ip,
+        port: s.port,
+        slaveId: s.slaveId,
+        sites: [],
+        minOffset: s.offset,
+        maxOffset: s.offset,
+      };
+      map.set(key, g);
+    }
+    g.sites.push(s);
+    if (s.offset < g.minOffset) g.minOffset = s.offset;
+    if (s.offset > g.maxOffset) g.maxOffset = s.offset;
+  }
+
+  return Array.from(map.values()).map((g) => ({
+    key: g.key,
+    ip: g.ip,
+    port: g.port,
+    slaveId: g.slaveId,
+    sites: g.sites,
+    minOffset: g.minOffset,
+    length: g.maxOffset - g.minOffset + 1,
+  }));
+}
+
+const GROUPS = groupSitesByConnection(SITES);
+
+// --- MODBUS STATE: one per group --------------------------------------------
+//
+// modbusStates[group.key] = { client|null, lastAttemptMs }
+
+const modbusStates = new Map();
+
+// --- DEBOUNCE STATE PER WORKSITE --------------------------------------------
+//
+// debounceStates[siteId] = {
+//   lastOppositeStartTs: number | null,
+//   effectiveVal: boolean (true=FILLED, false=EMPTY)
+// }
+
+const debounceStates = new Map();
+
+// --- HELPERS -----------------------------------------------------------------
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function defaultToBool(def) {
+  return def === FILLED;
+}
+
+// Update debounced value for a single site.
+// rawVal = raw sensor bit (true/false).
+function updateDebouncedState(site, rawVal, now) {
+  const siteId     = site.siteId;
+  const defaultVal = defaultToBool(site.default);
+  const opposite   = !defaultVal;
+
+  let st = debounceStates.get(siteId);
+  if (!st) {
+    st = { lastOppositeStartTs: null, effectiveVal: defaultVal };
+    debounceStates.set(siteId, st);
+  }
+
+  if (rawVal === defaultVal) {
+    // Sensor agrees with default -> immediately back to default.
+    st.lastOppositeStartTs = null;
+    st.effectiveVal = defaultVal;
+  } else {
+    // Sensor suggests opposite state.
+    if (st.lastOppositeStartTs === null) {
+      // First time we see opposite signal.
+      st.lastOppositeStartTs = now;
+      st.effectiveVal = defaultVal; // still default until delay passes
+    } else if (now - st.lastOppositeStartTs >= FILL_DEBOUNCE_MS) {
+      // Opposite signal held long enough -> accept change.
+      st.effectiveVal = opposite;
+    }
+  }
+
+  return st.effectiveVal;
+}
+
+function resetDebounceForSites(sites) {
+  for (const s of sites) {
+    debounceStates.delete(s.siteId);
+  }
+}
+
+// --- MODBUS: connect + read with simple backoff ------------------------------
+//
+// Returns:
+//   { status: "ok", inputs: boolean[] }
+//   { status: "backoff" }
+//   { status: "error", message: string }
+
+async function readInputsForGroup(group) {
+  let state = modbusStates.get(group.key);
+  const now = Date.now();
+
+  if (!state) {
+    state = { client: null, lastAttemptMs: 0 };
+    modbusStates.set(group.key, state);
+  }
+
+  // 1) Need client: try to (re)connect, but respect backoff.
+  if (!state.client) {
+    const sinceLast = now - state.lastAttemptMs;
+
+    if (state.lastAttemptMs !== 0 && sinceLast < RECONNECT_BACKOFF_MS) {
+      // Still waiting before next connect attempt.
+      dlog(
+        `[Modbus] Group ${group.key}: reconnect backoff ${sinceLast}ms < ${RECONNECT_BACKOFF_MS}ms`
+      );
+      return { status: "backoff" };
+    }
+
+    state.lastAttemptMs = now;
+
+    try {
+      const client = new ModbusRTU();
+      client.setTimeout(MODBUS_REQUEST_TIMEOUT_MS);
+
+      await new Promise((resolve, reject) => {
+        client.connectTCP(group.ip, { port: group.port }, (err) => {
+          if (err) return reject(err);
+          resolve();
+        });
+      });
+
+      client.setID(group.slaveId);
+      state.client = client;
+
+      dlog(`Connected to Modbus ${group.key}`);
+    } catch (err) {
+      const msg = err && err.message ? err.message : String(err);
+      // Connection failed, keep client=null, we will backoff next time.
+      return {
+        status: "error",
+        message: `connect failed: ${msg}`,
+      };
+    }
+  }
+
+  // 2) We have client: read discrete inputs.
+  try {
+    const startAddr  = group.minOffset;
+    const readLength = group.sites.length === 1 ? 1 : group.length;
+
+    dlog(
+      `[MODBUS-REQ] ${group.key} readDiscreteInputs(addr=${startAddr}, len=${readLength})`
+    );
+
+    const raw = await new Promise((resolve, reject) => {
+      state.client.readDiscreteInputs(
+        startAddr,
+        readLength,
+        (err, data) => {
+          if (err) return reject(err);
+          resolve(data);
+        }
+      );
+    });
+
+    const inputs = raw && Array.isArray(raw.data) ? raw.data : null;
+    if (!inputs) {
+      return {
+        status: "error",
+        message: "invalid readDiscreteInputs response format",
+      };
+    }
+
+    const maxAddr = startAddr + inputs.length - 1;
+    dlog(
+      `[MODBUS-RESP] ${group.key} len=${inputs.length} inputs[${startAddr}..${maxAddr}] =`,
+      inputs
+    );
+
+    return { status: "ok", inputs };
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err);
+
+    // Reading failed: close client, so next call will reconnect (with backoff).
+    try {
+      if (state.client) state.client.close();
+    } catch (_) {}
+    state.client = null;
+    state.lastAttemptMs = Date.now();
+
+    return {
+      status: "error",
+      message: `readDiscreteInputs failed: ${msg}`,
+    };
+  }
+}
+
+// --- RDS: write worksite state ----------------------------------------------
+//
+// filledBool: true = FILLED, false = EMPTY
+
+async function writeWorksiteState(api, site, filledBool, context) {
+  try {
+    if (filledBool) {
+      await api.setWorkSiteFilled(site.siteId);
+    } else {
+      await api.setWorkSiteEmpty(site.siteId);
+    }
+
+    // Success is debug-level info.
+    dlog(
+      `[RDS] Worksite ${site.siteId} => ${filledBool ? "FILLED" : "EMPTY"} (${context})`
+    );
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err);
+    console.error(
+      `[RDS] Failed to update worksite ${site.siteId} (${context}): ${msg}`
+    );
+  }
+}
+
+// --- Apply default state (used on Modbus error / missing value) --------------
+
+async function setSitesDefault(api, sites, context) {
+  for (const s of sites) {
+    const assumeFilled = defaultToBool(s.default);
+    const reason = `set to default (${s.default}) because ${context}`;
+    await writeWorksiteState(api, s, assumeFilled, reason);
+  }
+}
+
+// --- ONE SYNC CYCLE ----------------------------------------------------------
+
+async function syncOnce(api) {
+  if (!api.sessionId) {
+    try {
+      await api.login();
+      dlog("[RDS] Initial login succeeded.");
+    } catch (err) {
+      const msg = err && err.message ? err.message : String(err);
+      console.error("[RDS] Initial login failed:", msg);
+      // Continue – APIClient may retry on its own.
+    }
+  }
+
+  for (const group of GROUPS) {
+    const { sites, minOffset } = group;
+
+    const result = await readInputsForGroup(group);
+
+    if (result.status === "backoff") {
+      // We are in reconnect backoff window -> keep current RDS state, do nothing.
+      continue;
+    }
+
+    if (result.status === "error") {
+      // Real communication problem -> log once per cycle and use defaults.
+      console.error(
+        `[Modbus] Group ${group.key}: communication error, using default states. Details: ${result.message}`
+      );
+      resetDebounceForSites(sites);
+      await setSitesDefault(api, sites, `Modbus error for group ${group.key}: ${result.message}`);
+      continue;
+    }
+
+    // status === "ok"
+    const inputs = result.inputs;
+
+    for (const s of sites) {
+      const idx = s.offset - minOffset;
+      const rawVal = inputs[idx];
+
+      if (typeof rawVal === "undefined") {
+        const ctx =
+          `Missing Modbus input value (idx=${idx}) for site ${s.siteId}, ` +
+          `probable configuration error (offset=${s.offset}). Using default state (${s.default}).`;
+        console.error(ctx);
+        resetDebounceForSites([s]);
+        await setSitesDefault(api, [s], ctx);
+        continue;
+      }
+
+      const now = Date.now();
+      const effectiveBool = updateDebouncedState(s, !!rawVal, now);
+
+      dlog(
+        `[DEBOUNCE] siteId=${s.siteId} raw=${!!rawVal} default=${s.default} -> debounced=${effectiveBool ? "FILLED" : "EMPTY"}`
+      );
+
+      await writeWorksiteState(
+        api,
+        s,
+        effectiveBool,
+        "based on debounced Modbus signal"
+      );
+    }
+  }
+}
+
+// --- CLEANUP ON EXIT ---------------------------------------------------------
+
+function closeAllModbusClients() {
+  for (const [key, state] of modbusStates.entries()) {
+    if (!state || !state.client) continue;
+    try {
+      state.client.close();
+      dlog(`Closed Modbus connection ${key}`);
+    } catch (_) {
+      // ignore
+    }
+  }
+}
+
+process.on("SIGINT", () => {
+  console.log("SIGINT – closing Modbus clients and exiting...");
+  closeAllModbusClients();
+  process.exit(0);
+});
+
+process.on("SIGTERM", () => {
+  console.log("SIGTERM – closing Modbus clients and exiting...");
+  closeAllModbusClients();
+  process.exit(0);
+});
+
+// --- MAIN LOOP ---------------------------------------------------------------
+
+async function mainLoop() {
+  const api = new APIClient(RDS_HOST, RDS_USER, RDS_PASS, RDS_LANG);
+
+  dlog(`Starting synchronization loop (every ${POLL_INTERVAL_MS} ms)`);
+  dlog(`Number of Modbus groups: ${GROUPS.length}`);
+
+  while (true) {
+    const start = Date.now();
+
+    try {
+      await syncOnce(api);
+    } catch (err) {
+      const msg = err && err.stack ? err.stack : err;
+      console.error("Global error in syncOnce:", msg);
+    }
+
+    const elapsed = Date.now() - start;
+    const wait = Math.max(POLL_INTERVAL_MS - elapsed, 0);
+    if (wait > 0) {
+      await sleep(wait);
+    }
+  }
+}
+
+// --- START -------------------------------------------------------------------
+
+mainLoop().catch((err) => {
+  const msg = err && err.stack ? err.stack : err;
+  console.error("Fatal error in mainLoop:", msg);
+  closeAllModbusClients();
+});
+
+--------------------------------------------------------------------------------
+
+file: package.json
+--------------------------------------------------------------------------------
+{
+  "dependencies": {
+    "md5": "^2.3.0",
+    "modbus-serial": "^8.0.23"
+  }
+}
+
+--------------------------------------------------------------------------------
+
+file: requirements.md
+--------------------------------------------------------------------------------
+# Wymagania produkcyjne – `modbus-sync-worksites`
+
+## Wymagania szczegółowe dla tej usługi
+
+- Konfiguracja:
+  - Lista `SITES` z polami: `siteId`, `ip`, `port`, `slaveId`, `offset`, `default` (EMPTY/FILLED).
+  - Walidacja konfiguracji przy starcie: unikalne `siteId`, poprawne `offset`, poprawne `default`.
+  - Stałe konfiguracyjne na górze pliku: `RDS_HOST`, `RDS_USER`, `RDS_PASS`, `RDS_LANG`, `POLL_INTERVAL_MS`, `MODBUS_REQUEST_TIMEOUT_MS`, `RECONNECT_BACKOFF_MS`, `FILL_DEBOUNCE_MS`.
+
+- Modbus:
+  - Grupowanie site’ów po `(ip, port, slaveId)` i jeden klient Modbus na grupę.
+  - Wymaganie: **na każdą grupę jest dokładnie jeden klient Modbus i jeden mechanizm backoffu**, a połączenie jest ponownie wykorzystywane między kolejnymi odczytami.
+  - Timeout requestu: `client.setTimeout(MODBUS_REQUEST_TIMEOUT_MS)`.
+  - Reconnect po błędzie z backoffem `RECONNECT_BACKOFF_MS` (nie spamujemy próbami co `POLL_INTERVAL_MS`).
+  - Przy błędzie połączenia / odczytu:
+    - zamykamy klienta,
+    - logujemy błąd (adres grupy + treść),
+    - ustawiamy dla wszystkich site’ów w tej grupie wartości domyślne.
+
+- Domyślny stan + debounce:
+  - Każdy `site` ma `default` (EMPTY/FILLED).
+  - Stan logiczny:
+    - startuje od `default`,
+    - wraca natychmiast do `default`, jeśli surowy sygnał Modbus zgadza się z `default`,
+    - zmienia się na przeciwny dopiero po stabilnym, przeciwnym sygnale przez `FILL_DEBOUNCE_MS`.
+  - **Debounce jest liczony osobno dla każdego worksite (per `siteId`) i nie „miesza się” między site’ami w tej samej grupie.**
+  - Przy błędzie Modbus:
+    - reset debounce dla site’ów danej grupy,
+    - ustawienie `default` w RDS.
+  - Przy złej konfiguracji (brak wartości z Modbus – `undefined`):
+    - log błędu z informacją o `siteId`, `offset` i indeksie,
+    - ustawienie `default` w RDS,
+    - reset debounce dla tego site’a.
+
+- Globalne handlery błędów:
+  - Wymaganie: usługa musi mieć globalne handlery:
+    - `process.on("unhandledRejection", ...)`
+    - `process.on("uncaughtException", ...)`
+  - Żaden niezłapany wyjątek nie może zabić procesu **bez wpisu w logach** – wszystkie niespodziewane błędy muszą być zalogowane (stacktrace lub treść błędu).
+
+- Obsługa wyłączania (sygnały):
+  - Wymaganie: usługa obsługuje sygnały:
+    - `SIGINT`,
+    - `SIGTERM`.
+  - Przy wyłączaniu:
+    - loguje informację o zamykaniu,
+    - **porządnie zamyka wszystkie połączenia Modbus** (zamyka klientów i sprząta stan),
+    - kończy proces kodem 0 (czyste wyjście).
+
+- Logowanie:
+  - Flaga `DEBUG_LOG` steruje logami debug (`dlog(...)`); w produkcji `DEBUG_LOG = false`.
+  - Błędy Modbus i RDS zawsze przez `console.error` (widoczne w journald), niezależnie od `DEBUG_LOG`.
+  - Logi debug:
+    - `[MODBUS-REQ]`, `[MODBUS-RESP]`,
+    - `[DEBOUNCE] ...`,
+    - sukcesy RDS `[RDS] Worksite ... => ...`,
+    - informacje o backoffie.
+  - Logi produkcyjne nie powinny być zalewane powtarzalnymi komunikatami – np. backoff jest logowany tylko w trybie debug.
+
+- Zachowanie przy braku sterownika Modbus:
+  - Pierwszy błąd połączenia / odczytu:
+    - log: `[Modbus] Group X: communication error, using default states. Details: ...`,
+    - ustawienie `default` w RDS dla wszystkich site’ów grupy.
+  - W czasie backoff:
+    - brak kolejnych logów błędu (tylko logi debug, jeżeli włączone),
+    - brak ponownego nadpisywania RDS (stan domyślny już ustawiony i bezpieczny).
+
+- Integracja z RDS:
+  - W każdej iteracji dla każdego `site` po debouncu wysyłamy aktualny stan do RDS (API traktowane jako idempotentne).
+  - Błąd wywołania API:
+    - `console.error` z `siteId` i kontekstem.
+
+- Usługa systemd:
+  - Unit w `/etc/systemd/system/modbus-sync-worksites.service`:
+    - `Type=simple`,
+    - `User=admin`, `Group=admin`,
+    - `WorkingDirectory=/home/admin/modbus-sync-worksites`,
+    - `ExecStart=/usr/bin/nodejs /home/admin/modbus-sync-worksites/modbus-sync-worksites.js`,
+    - `Restart=always`, `RestartSec=5`,
+    - `After=network-online.target`, `Wants=network-online.target`,
+    - `Environment=NODE_ENV=production`.
+  - Skrypt instalacyjny `install-modbus-sync-worksites-service.sh`:
+    - tworzy unit w `/etc/systemd/system/`,
+    - wykonuje `systemctl daemon-reload`,
+    - `systemctl enable`,
+    - `systemctl start`.
+
+- Skrypty operatorskie:
+  - `logs-follow.sh` – podgląd logów na żywo (`journalctl -u ... -f`).
+  - `logs-last-hour.sh` – logi z ostatniej godziny (`journalctl --since "-1 hour"`).
+  - `service-status.sh` – status usługi (`systemctl status ...`).
+  - `service-restart.sh` – restart + status.
+  - `run-foreground.sh` – uruchomienie usługi w foreground (debug).
+  - `modbus-test.sh` – uruchomienie prostego testu Modbus.
+
+- Test Modbus:
+  - `modbus-read-test.js`: prosty skrypt Node:
+    - łączy się z PLC,
+    - co sekundę wywołuje `readDiscreteInputs`,
+    - wypisuje surową tablicę `res.data`.
+
+- Repozytorium:
+  - Projekt w git + GitHub.
+  - Commitowane: kod (`*.js`), skrypty bash, `package.json`, `package-lock.json`, `.gitignore`, dokumentacja (`SERVICE_REQUIREMENTS.md`).
+  - `.gitignore` ignoruje `node_modules/`, logi, śmieci edytorów, `.env` itp.
+
+---
+
+## Ogólne wymagania dla usług produkcyjnych
+
+- Konfiguracja:
+  - wszystkie istotne parametry (hosty, loginy, hasła, timeouty, interwały) zebrane w jednym miejscu,
+  - walidacja konfiguracji przy starcie (duplikaty, zakresy, brakujące pola).
+
+- Logowanie:
+  - rozdział: debug vs error,
+  - jeden język logów (np. angielski),
+  - log błędu zawsze zawiera: co, gdzie, dla kogo (`siteId`, adres, itp.),
+  - brak parsowania stringów błędów – logika rozróżnia przypadki, nie tekst komunikatu.
+
+- Obsługa błędów:
+  - każdy błąd z systemu zewnętrznego (Modbus, HTTP, DB) jest:
+    - złapany,
+    - zalogowany,
+    - obsłużony z jasną strategią: retry / backoff / stan awaryjny (default),
+  - żaden niezłapany wyjątek nie może zabić procesu bez loga (`unhandledRejection`, `uncaughtException` muszą być obsłużone).
+
+- Odporność:
+  - zdefiniowane „bezpieczne stany domyślne” (default) dla krytycznych elementów,
+  - jasne zachowanie przy:
+    - braku komunikacji z systemem zewnętrznym,
+    - błędnej konfiguracji,
+    - restarcie usługi w trakcie pracy.
+
+- Połączenia i stan w pamięci:
+  - usługa powinna **ponownie wykorzystywać połączenia** (connection pooling / cache klienta) zamiast otwierać nowe połączenia w każdej iteracji,
+  - stan w pamięci powinien być minimalny i jasno określony (np. cache połączeń, cache debounca), bez zbędnych globalnych „śmietników”.
+
+- Integracja z systemd:
+  - `Restart=always` + sensowne `RestartSec`,
+  - uruchamianie na nierootowym użytkowniku,
+  - `WorkingDirectory` ustawione na katalog projektu,
+  - obsługa `SIGINT`/`SIGTERM` (sprzątanie połączeń, czyste wyjście).
+
+- Obserwowalność:
+  - możliwość:
+    - podglądu logów na żywo,
+    - pobrania logów z zakresu czasu,
+    - sprawdzenia statusu (`systemctl status`),
+  - **w przyszłości** warto dodać prosty healthcheck (np. endpoint HTTP lub okresowe logi podsumowujące):
+    - kiedy ostatnio udało się połączyć z systemem zewnętrznym,
+    - kiedy ostatnio udało się wykonać operację na backendzie (np. RDS).
+
+- Prostota:
+  - brak zbędnych warstw abstrakcji przy prostych usługach,
+  - kod możliwy do przeczytania od góry do dołu,
+  - brak „sprytnych sztuczek” – zamiast tego proste stany i `if/else`.
+
+- Testy / narzędzia:
+  - osobny, prosty skrypt testowy komunikacji z systemem zewnętrznym (Modbus, DB, HTTP),
+  - skrypty operatorskie: logi, restart, status, test.
+
+- Repozytorium:
+  - kod w gicie,
+  - powtarzalny sposób wdrożenia (np. `git pull && npm ci && systemctl restart ...`).
+
+--------------------------------------------------------------------------------
+
+file: service-restart.sh
+--------------------------------------------------------------------------------
+#!/bin/bash
+# service-restart.sh
+#
+# Restart the systemd service and show its status.
+# Usage:
+#   sudo ./service-restart.sh
+
+SERVICE_NAME="modbus-sync-worksites.service"
+
+systemctl restart "${SERVICE_NAME}"
+systemctl status "${SERVICE_NAME}" --no-pager -l
+
+--------------------------------------------------------------------------------
+
+file: service-status.sh
+--------------------------------------------------------------------------------
+#!/bin/bash
+# service-status.sh
+#
+# Show systemd service status.
+# Usage:
+#   ./service-status.sh
+# (if needed: sudo ./service-status.sh)
+
+SERVICE_NAME="modbus-sync-worksites.service"
+
+systemctl status "${SERVICE_NAME}" --no-pager -l
+
+--------------------------------------------------------------------------------
+
+file: service-stop.sh
+--------------------------------------------------------------------------------
+#!/bin/bash
+# service-restart.sh
+#
+# Restart the systemd service and show its status.
+# Usage:
+#   sudo ./service-restart.sh
+
+SERVICE_NAME="modbus-sync-worksites.service"
+
+systemctl stop "${SERVICE_NAME}"
+
+--------------------------------------------------------------------------------

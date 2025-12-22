@@ -1,0 +1,14 @@
+{
+  "name": "robot-task-manager",
+  "version": "1.0.0",
+  "description": "Robot task manager – auto-start, auto-kill i obsługa zadań PUT-DOWN / TEMP-BLOCK dla RDS.",
+  "main": "robot-task-manager.js",
+  "scripts": {
+    "start": "node robot-task-manager.js"
+  },
+  "type": "commonjs",
+  "dependencies": {
+    "md5": "^2.3.0",
+    "express": "^4.21.2"
+  }
+}

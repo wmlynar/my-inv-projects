@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <title>Robot AGV – kokpit</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1 id="robot-name">AGV-01</h1>
+      <div class="tabs">
+        <button class="tab tab-active" data-tab-target="status">Status</button>
+        <button class="tab" data-tab-target="control">Sterowanie</button>
+        <button class="tab" data-tab-target="informacje">Informacje</button>
+        <button class="tab" data-tab-target="nawigacja">Nawigacja</button>
+      </div>
+    </header>
+
+    <div class="main" id="main-scroll">
+      <div class="stack">
+        <!-- ===================== STATUS TAB ===================== -->
+
+        <!-- STATUS: ZADANIE ROBOTA (na górze) -->
+        <section class="card" data-tab="status">
+          <h2>Zadanie robota</h2>
+          <div class="task-grid">
+            <div class="task-label" style="grid-column: 1 / span 2;">ID zadania</div>
+            <div class="task-value" id="task-id" style="grid-column: 1 / span 2;">—</div>
+
+            <div class="task-label">Status zadania</div>
+            <div class="task-value" id="task-status">—</div>
+          </div>
+          <div class="controls-row">
+            <button class="btn btn-danger" id="btn-stop-task">Zakończ + niedostępny</button>
+          </div>
+        </section>
+
+        <!-- STATUS: DOSTĘPNOŚĆ -->
+        <section class="card" data-tab="status">
+          <h2>Dostępność</h2>
+          <div class="row">
+            <span class="label">Dostępność</span>
+            <span class="value">
+              <span id="dispatch-badge" class="badge">
+                <span class="dot" id="dispatch-dot"></span>
+                <span id="dispatch-label">—</span>
+              </span>
+            </span>
+          </div>
+          <div class="controls-row">
+            <button class="btn btn-primary" id="btn-dispatchable">Dostępny</button>
+            <button class="btn btn-secondary" id="btn-undispatchable-online">Niedostępny ONLINE</button>
+            <button class="btn btn-secondary" id="btn-undispatchable-offline">Niedostępny OFFLINE</button>
+          </div>
+        </section>
+
+        <!-- STATUS: PRZYCZYNA ZATRZYMANIA -->
+        <section class="card" data-tab="status">
+          <h2>Przyczyna zatrzymania</h2>
+          <div class="task-grid">
+            <div class="task-label">Błąd</div>
+            <div class="task-value" id="status-error">—</div>
+
+            <div class="task-label">E-STOP (fizyczny)</div>
+            <div class="task-value" id="status-emergency">—</div>
+
+            <div class="task-label">Zablokowany</div>
+            <div class="task-value" id="status-blocked">—</div>
+
+            <div class="task-label">Pauza</div>
+            <div class="task-value" id="status-paused">—</div>
+
+            <div class="task-label">Niska bateria</div>
+            <div class="task-value" id="status-low-battery">—</div>
+
+            <div class="task-label">Niepotwierdzona lokalizacja</div>
+            <div class="task-value" id="status-unconfirmed-reloc">—</div>
+
+            <div class="task-label">Brak połączenia</div>
+            <div class="task-value" id="status-disconnect">—</div>
+
+            <div class="task-label">Nieprawidłowa mapa</div>
+            <div class="task-value" id="status-invalid-map">—</div>
+
+            <div class="task-label">E-STOP (programowy)</div>
+            <div class="task-value" id="status-soft-emc">—</div>
+          </div>
+        </section>
+
+        <!-- STATUS: ALARMY ROBOTA -->
+        <section class="card" data-tab="status">
+          <h2>Alarmy robota</h2>
+          <div class="controls-row">
+            <button class="btn btn-danger" id="btn-clear-errors">Kasuj wszystkie błędy</button>
+          </div>
+          <div class="alarms-list" id="alarms-list"></div>
+        </section>
+
+        <!-- STATUS: ALARMY ZADANIA -->
+        <section class="card" data-tab="status">
+          <h2>Alarmy zadania</h2>
+          <div class="alarms-list" id="task-alarms-list"></div>
+        </section>
+
+        <!-- STATUS: ALARMY SYSTEMU -->
+        <section class="card" data-tab="status">
+          <h2>Alarmy systemu</h2>
+          <div class="alarms-list" id="system-alarms-list"></div>
+        </section>
+
+        <!-- ===================== CONTROL TAB ===================== -->
+
+        <!-- CONTROL: OPERACJE WIDŁAMI -->
+        <section class="card" data-tab="control">
+          <h2>Operacje widłami</h2>
+          <div class="controls-row">
+            <button class="btn btn-secondary" id="btn-lift-forks">Podnieś widły</button>
+            <button class="btn btn-secondary" id="btn-lower-forks">Opuść widły</button>
+            <button class="btn btn-accent" id="btn-stop-and-drop">Podnieś widły i odłóż towar</button>
+          </div>
+        </section>
+
+<!-- CONTROL: STEROWANIE RUCHEM -->
+<section class="card" data-tab="control">
+  <h2>Sterowanie ruchem</h2>
+
+  <div class="dpad" aria-label="Sterowanie ruchem (D-pad)">
+    <button class="btn btn-secondary dpad-btn" data-endpoint="/api/robot/move-forward-left" title="Lewo przód">↖</button>
+    <button class="btn btn-secondary dpad-btn" data-endpoint="/api/robot/move-forward" title="Przód">↑</button>
+    <button class="btn btn-secondary dpad-btn" data-endpoint="/api/robot/move-forward-right" title="Prawo przód">↗</button>
+
+    <button class="btn btn-secondary dpad-btn" data-endpoint="/api/robot/move-left" title="Lewo">←</button>
+    <button class="btn btn-danger dpad-btn dpad-stop" data-endpoint="/api/robot/move-stop" title="STOP">STOP</button>
+    <button class="btn btn-secondary dpad-btn" data-endpoint="/api/robot/move-right" title="Prawo">→</button>
+
+    <button class="btn btn-secondary dpad-btn" data-endpoint="/api/robot/move-backward-left" title="Lewo tył">↙</button>
+    <button class="btn btn-secondary dpad-btn" data-endpoint="/api/robot/move-backward" title="Tył">↓</button>
+    <button class="btn btn-secondary dpad-btn" data-endpoint="/api/robot/move-backward-right" title="Prawo tył">↘</button>
+  </div>
+</section>
+
+        <!-- CONTROL: ZADANIA RĘCZNE -->
+        <section class="card" data-tab="control">
+          <h2>Zadania ręczne</h2>
+          <div class="controls-row">
+            <button class="btn btn-secondary" id="btn-delete-manual-tasks">Usuń zadania ręczne</button>
+            <button class="btn btn-secondary" id="btn-add-manual-drop-task">Dodaj zadanie odłożenia towaru</button>
+          </div>
+        </section>
+
+        <!-- ===================== INFORMACJE TAB ===================== -->
+
+        <!-- INFORMACJE: PARAMETRY ZADANIA (na górze taba Informacje) -->
+        <section class="card" data-tab="informacje">
+          <h2>Parametry zadania</h2>
+          <div class="task-grid">
+            <div class="task-label" style="grid-column: 1 / span 2;">Zewnetrzne ID</div>
+            <div class="task-value" id="task-external-id" style="grid-column: 1 / span 2;">—</div>
+
+            <div class="task-label">Trasa kluczowa</div>
+            <div class="task-value" id="task-key-route">—</div>
+
+            <div class="task-label">Komunikat</div>
+            <div class="task-value" id="task-msg">—</div>
+
+            <div class="task-label">Błąd</div>
+            <div class="task-value" id="task-error">—</div>
+
+            <div class="task-label">Ukończone</div>
+            <div class="task-value" id="task-complete">—</div>
+
+            <div class="task-label">Priorytet</div>
+            <div class="task-value" id="task-priority">—</div>
+          </div>
+
+          <div class="controls-row">
+            <button class="btn btn-primary" id="btn-resume-task">Wznów</button>
+            <button class="btn btn-secondary" id="btn-pause-task">Pauza</button>
+          </div>
+        </section>
+
+        <!-- INFORMACJE: KONTROLA ROBOTA (przeniesione ze Status, nad E-STOP) -->
+        <section class="card" data-tab="informacje">
+          <h2>Kontrola robota</h2>
+          <div class="row">
+            <span class="label">Aktualna kontrola</span>
+            <span class="value" id="control-status">—</span>
+          </div>
+          <div class="controls-row">
+            <button class="btn btn-primary" id="btn-seize">Przejmij kontrolę</button>
+            <button class="btn btn-secondary" id="btn-release">Oddaj kontrolę</button>
+          </div>
+        </section>
+
+        <!-- INFORMACJE: E-STOP (PROGRAMOWY) -->
+        <section class="card" data-tab="informacje">
+          <h2>E-STOP (programowy)</h2>
+          <div class="controls-row">
+            <button class="btn btn-primary" id="btn-soft-emc-off">Kasuj E-STOP</button>
+            <button class="btn btn-secondary" id="btn-soft-emc-on">E-STOP</button>
+          </div>
+        </section>
+
+        <section class="card" data-tab="informacje">
+          <h2>Parametry robota</h2>
+          <div class="task-grid">
+            <div class="task-label">Aktualna stacja</div>
+            <div class="task-value" id="status-current-station">—</div>
+
+            <div class="task-label">Ostatnia stacja</div>
+            <div class="task-value" id="status-last-station">—</div>
+
+            <div class="task-label">Załadowany</div>
+            <div class="task-value" id="status-loaded">—</div>
+
+            <div class="task-label">Hamulec</div>
+            <div class="task-value" id="status-brake">—</div>
+
+            <div class="task-label">Wysokość wideł</div>
+            <div class="task-value" id="status-fork-height">—</div>
+
+            <div class="task-label">X, Y, kąt</div>
+            <div class="task-value" id="status-xy">—</div>
+
+            <div class="task-label">VX</div>
+            <div class="task-value" id="status-vx">—</div>
+
+            <div class="task-label">VY</div>
+            <div class="task-value" id="status-vy">—</div>
+
+            <div class="task-label">Obrót (spin)</div>
+            <div class="task-value" id="status-spin">—</div>
+
+            <div class="task-label">Skręt</div>
+            <div class="task-value" id="status-steer">—</div>
+
+            <div class="task-label">W (omega)</div>
+            <div class="task-value" id="status-w">—</div>
+
+            <div class="task-label">Poziom baterii</div>
+            <div class="task-value" id="status-battery">—</div>
+
+            <div class="task-label">Ładowanie</div>
+            <div class="task-value" id="status-charging">—</div>
+
+            <div class="task-label">Pewność lokalizacji</div>
+            <div class="task-value" id="status-confidence">—</div>
+
+            <div class="task-label">Opóźnienie sieci</div>
+            <div class="task-value" id="status-network-delay">—</div>
+
+            <div class="task-label">Cykl baterii</div>
+            <div class="task-value" id="status-battery-cycle">—</div>
+
+            <div class="task-label">IP robota</div>
+            <div class="task-value" id="status-ip">—</div>
+          </div>
+        </section>
+
+        <section class="card" data-tab="informacje">
+          <h2>Model i wersja</h2>
+          <div class="task-grid">
+            <div class="task-label">Model</div>
+            <div class="task-value" id="cand-model">—</div>
+
+            <div class="task-label">Wersja</div>
+            <div class="task-value" id="cand-version">—</div>
+
+            <div class="task-label">Wersja DSP</div>
+            <div class="task-value" id="cand-dsp-version">—</div>
+          </div>
+        </section>
+
+        <section class="card" data-tab="informacje">
+          <h2>Status systemu</h2>
+          <div class="task-grid">
+            <div class="task-label">Opis</div>
+            <div class="task-value" id="top-status-msg">—</div>
+
+            <div class="task-label">Kod</div>
+            <div class="task-value" id="top-status-code">—</div>
+
+            <div class="task-label">Czy błąd</div>
+            <div class="task-value" id="top-status-error">—</div>
+          </div>
+        </section>
+
+        <section class="card" data-tab="informacje">
+          <h2>Eksploatacja</h2>
+          <div class="task-grid">
+            <div class="task-label">Napięcie</div>
+            <div class="task-value" id="cand-voltage">—</div>
+
+            <div class="task-label">Prąd</div>
+            <div class="task-value" id="cand-current">—</div>
+
+            <div class="task-label">Przebieg (ODO)</div>
+            <div class="task-value" id="cand-odo">—</div>
+
+            <div class="task-label">Przebieg dziś</div>
+            <div class="task-value" id="cand-today-odo">—</div>
+
+            <div class="task-label">Czas całkowity</div>
+            <div class="task-value" id="cand-total-time">—</div>
+
+            <div class="task-label">Czas</div>
+            <div class="task-value" id="cand-time">—</div>
+          </div>
+        </section>
+
+        <section class="card" data-tab="informacje">
+          <h2>Sterownik</h2>
+          <div class="task-grid">
+            <div class="task-label">Temperatura [°C]</div>
+            <div class="task-value" id="cand-ctrl-temp">—</div>
+
+            <div class="task-label">Wilgotność [%]</div>
+            <div class="task-value" id="cand-ctrl-humi">—</div>
+
+            <div class="task-label">Napięcie [V]</div>
+            <div class="task-value" id="cand-ctrl-voltage">—</div>
+          </div>
+        </section>
+
+        <section class="card" data-tab="informacje">
+          <h2>Kontrola (blokady)</h2>
+          <div class="task-grid">
+            <div class="task-label" style="grid-column: 1 / span 2;">ID blokady</div>
+            <div class="task-value" id="cand-lock-report-nick" style="grid-column: 1 / span 2;">—</div>
+
+            <div class="task-label">IP blokady</div>
+            <div class="task-value" id="cand-lock-report-ip">—</div>
+
+            <div class="task-label">Typ blokady</div>
+            <div class="task-value" id="cand-lock-report-type">—</div>
+
+            <div class="task-label">Zablokowany</div>
+            <div class="task-value" id="cand-lock-report-locked">—</div>
+          </div>
+        </section>
+
+        <!-- INFORMACJE: EKSPORT (na koniec taba Informacje) -->
+        <section class="card" data-tab="informacje">
+          <h2>Eksport</h2>
+          <div class="controls-row">
+            <button class="btn btn-secondary" id="btn-dump-status">Zgraj status</button>
+          </div>
+        </section>
+
+        <!-- ===================== NAWIGACJA TAB ===================== -->
+
+        <section class="card" data-tab="nawigacja">
+          <h2>Bloki zlecenia</h2>
+          <pre class="debug-pre" id="cand-blocks">—</pre>
+        </section>
+
+        <section class="card" data-tab="nawigacja">
+          <h2>Ścieżka (path)</h2>
+          <pre class="debug-pre" id="cand-paths">—</pre>
+        </section>
+
+        <section class="card" data-tab="nawigacja">
+          <h2>Zajęte obszary</h2>
+          <pre class="debug-pre" id="cand-areas">—</pre>
+        </section>
+
+        <section class="card" data-tab="nawigacja">
+          <h2>Wyłączone elementy mapy</h2>
+          <pre class="debug-pre" id="cand-disabled-map">—</pre>
+        </section>
+
+        <section class="card" data-tab="nawigacja">
+          <h2>Dynamiczne przeszkody</h2>
+          <pre class="debug-pre" id="cand-dyn-obstacles">—</pre>
+        </section>
+      </div>
+    </div>
+
+    <div class="footer-row">
+      <span class="label">Czas raportu</span>
+      <span class="value" id="report-create-on">—</span>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

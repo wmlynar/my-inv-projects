@@ -1,0 +1,11 @@
+{
+  target: "server",
+  kind: "ssh",
+  host: "10.6.44.2",
+  user: "admin",
+  serviceScope: "system",
+  installDir: "/opt/apps/seal-example",
+  serviceName: "seal-example",
+  packager: "auto",
+  config: "server",
+}

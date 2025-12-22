@@ -1,0 +1,8 @@
+{
+  "features": {
+    "showExternalCall": true,
+    "enableMd5Tool": true,
+    "demoMode": true
+  },
+  "notes": "This file is read at runtime from disk (not bundled)."
+}

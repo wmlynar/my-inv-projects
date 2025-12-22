@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Logs and runtime output
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build artifacts
+dist/
+build/
+coverage/
+out/
+.tmp/
+tmp/
+*.tsbuildinfo
+
+# Tooling caches
+.cache/
+.parcel-cache/
+.vite/
+.turbo/
+.next/
+.nuxt/
+.svelte-kit/
+.eslintcache
+
+# Runtime/local config
+.env
+.env.*
+!.env.example
+config.runtime.json5
+seal-out/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/

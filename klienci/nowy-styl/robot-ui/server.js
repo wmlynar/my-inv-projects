@@ -1,0 +1,735 @@
+// server.js
+const express = require("express");
+const path = require("path");
+const bodyParser = require("body-parser");
+require("dotenv").config();
+
+const USE_MOCK_RDS = process.env.USE_MOCK_RDS === "1";
+const LOG_API_CALLS = process.env.LOG_API_CALLS === "1";
+const RDS_API_HOST = process.env.RDS_API_HOST || "http://127.0.0.1:8080";
+const RDS_LOGIN = process.env.RDS_LOGIN || "admin";
+const RDS_PASSWORD = process.env.RDS_PASSWORD || "123456";
+// ROBOT_ID – vehicle_id / uuid z getRobotListRaw (np. "INV-CDD14-01")
+const ROBOT_ID = process.env.ROBOT_ID || "INV-CDD14-01";
+const PORT = process.env.PORT || 3001;
+
+// Wysokości wideł z konfiguracji
+const FORK_LOW_HEIGHT = parseFloat(process.env.FORK_LOW_HEIGHT || "0.0");
+const FORK_HIGH_HEIGHT = parseFloat(process.env.FORK_HIGH_HEIGHT || "0.15");
+
+// Nazwa zadania ręcznego (odłożenie towaru)
+const MANUAL_DROP_TASK_LABEL = process.env.MANUAL_DROP_TASK_LABEL || "WT_DROP_MANUAL";
+
+// --- Konfiguracja sterowania ruchem (controlMotion) ---
+// Użytkownik potwierdził: duration jest w ms.
+// Zalecenie: duration=500ms, wysyłka co 250ms (to robimy w UI).
+const MOTION_SPEED = Math.abs(parseFloat(process.env.MOTION_SPEED || "0.3")); // wartość dodatnia
+const VX_FORWARD = -MOTION_SPEED; // u Ciebie "przód" to vx < 0
+const VX_BACKWARD = MOTION_SPEED;
+const MOTION_DURATION_MS = parseFloat(process.env.MOTION_DURATION_MS || "500"); // ms
+
+// real_steer w radianach: 0° = prosto, 45° = skos, 90° = bok
+const STEER_STRAIGHT = 0.0;
+const STEER_DIAG = Math.PI / 4; // 45°
+const STEER_SIDE = Math.PI / 2; // 90°
+
+function logApiCall(label, payload = {}) {
+  if (!LOG_API_CALLS) return;
+  console.log(`[API] ${label}`, payload);
+}
+
+console.log("Robot UI – konfiguracja:");
+console.log("  USE_MOCK_RDS          =", USE_MOCK_RDS ? "1 (MOCK)" : "0 (RDS)");
+console.log("  LOG_API_CALLS         =", LOG_API_CALLS ? "1" : "0");
+console.log("  RDS_API_HOST          =", RDS_API_HOST);
+console.log("  ROBOT_ID              =", ROBOT_ID);
+console.log("  FORK_LOW_HEIGHT       =", FORK_LOW_HEIGHT);
+console.log("  FORK_HIGH_HEIGHT      =", FORK_HIGH_HEIGHT);
+console.log("  MANUAL_DROP_TASK_LABEL=", MANUAL_DROP_TASK_LABEL);
+console.log("  MOTION_SPEED          =", MOTION_SPEED);
+console.log("  MOTION_DURATION_MS    =", MOTION_DURATION_MS);
+
+let rdsClient = null;
+if (!USE_MOCK_RDS) {
+  try {
+    const { APIClient } = require("./api-client");
+    rdsClient = new APIClient(RDS_API_HOST, RDS_LOGIN, RDS_PASSWORD, "en");
+    console.log("Robot UI: TRYB RDS (APIClient OK)");
+  } catch (err) {
+    console.error("Robot UI: błąd tworzenia APIClient, fallback na MOCK:", err);
+  }
+} else {
+  console.log("Robot UI: TRYB MOCK (USE_MOCK_RDS=1)");
+}
+
+const app = express();
+app.use(bodyParser.json());
+app.use(express.static(path.join(__dirname, "public")));
+
+let mockRobotListRaw = null;
+if (USE_MOCK_RDS) {
+  try {
+    mockRobotListRaw = require("./mock-robot-list.json");
+    console.log("Robot UI: mock-robot-list.json załadowany");
+  } catch (err) {
+    console.warn("Robot UI: brak mock-robot-list.json lub błąd:", err);
+  }
+}
+
+function findRobotReport(raw, robotId) {
+  if (!raw || !raw.data || !Array.isArray(raw.data.report)) return null;
+  return raw.data.report.find((r) => r.uuid === robotId || r.vehicle_id === robotId) || null;
+}
+
+function mapAlarms(alarmsObj) {
+  const res = { fatals: [], errors: [], warnings: [], notices: [] };
+  if (!alarmsObj) return res;
+  for (const key of ["fatals", "errors", "warnings", "notices"]) {
+    const arr = alarmsObj[key];
+    if (!Array.isArray(arr)) continue;
+    res[key] = arr.map((item) => {
+      if (typeof item === "string") return item;
+      if (item && item.desc) return item.desc;
+      return JSON.stringify(item);
+    });
+  }
+  return res;
+}
+
+function mapRobotReportToState(report, systemAlarmsRaw) {
+  const rbk = report.rbk_report || {};
+  const uds = report.undispatchable_reason || {};
+  const basic = report.basic_info || {};
+  const order = report.current_order || {};
+
+  const dispatchableStatus =
+    typeof uds.dispatchable_status === "number" ? uds.dispatchable_status : null; // 0/1/2 wg API
+  const connectionStatus = report.connection_status; // 0/1
+
+  const unlock = typeof uds.unlock === "number" ? uds.unlock : null;
+  const controlledByRds = unlock === 0;
+
+  const status = {
+    error: !!report.is_error,
+    emergency: !!rbk.emergency,
+    blocked: !!rbk.blocked,
+    paused: !!uds.suspended,
+    lowBattery: !!uds.low_battery,
+    unconfirmedReloc: !!uds.unconfirmed_reloc,
+    disconnect: !!uds.disconnect,
+    invalidMap: !!uds.current_map_invalid,
+    softEmc: !!rbk.soft_emc,
+    networkDelay: typeof rbk.network_delay === "number" ? rbk.network_delay : null,
+    batteryCycle: typeof rbk.battery_cycle === "number" ? rbk.battery_cycle : null,
+    loaded: !!report.isLoaded,
+    confidence: typeof rbk.confidence === "number" ? rbk.confidence : null,
+    batteryLevel: typeof rbk.battery_level === "number" ? rbk.battery_level : null,
+    x: typeof rbk.x === "number" ? rbk.x : null,
+    y: typeof rbk.y === "number" ? rbk.y : null,
+    angleRad: typeof rbk.angle === "number" ? rbk.angle : null,
+    forkHeight: rbk.fork && typeof rbk.fork.fork_height === "number" ? rbk.fork.fork_height : null,
+    lastStation: rbk.last_station || "",
+    currentStation: rbk.current_station || "",
+    connectionStatus,
+    dispatchableStatus,
+    charging: !!rbk.charging,
+    ip: basic.ip || "",
+    brake: rbk.brake === undefined || rbk.brake === null ? null : !!rbk.brake,
+    vx: typeof rbk.vx === "number" ? rbk.vx : null,
+    vy: typeof rbk.vy === "number" ? rbk.vy : null,
+    spin: typeof rbk.spin === "number" ? rbk.spin : null,
+    steer: typeof rbk.steer === "number" ? rbk.steer : null,
+    w: typeof rbk.w === "number" ? rbk.w : null
+  };
+
+  // 4 stany dispatch:
+  //  - REAL_OFFLINE: connection_status = 0
+  //  - DISPATCHABLE: connection_status = 1, dispatchable_status = 0
+  //  - UNDISPATCHABLE_ONLINE:  connection_status = 1, dispatchable_status = 1
+  //  - UNDISPATCHABLE_OFFLINE: connection_status = 1, dispatchable_status = 2
+  let dispatchState = "UNKNOWN";
+  if (connectionStatus === 0) {
+    dispatchState = "REAL_OFFLINE";
+  } else if (connectionStatus === 1) {
+    if (dispatchableStatus === 0) dispatchState = "DISPATCHABLE";
+    else if (dispatchableStatus === 1) dispatchState = "UNDISPATCHABLE_ONLINE";
+    else if (dispatchableStatus === 2) dispatchState = "UNDISPATCHABLE_OFFLINE";
+    else dispatchState = "UNKNOWN";
+  }
+
+  const keyRouteRaw = order.keyRoute;
+  const keyRoute = Array.isArray(keyRouteRaw)
+    ? keyRouteRaw
+    : typeof keyRouteRaw === "string" && keyRouteRaw.trim()
+      ? keyRouteRaw.split(/[,\s]+/).filter(Boolean)
+      : [];
+
+  const taskAlarms = mapAlarms(order);
+  const alarms = mapAlarms(rbk.alarms || {});
+  const systemAlarms = mapAlarms(systemAlarmsRaw || {});
+
+  const task = {
+    id: order.id || "",
+    status: order.state || "",
+    externalId: order.externalId || "",
+    keyRoute,
+    msg: order.msg || "",
+    error: order.error || "",
+    complete: typeof order.complete === "boolean" ? order.complete : order.complete == null ? null : !!order.complete,
+    alarms: taskAlarms,
+    priority: order.priority ?? null
+  };
+
+  const areaResources = report.area_resources_occupied || [];
+  const finishedPath = report.finished_path || [];
+  const unfinishedPath = report.unfinished_path || [];
+  const rbkLock = rbk.lock_info || {};
+  const reportLock = report.lock_info || {};
+
+  return {
+    name: report.uuid || report.vehicle_id || "UNKNOWN",
+    dispatchState,
+    task,
+    control: {
+      controlledByRds,
+      rawUnlock: unlock
+    },
+    status,
+    alarms,
+    systemAlarms,
+
+    basicInfo: {
+      model: basic.model || "",
+      version: basic.version || "",
+      dspVersion: basic.dsp_version || "",
+      controllerTemp: basic.controller_temp ?? null,
+      controllerHumi: basic.controller_humi ?? null,
+      controllerVoltage: basic.controller_voltage ?? null,
+      ip: basic.ip || ""
+    },
+    orderDebug: {
+      priority: order.priority ?? null,
+      blocks: order.blocks || []
+    },
+    navDebug: {
+      areaResources,
+      finishedPath,
+      unfinishedPath
+    },
+    exploDebug: {
+      voltage: rbk.voltage ?? null,
+      current: rbk.current ?? null,
+      odo: rbk.odo ?? null,
+      todayOdo: rbk.today_odo ?? null,
+      totalTime: rbk.total_time ?? null,
+      time: rbk.time ?? null
+    },
+    lockDebug: {
+      reportLock,
+      rbkLock
+    }
+  };
+}
+
+// ------------------ API: stan robota ------------------
+
+app.get("/api/robot/state", async (req, res) => {
+  try {
+    let raw;
+
+    if (USE_MOCK_RDS || !rdsClient) {
+      if (!mockRobotListRaw) return res.status(500).json({ error: "Brak mock-robot-list.json" });
+      logApiCall("MOCK /api/robot/state", { robotId: ROBOT_ID });
+      raw = mockRobotListRaw;
+    } else {
+      logApiCall("RDS getRobotListRaw (state)", { robotId: ROBOT_ID });
+      raw = await rdsClient.getRobotListRaw();
+    }
+
+    const data = raw && raw.data ? raw.data : {};
+    const report = findRobotReport(raw, ROBOT_ID);
+    if (!report) {
+      return res.status(404).json({ error: "Nie znaleziono robota", robotId: ROBOT_ID });
+    }
+
+    const state = mapRobotReportToState(report, data.alarms);
+
+    state.createOn = data.create_on || null;
+    state.disablePaths = data.disable_paths || [];
+    state.disablePoints = data.disable_points || [];
+    state.dynamicObstacle = data.dynamic_obstacle || {};
+    state.topMsg = data.msg || "";
+    state.topCode = data.code ?? null;
+    state.topIsError = data.is_error ?? null;
+
+    return res.json(state);
+  } catch (err) {
+    console.error("Błąd /api/robot/state:", err);
+    return res.status(500).json({ error: "Internal error" });
+  }
+});
+
+app.get("/api/robot/raw", async (req, res) => {
+  try {
+    if (USE_MOCK_RDS || !rdsClient) {
+      if (!mockRobotListRaw) return res.status(500).json({ error: "Brak mock-robot-list.json" });
+      logApiCall("MOCK /api/robot/raw", { robotId: ROBOT_ID });
+      return res.json(mockRobotListRaw);
+    }
+
+    logApiCall("RDS getRobotListRaw (raw)", { robotId: ROBOT_ID });
+    const raw = await rdsClient.getRobotListRaw();
+    return res.json(raw);
+  } catch (err) {
+    console.error("Błąd /api/robot/raw:", err);
+    return res.status(500).json({ error: "Internal error" });
+  }
+});
+
+// ------------------ MOCK helpers ------------------
+
+function updateDispatchMock(mode) {
+  if (!mockRobotListRaw || !mockRobotListRaw.data || !Array.isArray(mockRobotListRaw.data.report)) return;
+  const r = findRobotReport(mockRobotListRaw, ROBOT_ID);
+  if (!r) return;
+  if (!r.undispatchable_reason) r.undispatchable_reason = {};
+
+  if (mode === "DISPATCHABLE") {
+    r.connection_status = 1;
+    r.undispatchable_reason.dispatchable_status = 0;
+    r.dispatchable = true;
+  } else if (mode === "UNDISPATCHABLE_ONLINE") {
+    r.connection_status = 1;
+    r.undispatchable_reason.dispatchable_status = 1;
+    r.dispatchable = false;
+  } else if (mode === "UNDISPATCHABLE_OFFLINE") {
+    r.connection_status = 1;
+    r.undispatchable_reason.dispatchable_status = 2;
+    r.dispatchable = false;
+  }
+}
+
+function clearErrorsMock() {
+  if (!mockRobotListRaw || !mockRobotListRaw.data || !Array.isArray(mockRobotListRaw.data.report)) return;
+  const r = findRobotReport(mockRobotListRaw, ROBOT_ID);
+  if (!r || !r.rbk_report) return;
+  if (!r.rbk_report.alarms) {
+    r.rbk_report.alarms = { fatals: [], errors: [], warnings: [], notices: [] };
+  } else {
+    r.rbk_report.alarms.fatals = [];
+    r.rbk_report.alarms.errors = [];
+    r.rbk_report.alarms.warnings = [];
+    r.rbk_report.alarms.notices = [];
+  }
+}
+
+function setForkHeightMock(height) {
+  if (!mockRobotListRaw || !mockRobotListRaw.data || !Array.isArray(mockRobotListRaw.data.report)) return;
+  const r = findRobotReport(mockRobotListRaw, ROBOT_ID);
+  if (!r) return;
+  if (!r.rbk_report) r.rbk_report = {};
+  if (!r.rbk_report.fork) r.rbk_report.fork = {};
+  r.rbk_report.fork.fork_height = height;
+}
+
+function setSoftEmcMock(value) {
+  if (!mockRobotListRaw || !mockRobotListRaw.data || !Array.isArray(mockRobotListRaw.data.report)) return;
+  const r = findRobotReport(mockRobotListRaw, ROBOT_ID);
+  if (!r) return;
+  if (!r.rbk_report) r.rbk_report = {};
+  r.rbk_report.soft_emc = !!value;
+}
+
+// ------------------ API: dispatchable ------------------
+
+app.post("/api/robot/dispatchable", async (req, res) => {
+  try {
+    if (USE_MOCK_RDS || !rdsClient) {
+      logApiCall("MOCK robotSetDispatchable", { robotId: ROBOT_ID });
+      updateDispatchMock("DISPATCHABLE");
+      return res.json({ ok: true, mock: true });
+    }
+    logApiCall("RDS robotSetDispatchable", { robotId: ROBOT_ID });
+    await rdsClient.robotSetDispatchable(ROBOT_ID);
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("Błąd /api/robot/dispatchable:", err);
+    return res.status(500).json({ error: "RDS error" });
+  }
+});
+
+app.post("/api/robot/undispatchable-online", async (req, res) => {
+  try {
+    if (USE_MOCK_RDS || !rdsClient) {
+      logApiCall("MOCK robotSetUndispatchableOnline", { robotId: ROBOT_ID });
+      updateDispatchMock("UNDISPATCHABLE_ONLINE");
+      return res.json({ ok: true, mock: true });
+    }
+    logApiCall("RDS robotSetUndispatchableOnline", { robotId: ROBOT_ID });
+    await rdsClient.robotSetUndispatchableOnline(ROBOT_ID);
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("Błąd /api/robot/undispatchable-online:", err);
+    return res.status(500).json({ error: "RDS error" });
+  }
+});
+
+app.post("/api/robot/undispatchable-offline", async (req, res) => {
+  try {
+    if (USE_MOCK_RDS || !rdsClient) {
+      logApiCall("MOCK robotSetUndispatchableOffline", { robotId: ROBOT_ID });
+      updateDispatchMock("UNDISPATCHABLE_OFFLINE");
+      return res.json({ ok: true, mock: true });
+    }
+    logApiCall("RDS robotSetUndispatchableOffline", { robotId: ROBOT_ID });
+    await rdsClient.robotSetUndispatchableOffline(ROBOT_ID);
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("Błąd /api/robot/undispatchable-offline:", err);
+    return res.status(500).json({ error: "RDS error" });
+  }
+});
+
+// ------------------ API: PAUSE / RESUME ------------------
+
+app.post("/api/robot/pause", async (req, res) => {
+  try {
+    if (USE_MOCK_RDS || !rdsClient) {
+      logApiCall("MOCK robotPause", { robotId: ROBOT_ID });
+      return res.json({ ok: true, mock: true });
+    }
+    logApiCall("RDS robotPause", { robotId: ROBOT_ID });
+    await rdsClient.robotPause(ROBOT_ID);
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("Błąd /api/robot/pause:", err);
+    return res.status(500).json({ error: "RDS error" });
+  }
+});
+
+app.post("/api/robot/resume", async (req, res) => {
+  try {
+    if (USE_MOCK_RDS || !rdsClient) {
+      logApiCall("MOCK robotResume", { robotId: ROBOT_ID });
+      return res.json({ ok: true, mock: true });
+    }
+    logApiCall("RDS robotResume", { robotId: ROBOT_ID });
+    await rdsClient.robotResume(ROBOT_ID);
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("Błąd /api/robot/resume:", err);
+    return res.status(500).json({ error: "RDS error" });
+  }
+});
+
+// ------------------ API: CONTROL MOTION (real_steer, duration w ms) ------------------
+
+async function sendControlMotion({ vx, real_steer, duration }) {
+  const payload = {
+    vehicle: ROBOT_ID,
+    vx: vx ?? 0.0,
+    vy: 0.0,
+    w: 0.0, // NIE używamy w w tym robocie
+    real_steer: real_steer ?? 0.0,
+    steer: 0.0,
+    duration: duration ?? MOTION_DURATION_MS
+  };
+
+  if (USE_MOCK_RDS || !rdsClient) {
+    logApiCall("MOCK controlMotion", payload);
+    return { ok: true, mock: true };
+  }
+
+  logApiCall("RDS controlMotion", payload);
+
+  const result = await rdsClient.controlMotion(ROBOT_ID, payload);
+  return { ok: true, result };
+}
+
+// STOP (0ms) – wywoływany przy puszczeniu przycisku
+app.post("/api/robot/move-stop", async (req, res) => {
+  try {
+    const out = await sendControlMotion({ vx: 0.0, real_steer: 0.0, duration: 0.0 });
+    return res.json(out);
+  } catch (err) {
+    console.error("Błąd /api/robot/move-stop:", err);
+    return res.status(500).json({ error: "RDS error" });
+  }
+});
+
+// Przód / Tył
+app.post("/api/robot/move-forward", async (req, res) => {
+  try {
+    const out = await sendControlMotion({ vx: VX_FORWARD, real_steer: STEER_STRAIGHT, duration: MOTION_DURATION_MS });
+    return res.json(out);
+  } catch (err) {
+    console.error("Błąd /api/robot/move-forward:", err);
+    return res.status(500).json({ error: "RDS error" });
+  }
+});
+
+app.post("/api/robot/move-backward", async (req, res) => {
+  try {
+    const out = await sendControlMotion({ vx: VX_BACKWARD, real_steer: STEER_STRAIGHT, duration: MOTION_DURATION_MS });
+    return res.json(out);
+  } catch (err) {
+    console.error("Błąd /api/robot/move-backward:", err);
+    return res.status(500).json({ error: "RDS error" });
+  }
+});
+
+// Lewo / Prawo (90°)
+app.post("/api/robot/move-left", async (req, res) => {
+  try {
+    const out = await sendControlMotion({ vx: VX_FORWARD, real_steer: +STEER_SIDE, duration: MOTION_DURATION_MS });
+    return res.json(out);
+  } catch (err) {
+    console.error("Błąd /api/robot/move-left:", err);
+    return res.status(500).json({ error: "RDS error" });
+  }
+});
+
+app.post("/api/robot/move-right", async (req, res) => {
+  try {
+    const out = await sendControlMotion({ vx: VX_FORWARD, real_steer: -STEER_SIDE, duration: MOTION_DURATION_MS });
+    return res.json(out);
+  } catch (err) {
+    console.error("Błąd /api/robot/move-right:", err);
+    return res.status(500).json({ error: "RDS error" });
+  }
+});
+
+// Przód-lewo / przód-prawo (45°)
+app.post("/api/robot/move-forward-left", async (req, res) => {
+  try {
+    const out = await sendControlMotion({ vx: VX_FORWARD, real_steer: +STEER_DIAG, duration: MOTION_DURATION_MS });
+    return res.json(out);
+  } catch (err) {
+    console.error("Błąd /api/robot/move-forward-left:", err);
+    return res.status(500).json({ error: "RDS error" });
+  }
+});
+
+app.post("/api/robot/move-forward-right", async (req, res) => {
+  try {
+    const out = await sendControlMotion({ vx: VX_FORWARD, real_steer: -STEER_DIAG, duration: MOTION_DURATION_MS });
+    return res.json(out);
+  } catch (err) {
+    console.error("Błąd /api/robot/move-forward-right:", err);
+    return res.status(500).json({ error: "RDS error" });
+  }
+});
+
+// Tył-lewo / tył-prawo (45° przy cofaniu)
+app.post("/api/robot/move-backward-left", async (req, res) => {
+  try {
+    const out = await sendControlMotion({ vx: VX_BACKWARD, real_steer: +STEER_DIAG, duration: MOTION_DURATION_MS });
+    return res.json(out);
+  } catch (err) {
+    console.error("Błąd /api/robot/move-backward-left:", err);
+    return res.status(500).json({ error: "RDS error" });
+  }
+});
+
+app.post("/api/robot/move-backward-right", async (req, res) => {
+  try {
+    const out = await sendControlMotion({ vx: VX_BACKWARD, real_steer: -STEER_DIAG, duration: MOTION_DURATION_MS });
+    return res.json(out);
+  } catch (err) {
+    console.error("Błąd /api/robot/move-backward-right:", err);
+    return res.status(500).json({ error: "RDS error" });
+  }
+});
+
+// ------------------ API: SEIZE / RELEASE CONTROL ------------------
+
+app.post("/api/robot/seize-control", async (req, res) => {
+  try {
+    if (USE_MOCK_RDS || !rdsClient) {
+      logApiCall("MOCK robotSeizeControl", { robotId: ROBOT_ID });
+      return res.json({ ok: true, mock: true });
+    }
+    logApiCall("RDS robotSeizeControl", { robotId: ROBOT_ID });
+    await rdsClient.robotSeizeControl(ROBOT_ID);
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("Błąd /api/robot/seize-control:", err);
+    return res.status(500).json({ error: "RDS error" });
+  }
+});
+
+app.post("/api/robot/release-control", async (req, res) => {
+  try {
+    if (USE_MOCK_RDS || !rdsClient) {
+      logApiCall("MOCK robotReleaseControl", { robotId: ROBOT_ID });
+      return res.json({ ok: true, mock: true });
+    }
+    logApiCall("RDS robotReleaseControl", { robotId: ROBOT_ID });
+    await rdsClient.robotReleaseControl(ROBOT_ID);
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("Błąd /api/robot/release-control:", err);
+    return res.status(500).json({ error: "RDS error" });
+  }
+});
+
+// ------------------ API: CLEAR ALL ERRORS ------------------
+
+app.post("/api/robot/clear-errors", async (req, res) => {
+  try {
+    if (USE_MOCK_RDS || !rdsClient) {
+      logApiCall("MOCK robotClearAllErrors", { robotId: ROBOT_ID });
+      clearErrorsMock();
+      return res.json({ ok: true, mock: true });
+    }
+    logApiCall("RDS robotClearAllErrors", { robotId: ROBOT_ID });
+    await rdsClient.robotClearAllErrors(ROBOT_ID);
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("Błąd /api/robot/clear-errors:", err);
+    return res.status(500).json({ error: "RDS error" });
+  }
+});
+
+// ------------------ API: SOFTWARE EMERGENCY ------------------
+
+app.post("/api/robot/soft-emergency", async (req, res) => {
+  try {
+    if (USE_MOCK_RDS || !rdsClient) {
+      logApiCall("MOCK setSoftEmc ON", { robotId: ROBOT_ID });
+      setSoftEmcMock(true);
+      return res.json({ ok: true, mock: true });
+    }
+    logApiCall("RDS setSoftEmc ON", { robotId: ROBOT_ID });
+    const result = await rdsClient.setSoftEmc(ROBOT_ID, true);
+    return res.json({ ok: true, result });
+  } catch (err) {
+    console.error("Błąd /api/robot/soft-emergency:", err);
+    return res.status(500).json({ error: "RDS error" });
+  }
+});
+
+app.post("/api/robot/soft-emergency-cancel", async (req, res) => {
+  try {
+    if (USE_MOCK_RDS || !rdsClient) {
+      logApiCall("MOCK setSoftEmc OFF", { robotId: ROBOT_ID });
+      setSoftEmcMock(false);
+      return res.json({ ok: true, mock: true });
+    }
+    logApiCall("RDS setSoftEmc OFF", { robotId: ROBOT_ID });
+    const result = await rdsClient.setSoftEmc(ROBOT_ID, false);
+    return res.json({ ok: true, result });
+  } catch (err) {
+    console.error("Błąd /api/robot/soft-emergency-cancel:", err);
+    return res.status(500).json({ error: "RDS error" });
+  }
+});
+
+// ------------------ API: ZADANIA RĘCZNE ------------------
+
+app.post("/api/robot/manual-tasks/delete", async (req, res) => {
+  try {
+    if (USE_MOCK_RDS || !rdsClient) {
+      logApiCall("MOCK manualTasksDelete", { robotId: ROBOT_ID });
+      return res.json({ ok: true, mock: true });
+    }
+
+    logApiCall("RDS manualTasksDelete", { robotId: ROBOT_ID });
+
+    // kończymy wszystkie zadania, które mają parametr agv == ROBOT_ID
+    const result = await rdsClient.terminateTasksByStatusAndParams([], { agv: ROBOT_ID });
+
+    return res.json({ ok: true, result });
+  } catch (err) {
+    console.error("Błąd /api/robot/manual-tasks/delete:", err);
+    return res.status(500).json({ error: "RDS error" });
+  }
+});
+
+app.post("/api/robot/manual-tasks/add-drop", async (req, res) => {
+  try {
+    if (USE_MOCK_RDS || !rdsClient) {
+      logApiCall("MOCK manualTasksAddDrop", { robotId: ROBOT_ID });
+      return res.json({ ok: true, mock: true });
+    }
+
+    logApiCall("RDS manualTasksAddDrop", { robotId: ROBOT_ID, label: MANUAL_DROP_TASK_LABEL });
+
+    const result = await rdsClient.createTask(MANUAL_DROP_TASK_LABEL, { agv: ROBOT_ID });
+
+    return res.json({ ok: true, result });
+  } catch (err) {
+    console.error("Błąd /api/robot/manual-tasks/add-drop:", err);
+    return res.status(500).json({ error: "RDS error" });
+  }
+});
+
+// ------------------ API: TERMINATE (transport order) ------------------
+
+app.post("/api/robot/terminate", async (req, res) => {
+  try {
+    if (USE_MOCK_RDS || !rdsClient) {
+      logApiCall("MOCK terminateTransportOrder", { robotId: ROBOT_ID });
+      return res.json({ ok: true, mock: true });
+    }
+
+    logApiCall("RDS terminateTransportOrder (resolve transportOrderId)", { robotId: ROBOT_ID });
+    const raw = await rdsClient.getRobotListRaw();
+    const report = findRobotReport(raw, ROBOT_ID);
+
+    const transportOrderId = report?.current_order?.id || null;
+    if (!transportOrderId) {
+      return res.status(400).json({
+        error: "Brak aktywnego transport ordera (current_order.id jest puste)",
+        robotId: ROBOT_ID
+      });
+    }
+
+    logApiCall("RDS terminateTransportOrder", { robotId: ROBOT_ID, transportOrderId });
+
+    const result = await rdsClient.terminateTransportOrder(transportOrderId);
+    return res.json({ ok: true, result });
+  } catch (err) {
+    console.error("Błąd /api/robot/terminate:", err);
+    return res.status(500).json({ error: "RDS error" });
+  }
+});
+
+// ------------------ API: FORKS (HIGH / LOW) ------------------
+
+app.post("/api/robot/fork-high", async (req, res) => {
+  try {
+    if (USE_MOCK_RDS || !rdsClient) {
+      logApiCall("MOCK setForkHeight HIGH", { robotId: ROBOT_ID, height: FORK_HIGH_HEIGHT });
+      setForkHeightMock(FORK_HIGH_HEIGHT);
+      return res.json({ ok: true, mock: true });
+    }
+    logApiCall("RDS setForkHeight HIGH", { robotId: ROBOT_ID, height: FORK_HIGH_HEIGHT });
+    await rdsClient.setForkHeight(ROBOT_ID, FORK_HIGH_HEIGHT);
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("Błąd /api/robot/fork-high:", err);
+    return res.status(500).json({ error: "RDS error" });
+  }
+});
+
+app.post("/api/robot/fork-low", async (req, res) => {
+  try {
+    if (USE_MOCK_RDS || !rdsClient) {
+      logApiCall("MOCK setForkHeight LOW", { robotId: ROBOT_ID, height: FORK_LOW_HEIGHT });
+      setForkHeightMock(FORK_LOW_HEIGHT);
+      return res.json({ ok: true, mock: true });
+    }
+    logApiCall("RDS setForkHeight LOW", { robotId: ROBOT_ID, height: FORK_LOW_HEIGHT });
+    await rdsClient.setForkHeight(ROBOT_ID, FORK_LOW_HEIGHT);
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("Błąd /api/robot/fork-low:", err);
+    return res.status(500).json({ error: "RDS error" });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`Robot UI listening on port ${PORT}`);
+  console.log(`Otwórz: http://localhost:${PORT}/`);
+});

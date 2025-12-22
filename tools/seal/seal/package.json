@@ -1,0 +1,22 @@
+{
+  "name": "seal-cli",
+  "version": "0.6.0",
+  "description": "SEAL \u2013 secure-ish deployment helper (v0.6.0)",
+  "bin": {
+    "seal": "bin/seal.js"
+  },
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.10",
+    "chalk": "^4.1.2",
+    "commander": "^12.1.0",
+    "esbuild": "0.27.2",
+    "javascript-obfuscator": "^4.1.1",
+    "json5": "^2.2.3",
+    "postject": "1.0.0-alpha.6",
+    "tar": "^6.2.1"
+  }
+}

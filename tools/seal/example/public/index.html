@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>SEAL Example</title>
+    <link rel="stylesheet" href="/styles.css"/>
+  </head>
+  <body>
+    <main class="wrap">
+      <header class="card">
+        <h1>SEAL Example</h1>
+        <p class="muted">Aplikacja demonstracyjna do testów „sealed” (config, pliki lokalne, UI, external calls, logi).</p>
+        <div class="row">
+          <button id="btnRefresh">Odśwież status</button>
+          <button id="btnExternal">External call</button>
+        </div>
+      </header>
+
+      <section class="grid">
+        <div class="card">
+          <h2>Status</h2>
+          <pre id="status">loading...</pre>
+        </div>
+
+        <div class="card">
+          <h2>MD5</h2>
+          <p class="muted">To pokazuje import biblioteki (md5) + API.</p>
+          <div class="row">
+            <input id="md5Input" placeholder="tekst do zahashowania"/>
+            <button id="btnMd5">Hash</button>
+          </div>
+          <pre id="md5Out">—</pre>
+        </div>
+
+        <div class="card">
+          <h2>External call (debug logs)</h2>
+          <p class="muted">W trybie debug logujemy request/response. W prod tylko błędy.</p>
+          <pre id="externalOut">—</pre>
+        </div>
+      </section>
+
+      <footer class="muted center">
+        <p>Endpoints: <code>/healthz</code>, <code>/api/status</code>, <code>/api/md5</code>, <code>/api/external/ping</code></p>
+      </footer>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
