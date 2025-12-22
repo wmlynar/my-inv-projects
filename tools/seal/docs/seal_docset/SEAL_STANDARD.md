@@ -137,6 +137,7 @@ Jeśli log dotyczy błędu:
   - `path.join(process.cwd(), "config.runtime.json5")`
 - CFG-002 (MUST): aplikacja nie wymaga innych plików konfiguracyjnych do działania (poza tym, co świadomie trzymasz w `shared/`).
 - CFG-003 (MUST): format configu wspiera **obiekty i tablice** (JSON5 lub JSON).
+- CFG-004 (SHOULD): parametry zależne od środowiska (hosty, timeouty, interwały, feature flags) są w `config.runtime.json5`; jeśli coś jest celowo zakodowane na stałe, musi być jasno udokumentowane w repo.
 
 > Uwaga: w środowisku Seala plik `config.runtime.json5` jest utrzymywany jako **kopiowana** wersja trwałego configu z `shared/config.json5` (np. przez `appctl` przed startem).
 
@@ -278,6 +279,8 @@ Każda zależność to obiekt o polach:
 ### 8.1. Timeouty i retry
 - INT-001 (MUST): każde połączenie zewnętrzne ma timeout.
 - INT-002 (SHOULD): retry z backoff (np. wykładniczy) i limitem.
+- INT-003 (MUST): unikaj „hammeringu” integracji przy awariach – stosuj backoff lub ograniczanie częstotliwości prób/operacji.
+- INT-004 (SHOULD): ogranicz powtarzalne logi błędów (throttling), aby nie zalewać journald.
 
 ### 8.2. Circuit breaker (zalecany)
 - INT-010 (SHOULD): dla kluczowych integracji użyj circuit breaker (otwieraj po serii porażek, zamykaj po sukcesie).
@@ -287,6 +290,8 @@ Każda zależność to obiekt o polach:
   - `state`, `lastOkAt`, `lastFailAt`, `msg`.
 - INT-021 (SHOULD): przy zmianie stanu integracji loguj eventy:
   - `INT_<NAME>_UP`, `INT_<NAME>_DOWN`, `INT_<NAME>_DEGRADED`.
+- INT-022 (SHOULD): utrzymuj połączenia/klienty między cyklami (reuse), a nie twórz nowych w każdej iteracji.
+- INT-030 (MUST): zdefiniuj i stosuj bezpieczną wartość domyślną, gdy dane z integracji są brakujące lub nieprawidłowe; odnotuj to w logach i `deps`.
 
 ---
 
