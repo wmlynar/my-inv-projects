@@ -267,6 +267,27 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
     throw new Error(bootstrapHint(targetCfg, layout, user, host, issues));
   }
 
+  let shouldPushConfig = !!pushConfig;
+  const remoteCfg = `${layout.sharedDir}/config.json5`;
+  const remoteCfgQ = shQuote(remoteCfg);
+
+  if (!shouldPushConfig) {
+    const cfgCheck = sshExec({
+      user,
+      host,
+      args: ["bash", "-lc", `if [ -f ${remoteCfgQ} ]; then echo __SEAL_CFG_OK__; else echo __SEAL_CFG_MISSING__; fi`],
+      stdio: "pipe",
+    });
+    if (!cfgCheck.ok) {
+      const cfgOut = `${cfgCheck.stdout}\n${cfgCheck.stderr}`.trim();
+      throw new Error(`ssh config check failed (status=${cfgCheck.status})${cfgOut ? `: ${cfgOut}` : ""}`);
+    }
+    if ((cfgCheck.stdout || "").includes("__SEAL_CFG_MISSING__")) {
+      warn("Remote config missing. Pushing repo config once (safe default for first deploy).");
+      shouldPushConfig = true;
+    }
+  }
+
   // Upload artifact
   const base = path.basename(artifactPath);
   const remoteTmp = `/tmp/${base}`;
@@ -289,9 +310,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
   ];
 
   // Config: only overwrite if explicit or missing
-  const remoteCfg = `${layout.sharedDir}/config.json5`;
-  const remoteCfgQ = shQuote(remoteCfg);
-  if (pushConfig) {
+  if (shouldPushConfig) {
     // upload repo config to tmp then move into shared
     const tmpCfg = `/tmp/${targetCfg.serviceName}-config.json5`;
     const tmpCfgQ = shQuote(tmpCfg);
@@ -302,7 +321,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
     cmdParts.push(`cp ${tmpCfgQ} ${remoteCfgQ}`);
     cmdParts.push(`rm -f ${tmpCfgQ}`);
   } else {
-    cmdParts.push(`if [ ! -f ${remoteCfgQ} ]; then echo '[seal] remote config missing -> creating from repo'; rm -f ${remoteTmpQ}; exit 99; fi`);
+    cmdParts.push(`if [ ! -f ${remoteCfgQ} ]; then echo '[seal] remote config missing -> creating from repo'; exit 99; fi`);
     cmdParts.push(`tar -xzf ${remoteTmpQ} -C ${releasesDirQ}`);
   }
   cmdParts.push(`echo ${shQuote(folderName)} > ${currentFileQ}`);
@@ -311,9 +330,35 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
   const fullCmd = ["bash", "-lc", cmdParts.join(" && ")];
   let res = sshExec({ user, host, args: fullCmd, stdio: "pipe" });
   if (!res.ok && res.status === 99) {
-    // Missing config and pushConfig not specified -> do a safe one-shot push
-    warn("Remote config missing. Pushing repo config once (safe default for first deploy).");
-    return deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig: true, bootstrap });
+    // Missing config (race) -> push config and retry without reuploading artifact
+    warn("Remote config missing (race). Pushing repo config and retrying without reupload.");
+    const tmpCheck = sshExec({
+      user,
+      host,
+      args: ["bash", "-lc", `if [ -f ${remoteTmpQ} ]; then echo __SEAL_TMP_OK__; fi`],
+      stdio: "pipe",
+    });
+    if (!tmpCheck.ok || !(tmpCheck.stdout || "").includes("__SEAL_TMP_OK__")) {
+      info(`Re-uploading artifact to ${host}:${remoteTmp}`);
+      const upRetry = scpTo({ user, host, localPath: artifactPath, remotePath: remoteTmp });
+      if (!upRetry.ok) throw new Error(`scp failed (status=${upRetry.status})`);
+    }
+
+    const tmpCfg = `/tmp/${targetCfg.serviceName}-config.json5`;
+    const tmpCfgQ = shQuote(tmpCfg);
+    info(`Uploading config to ${host}:${tmpCfg}`);
+    const upCfg = scpTo({ user, host, localPath: repoConfigPath, remotePath: tmpCfg });
+    if (!upCfg.ok) throw new Error(`scp config failed (status=${upCfg.status})`);
+
+    const retryParts = [
+      `mkdir -p ${releasesDirQ} ${sharedDirQ}`,
+      `tar -xzf ${remoteTmpQ} -C ${releasesDirQ}`,
+      `cp ${tmpCfgQ} ${remoteCfgQ}`,
+      `rm -f ${tmpCfgQ}`,
+      `echo ${shQuote(folderName)} > ${currentFileQ}`,
+      `rm -f ${remoteTmpQ}`,
+    ];
+    res = sshExec({ user, host, args: ["bash", "-lc", retryParts.join(" && ")], stdio: "pipe" });
   }
   if (!res.ok) {
     const deployOut = `${res.stdout}\n${res.stderr}`.trim();
