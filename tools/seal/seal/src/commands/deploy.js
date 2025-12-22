@@ -81,6 +81,23 @@ async function cmdDeploy(cwd, targetArg, opts) {
   console.log(`  seal logs ${targetName}`);
 }
 
+async function cmdShip(cwd, targetArg, opts) {
+  const releaseOpts = {
+    config: null,
+    skipCheck: !!opts.skipCheck,
+    packager: opts.packager || null,
+  };
+  await cmdRelease(cwd, targetArg, releaseOpts);
+
+  const deployOpts = {
+    bootstrap: !!opts.bootstrap,
+    pushConfig: !!opts.pushConfig,
+    restart: true,
+    artifact: null,
+  };
+  await cmdDeploy(cwd, targetArg, deployOpts);
+}
+
 async function cmdStatus(cwd, targetArg) {
   const projectRoot = findProjectRoot(cwd);
   const { targetCfg, targetName } = resolveTarget(projectRoot, targetArg);
@@ -201,6 +218,7 @@ async function cmdRemote(cwd, targetArg, action) {
 
 module.exports = {
   cmdDeploy,
+  cmdShip,
   cmdStatus,
   cmdLogs,
   cmdRestart,

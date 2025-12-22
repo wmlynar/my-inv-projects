@@ -11,7 +11,7 @@ const { cmdVerify } = require("./commands/verify");
 const { cmdRunLocal } = require("./commands/runLocal");
 const { cmdTargetAdd } = require("./commands/targetAdd");
 const { cmdConfigAdd, cmdConfigDiff, cmdConfigPull, cmdConfigPush } = require("./commands/config");
-const { cmdDeploy, cmdStatus, cmdLogs, cmdRestart, cmdDisable, cmdRollback, cmdUninstall, cmdRunRemote, cmdRemote } = require("./commands/deploy");
+const { cmdDeploy, cmdShip, cmdStatus, cmdLogs, cmdRestart, cmdDisable, cmdRollback, cmdUninstall, cmdRunRemote, cmdRemote } = require("./commands/deploy");
 const { version } = require("./lib/version");
 
 async function main(argv) {
@@ -105,6 +105,16 @@ async function main(argv) {
     .option("--restart", "Restart target service after deploy (explicit)", false)
     .option("--artifact <path>", "Deploy a specific artifact (.tgz) instead of building", null)
     .action(async (target, opts) => cmdDeploy(process.cwd(), target, opts));
+
+  program
+    .command("ship")
+    .description("Build, deploy, and restart service on target")
+    .argument("[target]", "Target name (default: project defaultTarget)", null)
+    .option("--bootstrap", "Install prerequisites on the target (first time)", false)
+    .option("--push-config", "Overwrite server runtime config with repo config (explicit)", false)
+    .option("--skip-check", "Skip preflight checks", false)
+    .option("--packager <packager>", "Override packager: auto|sea|fallback", null)
+    .action(async (target, opts) => cmdShip(process.cwd(), target, opts));
 
   program
     .command("status")
