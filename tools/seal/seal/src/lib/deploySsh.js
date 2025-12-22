@@ -8,6 +8,7 @@ const { sshExec, scpTo, scpFrom } = require("./ssh");
 const { spawnSyncSafe } = require("./spawn");
 const { fileExists, ensureDir } = require("./fsextra");
 const { ok, info, warn } = require("./ui");
+const { normalizeRetention, filterReleaseNames, computeKeepSet } = require("./retention");
 
 /**
  * Minimal remote deploy baseline (Linux, systemd system scope).
@@ -250,7 +251,44 @@ sudo -n systemctl daemon-reload
   ok(`Service installed on ${host} (unit + runner)`);
 }
 
-function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootstrap }) {
+function cleanupReleasesSsh({ targetCfg, current, policy }) {
+  const retention = normalizeRetention(policy);
+  if (!retention.cleanupOnSuccess) return;
+
+  const { user, host } = sshUserHost(targetCfg);
+  const layout = remoteLayout(targetCfg);
+  const appName = targetCfg.appName || targetCfg.serviceName || "app";
+
+  const listCmd = ["bash", "-lc", `ls -1 ${shQuote(layout.releasesDir)} 2>/dev/null || true`];
+  const listRes = sshExec({ user, host, args: listCmd, stdio: "pipe" });
+  if (!listRes.ok) {
+    warn(`Retention cleanup skipped (cannot list releases on ${host})`);
+    return;
+  }
+
+  const names = (listRes.stdout || "")
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const sorted = filterReleaseNames(names, appName).sort().reverse();
+  if (!sorted.length) return;
+
+  const { keep } = computeKeepSet(sorted, current, retention);
+  const toDelete = sorted.filter((name) => !keep.has(name));
+  if (!toDelete.length) return;
+
+  const rmArgs = toDelete.map((name) => shQuote(`${layout.releasesDir}/${name}`)).join(" ");
+  const rmCmd = ["bash", "-lc", `rm -rf ${rmArgs}`];
+  const rmRes = sshExec({ user, host, args: rmCmd, stdio: "pipe" });
+  if (!rmRes.ok) {
+    warn(`Retention cleanup failed on ${host} (status=${rmRes.status})`);
+    return;
+  }
+
+  ok(`Retention: removed ${toDelete.length} old release(s) on ${host}`);
+}
+
+function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootstrap, policy }) {
   const { res: preflight, layout, user, host } = checkRemoteWritable(targetCfg, { requireService: !bootstrap });
   const out = `${preflight.stdout}\n${preflight.stderr}`.trim();
   if (!preflight.ok) {
@@ -366,6 +404,8 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
   }
 
   ok(`Deployed on ${host}: ${folderName}`);
+
+  cleanupReleasesSsh({ targetCfg, current: folderName, policy });
   return { layout, folderName, relDir };
 }
 

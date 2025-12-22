@@ -7,6 +7,7 @@ const os = require("os");
 const { spawnSyncSafe } = require("./spawn");
 const { ensureDir, fileExists, rmrf, copyFile } = require("./fsextra");
 const { info, warn, err, ok, hr } = require("./ui");
+const { normalizeRetention, filterReleaseNames, computeKeepSet } = require("./retention");
 
 function expandHome(p) {
   if (!p) return p;
@@ -167,7 +168,30 @@ function pickBuildIdFromFolder(folderName) {
   return folderName; // caller can store full folder name; but current.buildId expects folder name in our layout
 }
 
-function deployLocal({ targetCfg, artifactPath, repoConfigPath, pushConfig }) {
+function cleanupLocalReleases({ targetCfg, layout, current, policy }) {
+  const retention = normalizeRetention(policy);
+  if (!retention.cleanupOnSuccess) return;
+
+  const appName = targetCfg.appName || targetCfg.serviceName || "app";
+  const releases = fs.readdirSync(layout.releasesDir, { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .map((d) => d.name);
+
+  const sorted = filterReleaseNames(releases, appName).sort().reverse();
+  if (!sorted.length) return;
+
+  const { keep } = computeKeepSet(sorted, current, retention);
+  const toDelete = sorted.filter((name) => !keep.has(name));
+  if (!toDelete.length) return;
+
+  for (const name of toDelete) {
+    rmrf(path.join(layout.releasesDir, name));
+  }
+
+  ok(`Retention: removed ${toDelete.length} old release(s)`);
+}
+
+function deployLocal({ targetCfg, artifactPath, repoConfigPath, pushConfig, policy }) {
   const layout = localInstallLayout(targetCfg);
 
   // Deploy is deploy: copy/extract files and update pointers.
@@ -198,6 +222,8 @@ function deployLocal({ targetCfg, artifactPath, repoConfigPath, pushConfig }) {
   }
 
   ok(`Deployed (files only): ${folderName}`);
+
+  cleanupLocalReleases({ targetCfg, layout, current: folderName, policy });
 
   return { layout, extractedDir, folderName };
 }

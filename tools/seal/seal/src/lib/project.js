@@ -5,6 +5,7 @@ const path = require("path");
 const { SEAL_CONFIG_DIR, SEAL_OUT_DIR } = require("./paths");
 const { readJson5 } = require("./json5io");
 const { fileExists } = require("./fsextra");
+const { normalizeRetention } = require("./retention");
 
 function getSealPaths(projectRoot) {
   const sealConfigDir = path.join(projectRoot, SEAL_CONFIG_DIR);
@@ -93,6 +94,15 @@ function loadTargetConfig(projectRoot, targetName) {
   return { file, cfg };
 }
 
+function loadPolicy(projectRoot) {
+  const { policyFile } = getSealPaths(projectRoot);
+  if (!fs.existsSync(policyFile)) {
+    return { retention: normalizeRetention({ retention: {} }) };
+  }
+  const cfg = readJson5(policyFile) || {};
+  return { retention: normalizeRetention(cfg) };
+}
+
 function resolveTargetName(projectRoot, maybeTarget) {
   const proj = loadProjectConfig(projectRoot);
   if (maybeTarget) return maybeTarget;
@@ -134,6 +144,7 @@ module.exports = {
   detectAppName,
   loadProjectConfig,
   loadTargetConfig,
+  loadPolicy,
   resolveTargetName,
   resolveConfigName,
   getConfigFile,

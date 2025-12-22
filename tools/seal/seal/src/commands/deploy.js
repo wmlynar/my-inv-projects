@@ -4,7 +4,7 @@ const path = require("path");
 const fs = require("fs");
 
 const { findProjectRoot } = require("../lib/paths");
-const { getSealPaths, loadProjectConfig, loadTargetConfig, resolveTargetName, resolveConfigName, getConfigFile, findLastArtifact } = require("../lib/project");
+const { getSealPaths, loadProjectConfig, loadTargetConfig, loadPolicy, resolveTargetName, resolveConfigName, getConfigFile, findLastArtifact } = require("../lib/project");
 const { fileExists } = require("../lib/fsextra");
 const { info, warn, ok, hr } = require("../lib/ui");
 
@@ -41,6 +41,7 @@ async function ensureArtifact(projectRoot, proj, opts, targetName, configName) {
 async function cmdDeploy(cwd, targetArg, opts) {
   const projectRoot = findProjectRoot(cwd);
   const { proj, targetName, targetCfg } = resolveTarget(projectRoot, targetArg);
+  const policy = loadPolicy(projectRoot);
 
   const configName = resolveConfigName(targetCfg, null);
   const configFile = getConfigFile(projectRoot, configName);
@@ -59,10 +60,10 @@ async function cmdDeploy(cwd, targetArg, opts) {
   }
 
   if ((targetCfg.kind || "local").toLowerCase() === "ssh") {
-    deploySsh({ targetCfg, artifactPath, repoConfigPath: configFile, pushConfig: !!opts.pushConfig, bootstrap: !!opts.bootstrap });
+    deploySsh({ targetCfg, artifactPath, repoConfigPath: configFile, pushConfig: !!opts.pushConfig, bootstrap: !!opts.bootstrap, policy });
     if (opts.bootstrap) installServiceSsh(targetCfg);
   } else {
-    deployLocal({ targetCfg, artifactPath, repoConfigPath: configFile, pushConfig: !!opts.pushConfig });
+    deployLocal({ targetCfg, artifactPath, repoConfigPath: configFile, pushConfig: !!opts.pushConfig, policy });
   }
 
   if (opts.restart) {
