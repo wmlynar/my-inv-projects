@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SERVICE_NAME="nowy-styl-ui"
-APP_DIR="/home/admin/nowy-styl-ui"
+APP_DIR="/home/admin/apps/nowy-styl-ui"
 
 # Spróbuj znaleźć node
 NODE_PATH="$(command -v node || echo /usr/bin/node)"

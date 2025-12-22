@@ -1,18 +1,81 @@
 const express = require("express");
 const path = require("path");
 const bodyParser = require("body-parser");
-require("dotenv").config(); // wczytaj .env
+const fs = require("fs");
+const JSON5 = require("json5");
 
-// Konfiguracja z .env (z sensownymi defaultami)
-const USE_MOCK_RDS = process.env.USE_MOCK_RDS === "1";
-const RDS_API_HOST = process.env.RDS_API_HOST || "http://localhost:19200";
-const RDS_LOGIN    = process.env.RDS_LOGIN    || "user";
-const RDS_PASSWORD = process.env.RDS_PASSWORD || "password";
+const DEFAULT_CONFIG = {
+  rds: {
+    host: "http://127.0.0.1:8080",
+    useMock: false
+  },
+  http: {
+    port: 3000
+  }
+};
+
+function isObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value);
+}
+
+function str(value, fallback) {
+  return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+function bool(value, fallback) {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function num(value, fallback) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function normalizeConfig(raw) {
+  const cfg = isObject(raw) ? raw : {};
+  const rds = isObject(cfg.rds) ? cfg.rds : {};
+  const http = isObject(cfg.http) ? cfg.http : {};
+
+  return {
+    rds: {
+      host: str(rds.host, DEFAULT_CONFIG.rds.host),
+      useMock: bool(rds.useMock, DEFAULT_CONFIG.rds.useMock)
+    },
+    http: {
+      port: num(http.port, DEFAULT_CONFIG.http.port)
+    }
+  };
+}
+
+function loadConfig() {
+  const cfgPath = path.join(process.cwd(), "config.runtime.json5");
+  if (!fs.existsSync(cfgPath)) {
+    console.error(`[FATAL] Missing config.runtime.json5 in ${process.cwd()}.`);
+    console.error("[FATAL] Copy config/<env>.json5 to config.runtime.json5 or deploy with SEAL.");
+    process.exit(2);
+  }
+  let raw;
+  try {
+    raw = JSON5.parse(fs.readFileSync(cfgPath, "utf-8"));
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err);
+    console.error(`[FATAL] Invalid config.runtime.json5: ${msg}`);
+    process.exit(2);
+  }
+  return normalizeConfig(raw);
+}
+
+const CFG = loadConfig();
+
+const USE_MOCK_RDS = CFG.rds.useMock;
+const RDS_API_HOST = CFG.rds.host;
+const RDS_LOGIN = "admin";
+const RDS_PASSWORD = "123456";
+const RDS_LANG = "pl";
 
 console.log("Nowy Styl UI – konfiguracja:");
 console.log("  USE_MOCK_RDS =", USE_MOCK_RDS ? "1 (MOCK)" : "0 (RDS)");
 console.log("  RDS_API_HOST  =", RDS_API_HOST);
-console.log("  RDS_LOGIN     =", RDS_LOGIN);
 // hasła nie logujemy :)
 
 let rdsClient = null;
@@ -27,7 +90,7 @@ if (!USE_MOCK_RDS) {
       RDS_API_HOST,  // apiHost
       RDS_LOGIN,     // username
       RDS_PASSWORD,  // password
-      "pl"           // language
+      RDS_LANG       // language
     );
 
     console.log("Nowy Styl UI: TRYB RDS (APIClient OK)");
@@ -39,7 +102,7 @@ if (!USE_MOCK_RDS) {
 }
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = CFG.http.port;
 
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, "public")));
