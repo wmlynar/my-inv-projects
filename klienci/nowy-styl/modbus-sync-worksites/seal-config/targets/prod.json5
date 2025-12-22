@@ -5,7 +5,7 @@
   user: "admin",
   sshPort: 22,
   serviceScope: "system",
-  installDir: "/opt/apps/modbus-sync-worksites",
+  installDir: "/home/admin/apps/modbus-sync-worksites",
   serviceName: "modbus-sync-worksites",
   packager: "auto",
   config: "prod",

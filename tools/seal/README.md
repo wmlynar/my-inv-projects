@@ -103,6 +103,18 @@ which seal
 seal --help
 ```
 
+Szybka wersja (skrypt w repo):
+
+```bash
+./scripts/link-global-seal.sh
+```
+
+Usuwanie globalnego linka:
+
+```bash
+./scripts/unlink-global-seal.sh
+```
+
 **Wariant B (globalny install z lokalnej ścieżki):**
 
 ```bash

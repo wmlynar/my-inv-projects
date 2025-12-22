@@ -214,12 +214,16 @@ WantedBy=multi-user.target
 
   const cmd = [
     "bash", "-lc",
-    [
-      `sudo -n tee ${shQuote(layout.runner)} >/dev/null << 'EOF'\n${runnerScript}\nEOF`,
-      `sudo -n chmod +x ${shQuote(layout.runner)}`,
-      `sudo -n tee ${shQuote(layout.serviceFile)} >/dev/null << 'EOF'\n${unit}\nEOF`,
-      `sudo -n systemctl daemon-reload`,
-    ].join(" && ")
+    `set -euo pipefail
+cat <<'EOF' > ${shQuote(layout.runner)}
+${runnerScript}
+EOF
+chmod 755 ${shQuote(layout.runner)}
+sudo -n tee ${shQuote(layout.serviceFile)} >/dev/null << 'EOF'
+${unit}
+EOF
+sudo -n systemctl daemon-reload
+`
   ];
 
   const res = sshExec({ user, host, args: cmd, stdio: "pipe" });

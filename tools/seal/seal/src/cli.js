@@ -60,18 +60,18 @@ async function main(argv) {
     .description("Create config/<config>.json5 template")
     .action(async (name) => cmdConfigAdd(process.cwd(), name));
   configCmd
-    .command("diff <target>")
-    .description("Show diff between repo config/<config>.json5 and server shared/config.json5 (requires SSH)")
-    .action(async (target) => cmdConfigDiff(process.cwd(), target));
+    .command("diff [targetOrConfig]")
+    .description("Show diff between repo config/<config>.json5 and server shared/config.json5 (requires SSH). Accepts target or config path/name.")
+    .action(async (targetOrConfig) => cmdConfigDiff(process.cwd(), targetOrConfig));
   configCmd
-    .command("pull <target>")
+    .command("pull [targetOrConfig]")
     .description("Pull server shared/config.json5 into repo config/<config>.json5 (requires SSH)")
     .option("--apply", "Overwrite repo config file", false)
-    .action(async (target, opts) => cmdConfigPull(process.cwd(), target, opts));
+    .action(async (targetOrConfig, opts) => cmdConfigPull(process.cwd(), targetOrConfig, opts));
   configCmd
-    .command("push <target>")
+    .command("push [targetOrConfig]")
     .description("Push repo config/<config>.json5 to server shared/config.json5 (requires SSH)")
-    .action(async (target) => cmdConfigPush(process.cwd(), target));
+    .action(async (targetOrConfig) => cmdConfigPush(process.cwd(), targetOrConfig));
 
   program
     .command("release")

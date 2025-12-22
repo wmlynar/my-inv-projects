@@ -39,6 +39,22 @@
     { "siteId": "PICK-13", "ip": "10.6.44.70", "port": 502, "slaveId": 255, "offset": 12, "default": "EMPTY" },
     { "siteId": "PICK-14", "ip": "10.6.44.70", "port": 502, "slaveId": 255, "offset": 13, "default": "EMPTY" },
     { "siteId": "PICK-15", "ip": "10.6.44.70", "port": 502, "slaveId": 255, "offset": 14, "default": "EMPTY" },
-    { "siteId": "PICK-16", "ip": "10.6.44.70", "port": 502, "slaveId": 255, "offset": 15, "default": "EMPTY" }
+    { "siteId": "PICK-16", "ip": "10.6.44.70", "port": 502, "slaveId": 255, "offset": 15, "default": "EMPTY" },
+    { "siteId": "PICK-51", "ip": "10.6.44.71", "port": 502, "slaveId": 255, "offset": 0, "default": "EMPTY" },
+    { "siteId": "PICK-52", "ip": "10.6.44.71", "port": 502, "slaveId": 255, "offset": 1, "default": "EMPTY" },
+    { "siteId": "PICK-53", "ip": "10.6.44.71", "port": 502, "slaveId": 255, "offset": 2, "default": "EMPTY" },
+    { "siteId": "PICK-54", "ip": "10.6.44.71", "port": 502, "slaveId": 255, "offset": 3, "default": "EMPTY" },
+    { "siteId": "PICK-55", "ip": "10.6.44.71", "port": 502, "slaveId": 255, "offset": 4, "default": "EMPTY" },
+    { "siteId": "PICK-56", "ip": "10.6.44.71", "port": 502, "slaveId": 255, "offset": 5, "default": "EMPTY" },
+    { "siteId": "PICK-57", "ip": "10.6.44.71", "port": 502, "slaveId": 255, "offset": 6, "default": "EMPTY" },
+    { "siteId": "PICK-58", "ip": "10.6.44.71", "port": 502, "slaveId": 255, "offset": 7, "default": "EMPTY" },
+    { "siteId": "PICK-59", "ip": "10.6.44.71", "port": 502, "slaveId": 255, "offset": 8, "default": "EMPTY" },
+    { "siteId": "PICK-60", "ip": "10.6.44.71", "port": 502, "slaveId": 255, "offset": 9, "default": "EMPTY" },
+    { "siteId": "PICK-61", "ip": "10.6.44.71", "port": 502, "slaveId": 255, "offset": 10, "default": "EMPTY" },
+    { "siteId": "PICK-62", "ip": "10.6.44.71", "port": 502, "slaveId": 255, "offset": 11, "default": "EMPTY" },
+    { "siteId": "PICK-63", "ip": "10.6.44.71", "port": 502, "slaveId": 255, "offset": 12, "default": "EMPTY" },
+    { "siteId": "PICK-64", "ip": "10.6.44.71", "port": 502, "slaveId": 255, "offset": 13, "default": "EMPTY" },
+    { "siteId": "PICK-65", "ip": "10.6.44.71", "port": 502, "slaveId": 255, "offset": 14, "default": "EMPTY" },
+    { "siteId": "PICK-66", "ip": "10.6.44.71", "port": 502, "slaveId": 255, "offset": 15, "default": "EMPTY" }
   ]
 }
