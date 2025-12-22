@@ -533,7 +533,7 @@ function renderDispatch() {
       badge.classList.add("badge-dispatch-ok");
       break;
     case "UNDISPATCHABLE_ONLINE":
-      text = "Niedostępny ONLINE";
+      text = "Niedostępny";
       badge.classList.add("badge-dispatch-undispatchable");
       dot.classList.add("dot-undispatchable"); // żółta
       break;
@@ -1071,7 +1071,6 @@ function setupControls() {
   const btnPauseTask = document.getElementById("btn-pause-task");
   const btnResumeTask = document.getElementById("btn-resume-task");
   const btnStopTask = document.getElementById("btn-stop-task");
-  const btnStopAndDrop = document.getElementById("btn-stop-and-drop");
 
   if (btnResumeTask) {
     setupPressAction(btnResumeTask, async () => {
@@ -1091,13 +1090,6 @@ function setupControls() {
       console.log("[UI] Kliknięto przycisk ZAKOŃCZ + NIEDOSTĘPNY");
       await callRobotAction("/api/robot/terminate");
       fetchRobotStateFromServer();
-    });
-  }
-
-  if (btnStopAndDrop) {
-    setupPressAction(btnStopAndDrop, () => {
-      resetIdleTimer();
-      console.log("Podnieś widły i odłóż towar (symulacja)");
     });
   }
 
@@ -1172,22 +1164,6 @@ function setupControls() {
     });
   }
 
-  // Zadania ręczne
-  const btnDeleteManualTasks = document.getElementById("btn-delete-manual-tasks");
-  if (btnDeleteManualTasks) {
-    setupPressAction(btnDeleteManualTasks, async () => {
-      await callRobotAction("/api/robot/manual-tasks/delete");
-      fetchRobotStateFromServer();
-    });
-  }
-
-  const btnAddManualDropTask = document.getElementById("btn-add-manual-drop-task");
-  if (btnAddManualDropTask) {
-    setupPressAction(btnAddManualDropTask, async () => {
-      await callRobotAction("/api/robot/manual-tasks/add-drop");
-      fetchRobotStateFromServer();
-    });
-  }
 }
 
 function setupHoldMotionButton(button, moveEndpoint, stopEndpoint) {
