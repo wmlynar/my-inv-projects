@@ -1,0 +1,12 @@
+{
+  target: "prod",
+  kind: "ssh",
+  host: "10.6.44.2",
+  user: "admin",
+  sshPort: 22,
+  serviceScope: "system",
+  installDir: "/home/admin/apps/robot-ui",
+  serviceName: "robot-ui",
+  packager: "auto",
+  config: "prod",
+}

@@ -1,15 +1,12 @@
 // test-motion.js
 
-// Jeśli używasz .env:
-require('dotenv').config();
+const { APIClient } = require("./api-client");
 
-const { APIClient } = require('./api-client');
-
-// Domyślne wartości z Twojego opisu (nadpisywane przez .env jeśli jest)
-const RDS_API_HOST = process.env.RDS_API_HOST || 'http://10.72.17.168:8080';
-const RDS_LOGIN = process.env.RDS_LOGIN || 'admin';
-const RDS_PASSWORD = process.env.RDS_PASSWORD || '123456';
-const ROBOT_ID = process.env.ROBOT_ID || 'INV-CDD14-01';
+const RDS_API_HOST = "http://127.0.0.1:8080";
+const RDS_LOGIN = "admin";
+const RDS_PASSWORD = "123456";
+const RDS_LANG = "pl";
+const ROBOT_ID = "INV-CBD15-LONG-1";
 
 // Prosty helper do sleep
 function sleep(ms) {
@@ -22,7 +19,7 @@ async function main() {
   console.log('ROBOT_ID     =', ROBOT_ID);
   console.log('---');
 
-  const client = new APIClient(RDS_API_HOST, RDS_LOGIN, RDS_PASSWORD, 'en');
+  const client = new APIClient(RDS_API_HOST, RDS_LOGIN, RDS_PASSWORD, RDS_LANG);
 
   // Jeśli chcesz przejąć kontrolę z RDS GUI:
   // console.log('Przejmuję kontrolę nad robotem (lock)...');
@@ -97,4 +94,3 @@ main().catch(err => {
   console.error('Błąd w teście:', err);
   process.exit(1);
 });
-

@@ -1,0 +1,24 @@
+{
+  "rds": {
+    "host": "http://127.0.0.1:8080",
+    "useMock": false,
+    "logApiCalls": true
+  },
+  "robot": {
+    "id": "INV-CBD15-LONG-1"
+  },
+  "fork": {
+    "lowHeight": 0.085,
+    "highHeight": 0.201
+  },
+  "tasks": {
+    "manualDropLabel": "test_car"
+  },
+  "motion": {
+    "speed": 0.3,
+    "durationMs": 500
+  },
+  "http": {
+    "port": 3001
+  }
+}

@@ -2,31 +2,130 @@
 const express = require("express");
 const path = require("path");
 const bodyParser = require("body-parser");
-require("dotenv").config();
+const fs = require("fs");
+const JSON5 = require("json5");
 
-const USE_MOCK_RDS = process.env.USE_MOCK_RDS === "1";
-const LOG_API_CALLS = process.env.LOG_API_CALLS === "1";
-const RDS_API_HOST = process.env.RDS_API_HOST || "http://127.0.0.1:8080";
-const RDS_LOGIN = process.env.RDS_LOGIN || "admin";
-const RDS_PASSWORD = process.env.RDS_PASSWORD || "123456";
+const DEFAULT_CONFIG = {
+  rds: {
+    host: "http://127.0.0.1:8080",
+    useMock: false,
+    logApiCalls: false
+  },
+  robot: {
+    id: "INV-CDD14-01"
+  },
+  fork: {
+    lowHeight: 0.0,
+    highHeight: 0.15
+  },
+  tasks: {
+    manualDropLabel: "WT_DROP_MANUAL"
+  },
+  motion: {
+    speed: 0.3,
+    durationMs: 500
+  },
+  http: {
+    port: 3001
+  }
+};
+
+function isObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value);
+}
+
+function str(value, fallback) {
+  return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+function bool(value, fallback) {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function num(value, fallback) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function normalizeConfig(raw) {
+  const cfg = isObject(raw) ? raw : {};
+  const rds = isObject(cfg.rds) ? cfg.rds : {};
+  const robot = isObject(cfg.robot) ? cfg.robot : {};
+  const fork = isObject(cfg.fork) ? cfg.fork : {};
+  const tasks = isObject(cfg.tasks) ? cfg.tasks : {};
+  const motion = isObject(cfg.motion) ? cfg.motion : {};
+  const http = isObject(cfg.http) ? cfg.http : {};
+
+  return {
+    rds: {
+      host: str(rds.host, DEFAULT_CONFIG.rds.host),
+      useMock: bool(rds.useMock, DEFAULT_CONFIG.rds.useMock),
+      logApiCalls: bool(rds.logApiCalls, DEFAULT_CONFIG.rds.logApiCalls)
+    },
+    robot: {
+      id: str(robot.id, DEFAULT_CONFIG.robot.id)
+    },
+    fork: {
+      lowHeight: num(fork.lowHeight, DEFAULT_CONFIG.fork.lowHeight),
+      highHeight: num(fork.highHeight, DEFAULT_CONFIG.fork.highHeight)
+    },
+    tasks: {
+      manualDropLabel: str(tasks.manualDropLabel, DEFAULT_CONFIG.tasks.manualDropLabel)
+    },
+    motion: {
+      speed: num(motion.speed, DEFAULT_CONFIG.motion.speed),
+      durationMs: num(motion.durationMs, DEFAULT_CONFIG.motion.durationMs)
+    },
+    http: {
+      port: num(http.port, DEFAULT_CONFIG.http.port)
+    }
+  };
+}
+
+function loadConfig() {
+  const cfgPath = path.join(process.cwd(), "config.runtime.json5");
+  if (!fs.existsSync(cfgPath)) {
+    console.error(`[FATAL] Missing config.runtime.json5 in ${process.cwd()}.`);
+    console.error("[FATAL] Copy config/<env>.json5 to config.runtime.json5 or deploy with SEAL.");
+    process.exit(2);
+  }
+  let raw;
+  try {
+    raw = JSON5.parse(fs.readFileSync(cfgPath, "utf-8"));
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err);
+    console.error(`[FATAL] Invalid config.runtime.json5: ${msg}`);
+    process.exit(2);
+  }
+  return normalizeConfig(raw);
+}
+
+const CFG = loadConfig();
+
+const USE_MOCK_RDS = CFG.rds.useMock;
+const LOG_API_CALLS = CFG.rds.logApiCalls;
+const RDS_API_HOST = CFG.rds.host;
+const RDS_LOGIN = "admin";
+const RDS_PASSWORD = "123456";
+const RDS_LANG = "pl";
 // ROBOT_ID – vehicle_id / uuid z getRobotListRaw (np. "INV-CDD14-01")
-const ROBOT_ID = process.env.ROBOT_ID || "INV-CDD14-01";
-const PORT = process.env.PORT || 3001;
+const ROBOT_ID = CFG.robot.id;
+const PORT = CFG.http.port;
 
 // Wysokości wideł z konfiguracji
-const FORK_LOW_HEIGHT = parseFloat(process.env.FORK_LOW_HEIGHT || "0.0");
-const FORK_HIGH_HEIGHT = parseFloat(process.env.FORK_HIGH_HEIGHT || "0.15");
+const FORK_LOW_HEIGHT = CFG.fork.lowHeight;
+const FORK_HIGH_HEIGHT = CFG.fork.highHeight;
 
 // Nazwa zadania ręcznego (odłożenie towaru)
-const MANUAL_DROP_TASK_LABEL = process.env.MANUAL_DROP_TASK_LABEL || "WT_DROP_MANUAL";
+const MANUAL_DROP_TASK_LABEL = CFG.tasks.manualDropLabel;
 
 // --- Konfiguracja sterowania ruchem (controlMotion) ---
 // Użytkownik potwierdził: duration jest w ms.
 // Zalecenie: duration=500ms, wysyłka co 250ms (to robimy w UI).
-const MOTION_SPEED = Math.abs(parseFloat(process.env.MOTION_SPEED || "0.3")); // wartość dodatnia
+const MOTION_SPEED = Math.abs(CFG.motion.speed); // wartość dodatnia
 const VX_FORWARD = -MOTION_SPEED; // u Ciebie "przód" to vx < 0
 const VX_BACKWARD = MOTION_SPEED;
-const MOTION_DURATION_MS = parseFloat(process.env.MOTION_DURATION_MS || "500"); // ms
+const MOTION_DURATION_MS = CFG.motion.durationMs; // ms
 
 // real_steer w radianach: 0° = prosto, 45° = skos, 90° = bok
 const STEER_STRAIGHT = 0.0;
@@ -53,7 +152,7 @@ let rdsClient = null;
 if (!USE_MOCK_RDS) {
   try {
     const { APIClient } = require("./api-client");
-    rdsClient = new APIClient(RDS_API_HOST, RDS_LOGIN, RDS_PASSWORD, "en");
+    rdsClient = new APIClient(RDS_API_HOST, RDS_LOGIN, RDS_PASSWORD, RDS_LANG);
     console.log("Robot UI: TRYB RDS (APIClient OK)");
   } catch (err) {
     console.error("Robot UI: błąd tworzenia APIClient, fallback na MOCK:", err);
