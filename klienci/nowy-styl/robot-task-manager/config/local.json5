@@ -1,0 +1,38 @@
+{
+  "rds": {
+    "host": "http://localhost:8080",
+  },
+  "tasks": {
+    "mainLabel": "nowy_styl_task",
+    "putDownLabel": "nowy_styl_put_down"
+  },
+  "flags": {
+    "enableAutoStart": true,
+    "enableAutoKillOnEmptySource": true,
+    "enableDispatchableSnapshotFix": true,
+    "respectDispatchableInAutostart": false,
+    "debugLog": true,
+    "enableOldTaskCleanup": false
+  },
+  "intervals": {
+    "loopMs": 500,
+    "emptyTimeoutMs": 1000,
+    "dispatchableFixDelayMs": 1000
+  },
+  "tempBlock": {
+    "timeoutMs": 300000,
+    "checkEveryNCycles": 60,
+    "tagPrefix": "TEMP_BLOCKED_AT="
+  },
+  "dispatch": {
+    "targetActiveTasks": 0
+  },
+  "managedRobots": [],
+  "http": {
+    "port": 3100
+  },
+  "cleanup": {
+    "keepTotal": 1000,
+    "everyNCycles": 600
+  }
+}

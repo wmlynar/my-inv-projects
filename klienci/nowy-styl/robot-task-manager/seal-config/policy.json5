@@ -1,0 +1,8 @@
+{
+  retention: {
+    keepReleases: 1,
+    cleanupOnSuccess: true,
+    neverDeleteCurrent: true,
+    keepAtLeastOneRollback: true,
+  },
+}

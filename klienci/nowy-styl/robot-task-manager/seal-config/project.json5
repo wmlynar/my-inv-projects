@@ -1,13 +1,14 @@
 {
-  appName: "modbus-sync-worksites",
-  entry: "modbus-sync-worksites.js",
+  appName: "robot-task-manager",
+  entry: "robot-task-manager.js",
   defaultTarget: "local",
   build: {
     packager: "auto",
+    allowFallback: false,
     obfuscationProfile: "balanced",
     frontendObfuscation: { enabled: true, profile: "balanced" },
     frontendMinify: { enabled: true, level: "safe", html: true, css: true },
     hardening: { enabled: true, strip: false, upx: false, bundlePacking: true },
-    includeDirs: [],
+    includeDirs: ["public"],
   },
 }

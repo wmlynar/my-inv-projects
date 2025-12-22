@@ -28,59 +28,191 @@
 const { APIClient } = require("./api-client");
 const express = require("express");
 const path = require("path");
+const fs = require("fs");
+const JSON5 = require("json5");
 
 // --------------------------- KONFIGURACJA ------------------------------------
 
+const DEFAULT_CONFIG = {
+  rds: {
+    host: "http://localhost:8080"
+  },
+  tasks: {
+    mainLabel: "nowy_styl_task",
+    putDownLabel: "nowy_styl_put_down"
+  },
+  flags: {
+    enableAutoStart: true,
+    enableAutoKillOnEmptySource: true,
+    enableDispatchableSnapshotFix: true,
+    respectDispatchableInAutostart: false,
+    debugLog: true,
+    enableOldTaskCleanup: false
+  },
+  intervals: {
+    loopMs: 500,
+    emptyTimeoutMs: 1000,
+    dispatchableFixDelayMs: 1000
+  },
+  tempBlock: {
+    timeoutMs: 5 * 60 * 1000,
+    checkEveryNCycles: 60,
+    tagPrefix: "TEMP_BLOCKED_AT="
+  },
+  dispatch: {
+    targetActiveTasks: 0
+  },
+  managedRobots: [],
+  http: {
+    port: 3100
+  },
+  cleanup: {
+    keepTotal: 1000,
+    everyNCycles: 600
+  }
+};
+
+function isObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value);
+}
+
+function str(value, fallback) {
+  return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+function bool(value, fallback) {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function num(value, fallback) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function normalizeConfig(raw) {
+  const cfg = isObject(raw) ? raw : {};
+  const rds = isObject(cfg.rds) ? cfg.rds : {};
+  const tasks = isObject(cfg.tasks) ? cfg.tasks : {};
+  const flags = isObject(cfg.flags) ? cfg.flags : {};
+  const intervals = isObject(cfg.intervals) ? cfg.intervals : {};
+  const tempBlock = isObject(cfg.tempBlock) ? cfg.tempBlock : {};
+  const dispatch = isObject(cfg.dispatch) ? cfg.dispatch : {};
+  const http = isObject(cfg.http) ? cfg.http : {};
+  const cleanup = isObject(cfg.cleanup) ? cfg.cleanup : {};
+  const managedRobots = Array.isArray(cfg.managedRobots)
+    ? cfg.managedRobots.map((s) => String(s))
+    : DEFAULT_CONFIG.managedRobots.slice();
+
+  return {
+    rds: {
+      host: str(rds.host, DEFAULT_CONFIG.rds.host)
+    },
+    tasks: {
+      mainLabel: str(tasks.mainLabel, DEFAULT_CONFIG.tasks.mainLabel),
+      putDownLabel: str(tasks.putDownLabel, DEFAULT_CONFIG.tasks.putDownLabel)
+    },
+    flags: {
+      enableAutoStart: bool(flags.enableAutoStart, DEFAULT_CONFIG.flags.enableAutoStart),
+      enableAutoKillOnEmptySource: bool(flags.enableAutoKillOnEmptySource, DEFAULT_CONFIG.flags.enableAutoKillOnEmptySource),
+      enableDispatchableSnapshotFix: bool(flags.enableDispatchableSnapshotFix, DEFAULT_CONFIG.flags.enableDispatchableSnapshotFix),
+      respectDispatchableInAutostart: bool(flags.respectDispatchableInAutostart, DEFAULT_CONFIG.flags.respectDispatchableInAutostart),
+      debugLog: bool(flags.debugLog, DEFAULT_CONFIG.flags.debugLog),
+      enableOldTaskCleanup: bool(flags.enableOldTaskCleanup, DEFAULT_CONFIG.flags.enableOldTaskCleanup)
+    },
+    intervals: {
+      loopMs: num(intervals.loopMs, DEFAULT_CONFIG.intervals.loopMs),
+      emptyTimeoutMs: num(intervals.emptyTimeoutMs, DEFAULT_CONFIG.intervals.emptyTimeoutMs),
+      dispatchableFixDelayMs: num(intervals.dispatchableFixDelayMs, DEFAULT_CONFIG.intervals.dispatchableFixDelayMs)
+    },
+    tempBlock: {
+      timeoutMs: num(tempBlock.timeoutMs, DEFAULT_CONFIG.tempBlock.timeoutMs),
+      checkEveryNCycles: num(tempBlock.checkEveryNCycles, DEFAULT_CONFIG.tempBlock.checkEveryNCycles),
+      tagPrefix: str(tempBlock.tagPrefix, DEFAULT_CONFIG.tempBlock.tagPrefix)
+    },
+    dispatch: {
+      targetActiveTasks: num(dispatch.targetActiveTasks, DEFAULT_CONFIG.dispatch.targetActiveTasks)
+    },
+    managedRobots,
+    http: {
+      port: num(http.port, DEFAULT_CONFIG.http.port)
+    },
+    cleanup: {
+      keepTotal: num(cleanup.keepTotal, DEFAULT_CONFIG.cleanup.keepTotal),
+      everyNCycles: num(cleanup.everyNCycles, DEFAULT_CONFIG.cleanup.everyNCycles)
+    }
+  };
+}
+
+function loadConfig() {
+  const cfgPath = path.join(process.cwd(), "config.runtime.json5");
+  if (!fs.existsSync(cfgPath)) {
+    console.error(`[FATAL] Missing config.runtime.json5 in ${process.cwd()}.`);
+    console.error("[FATAL] Copy config/<env>.json5 to config.runtime.json5 or deploy with SEAL.");
+    process.exit(2);
+  }
+  let raw;
+  try {
+    raw = JSON5.parse(fs.readFileSync(cfgPath, "utf-8"));
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err);
+    console.error(`[FATAL] Invalid config.runtime.json5: ${msg}`);
+    process.exit(2);
+  }
+  return normalizeConfig(raw);
+}
+
+const CFG = loadConfig();
+
 // Parametry RDS
-const RDS_API_HOST = "http://localhost:8080";
+const RDS_API_HOST = CFG.rds.host;
 const RDS_LOGIN = "admin";
 const RDS_PASSWORD = "123456";
-const RDS_LANG = "en";
+const RDS_LANG = "pl";
 
 // Nazwa taska "głównego" i taska PUT-DOWN
-const TASK_LABEL = "nowy_styl_task";
-const PUT_DOWN_TASK_LABEL = "nowy_styl_put_down";
+const TASK_LABEL = CFG.tasks.mainLabel;
+const PUT_DOWN_TASK_LABEL = CFG.tasks.putDownLabel;
 
 // Włączanie / wyłączanie funkcjonalności głównych
-const ENABLE_AUTO_START = true; // auto uruchamianie TASK_LABEL
-const ENABLE_AUTO_KILL_ON_EMPTY_SOURCE = true; // kill na pustym from / locked
+const ENABLE_AUTO_START = CFG.flags.enableAutoStart; // auto uruchamianie TASK_LABEL
+const ENABLE_AUTO_KILL_ON_EMPTY_SOURCE = CFG.flags.enableAutoKillOnEmptySource; // kill na pustym from / locked
 
 // Czy przy terminateTask ma działać snapshot i przywracanie dispatchable
-const ENABLE_DISPATCHABLE_SNAPSHOT_FIX = true;
+const ENABLE_DISPATCHABLE_SNAPSHOT_FIX = CFG.flags.enableDispatchableSnapshotFix;
 
 // Interwały czasowe (ms)
-const LOOP_INTERVAL_MS = 500; // główny cykl (i jednocześnie czas próbkowania)
-const EMPTY_TIMEOUT_MS = 1000; // jak długo worksite ma być pusty/locked, żeby ubić taska
-const DISPATCHABLE_FIX_DELAY_MS = 1000; // ile czekamy po terminateTask zanim odtworzymy dispatchable
+const LOOP_INTERVAL_MS = CFG.intervals.loopMs; // główny cykl (i jednocześnie czas próbkowania)
+const EMPTY_TIMEOUT_MS = CFG.intervals.emptyTimeoutMs; // jak długo worksite ma być pusty/locked, żeby ubić taska
+const DISPATCHABLE_FIX_DELAY_MS = CFG.intervals.dispatchableFixDelayMs; // ile czekamy po terminateTask zanim odtworzymy dispatchable
 
 // Tymczasowe blokowanie pól
-const TEMP_BLOCK_TIMEOUT_MS = 5 * 60 * 1000; // 5 minut
-const TEMP_BLOCK_CHECK_EVERY_N_CYCLES = 60; // 60 * 500ms ≈ 30s
-const TEMP_BLOCK_TAG_PREFIX = "TEMP_BLOCKED_AT=";
+const TEMP_BLOCK_TIMEOUT_MS = CFG.tempBlock.timeoutMs; // 5 minut
+const TEMP_BLOCK_CHECK_EVERY_N_CYCLES = CFG.tempBlock.checkEveryNCycles; // 60 * 500ms ≈ 30s
+const TEMP_BLOCK_TAG_PREFIX = CFG.tempBlock.tagPrefix;
 
 // Logowanie
-const DEBUG_LOG = true; // true = loguj wszystko, false = tylko INFO/ERROR
+const DEBUG_LOG = CFG.flags.debugLog; // true = loguj wszystko, false = tylko INFO/ERROR
 
 // Ile jednocześnie aktywnych tasków (status w ACTIVE_TASK_STATUSES) ma być w systemie
 //  - jeśli <= 0, przyjmujemy: tyle, ile jest robotów
-const TARGET_ACTIVE_TASKS = 0;
+const TARGET_ACTIVE_TASKS = CFG.dispatch.targetActiveTasks;
 
 // Czy auto-start ma respektować dispatchable.
-const RESPECT_DISPATCHABLE_IN_AUTOSTART = false;
+const RESPECT_DISPATCHABLE_IN_AUTOSTART = CFG.flags.respectDispatchableInAutostart;
 
 // Jedno źródło prawdy: "żywe" statusy tasków bierzemy z APIClient
 const ACTIVE_TASK_STATUSES = APIClient.ACTIVE_STATUSES.map(String);
 
 // (opcjonalnie) ograniczenie do wybranych robotów; pusta lista = wszystkie
-const MANAGED_ROBOTS = []; // np. ["INV-CBD15-LONG-1"]
+const MANAGED_ROBOTS = CFG.managedRobots; // np. ["INV-CBD15-LONG-1"]
 
 // HTTP API (prosty UI/admin)
-const HTTP_PORT = 3100;
+const HTTP_PORT = CFG.http.port;
 
 // Cleanup starych tasków
-const ENABLE_OLD_TASK_CLEANUP = false; // na razie domyślnie wyłączone
-const CLEANUP_KEEP_TOTAL = 1000; // ile tasków łącznie trzymamy
-const CLEANUP_EVERY_N_CYCLES = 600; // przy LOOP_INTERVAL_MS=500 => ~5 minut
+const ENABLE_OLD_TASK_CLEANUP = CFG.flags.enableOldTaskCleanup; // na razie domyślnie wyłączone
+const CLEANUP_KEEP_TOTAL = CFG.cleanup.keepTotal; // ile tasków łącznie trzymamy
+const CLEANUP_EVERY_N_CYCLES = CFG.cleanup.everyNCycles; // przy LOOP_INTERVAL_MS=500 => ~5 minut
 
 // --------------------------- HELPERS: MANAGED_ROBOTS / DISPATCHABLE / HEALTH --
 
