@@ -311,8 +311,52 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
 
 function statusSsh(targetCfg) {
   const { user, host } = sshUserHost(targetCfg);
-  const unit = shQuote(`${targetCfg.serviceName}.service`);
-  sshExec({ user, host, args: ["bash","-lc", `sudo -n systemctl status ${unit} --no-pager`], stdio: "inherit" });
+  const unitName = `${targetCfg.serviceName}.service`;
+  const unit = shQuote(unitName);
+  const res = sshExec({ user, host, args: ["bash","-lc", `sudo -n systemctl status ${unit} --no-pager`], stdio: "pipe" });
+
+  if (res.stdout) process.stdout.write(res.stdout);
+  if (res.stderr) process.stderr.write(res.stderr);
+
+  if (res.ok) return;
+
+  const combined = `${res.stdout}\n${res.stderr}`.toLowerCase();
+  const missing = combined.includes("could not be found") || combined.includes("not-found") || combined.includes("loaded: not-found");
+  if (!missing) return;
+
+  const appName = targetCfg.appName || targetCfg.serviceName || "app";
+  const layout = remoteLayout(targetCfg);
+  const pgrepScript = [
+    "set -euo pipefail",
+    `ROOT=${shQuote(layout.installDir)}`,
+    `APP=${shQuote(appName)}`,
+    "CUR=\"\"",
+    "if [ -f \"$ROOT/current.buildId\" ]; then CUR=\"$(cat \"$ROOT/current.buildId\" || true)\"; fi",
+    "if [ -n \"$CUR\" ]; then",
+    "  REL=\"$ROOT/releases/$CUR\"",
+    "  patterns=(\"$REL/$APP\" \"$REL/seal.loader.cjs\" \"$REL/app.bundle.cjs\")",
+    "else",
+    "  patterns=(\"$ROOT/releases/\")",
+    "fi",
+    "out=\"\"",
+    "for p in \"${patterns[@]}\"; do",
+    "  r=\"$(pgrep -af -- \"$p\" || true)\"",
+    "  if [ -n \"$r\" ]; then out=\"${out}\\n${r}\"; fi",
+    "done",
+    "printf \"%s\" \"$out\"",
+  ].join("\n");
+  const pres = sshExec({ user, host, args: ["bash","-lc", pgrepScript], stdio: "pipe" });
+  const lines = (pres.stdout || "")
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .filter((l) => !l.includes("pgrep -af"));
+  const unique = Array.from(new Set(lines));
+  if (unique.length) {
+    console.log(`[INFO] Service not installed; running process(es) for current release:\n${unique.join("\n")}`);
+  } else {
+    console.log(`[INFO] Service not installed and no running process detected for current release.`);
+  }
 }
 
 function logsSsh(targetCfg) {
@@ -363,12 +407,46 @@ function disableSsh(targetCfg) {
   if (!res.ok) throw new Error(`stop/disable failed (status=${res.status})`);
 }
 
-function runSshForeground(targetCfg) {
+function runSshForeground(targetCfg, opts = {}) {
   const { user, host } = sshUserHost(targetCfg);
   const layout = remoteLayout(targetCfg);
-  const unit = shQuote(`${targetCfg.serviceName}.service`);
+  const unitName = `${targetCfg.serviceName}.service`;
+  const unit = shQuote(unitName);
   const runPath = shQuote(`${layout.installDir}/run-current.sh`);
-  const res = sshExec({ user, host, args: ["bash","-lc", `sudo -n systemctl stop ${unit} || true; sudo -n bash -lc ${runPath}`], stdio: "inherit" });
+  const appName = targetCfg.appName || targetCfg.serviceName || "app";
+
+  const script = [
+    "set -euo pipefail",
+    `UNIT=${unit}`,
+    `RUN=${runPath}`,
+    `ROOT=${shQuote(layout.installDir)}`,
+    `APP=${shQuote(appName)}`,
+    opts.kill ? "KILL_ON_START=1" : "KILL_ON_START=0",
+    opts.sudo ? "RUN_AS_ROOT=1" : "RUN_AS_ROOT=0",
+    "if sudo -n systemctl list-unit-files \"$UNIT\" >/dev/null 2>&1; then",
+    "  sudo -n systemctl stop \"$UNIT\" || true",
+    "fi",
+    "if [ \"$KILL_ON_START\" = \"1\" ] && [ -f \"$ROOT/current.buildId\" ]; then",
+    "  CUR=\"$(cat \"$ROOT/current.buildId\" || true)\"",
+    "  if [ -n \"$CUR\" ]; then",
+    "    REL=\"$ROOT/releases/$CUR\"",
+    "    if sudo -n true >/dev/null 2>&1; then",
+    "      sudo -n pkill -f \"$REL/$APP\" || true",
+    "      sudo -n pkill -f \"$REL/seal.loader.cjs\" || true",
+    "      sudo -n pkill -f \"$REL/app.bundle.cjs\" || true",
+    "    fi",
+    "    pkill -f \"$REL/$APP\" || true",
+    "    pkill -f \"$REL/seal.loader.cjs\" || true",
+    "    pkill -f \"$REL/app.bundle.cjs\" || true",
+    "  fi",
+    "fi",
+    "if [ \"$RUN_AS_ROOT\" = \"1\" ]; then",
+    "  exec sudo -n bash -lc \"$RUN\"",
+    "fi",
+    "exec \"$RUN\"",
+  ].join("\n");
+
+  const res = sshExec({ user, host, args: ["bash","-lc", script], stdio: "inherit", tty: true });
   if (!res.ok) throw new Error(`run failed (status=${res.status})`);
 }
 

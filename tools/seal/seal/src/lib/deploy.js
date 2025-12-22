@@ -221,7 +221,7 @@ function disableLocal(targetCfg) {
   if (!res.ok) throw new Error(`stop/disable failed (status=${res.status})`);
 }
 
-function runLocalForeground(targetCfg) {
+function runLocalForeground(targetCfg, opts = {}) {
   const layout = localInstallLayout(targetCfg);
   const current = fileExists(layout.currentFile) ? fs.readFileSync(layout.currentFile, "utf-8").trim() : null;
   if (!current) throw new Error("No current.buildId – deploy first.");
@@ -233,7 +233,9 @@ function runLocalForeground(targetCfg) {
   if (fileExists(sharedCfg)) {
     fs.copyFileSync(sharedCfg, path.join(rel, "config.runtime.json5"));
   }
-  const res = spawnSyncSafe("bash", [appctl, "run"], { cwd: rel, stdio: "inherit" });
+  const res = opts.sudo
+    ? spawnSyncSafe("sudo", ["-n", "bash", appctl, "run"], { cwd: rel, stdio: "inherit" })
+    : spawnSyncSafe("bash", [appctl, "run"], { cwd: rel, stdio: "inherit" });
   if (!res.ok) throw new Error(`run failed (status=${res.status})`);
 }
 

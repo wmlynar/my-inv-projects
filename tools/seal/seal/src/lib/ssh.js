@@ -11,7 +11,7 @@ function shellQuote(value) {
   return "'" + str.replace(/'/g, "'\\''") + "'";
 }
 
-function sshExec({ user, host, args, stdin = null, stdio = "inherit" }) {
+function sshExec({ user, host, args, stdin = null, stdio = "inherit", tty = false }) {
   const target = sshTarget(user, host);
   let finalArgs = args || [];
   if (Array.isArray(args) && args[0] === "bash" && args[1] === "-lc" && args.length >= 3) {
@@ -19,10 +19,13 @@ function sshExec({ user, host, args, stdin = null, stdio = "inherit" }) {
     const cmd = args.slice(2).join(" ");
     finalArgs = [`bash -lc ${shellQuote(cmd)}`];
   }
-  const baseArgs = ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", target].concat(finalArgs);
+  const baseArgs = [];
+  if (tty) baseArgs.push("-tt");
+  baseArgs.push("-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", target);
+  const sshArgs = baseArgs.concat(finalArgs);
 
   // For capturing output, use stdio=pipe
-  const res = spawnSyncSafe("ssh", baseArgs, { stdio, input: stdin !== null ? stdin : undefined });
+  const res = spawnSyncSafe("ssh", sshArgs, { stdio, input: stdin !== null ? stdin : undefined });
   return res;
 }
 

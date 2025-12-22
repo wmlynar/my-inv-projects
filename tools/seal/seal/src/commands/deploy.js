@@ -123,11 +123,12 @@ async function cmdUninstall(cwd, targetArg) {
   else uninstallLocal(targetCfg);
 }
 
-async function cmdRunRemote(cwd, targetArg) {
+async function cmdRunRemote(cwd, targetArg, opts) {
   const projectRoot = findProjectRoot(cwd);
   const { targetCfg } = resolveTarget(projectRoot, targetArg);
-  if ((targetCfg.kind || "local").toLowerCase() === "ssh") runSshForeground(targetCfg);
-  else runLocalForeground(targetCfg);
+  const runOpts = { kill: !!(opts && opts.kill), sudo: !!(opts && opts.sudo) };
+  if ((targetCfg.kind || "local").toLowerCase() === "ssh") runSshForeground(targetCfg, runOpts);
+  else runLocalForeground(targetCfg, runOpts);
 }
 
 async function cmdRemote(cwd, targetArg, action) {

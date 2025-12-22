@@ -140,7 +140,9 @@ async function main(argv) {
     .command("run")
     .description("Run application on target in foreground (ssh/systemd)")
     .argument("[target]", "Target name", null)
-    .action(async (target) => cmdRunRemote(process.cwd(), target));
+    .option("--kill", "Kill running app process from current release before starting", false)
+    .option("--sudo", "Run application as root (uses sudo)", false)
+    .action(async (target, opts) => cmdRunRemote(process.cwd(), target, opts));
 
   program
     .command("uninstall")
