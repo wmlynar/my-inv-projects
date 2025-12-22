@@ -352,6 +352,170 @@ async function callRobotAction(path) {
   }
 }
 
+function setupPressAction(button, handler) {
+  if (!button) return;
+
+  const END_SLOP_PX = 22;
+  const IGNORE_CLICK_MS = 800;
+
+  let isDown = false;
+  let activePointerId = null;
+  let lastActivateTs = 0;
+  let activatedOnDown = false;
+
+  const run = (e) => {
+    const res = handler(e);
+    if (res && typeof res.catch === "function") {
+      res.catch((err) => console.error("Button action failed:", err));
+    }
+  };
+
+  const activate = (e) => {
+    lastActivateTs = Date.now();
+    run(e);
+  };
+
+  button.addEventListener("contextmenu", (e) => e.preventDefault());
+
+  const hasPointer = typeof window !== "undefined" && "PointerEvent" in window;
+  if (hasPointer) {
+    button.addEventListener("pointerdown", (e) => {
+      if (typeof e.button === "number" && e.button !== 0) return;
+      const isTouchLike = e.pointerType === "touch" || e.pointerType === "pen";
+      if (isTouchLike) e.preventDefault();
+
+      isDown = true;
+      activePointerId = e.pointerId;
+      try {
+        button.setPointerCapture(e.pointerId);
+      } catch {
+        // ignore
+      }
+
+      if (isTouchLike) {
+        activatedOnDown = true;
+        activate(e);
+      }
+    });
+
+    button.addEventListener("pointercancel", () => {
+      isDown = false;
+      activePointerId = null;
+      activatedOnDown = false;
+    });
+
+    button.addEventListener("pointerup", (e) => {
+      if (!isDown || e.pointerId !== activePointerId) return;
+
+      isDown = false;
+      activePointerId = null;
+
+      try {
+        button.releasePointerCapture(e.pointerId);
+      } catch {
+        // ignore
+      }
+
+      if (activatedOnDown && (e.pointerType === "touch" || e.pointerType === "pen")) {
+        activatedOnDown = false;
+        return;
+      }
+
+      const rect = button.getBoundingClientRect();
+      const inside =
+        e.clientX >= rect.left - END_SLOP_PX &&
+        e.clientX <= rect.right + END_SLOP_PX &&
+        e.clientY >= rect.top - END_SLOP_PX &&
+        e.clientY <= rect.bottom + END_SLOP_PX;
+      if (!inside) return;
+
+      activate(e);
+    });
+  } else {
+    let activeTouch = false;
+    button.addEventListener("touchstart", (e) => {
+      activeTouch = true;
+      e.preventDefault();
+      activate(e);
+    });
+    button.addEventListener("touchend", (e) => {
+      if (!activeTouch) return;
+      activeTouch = false;
+      e.preventDefault();
+    });
+    button.addEventListener("touchcancel", () => {
+      activeTouch = false;
+    });
+  }
+
+  button.addEventListener("click", (e) => {
+    if (Date.now() - lastActivateTs < IGNORE_CLICK_MS) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    activate(e);
+  });
+
+  button.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      activate(e);
+    }
+  });
+}
+
+const MOTION_SPEED_PRESETS = {
+  slow: 1 / 10,
+  medium: 1 / 3,
+  fast: 1
+};
+
+let motionSpeedScale = MOTION_SPEED_PRESETS.fast;
+
+function withMotionSpeed(path) {
+  if (!path || !path.startsWith("/api/robot/move-")) return path;
+  if (path === "/api/robot/move-stop") return path;
+  const scale = Number(motionSpeedScale);
+  if (!Number.isFinite(scale) || scale <= 0) return path;
+  const sep = path.includes("?") ? "&" : "?";
+  return `${path}${sep}speed=${scale}`;
+}
+
+async function callMotionAction(path) {
+  return callRobotAction(withMotionSpeed(path));
+}
+
+function setMotionSpeedPreset(key) {
+  const value = MOTION_SPEED_PRESETS[key];
+  if (!Number.isFinite(value)) return;
+  motionSpeedScale = value;
+  document.querySelectorAll(".speed-btn").forEach((btn) => {
+    const active = btn.dataset.speed === key;
+    btn.classList.toggle("speed-btn-active", active);
+  });
+}
+
+function setupSpeedToggle() {
+  const buttons = Array.from(document.querySelectorAll(".speed-btn"));
+  if (!buttons.length) return;
+
+  buttons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.speed;
+      if (!key) return;
+      setMotionSpeedPreset(key);
+    });
+  });
+
+  const initial = buttons.find((btn) => btn.classList.contains("speed-btn-active"));
+  if (initial && initial.dataset.speed) {
+    setMotionSpeedPreset(initial.dataset.speed);
+  } else {
+    setMotionSpeedPreset("fast");
+  }
+}
+
 function renderDispatch() {
   const badge = document.getElementById("dispatch-badge");
   const dot = document.getElementById("dispatch-dot");
@@ -607,7 +771,7 @@ function renderAlarmsList(src, containerId, emptyLabel) {
 function setupTabs() {
   const tabButtons = document.querySelectorAll(".tab");
   tabButtons.forEach((btn) => {
-    btn.addEventListener("click", () => {
+    setupPressAction(btn, () => {
       const target = btn.dataset.tabTarget;
       if (!target) return;
       setTab(target);
@@ -873,32 +1037,32 @@ function setupControls() {
   const btnSoftOff = document.getElementById("btn-soft-emc-off");
 
   if (btnDispatchable) {
-    btnDispatchable.addEventListener("click", async () => {
+    setupPressAction(btnDispatchable, async () => {
       await callDispatchEndpoint("/api/robot/dispatchable");
       fetchRobotStateFromServer();
     });
   }
   if (btnUndOnline) {
-    btnUndOnline.addEventListener("click", async () => {
+    setupPressAction(btnUndOnline, async () => {
       await callDispatchEndpoint("/api/robot/undispatchable-online");
       fetchRobotStateFromServer();
     });
   }
   if (btnUndOffline) {
-    btnUndOffline.addEventListener("click", async () => {
+    setupPressAction(btnUndOffline, async () => {
       await callDispatchEndpoint("/api/robot/undispatchable-offline");
       fetchRobotStateFromServer();
     });
   }
 
   if (btnSoftOn) {
-    btnSoftOn.addEventListener("click", async () => {
+    setupPressAction(btnSoftOn, async () => {
       await callRobotAction("/api/robot/soft-emergency");
       fetchRobotStateFromServer();
     });
   }
   if (btnSoftOff) {
-    btnSoftOff.addEventListener("click", async () => {
+    setupPressAction(btnSoftOff, async () => {
       await callRobotAction("/api/robot/soft-emergency-cancel");
       fetchRobotStateFromServer();
     });
@@ -910,20 +1074,20 @@ function setupControls() {
   const btnStopAndDrop = document.getElementById("btn-stop-and-drop");
 
   if (btnResumeTask) {
-    btnResumeTask.addEventListener("click", async () => {
+    setupPressAction(btnResumeTask, async () => {
       await callRobotAction("/api/robot/resume");
       fetchRobotStateFromServer();
     });
   }
   if (btnPauseTask) {
-    btnPauseTask.addEventListener("click", async () => {
+    setupPressAction(btnPauseTask, async () => {
       await callRobotAction("/api/robot/pause");
       fetchRobotStateFromServer();
     });
   }
 
   if (btnStopTask) {
-    btnStopTask.addEventListener("click", async () => {
+    setupPressAction(btnStopTask, async () => {
       console.log("[UI] Kliknięto przycisk ZAKOŃCZ + NIEDOSTĘPNY");
       await callRobotAction("/api/robot/terminate");
       fetchRobotStateFromServer();
@@ -931,7 +1095,7 @@ function setupControls() {
   }
 
   if (btnStopAndDrop) {
-    btnStopAndDrop.addEventListener("click", () => {
+    setupPressAction(btnStopAndDrop, () => {
       resetIdleTimer();
       console.log("Podnieś widły i odłóż towar (symulacja)");
     });
@@ -941,14 +1105,14 @@ function setupControls() {
   const btnRelease = document.getElementById("btn-release");
 
   if (btnSeize) {
-    btnSeize.addEventListener("click", async () => {
+    setupPressAction(btnSeize, async () => {
       console.log("[UI] Kliknięto przycisk PRZEJMIJ KONTROLĘ");
       await callRobotAction("/api/robot/seize-control");
       fetchRobotStateFromServer();
     });
   }
   if (btnRelease) {
-    btnRelease.addEventListener("click", async () => {
+    setupPressAction(btnRelease, async () => {
       console.log("[UI] Kliknięto przycisk ODDAJ KONTROLĘ");
       await callRobotAction("/api/robot/release-control");
       fetchRobotStateFromServer();
@@ -958,14 +1122,14 @@ function setupControls() {
   const btnLift = document.getElementById("btn-lift-forks");
   const btnLower = document.getElementById("btn-lower-forks");
   if (btnLift) {
-    btnLift.addEventListener("click", async () => {
+    setupPressAction(btnLift, async () => {
       console.log("[UI] Kliknięto PODNIEŚ WIDŁY (wysoki poziom)");
       await callRobotAction("/api/robot/fork-high");
       fetchRobotStateFromServer();
     });
   }
   if (btnLower) {
-    btnLower.addEventListener("click", async () => {
+    setupPressAction(btnLower, async () => {
       console.log("[UI] Kliknięto OPUŚĆ WIDŁY (niski poziom)");
       await callRobotAction("/api/robot/fork-low");
       fetchRobotStateFromServer();
@@ -974,7 +1138,7 @@ function setupControls() {
 
   const btnClearErrors = document.getElementById("btn-clear-errors");
   if (btnClearErrors) {
-    btnClearErrors.addEventListener("click", async () => {
+    setupPressAction(btnClearErrors, async () => {
       console.log("[UI] Kliknięto przycisk KASUJ WSZYSTKIE BŁĘDY");
       await callRobotAction("/api/robot/clear-errors");
       fetchRobotStateFromServer();
@@ -983,7 +1147,7 @@ function setupControls() {
 
   const btnDumpStatus = document.getElementById("btn-dump-status");
   if (btnDumpStatus) {
-    btnDumpStatus.addEventListener("click", async () => {
+    setupPressAction(btnDumpStatus, async () => {
       resetIdleTimer();
       try {
         const resp = await fetchWithTimeout("/api/robot/raw", {}, 4000);
@@ -1011,7 +1175,7 @@ function setupControls() {
   // Zadania ręczne
   const btnDeleteManualTasks = document.getElementById("btn-delete-manual-tasks");
   if (btnDeleteManualTasks) {
-    btnDeleteManualTasks.addEventListener("click", async () => {
+    setupPressAction(btnDeleteManualTasks, async () => {
       await callRobotAction("/api/robot/manual-tasks/delete");
       fetchRobotStateFromServer();
     });
@@ -1019,7 +1183,7 @@ function setupControls() {
 
   const btnAddManualDropTask = document.getElementById("btn-add-manual-drop-task");
   if (btnAddManualDropTask) {
-    btnAddManualDropTask.addEventListener("click", async () => {
+    setupPressAction(btnAddManualDropTask, async () => {
       await callRobotAction("/api/robot/manual-tasks/add-drop");
       fetchRobotStateFromServer();
     });
@@ -1033,9 +1197,9 @@ function setupHoldMotionButton(button, moveEndpoint, stopEndpoint) {
     if (timer) return;
     if (e && typeof e.preventDefault === "function") e.preventDefault();
 
-    callRobotAction(moveEndpoint);
+    callMotionAction(moveEndpoint);
     timer = setInterval(() => {
-      callRobotAction(moveEndpoint);
+      callMotionAction(moveEndpoint);
     }, 250);
   };
 
@@ -1053,6 +1217,17 @@ function setupHoldMotionButton(button, moveEndpoint, stopEndpoint) {
   button.addEventListener("pointerleave", stop);
 }
 
+const MOTION_ENDPOINT_SWAP = {
+  "/api/robot/move-forward-left": "/api/robot/move-forward-right",
+  "/api/robot/move-forward-right": "/api/robot/move-forward-left",
+  "/api/robot/move-backward-left": "/api/robot/move-backward-right",
+  "/api/robot/move-backward-right": "/api/robot/move-backward-left"
+};
+
+function mapMotionEndpoint(endpoint) {
+  return MOTION_ENDPOINT_SWAP[endpoint] || endpoint;
+}
+
 function setupDpad() {
   const stopEndpoint = "/api/robot/move-stop";
 
@@ -1061,13 +1236,14 @@ function setupDpad() {
     const ep = btn.dataset.endpoint;
     if (!ep) return;
 
-    if (ep === stopEndpoint) {
+    const mappedEndpoint = mapMotionEndpoint(ep);
+    if (mappedEndpoint === stopEndpoint) {
       btn.addEventListener("click", (e) => {
         e.preventDefault();
         callRobotAction(stopEndpoint);
       });
     } else {
-      setupHoldMotionButton(btn, ep, stopEndpoint);
+      setupHoldMotionButton(btn, mappedEndpoint, stopEndpoint);
     }
   });
 }
@@ -1105,7 +1281,7 @@ function setupKeyboardMotion() {
   };
 
   const applyMotion = () => {
-    const ep = computeEndpoint();
+    const ep = mapMotionEndpoint(computeEndpoint());
 
     if (ep === currentEndpoint) return;
 
@@ -1117,10 +1293,10 @@ function setupKeyboardMotion() {
     }
 
     // strzał „od razu” + potem co 250ms
-    callRobotAction(ep);
+    callMotionAction(ep);
     if (!timer) {
       timer = setInterval(() => {
-        if (currentEndpoint) callRobotAction(currentEndpoint);
+        if (currentEndpoint) callMotionAction(currentEndpoint);
       }, 250);
     }
   };
@@ -1175,6 +1351,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupTabs();
   setupControls();
   setupIdleReset();
+  setupSpeedToggle();
   startBackendMonitor();
 
   // upewniamy się, że startowo jest status + góra (jak po uruchomieniu)

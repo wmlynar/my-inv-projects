@@ -146,6 +146,19 @@ const MOTION_DURATION_MS = CFG.motion.durationMs; // ms
 const STEER_STRAIGHT = 0.0;
 const STEER_DIAG = Math.PI / 4; // 45°
 const STEER_SIDE = Math.PI / 2; // 90°
+let lastRealSteer = STEER_STRAIGHT; // keep last steering angle on stop
+
+const SPEED_SCALE_DEFAULT = 1;
+const SPEED_SCALE_MIN = 0.1;
+const SPEED_SCALE_MAX = 1;
+
+function readSpeedScale(req) {
+  const raw = req && req.query ? req.query.speed : undefined;
+  if (raw === undefined) return SPEED_SCALE_DEFAULT;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) return SPEED_SCALE_DEFAULT;
+  return Math.min(SPEED_SCALE_MAX, Math.max(SPEED_SCALE_MIN, value));
+}
 
 function logApiCall(label, payload = {}) {
   if (!LOG_API_CALLS) return;
@@ -543,6 +556,9 @@ app.post("/api/robot/resume", async (req, res) => {
 // ------------------ API: CONTROL MOTION (real_steer, duration w ms) ------------------
 
 async function sendControlMotion({ vx, real_steer, duration }) {
+  if (typeof real_steer === "number") {
+    lastRealSteer = real_steer;
+  }
   const payload = {
     vehicle: ROBOT_ID,
     vx: vx ?? 0.0,
@@ -567,7 +583,11 @@ async function sendControlMotion({ vx, real_steer, duration }) {
 // STOP (0ms) – wywoływany przy puszczeniu przycisku
 app.post("/api/robot/move-stop", async (req, res) => {
   try {
-    const out = await sendControlMotion({ vx: 0.0, real_steer: 0.0, duration: 0.0 });
+    const out = await sendControlMotion({
+      vx: 0.0,
+      real_steer: lastRealSteer,
+      duration: 0.0
+    });
     return res.json(out);
   } catch (err) {
     console.error("Błąd /api/robot/move-stop:", err);
@@ -578,7 +598,12 @@ app.post("/api/robot/move-stop", async (req, res) => {
 // Przód / Tył
 app.post("/api/robot/move-forward", async (req, res) => {
   try {
-    const out = await sendControlMotion({ vx: VX_FORWARD, real_steer: STEER_STRAIGHT, duration: MOTION_DURATION_MS });
+    const speedScale = readSpeedScale(req);
+    const out = await sendControlMotion({
+      vx: VX_FORWARD * speedScale,
+      real_steer: STEER_STRAIGHT,
+      duration: MOTION_DURATION_MS
+    });
     return res.json(out);
   } catch (err) {
     console.error("Błąd /api/robot/move-forward:", err);
@@ -588,7 +613,12 @@ app.post("/api/robot/move-forward", async (req, res) => {
 
 app.post("/api/robot/move-backward", async (req, res) => {
   try {
-    const out = await sendControlMotion({ vx: VX_BACKWARD, real_steer: STEER_STRAIGHT, duration: MOTION_DURATION_MS });
+    const speedScale = readSpeedScale(req);
+    const out = await sendControlMotion({
+      vx: VX_BACKWARD * speedScale,
+      real_steer: STEER_STRAIGHT,
+      duration: MOTION_DURATION_MS
+    });
     return res.json(out);
   } catch (err) {
     console.error("Błąd /api/robot/move-backward:", err);
@@ -599,7 +629,12 @@ app.post("/api/robot/move-backward", async (req, res) => {
 // Lewo / Prawo (90°)
 app.post("/api/robot/move-left", async (req, res) => {
   try {
-    const out = await sendControlMotion({ vx: VX_FORWARD, real_steer: +STEER_SIDE, duration: MOTION_DURATION_MS });
+    const speedScale = readSpeedScale(req);
+    const out = await sendControlMotion({
+      vx: VX_FORWARD * speedScale,
+      real_steer: +STEER_SIDE,
+      duration: MOTION_DURATION_MS
+    });
     return res.json(out);
   } catch (err) {
     console.error("Błąd /api/robot/move-left:", err);
@@ -609,7 +644,12 @@ app.post("/api/robot/move-left", async (req, res) => {
 
 app.post("/api/robot/move-right", async (req, res) => {
   try {
-    const out = await sendControlMotion({ vx: VX_FORWARD, real_steer: -STEER_SIDE, duration: MOTION_DURATION_MS });
+    const speedScale = readSpeedScale(req);
+    const out = await sendControlMotion({
+      vx: VX_BACKWARD * speedScale,
+      real_steer: +STEER_SIDE,
+      duration: MOTION_DURATION_MS
+    });
     return res.json(out);
   } catch (err) {
     console.error("Błąd /api/robot/move-right:", err);
@@ -620,7 +660,12 @@ app.post("/api/robot/move-right", async (req, res) => {
 // Przód-lewo / przód-prawo (45°)
 app.post("/api/robot/move-forward-left", async (req, res) => {
   try {
-    const out = await sendControlMotion({ vx: VX_FORWARD, real_steer: +STEER_DIAG, duration: MOTION_DURATION_MS });
+    const speedScale = readSpeedScale(req);
+    const out = await sendControlMotion({
+      vx: VX_FORWARD * speedScale,
+      real_steer: +STEER_DIAG,
+      duration: MOTION_DURATION_MS
+    });
     return res.json(out);
   } catch (err) {
     console.error("Błąd /api/robot/move-forward-left:", err);
@@ -630,7 +675,12 @@ app.post("/api/robot/move-forward-left", async (req, res) => {
 
 app.post("/api/robot/move-forward-right", async (req, res) => {
   try {
-    const out = await sendControlMotion({ vx: VX_FORWARD, real_steer: -STEER_DIAG, duration: MOTION_DURATION_MS });
+    const speedScale = readSpeedScale(req);
+    const out = await sendControlMotion({
+      vx: VX_FORWARD * speedScale,
+      real_steer: -STEER_DIAG,
+      duration: MOTION_DURATION_MS
+    });
     return res.json(out);
   } catch (err) {
     console.error("Błąd /api/robot/move-forward-right:", err);
@@ -641,7 +691,12 @@ app.post("/api/robot/move-forward-right", async (req, res) => {
 // Tył-lewo / tył-prawo (45° przy cofaniu)
 app.post("/api/robot/move-backward-left", async (req, res) => {
   try {
-    const out = await sendControlMotion({ vx: VX_BACKWARD, real_steer: +STEER_DIAG, duration: MOTION_DURATION_MS });
+    const speedScale = readSpeedScale(req);
+    const out = await sendControlMotion({
+      vx: VX_BACKWARD * speedScale,
+      real_steer: +STEER_DIAG,
+      duration: MOTION_DURATION_MS
+    });
     return res.json(out);
   } catch (err) {
     console.error("Błąd /api/robot/move-backward-left:", err);
@@ -651,7 +706,12 @@ app.post("/api/robot/move-backward-left", async (req, res) => {
 
 app.post("/api/robot/move-backward-right", async (req, res) => {
   try {
-    const out = await sendControlMotion({ vx: VX_BACKWARD, real_steer: -STEER_DIAG, duration: MOTION_DURATION_MS });
+    const speedScale = readSpeedScale(req);
+    const out = await sendControlMotion({
+      vx: VX_BACKWARD * speedScale,
+      real_steer: -STEER_DIAG,
+      duration: MOTION_DURATION_MS
+    });
     return res.json(out);
   } catch (err) {
     console.error("Błąd /api/robot/move-backward-right:", err);
