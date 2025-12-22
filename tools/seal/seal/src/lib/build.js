@@ -987,8 +987,12 @@ App runtime:
 Service management (systemd):
   up [--name N] [--user|--system]
                       Install service (if needed) and start it
+  enable              Enable autostart
+  start               Start service
   down                Stop and remove service
   restart             Restart service
+  stop                Stop service
+  disable             Disable autostart
   status              Show service status
   logs                Follow logs (tail -f)
 
@@ -1140,6 +1144,14 @@ EOF
     _sysctl enable --now "$SERVICE_NAME.service"
     echo "[appctl] Service is up: $SERVICE_NAME ($SERVICE_SCOPE)"
     ;;
+  enable)
+    _load_service_settings
+    _sysctl enable "$SERVICE_NAME.service"
+    ;;
+  start)
+    _load_service_settings
+    _sysctl start "$SERVICE_NAME.service"
+    ;;
   down)
     _load_service_settings
     svc_path="$(_svc_file)"
@@ -1153,6 +1165,14 @@ EOF
   restart)
     _load_service_settings
     _sysctl restart "$SERVICE_NAME.service"
+    ;;
+  stop)
+    _load_service_settings
+    _sysctl stop "$SERVICE_NAME.service"
+    ;;
+  disable)
+    _load_service_settings
+    _sysctl disable "$SERVICE_NAME.service"
     ;;
   status)
     _load_service_settings

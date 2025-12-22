@@ -185,10 +185,34 @@ function logsLocal(targetCfg) {
   }
 }
 
+function enableLocal(targetCfg) {
+  const ctl = systemctlArgs(targetCfg);
+  const res = spawnSyncSafe(ctl[0], ctl.slice(1).concat(["enable", `${targetCfg.serviceName}.service`]), { stdio: "inherit" });
+  if (!res.ok) throw new Error(`enable failed (status=${res.status})`);
+}
+
+function startLocal(targetCfg) {
+  const ctl = systemctlArgs(targetCfg);
+  const res = spawnSyncSafe(ctl[0], ctl.slice(1).concat(["start", `${targetCfg.serviceName}.service`]), { stdio: "inherit" });
+  if (!res.ok) throw new Error(`start failed (status=${res.status})`);
+}
+
 function restartLocal(targetCfg) {
   const ctl = systemctlArgs(targetCfg);
   const res = spawnSyncSafe(ctl[0], ctl.slice(1).concat(["restart", `${targetCfg.serviceName}.service`]), { stdio: "inherit" });
   if (!res.ok) throw new Error(`restart failed (status=${res.status})`);
+}
+
+function stopLocal(targetCfg) {
+  const ctl = systemctlArgs(targetCfg);
+  const res = spawnSyncSafe(ctl[0], ctl.slice(1).concat(["stop", `${targetCfg.serviceName}.service`]), { stdio: "inherit" });
+  if (!res.ok) throw new Error(`stop failed (status=${res.status})`);
+}
+
+function disableLocalOnly(targetCfg) {
+  const ctl = systemctlArgs(targetCfg);
+  const res = spawnSyncSafe(ctl[0], ctl.slice(1).concat(["disable", `${targetCfg.serviceName}.service`]), { stdio: "inherit" });
+  if (!res.ok) throw new Error(`disable failed (status=${res.status})`);
 }
 
 function disableLocal(targetCfg) {
@@ -235,6 +259,24 @@ function rollbackLocal(targetCfg) {
   ok(`Rolled back to: ${prev}`);
 }
 
+function downLocal(targetCfg) {
+  const ctl = systemctlArgs(targetCfg);
+  spawnSyncSafe(ctl[0], ctl.slice(1).concat(["disable", "--now", `${targetCfg.serviceName}.service`]), { stdio: "inherit" });
+  spawnSyncSafe(ctl[0], ctl.slice(1).concat(["daemon-reload"]), { stdio: "inherit" });
+
+  const svc = serviceFilePath(targetCfg);
+  if (fileExists(svc)) {
+    const scope = (targetCfg.serviceScope || "user").toLowerCase();
+    if (scope === "system") {
+      spawnSyncSafe("sudo", ["rm", "-f", svc], { stdio: "inherit" });
+    } else {
+      fs.rmSync(svc, { force: true });
+    }
+  }
+
+  ok(`Service removed: ${targetCfg.serviceName}`);
+}
+
 function uninstallLocal(targetCfg) {
   const layout = localInstallLayout(targetCfg);
   const ctl = systemctlArgs(targetCfg);
@@ -257,9 +299,14 @@ module.exports = {
   deployLocal,
   statusLocal,
   logsLocal,
+  enableLocal,
+  startLocal,
   restartLocal,
+  stopLocal,
+  disableLocalOnly,
   disableLocal,
   rollbackLocal,
+  downLocal,
   uninstallLocal,
   runLocalForeground,
 };

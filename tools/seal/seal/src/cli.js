@@ -11,7 +11,7 @@ const { cmdVerify } = require("./commands/verify");
 const { cmdRunLocal } = require("./commands/runLocal");
 const { cmdTargetAdd } = require("./commands/targetAdd");
 const { cmdConfigAdd, cmdConfigDiff, cmdConfigPull, cmdConfigPush } = require("./commands/config");
-const { cmdDeploy, cmdStatus, cmdLogs, cmdRestart, cmdDisable, cmdRollback, cmdUninstall, cmdRunRemote } = require("./commands/deploy");
+const { cmdDeploy, cmdStatus, cmdLogs, cmdRestart, cmdDisable, cmdRollback, cmdUninstall, cmdRunRemote, cmdRemote } = require("./commands/deploy");
 const { version } = require("./lib/version");
 
 async function main(argv) {
@@ -147,6 +147,13 @@ async function main(argv) {
     .description("Uninstall SEAL service from target (sandbox-friendly)")
     .argument("[target]", "Target name", null)
     .action(async (target) => cmdUninstall(process.cwd(), target));
+
+  program
+    .command("remote")
+    .description("Service control on target (mirrors appctl)")
+    .argument("<target>", "Target name")
+    .argument("<action>", "up|enable|start|restart|stop|disable|down|status|logs")
+    .action(async (target, action) => cmdRemote(process.cwd(), target, action));
 
   await program.parseAsync(argv);
 }

@@ -9,8 +9,8 @@ const { fileExists } = require("../lib/fsextra");
 const { info, warn, ok, hr } = require("../lib/ui");
 
 const { cmdRelease } = require("./release");
-const { deployLocal, bootstrapLocal, statusLocal, logsLocal, restartLocal, disableLocal, rollbackLocal, uninstallLocal, runLocalForeground } = require("../lib/deploy");
-const { deploySsh, bootstrapSsh, installServiceSsh, statusSsh, logsSsh, restartSsh, disableSsh, rollbackSsh, uninstallSsh, runSshForeground } = require("../lib/deploySsh");
+const { deployLocal, bootstrapLocal, statusLocal, logsLocal, enableLocal, startLocal, restartLocal, stopLocal, disableLocalOnly, disableLocal, rollbackLocal, downLocal, uninstallLocal, runLocalForeground } = require("../lib/deploy");
+const { deploySsh, bootstrapSsh, installServiceSsh, statusSsh, logsSsh, enableSsh, startSsh, restartSsh, stopSsh, disableSshOnly, disableSsh, rollbackSsh, downSsh, uninstallSsh, runSshForeground } = require("../lib/deploySsh");
 
 function resolveTarget(projectRoot, targetArg) {
   const proj = loadProjectConfig(projectRoot);
@@ -130,6 +130,70 @@ async function cmdRunRemote(cwd, targetArg) {
   else runLocalForeground(targetCfg);
 }
 
+async function cmdRemote(cwd, targetArg, action) {
+  const projectRoot = findProjectRoot(cwd);
+  const { targetCfg, targetName } = resolveTarget(projectRoot, targetArg);
+  const kind = (targetCfg.kind || "local").toLowerCase();
+  const act = (action || "").toLowerCase();
+  const allowed = ["up", "enable", "start", "restart", "stop", "disable", "down", "status", "logs"];
+
+  if (!act) {
+    throw new Error(`Missing action. Use: seal remote ${targetName} <${allowed.join("|")}>`);
+  }
+  if (!allowed.includes(act)) {
+    throw new Error(`Unknown action: ${act}. Use: seal remote ${targetName} <${allowed.join("|")}>`);
+  }
+
+  const isSsh = kind === "ssh";
+
+  switch (act) {
+    case "up":
+      if (isSsh) {
+        bootstrapSsh(targetCfg);
+        installServiceSsh(targetCfg);
+        enableSsh(targetCfg);
+        startSsh(targetCfg);
+      } else {
+        bootstrapLocal(targetCfg);
+      }
+      return;
+    case "enable":
+      if (isSsh) enableSsh(targetCfg);
+      else enableLocal(targetCfg);
+      return;
+    case "start":
+      if (isSsh) startSsh(targetCfg);
+      else startLocal(targetCfg);
+      return;
+    case "restart":
+      if (isSsh) restartSsh(targetCfg);
+      else restartLocal(targetCfg);
+      return;
+    case "stop":
+      if (isSsh) stopSsh(targetCfg);
+      else stopLocal(targetCfg);
+      return;
+    case "disable":
+      if (isSsh) disableSshOnly(targetCfg);
+      else disableLocalOnly(targetCfg);
+      return;
+    case "down":
+      if (isSsh) downSsh(targetCfg);
+      else downLocal(targetCfg);
+      return;
+    case "status":
+      if (isSsh) statusSsh(targetCfg);
+      else statusLocal(targetCfg);
+      return;
+    case "logs":
+      if (isSsh) logsSsh(targetCfg);
+      else logsLocal(targetCfg);
+      return;
+    default:
+      return;
+  }
+}
+
 module.exports = {
   cmdDeploy,
   cmdStatus,
@@ -139,4 +203,5 @@ module.exports = {
   cmdRollback,
   cmdUninstall,
   cmdRunRemote,
+  cmdRemote,
 };

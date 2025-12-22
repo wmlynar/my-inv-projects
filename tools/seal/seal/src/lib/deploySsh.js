@@ -321,11 +321,39 @@ function logsSsh(targetCfg) {
   sshExec({ user, host, args: ["bash","-lc", `sudo -n journalctl -u ${unit} -n 200 -f`], stdio: "inherit" });
 }
 
+function enableSsh(targetCfg) {
+  const { user, host } = sshUserHost(targetCfg);
+  const unit = shQuote(`${targetCfg.serviceName}.service`);
+  const res = sshExec({ user, host, args: ["bash","-lc", `sudo -n systemctl enable ${unit}`], stdio: "inherit" });
+  if (!res.ok) throw new Error(`enable failed (status=${res.status})`);
+}
+
+function startSsh(targetCfg) {
+  const { user, host } = sshUserHost(targetCfg);
+  const unit = shQuote(`${targetCfg.serviceName}.service`);
+  const res = sshExec({ user, host, args: ["bash","-lc", `sudo -n systemctl start ${unit}`], stdio: "inherit" });
+  if (!res.ok) throw new Error(`start failed (status=${res.status})`);
+}
+
 function restartSsh(targetCfg) {
   const { user, host } = sshUserHost(targetCfg);
   const unit = shQuote(`${targetCfg.serviceName}.service`);
   const res = sshExec({ user, host, args: ["bash","-lc", `sudo -n systemctl restart ${unit}`], stdio: "inherit" });
   if (!res.ok) throw new Error(`restart failed (status=${res.status})`);
+}
+
+function stopSsh(targetCfg) {
+  const { user, host } = sshUserHost(targetCfg);
+  const unit = shQuote(`${targetCfg.serviceName}.service`);
+  const res = sshExec({ user, host, args: ["bash","-lc", `sudo -n systemctl stop ${unit}`], stdio: "inherit" });
+  if (!res.ok) throw new Error(`stop failed (status=${res.status})`);
+}
+
+function disableSshOnly(targetCfg) {
+  const { user, host } = sshUserHost(targetCfg);
+  const unit = shQuote(`${targetCfg.serviceName}.service`);
+  const res = sshExec({ user, host, args: ["bash","-lc", `sudo -n systemctl disable ${unit}`], stdio: "inherit" });
+  if (!res.ok) throw new Error(`disable failed (status=${res.status})`);
 }
 
 function disableSsh(targetCfg) {
@@ -381,6 +409,21 @@ echo "Uninstalled ${targetCfg.serviceName}"
 `];
   const res = sshExec({ user, host, args: cmd, stdio: "inherit" });
   if (!res.ok) throw new Error(`uninstall ssh failed (status=${res.status})`);
+}
+
+function downSsh(targetCfg) {
+  const { user, host } = sshUserHost(targetCfg);
+  const layout = remoteLayout(targetCfg);
+  const unit = shQuote(`${targetCfg.serviceName}.service`);
+  const cmd = ["bash","-lc", `
+set -euo pipefail
+sudo -n systemctl disable --now ${unit} || true
+sudo -n rm -f ${shQuote(layout.serviceFile)}
+sudo -n systemctl daemon-reload
+echo "Service removed ${targetCfg.serviceName}"
+`];
+  const res = sshExec({ user, host, args: cmd, stdio: "inherit" });
+  if (!res.ok) throw new Error(`down ssh failed (status=${res.status})`);
 }
 
 function configDiffSsh({ targetCfg, localConfigPath }) {
@@ -446,11 +489,16 @@ module.exports = {
   deploySsh,
   statusSsh,
   logsSsh,
+  enableSsh,
+  startSsh,
   restartSsh,
+  stopSsh,
+  disableSshOnly,
   disableSsh,
   rollbackSsh,
   runSshForeground,
   uninstallSsh,
+  downSsh,
   configDiffSsh,
   configPullSsh,
   configPushSsh,
