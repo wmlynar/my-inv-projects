@@ -102,6 +102,21 @@ function loadConfig() {
 
 const CFG = loadConfig();
 
+function readBuildId() {
+  if (typeof __SEAL_BUILD_ID__ !== "undefined") {
+    return __SEAL_BUILD_ID__;
+  }
+  try {
+    const raw = fs.readFileSync(path.join(__dirname, "version.json"), "utf-8");
+    const data = JSON.parse(raw);
+    return data.buildId || data.build_id || data.build || null;
+  } catch {
+    return null;
+  }
+}
+
+const BUILD_ID = readBuildId();
+
 const USE_MOCK_RDS = CFG.rds.useMock;
 const LOG_API_CALLS = CFG.rds.logApiCalls;
 const RDS_API_HOST = CFG.rds.host;
@@ -164,6 +179,10 @@ if (!USE_MOCK_RDS) {
 const app = express();
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, "public")));
+
+app.get("/api/status", (req, res) => {
+  res.json({ ok: true, buildId: BUILD_ID, ts: Date.now() });
+});
 
 let mockRobotListRaw = null;
 if (USE_MOCK_RDS) {

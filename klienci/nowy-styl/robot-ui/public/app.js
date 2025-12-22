@@ -200,6 +200,98 @@ function setupIdleReset() {
   });
 }
 
+const backendMonitor = {
+  lastOkAt: Date.now(),
+  lastBuildId: null,
+  inFlight: false,
+  reloadPending: false
+};
+
+const BACKEND_POLL_MS = 1000;
+const BACKEND_GRACE_MS = 2000;
+
+const DEBUG_UI = (() => {
+  try {
+    const v = new URLSearchParams(window.location.search || "").get("debug");
+    if (!v) return false;
+    return ["1", "true", "yes", "on"].includes(v.toLowerCase());
+  } catch {
+    return false;
+  }
+})();
+
+let debugToastTimer = null;
+
+function updateDebugBadge(buildId) {
+  if (!DEBUG_UI) return;
+  const badge = document.getElementById("debug-badge");
+  if (!badge) return;
+  const idText = buildId ? buildId : "brak";
+  const timeText = new Date().toLocaleTimeString();
+  badge.textContent = `buildId: ${idText} · ${timeText}`;
+  badge.classList.add("visible");
+}
+
+function showDebugToast(message) {
+  if (!DEBUG_UI) return;
+  const toast = document.getElementById("debug-toast");
+  if (!toast) return;
+  toast.textContent = message;
+  toast.classList.add("visible");
+  if (debugToastTimer) clearTimeout(debugToastTimer);
+  debugToastTimer = setTimeout(() => {
+    toast.classList.remove("visible");
+  }, 1200);
+}
+
+function setBackendOverlay(visible) {
+  const overlay = document.getElementById("backend-overlay");
+  if (!overlay) return;
+  overlay.classList.toggle("visible", visible);
+  overlay.setAttribute("aria-hidden", visible ? "false" : "true");
+}
+
+async function pollBackendStatus() {
+  if (backendMonitor.inFlight) return;
+  backendMonitor.inFlight = true;
+  try {
+    const resp = await fetch("/api/status", { cache: "no-store" });
+    if (!resp.ok) throw new Error(`status ${resp.status}`);
+    const data = await resp.json();
+    backendMonitor.lastOkAt = Date.now();
+    setBackendOverlay(false);
+    if (data && data.buildId) {
+      if (backendMonitor.lastBuildId && data.buildId !== backendMonitor.lastBuildId) {
+        if (!backendMonitor.reloadPending) {
+          backendMonitor.reloadPending = true;
+          if (DEBUG_UI) {
+            showDebugToast("Nowa wersja — odświeżam");
+            setTimeout(() => window.location.reload(), 700);
+          } else {
+            window.location.reload();
+          }
+        }
+        return;
+      }
+      backendMonitor.lastBuildId = data.buildId;
+    }
+    updateDebugBadge(backendMonitor.lastBuildId);
+  } catch {
+    // cicho: overlay ogarnie brak połączenia
+  } finally {
+    backendMonitor.inFlight = false;
+  }
+}
+
+function startBackendMonitor() {
+  pollBackendStatus();
+  setInterval(() => {
+    pollBackendStatus();
+    const offlineTooLong = Date.now() - backendMonitor.lastOkAt > BACKEND_GRACE_MS;
+    setBackendOverlay(offlineTooLong);
+  }, BACKEND_POLL_MS);
+}
+
 async function fetchRobotStateFromServer() {
   try {
     const resp = await fetch("/api/robot/state");
@@ -1071,6 +1163,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupTabs();
   setupControls();
   setupIdleReset();
+  startBackendMonitor();
 
   // upewniamy się, że startowo jest status + góra (jak po uruchomieniu)
   setTab("status", { scrollTop: true });
@@ -1079,6 +1172,6 @@ document.addEventListener("DOMContentLoaded", () => {
   fetchRobotStateFromServer();
   setInterval(fetchRobotStateFromServer, 1000);
 
-setupDpad();
-setupKeyboardMotion();
+  setupDpad();
+  setupKeyboardMotion();
 });

@@ -6,6 +6,14 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <div id="backend-overlay" class="backend-overlay" aria-live="polite" aria-hidden="true">
+    <div class="overlay-box">
+      <div class="overlay-title">Brak połączenia z serwerem</div>
+      <div class="overlay-sub">Czekam na wznowienie połączenia…</div>
+    </div>
+  </div>
+  <div id="debug-toast" class="debug-toast" aria-live="polite"></div>
+  <div id="debug-badge" class="debug-badge"></div>
   <div class="app">
     <header>
       <h1 id="robot-name">AGV-01</h1>

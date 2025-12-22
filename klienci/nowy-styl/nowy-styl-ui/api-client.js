@@ -159,7 +159,7 @@ class APIClient {
       throw new Error("Nie udało się pobrać JSESSIONID z ciasteczka.");
     }
     await response.json(); // Ignorujemy treść odpowiedzi – wystarczy ciasteczko
-    console.log("Zalogowano, JSESSIONID:", this.sessionId);
+    // console.log("Zalogowano, JSESSIONID:", this.sessionId); // log suppressed to avoid leaking session info
   }
 
   async logout() {
@@ -171,7 +171,7 @@ class APIClient {
     if (!response.ok) {
       throw new Error(`Wylogowanie nie powiodło się: ${response.status}`);
     }
-    console.log("Wylogowano poprawnie.");
+    // console.log("Wylogowano poprawnie."); // log suppressed to avoid noisy auth traces
     this.sessionId = null;
   }
 
@@ -215,7 +215,7 @@ class APIClient {
       (response.ok && json && json.code === 9005);
 
     if (isInvalidSession && allowRetry) {
-      console.log("RDS: session invalid (code 9005). Logging in again and retrying request...");
+      // console.log("RDS: session invalid (code 9005). Logging in again and retrying request...");
       this.sessionId = null;
       await this.login();
 

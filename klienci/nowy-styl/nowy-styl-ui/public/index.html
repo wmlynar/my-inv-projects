@@ -209,9 +209,102 @@
       font-size: 11px;
       margin-top: 2px;
     }
+
+    .backend-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(2, 6, 23, 0.8);
+      color: #f8fafc;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      z-index: 9999;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+      backdrop-filter: blur(2px);
+    }
+
+    .backend-overlay.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .backend-overlay .overlay-box {
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 18px 22px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+      max-width: 420px;
+    }
+
+    .backend-overlay .overlay-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    .backend-overlay .overlay-sub {
+      font-size: 13px;
+      color: #cbd5f5;
+    }
+
+    .debug-toast {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      background: rgba(15, 23, 42, 0.95);
+      color: #f8fafc;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 13px;
+      box-shadow: 0 12px 24px rgba(0, 0, 0, 0.35);
+      opacity: 0;
+      transform: translateY(6px);
+      pointer-events: none;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      z-index: 10000;
+    }
+
+    .debug-toast.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .debug-badge {
+      position: fixed;
+      left: 16px;
+      top: 16px;
+      background: rgba(2, 6, 23, 0.7);
+      color: #e2e8f0;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+      z-index: 10000;
+    }
+
+    .debug-badge.visible {
+      opacity: 1;
+    }
   </style>
 </head>
 <body>
+  <div id="backend-overlay" class="backend-overlay" aria-live="polite" aria-hidden="true">
+    <div class="overlay-box">
+      <div class="overlay-title">Brak połączenia z serwerem</div>
+      <div class="overlay-sub">Czekam na wznowienie połączenia…</div>
+    </div>
+  </div>
+  <div id="debug-toast" class="debug-toast" aria-live="polite"></div>
+  <div id="debug-badge" class="debug-badge"></div>
   <div class="app">
     <header>
       <h1>Pola odkładcze – tablety A / B</h1>
@@ -564,9 +657,102 @@
       }
     }
 
+    const backendMonitor = {
+      lastOkAt: Date.now(),
+      lastBuildId: null,
+      inFlight: false,
+      reloadPending: false
+    };
+
+    const BACKEND_POLL_MS = 1000;
+    const BACKEND_GRACE_MS = 2000;
+
+    const DEBUG_UI = (() => {
+      try {
+        const v = new URLSearchParams(window.location.search || "").get("debug");
+        if (!v) return false;
+        return ["1", "true", "yes", "on"].includes(v.toLowerCase());
+      } catch {
+        return false;
+      }
+    })();
+
+    let debugToastTimer = null;
+
+    function updateDebugBadge(buildId) {
+      if (!DEBUG_UI) return;
+      const badge = document.getElementById("debug-badge");
+      if (!badge) return;
+      const idText = buildId ? buildId : "brak";
+      const timeText = new Date().toLocaleTimeString();
+      badge.textContent = `buildId: ${idText} · ${timeText}`;
+      badge.classList.add("visible");
+    }
+
+    function showDebugToast(message) {
+      if (!DEBUG_UI) return;
+      const toast = document.getElementById("debug-toast");
+      if (!toast) return;
+      toast.textContent = message;
+      toast.classList.add("visible");
+      if (debugToastTimer) clearTimeout(debugToastTimer);
+      debugToastTimer = setTimeout(() => {
+        toast.classList.remove("visible");
+      }, 1200);
+    }
+
+    function setBackendOverlay(visible) {
+      const overlay = document.getElementById("backend-overlay");
+      if (!overlay) return;
+      overlay.classList.toggle("visible", visible);
+      overlay.setAttribute("aria-hidden", visible ? "false" : "true");
+    }
+
+    async function pollBackendStatus() {
+      if (backendMonitor.inFlight) return;
+      backendMonitor.inFlight = true;
+      try {
+        const resp = await fetch("/api/status", { cache: "no-store" });
+        if (!resp.ok) throw new Error(`status ${resp.status}`);
+        const data = await resp.json();
+        backendMonitor.lastOkAt = Date.now();
+        setBackendOverlay(false);
+        if (data && data.buildId) {
+          if (backendMonitor.lastBuildId && data.buildId !== backendMonitor.lastBuildId) {
+            if (!backendMonitor.reloadPending) {
+              backendMonitor.reloadPending = true;
+              if (DEBUG_UI) {
+                showDebugToast("Nowa wersja — odświeżam");
+                setTimeout(() => window.location.reload(), 700);
+              } else {
+                window.location.reload();
+              }
+            }
+            return;
+          }
+          backendMonitor.lastBuildId = data.buildId;
+        }
+        updateDebugBadge(backendMonitor.lastBuildId);
+      } catch {
+        // cicho: overlay ogarnie brak połączenia
+      } finally {
+        backendMonitor.inFlight = false;
+      }
+    }
+
+    function startBackendMonitor() {
+      pollBackendStatus();
+      setInterval(() => {
+        pollBackendStatus();
+        const offlineTooLong = Date.now() - backendMonitor.lastOkAt > BACKEND_GRACE_MS;
+        setBackendOverlay(offlineTooLong);
+      }, BACKEND_POLL_MS);
+    }
+
     renderCorridor(columnsA, "corridor-a");
     renderCorridor(columnsB, "corridor-b");
     setupTabs();
+    startBackendMonitor();
 
     // polling co 500 ms
     setInterval(refreshStateFromServer, 500);
