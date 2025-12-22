@@ -1,0 +1,5 @@
+{
+  "standard": "SEAL_STANDARD",
+  "version": 1,
+  "modules": ["logging", "config", "status", "service", "ops", "integrations"]
+}

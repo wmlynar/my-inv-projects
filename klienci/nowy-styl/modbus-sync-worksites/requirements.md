@@ -6,6 +6,7 @@
   - Lista `SITES` z polami: `siteId`, `ip`, `port`, `slaveId`, `offset`, `default` (EMPTY/FILLED).
   - Walidacja konfiguracji przy starcie: unikalne `siteId`, poprawne `offset`, poprawne `default`.
   - Stałe konfiguracyjne na górze pliku: `RDS_HOST`, `RDS_USER`, `RDS_PASS`, `RDS_LANG`, `POLL_INTERVAL_MS`, `MODBUS_REQUEST_TIMEOUT_MS`, `RECONNECT_BACKOFF_MS`, `FILL_DEBOUNCE_MS`.
+  - `RDS_USER`, `RDS_PASS` i `RDS_LANG` są stałymi w kodzie (nie występują w plikach config).
 
 - Modbus:
   - Grupowanie site’ów po `(ip, port, slaveId)` i jeden klient Modbus na grupę.
@@ -109,7 +110,8 @@
 ## Ogólne wymagania dla usług produkcyjnych
 
 - Konfiguracja:
-  - wszystkie istotne parametry (hosty, loginy, hasła, timeouty, interwały) zebrane w jednym miejscu,
+  - wszystkie istotne parametry (hosty, timeouty, interwały) zebrane w jednym miejscu,
+  - loginy/hasła/language dla RDS są stałymi w kodzie (świadomy wyjątek),
   - walidacja konfiguracji przy starcie (duplikaty, zakresy, brakujące pola).
 
 - Logowanie:

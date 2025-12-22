@@ -130,12 +130,38 @@ class APIClient {
     }
   };
 
-  constructor(apiHost, username, password, language = "en") {
+  constructor(apiHost, username, password, language = "en", opts = {}) {
     this.apiHost = apiHost;
     this.username = username;
     this.password = password;
     this.sessionId = null;
     this.language = language;
+    this.logger = opts.logger || null;
+    this.requestTimeoutMs = Number(opts.requestTimeoutMs || 5000);
+  }
+
+  _log(level, evt, msg, ctx, err) {
+    if (!this.logger) return;
+    const fn = this.logger[level] || this.logger.info;
+    fn.call(this.logger, evt, msg, ctx, err);
+  }
+
+  async _fetchWithTimeout(url, options = {}) {
+    const timeoutMs = Number(this.requestTimeoutMs || 5000);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, { ...options, signal: controller.signal });
+    } catch (err) {
+      if (err && err.name === "AbortError") {
+        const e = new Error(`Request timeout after ${timeoutMs}ms`);
+        e.code = "ETIMEDOUT";
+        throw e;
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async login() {
@@ -144,7 +170,7 @@ class APIClient {
       username: this.username,
       password: this.encryptPassword(this.password)
     };
-    const response = await fetch(url, {
+    const response = await this._fetchWithTimeout(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(requestData)
@@ -159,19 +185,19 @@ class APIClient {
       throw new Error("Nie udało się pobrać JSESSIONID z ciasteczka.");
     }
     await response.json(); // Ignorujemy treść odpowiedzi – wystarczy ciasteczko
-    console.log("Zalogowano, JSESSIONID:", this.sessionId);
+    this._log("info", "RDS_LOGIN_OK", "RDS login ok", { host: this.apiHost });
   }
 
   async logout() {
     const url = `${this.apiHost}/admin/logout`;
-    const response = await fetch(url, {
+    const response = await this._fetchWithTimeout(url, {
       method: "GET",
       headers: { Cookie: `JSESSIONID=${this.sessionId}` }
     });
     if (!response.ok) {
       throw new Error(`Wylogowanie nie powiodło się: ${response.status}`);
     }
-    console.log("Wylogowano poprawnie.");
+    this._log("info", "RDS_LOGOUT_OK", "RDS logout ok", { host: this.apiHost });
     this.sessionId = null;
   }
 
@@ -191,7 +217,7 @@ class APIClient {
       };
 
       const url = `${this.apiHost}${path}`;
-      return fetch(url, { ...options, headers });
+      return this._fetchWithTimeout(url, { ...options, headers });
     };
 
     // Helper do czytania JSON + tekstu (na wypadek błędu)
@@ -215,7 +241,7 @@ class APIClient {
       (response.ok && json && json.code === 9005);
 
     if (isInvalidSession && allowRetry) {
-      console.log("RDS: session invalid (code 9005). Logging in again and retrying request...");
+      this._log("warn", "RDS_SESSION_INVALID", "RDS session invalid, relogin", { host: this.apiHost });
       this.sessionId = null;
       await this.login();
 

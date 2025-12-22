@@ -1,0 +1,44 @@
+{
+  "appName": "modbus-sync-worksites",
+  "http": {
+    "host": "127.0.0.1",
+    "port": 3010
+  },
+  "log": {
+    "level": "info"
+  },
+  "rds": {
+    "host": "http://127.0.0.1:8080",
+    "requestTimeoutMs": 5000,
+    "errorLogThrottleMs": 5000,
+    "fatalOnErrors": true,
+    "maxConsecutiveErrors": 200
+  },
+  "modbus": {
+    "socketTimeoutMs": 1000,
+    "requestTimeoutMs": 1000,
+    "pollIntervalMs": 500,
+    "reconnectBackoffMs": 5000,
+    "fillDebounceMs": 2000,
+    "fatalOnErrors": true,
+    "maxConsecutiveErrors": 100
+  },
+  "sites": [
+    { "siteId": "PICK-01", "ip": "10.6.44.70", "port": 502, "slaveId": 255, "offset": 0, "default": "EMPTY" },
+    { "siteId": "PICK-02", "ip": "10.6.44.70", "port": 502, "slaveId": 255, "offset": 1, "default": "EMPTY" },
+    { "siteId": "PICK-03", "ip": "10.6.44.70", "port": 502, "slaveId": 255, "offset": 2, "default": "EMPTY" },
+    { "siteId": "PICK-04", "ip": "10.6.44.70", "port": 502, "slaveId": 255, "offset": 3, "default": "EMPTY" },
+    { "siteId": "PICK-05", "ip": "10.6.44.70", "port": 502, "slaveId": 255, "offset": 4, "default": "EMPTY" },
+    { "siteId": "PICK-06", "ip": "10.6.44.70", "port": 502, "slaveId": 255, "offset": 5, "default": "EMPTY" },
+    { "siteId": "PICK-07", "ip": "10.6.44.70", "port": 502, "slaveId": 255, "offset": 6, "default": "EMPTY" },
+    { "siteId": "PICK-08", "ip": "10.6.44.70", "port": 502, "slaveId": 255, "offset": 7, "default": "EMPTY" },
+    { "siteId": "PICK-09", "ip": "10.6.44.70", "port": 502, "slaveId": 255, "offset": 8, "default": "EMPTY" },
+    { "siteId": "PICK-10", "ip": "10.6.44.70", "port": 502, "slaveId": 255, "offset": 9, "default": "EMPTY" },
+    { "siteId": "PICK-11", "ip": "10.6.44.70", "port": 502, "slaveId": 255, "offset": 10, "default": "EMPTY" },
+    { "siteId": "PICK-12", "ip": "10.6.44.70", "port": 502, "slaveId": 255, "offset": 11, "default": "EMPTY" },
+    { "siteId": "PICK-13", "ip": "10.6.44.70", "port": 502, "slaveId": 255, "offset": 12, "default": "EMPTY" },
+    { "siteId": "PICK-14", "ip": "10.6.44.70", "port": 502, "slaveId": 255, "offset": 13, "default": "EMPTY" },
+    { "siteId": "PICK-15", "ip": "10.6.44.70", "port": 502, "slaveId": 255, "offset": 14, "default": "EMPTY" },
+    { "siteId": "PICK-16", "ip": "10.6.44.70", "port": 502, "slaveId": 255, "offset": 15, "default": "EMPTY" }
+  ]
+}

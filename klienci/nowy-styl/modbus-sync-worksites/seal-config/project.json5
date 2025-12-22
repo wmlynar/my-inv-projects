@@ -1,0 +1,13 @@
+{
+  appName: "modbus-sync-worksites",
+  entry: "modbus-sync-worksites.js",
+  defaultTarget: "local",
+  build: {
+    packager: "auto",
+    obfuscationProfile: "balanced",
+    frontendObfuscation: { enabled: false },
+    frontendMinify: { enabled: false },
+    hardening: { enabled: true, strip: false, upx: false, bundlePacking: true },
+    includeDirs: [],
+  },
+}

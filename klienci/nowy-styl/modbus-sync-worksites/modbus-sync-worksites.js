@@ -1,132 +1,262 @@
-// modbus-sync-worksites.js
-//
-// Synchronize RDS worksites (FILLED / EMPTY) based on Modbus discrete inputs.
-// Implementation using jsmodbus + explicit net.Socket management.
-//
-// Założenia:
-// - jedno połączenie TCP na sterownik (grupę),
-// - przy każdym błędzie czytania lub łączenia zamykamy socket i klienta,
-// - reconnect tylko po backoffie,
-// - debounce per worksite względem stanu domyślnego,
-// - DEBUG_LOG steruje gadatliwością logów (debug vs tylko błędy).
+"use strict";
+
+const fs = require("fs");
+const path = require("path");
+const http = require("http");
+const net = require("net");
+const Modbus = require("jsmodbus");
 
 const { APIClient } = require("./api-client");
-const Modbus = require("jsmodbus");
-const net = require("net");
+const { loadRuntimeConfig } = require("./config");
+const { createLogger } = require("./logger");
 
-// --- DEBUG LOGGING -----------------------------------------------------------
+const BUILD_ID = (typeof __SEAL_BUILD_ID__ !== "undefined") ? __SEAL_BUILD_ID__ : "DEV";
 
-const DEBUG_LOG = false;
-
-function dlog(...args) {
-  if (DEBUG_LOG) console.log(...args);
+function nowIso() {
+  return new Date().toISOString();
 }
 
-// --- GLOBAL ERROR HANDLERS ---------------------------------------------------
+function nowMs() {
+  return Date.now();
+}
 
-process.on("unhandledRejection", (err) => {
-  console.error("UNHANDLED REJECTION:", err && err.stack ? err.stack : err);
-});
+function readVersion() {
+  const versionPath = path.join(process.cwd(), "version.json");
+  if (fs.existsSync(versionPath)) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(versionPath, "utf-8"));
+      if (raw && raw.version) return raw.version;
+    } catch {
+      // ignore
+    }
+  }
+  const pkgPath = path.join(process.cwd(), "package.json");
+  if (fs.existsSync(pkgPath)) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+      if (pkg && pkg.version) return pkg.version;
+    } catch {
+      // ignore
+    }
+  }
+  return null;
+}
 
-process.on("uncaughtException", (err) => {
-  console.error("UNCAUGHT EXCEPTION:", err && err.stack ? err.stack : err);
-});
+const fallbackLogger = createLogger({ level: "info" });
+let cfg;
+let configPath;
+let configHash;
+try {
+  const loaded = loadRuntimeConfig();
+  cfg = loaded.cfg;
+  configPath = loaded.configPath;
+  configHash = loaded.configHash;
+} catch (err) {
+  const cfgPath = path.join(process.cwd(), "config.runtime.json5");
+  fallbackLogger.error("CFG_INVALID", "Invalid config.runtime.json5", { configPath: cfgPath }, err);
+  process.exit(2);
+}
 
-// --- RDS CONFIG --------------------------------------------------------------
+const APP_NAME = (typeof __SEAL_APP_NAME__ !== "undefined") ? __SEAL_APP_NAME__ : (cfg.appName || "modbus-sync-worksites");
+const VERSION = readVersion();
 
-const RDS_HOST = "http://127.0.0.1:8080";
+const logger = createLogger({ level: cfg.log.level });
+
+// RDS credentials and language are intentionally kept out of runtime config.
 const RDS_USER = "admin";
 const RDS_PASS = "123456";
-const RDS_LANG = "en";
+const RDS_LANG = "pl";
 
-// Throttling logów błędów RDS – nie spamujemy co pętlę
-const RDS_ERROR_LOG_THROTTLE_MS = 5000; // min przerwa między kolejnymi logami błędów RDS
-let rdsLastErrorTime = 0;
-
-// Ile kolejnych błędów RDS tolerujemy zanim zrobimy twardy exit (opcjonalnie)
-const ENABLE_RDS_FATAL_ON_ERRORS = true;
-const RDS_MAX_CONSECUTIVE_ERRORS = 200;
-let rdsConsecutiveErrors = 0;
-
-// --- MODBUS CONFIG -----------------------------------------------------------
-
-// Timeout socketu (ms) – NIE ZMIENIAMY
-const MODBUS_SOCKET_TIMEOUT_MS = 1000;
-
-// Jak często wykonujemy pełny sync (ms)
-const POLL_INTERVAL_MS = 500;
-
-// Backoff pomiędzy próbami reconnectu (ms)
-const RECONNECT_BACKOFF_MS = 5000;
-
-// Ile kolejnych błędów Modbus tolerujemy zanim zrobimy twardy exit (opcjonalnie)
-const ENABLE_MODBUS_FATAL_ON_ERRORS = true;
-const MODBUS_MAX_CONSECUTIVE_ERRORS = 100;
-
-// --- DEBOUNCE CONFIG ---------------------------------------------------------
-
-const FILL_DEBOUNCE_MS = 2000;
-
-// --- LOGICAL STATES ----------------------------------------------------------
-
-const EMPTY  = "EMPTY";
+const EMPTY = "EMPTY";
 const FILLED = "FILLED";
 
-// --- WORKSITE -> MODBUS MAPPING ---------------------------------------------
-//
-// offset = adres wejścia dyskretnego (bit).
-//
-// default:
-//   - stan przy błędach komunikacji,
-//   - stan bazowy dla debounca (zawsze do niego wracamy, jeśli sygnał nie jest stabilnie przeciwny).
+const RDS_ERROR_LOG_THROTTLE_MS = cfg.rds.errorLogThrottleMs;
+const ENABLE_RDS_FATAL_ON_ERRORS = cfg.rds.fatalOnErrors;
+const RDS_MAX_CONSECUTIVE_ERRORS = cfg.rds.maxConsecutiveErrors;
 
-const SITES = [
-  { siteId: "PICK-01", ip: "10.6.44.70", port: 502, slaveId: 255, offset:  0, default: EMPTY },
-  { siteId: "PICK-02", ip: "10.6.44.70", port: 502, slaveId: 255, offset:  1, default: EMPTY },
-  { siteId: "PICK-03", ip: "10.6.44.70", port: 502, slaveId: 255, offset:  2, default: EMPTY },
-  { siteId: "PICK-04", ip: "10.6.44.70", port: 502, slaveId: 255, offset:  3, default: EMPTY },
-  { siteId: "PICK-05", ip: "10.6.44.70", port: 502, slaveId: 255, offset:  4, default: EMPTY },
-  { siteId: "PICK-06", ip: "10.6.44.70", port: 502, slaveId: 255, offset:  5, default: EMPTY },
-  { siteId: "PICK-07", ip: "10.6.44.70", port: 502, slaveId: 255, offset:  6, default: EMPTY },
-  { siteId: "PICK-08", ip: "10.6.44.70", port: 502, slaveId: 255, offset:  7, default: EMPTY },
-  { siteId: "PICK-09", ip: "10.6.44.70", port: 502, slaveId: 255, offset:  8, default: EMPTY },
-  { siteId: "PICK-10", ip: "10.6.44.70", port: 502, slaveId: 255, offset:  9, default: EMPTY },
-  { siteId: "PICK-11", ip: "10.6.44.70", port: 502, slaveId: 255, offset: 10, default: EMPTY },
-  { siteId: "PICK-12", ip: "10.6.44.70", port: 502, slaveId: 255, offset: 11, default: EMPTY },
-  { siteId: "PICK-13", ip: "10.6.44.70", port: 502, slaveId: 255, offset: 12, default: EMPTY },
-  { siteId: "PICK-14", ip: "10.6.44.70", port: 502, slaveId: 255, offset: 13, default: EMPTY },
-  { siteId: "PICK-15", ip: "10.6.44.70", port: 502, slaveId: 255, offset: 14, default: EMPTY },
-  { siteId: "PICK-16", ip: "10.6.44.70", port: 502, slaveId: 255, offset: 15, default: EMPTY },
-];
+const MODBUS_SOCKET_TIMEOUT_MS = cfg.modbus.socketTimeoutMs;
+const MODBUS_REQUEST_TIMEOUT_MS = cfg.modbus.requestTimeoutMs;
+const POLL_INTERVAL_MS = cfg.modbus.pollIntervalMs;
+const RECONNECT_BACKOFF_MS = cfg.modbus.reconnectBackoffMs;
+const ENABLE_MODBUS_FATAL_ON_ERRORS = cfg.modbus.fatalOnErrors;
+const MODBUS_MAX_CONSECUTIVE_ERRORS = cfg.modbus.maxConsecutiveErrors;
 
-// --- CONFIG VALIDATION -------------------------------------------------------
+const FILL_DEBOUNCE_MS = cfg.modbus.fillDebounceMs;
+const SITES = cfg.sites;
 
-function validateConfig() {
-  const ids = new Set();
-  for (const s of SITES) {
-    if (!s.siteId || typeof s.siteId !== "string") {
-      throw new Error(`Invalid siteId in SITES: ${JSON.stringify(s)}`);
+const startedAt = Date.now();
+let shuttingDown = false;
+let httpServer = null;
+
+const deps = {
+  rds: { state: "degraded", lastOkAt: null, lastFailAt: null, msg: "not_checked" },
+  modbus: { state: "degraded", lastOkAt: null, lastFailAt: null, msg: "not_checked" },
+  modbusGroups: {},
+};
+
+function dlog(evt, msg, ctx) {
+  logger.debug(evt, msg, ctx);
+}
+
+function markRdsOk() {
+  deps.rds.state = "ok";
+  deps.rds.lastOkAt = nowIso();
+  deps.rds.msg = null;
+}
+
+function markRdsFail(msg) {
+  deps.rds.state = "down";
+  deps.rds.lastFailAt = nowIso();
+  deps.rds.msg = msg;
+}
+
+function markModbusGroupOk(groupKey) {
+  deps.modbusGroups[groupKey] = {
+    state: "ok",
+    lastOkAt: nowIso(),
+    lastFailAt: deps.modbusGroups[groupKey]?.lastFailAt || null,
+    msg: null,
+  };
+}
+
+function markModbusGroupFail(groupKey, msg) {
+  deps.modbusGroups[groupKey] = {
+    state: "down",
+    lastOkAt: deps.modbusGroups[groupKey]?.lastOkAt || null,
+    lastFailAt: nowIso(),
+    msg,
+  };
+}
+
+function aggregateModbusStatus() {
+  const groups = Object.values(deps.modbusGroups);
+  if (!groups.length) {
+    return { state: "degraded", lastOkAt: null, lastFailAt: null, msg: "no_groups" };
+  }
+
+  const downCount = groups.filter((g) => g.state !== "ok").length;
+  const lastOkAt = groups.map((g) => g.lastOkAt).filter(Boolean).sort().slice(-1)[0] || null;
+  const lastFailAt = groups.map((g) => g.lastFailAt).filter(Boolean).sort().slice(-1)[0] || null;
+
+  if (downCount === 0) return { state: "ok", lastOkAt, lastFailAt, msg: null };
+  if (downCount === groups.length) return { state: "down", lastOkAt, lastFailAt, msg: "all_groups_down" };
+  return { state: "degraded", lastOkAt, lastFailAt, msg: "some_groups_down" };
+}
+
+function buildStatusPayload() {
+  const modbusAgg = aggregateModbusStatus();
+  deps.modbus = modbusAgg;
+
+  return {
+    standard: "SEAL_STANDARD",
+    standardVersion: 1,
+    appName: APP_NAME,
+    version: VERSION,
+    buildId: BUILD_ID,
+    now: nowIso(),
+    uptimeSec: Math.floor((Date.now() - startedAt) / 1000),
+    node: process.version,
+    pid: process.pid,
+    configHash,
+    deps: {
+      rds: deps.rds,
+      modbus: deps.modbus,
+      modbusGroups: deps.modbusGroups,
+    },
+  };
+}
+
+function startStatusServer() {
+  return new Promise((resolve, reject) => {
+    const server = http.createServer((req, res) => {
+      if (req.method !== "GET") {
+        res.statusCode = 405;
+        res.end();
+        return;
+      }
+
+      if (req.url === "/healthz") {
+        res.statusCode = 200;
+        res.setHeader("content-type", "text/plain");
+        res.end("ok");
+        return;
+      }
+
+      if (req.url === "/status") {
+        const payload = buildStatusPayload();
+        res.statusCode = 200;
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify(payload));
+        return;
+      }
+
+      res.statusCode = 404;
+      res.end();
+    });
+
+    server.on("error", (err) => reject(err));
+
+    server.listen(cfg.http.port, cfg.http.host, () => {
+      logger.info("HTTP_LISTEN", "Status server listening", { host: cfg.http.host, port: cfg.http.port });
+      resolve(server);
+    });
+  });
+}
+
+function defaultToBool(def) {
+  return def === FILLED;
+}
+
+function updateDebouncedState(site, rawVal, now) {
+  const siteId = site.siteId;
+  const defaultVal = defaultToBool(site.default);
+  const opposite = !defaultVal;
+
+  let st = debounceStates.get(siteId);
+  if (!st) {
+    st = { lastOppositeStartTs: null, effectiveVal: defaultVal };
+    debounceStates.set(siteId, st);
+  }
+
+  if (rawVal === defaultVal) {
+    st.lastOppositeStartTs = null;
+    st.effectiveVal = defaultVal;
+  } else {
+    if (st.lastOppositeStartTs === null) {
+      st.lastOppositeStartTs = now;
+      st.effectiveVal = defaultVal;
+    } else if (now - st.lastOppositeStartTs >= FILL_DEBOUNCE_MS) {
+      st.effectiveVal = opposite;
     }
-    if (ids.has(s.siteId)) {
-      throw new Error(`Duplicate siteId in SITES: ${s.siteId}`);
-    }
-    ids.add(s.siteId);
+  }
 
-    if (!Number.isInteger(s.offset) || s.offset < 0) {
-      throw new Error(`Invalid offset for ${s.siteId}: ${s.offset}`);
-    }
+  return st.effectiveVal;
+}
 
-    if (![EMPTY, FILLED].includes(s.default)) {
-      throw new Error(`Invalid default state for ${s.siteId}: ${s.default}`);
-    }
+function resetDebounceForSites(sites) {
+  for (const s of sites) {
+    debounceStates.delete(s.siteId);
   }
 }
 
-validateConfig();
+function extractInputsFromResponse(resp) {
+  if (!resp || !resp.response) return null;
+  const body = resp.response.body || resp.response._body;
+  if (!body) return null;
+  if (Array.isArray(body.valuesAsArray)) return body.valuesAsArray;
+  if (Array.isArray(body._valuesAsArray)) return body._valuesAsArray;
+  return null;
+}
 
-// --- GROUP SITES BY MODBUS CONNECTION ---------------------------------------
-//
-// group = { key, ip, port, slaveId, sites[], minOffset, length }
+function withTimeout(promise, timeoutMs, label) {
+  let timer = null;
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timeout`)), timeoutMs);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
 
 function groupSitesByConnection(sites) {
   const map = new Map();
@@ -164,115 +294,9 @@ function groupSitesByConnection(sites) {
 
 const GROUPS = groupSitesByConnection(SITES);
 
-// --- MODBUS CONNECTION STATE -------------------------------------------------
-//
-// modbusConnections[group.key] = {
-//   socket: net.Socket | null,
-//   client: Modbus.client.TCP | null,
-//   lastAttemptMs: number
-// }
-
 const modbusConnections = new Map();
-
-// Ile kolejnych błędów Modbus na grupę
 const modbusConsecutiveErrors = new Map();
-
-// --- DEBOUNCE STATE PER WORKSITE --------------------------------------------
-//
-// debounceStates[siteId] = {
-//   lastOppositeStartTs: number | null,
-//   effectiveVal: boolean (true=FILLED, false=EMPTY)
-// }
-
 const debounceStates = new Map();
-
-// --- HELPERS -----------------------------------------------------------------
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function defaultToBool(def) {
-  return def === FILLED;
-}
-
-function nowMs() {
-  return Date.now();
-}
-
-// Update debounced value for one site.
-// rawVal = raw sensor bit (true/false).
-function updateDebouncedState(site, rawVal, now) {
-  const siteId     = site.siteId;
-  const defaultVal = defaultToBool(site.default);
-  const opposite   = !defaultVal;
-
-  let st = debounceStates.get(siteId);
-  if (!st) {
-    st = { lastOppositeStartTs: null, effectiveVal: defaultVal };
-    debounceStates.set(siteId, st);
-  }
-
-  if (rawVal === defaultVal) {
-    // Sensor agrees with default -> immediately back to default.
-    st.lastOppositeStartTs = null;
-    st.effectiveVal = defaultVal;
-  } else {
-    // Sensor suggests opposite state.
-    if (st.lastOppositeStartTs === null) {
-      // First time we see opposite signal.
-      st.lastOppositeStartTs = now;
-      st.effectiveVal = defaultVal; // still default until delay passes
-    } else if (now - st.lastOppositeStartTs >= FILL_DEBOUNCE_MS) {
-      // Opposite signal held long enough -> accept change.
-      st.effectiveVal = opposite;
-    }
-  }
-
-  return st.effectiveVal;
-}
-
-function resetDebounceForSites(sites) {
-  for (const s of sites) {
-    debounceStates.delete(s.siteId);
-  }
-}
-
-// Extract boolean array of discrete inputs from jsmodbus response.
-function extractInputsFromResponse(resp) {
-  if (!resp || !resp.response) return null;
-  const body = resp.response.body || resp.response._body;
-  if (!body) return null;
-  if (Array.isArray(body.valuesAsArray)) return body.valuesAsArray;
-  if (Array.isArray(body._valuesAsArray)) return body._valuesAsArray;
-  return null;
-}
-
-// --- RDS ERROR LOGGING WITH THROTTLING + COUNTER ----------------------------
-
-function logRdsError(message) {
-  const now = nowMs();
-  rdsConsecutiveErrors++;
-
-  if (rdsLastErrorTime === 0 || now - rdsLastErrorTime >= RDS_ERROR_LOG_THROTTLE_MS) {
-    console.error(
-      `${message} (consecutive RDS errors: ${rdsConsecutiveErrors})`
-    );
-    rdsLastErrorTime = now;
-  } else {
-    dlog(`[RDS] Suppressed repeated error: ${message}`);
-  }
-
-  if (ENABLE_RDS_FATAL_ON_ERRORS && rdsConsecutiveErrors >= RDS_MAX_CONSECUTIVE_ERRORS) {
-    console.error(
-      `[RDS] Too many consecutive errors (${rdsConsecutiveErrors}). ` +
-      `Exiting process so systemd can restart the service.`
-    );
-    process.exit(1);
-  }
-}
-
-// --- MODBUS ERROR COUNTER ----------------------------------------------------
 
 function registerModbusError(groupKey) {
   const prev = modbusConsecutiveErrors.get(groupKey) || 0;
@@ -284,10 +308,6 @@ function registerModbusError(groupKey) {
 function resetModbusError(groupKey) {
   modbusConsecutiveErrors.set(groupKey, 0);
 }
-
-// --- SAFE CLOSE OF SOCKET + CLIENT ------------------------------------------
-//
-// Hard-close connection for given group, so PLC clearly sees client gone.
 
 async function safeCloseConnection(groupKey) {
   const state = modbusConnections.get(groupKey);
@@ -303,7 +323,7 @@ async function safeCloseConnection(groupKey) {
       state.socket = null;
       state.client = null;
       state.lastAttemptMs = nowMs();
-      dlog(`[Modbus] Closed connection for group ${groupKey}`);
+      dlog("MODBUS_CONN_CLOSE", "Connection closed", { groupKey });
       resolve();
     };
 
@@ -311,15 +331,12 @@ async function safeCloseConnection(groupKey) {
       socket.end(() => {
         finish();
       });
-      // Fallback in case 'end' callback is not called.
       setTimeout(finish, 200);
     } catch (_) {
       finish();
     }
   });
 }
-
-// --- CREATE CONNECTION FOR GROUP --------------------------------------------
 
 async function ensureConnectionForGroup(group) {
   let state = modbusConnections.get(group.key);
@@ -330,30 +347,23 @@ async function ensureConnectionForGroup(group) {
     modbusConnections.set(group.key, state);
   }
 
-  // If we already have a client, nothing to do.
   if (state.client && state.socket) {
     return { state, status: "ok" };
   }
 
   const sinceLast = now - state.lastAttemptMs;
   if (state.lastAttemptMs !== 0 && sinceLast < RECONNECT_BACKOFF_MS) {
-    // Backoff in progress.
-    dlog(
-      `[Modbus] Group ${group.key}: reconnect backoff ${sinceLast}ms < ${RECONNECT_BACKOFF_MS}ms`
-    );
+    dlog("MODBUS_BACKOFF", "Reconnect backoff", { groupKey: group.key, sinceLastMs: sinceLast, backoffMs: RECONNECT_BACKOFF_MS });
     return { state, status: "backoff" };
   }
 
   state.lastAttemptMs = now;
 
-  // Create new socket + client.
   const socket = new net.Socket();
-
-  // Ustawiamy timeout na socket – ale obsługujemy go jawnie w promisie connect.
   socket.setTimeout(MODBUS_SOCKET_TIMEOUT_MS);
 
   socket.on("close", (hadError) => {
-    dlog(`[Modbus] Socket closed for group ${group.key} (hadError=${hadError})`);
+    dlog("MODBUS_SOCKET_CLOSE", "Socket closed", { groupKey: group.key, hadError });
   });
 
   const client = new Modbus.client.TCP(socket, group.slaveId);
@@ -365,7 +375,7 @@ async function ensureConnectionForGroup(group) {
     await new Promise((resolve, reject) => {
       const onConnect = () => {
         cleanup();
-        dlog(`[Modbus] Connected to ${group.key}`);
+        dlog("MODBUS_CONNECT_OK", "Connected", { groupKey: group.key });
         resolve();
       };
       const onError = (err) => {
@@ -375,7 +385,7 @@ async function ensureConnectionForGroup(group) {
       };
       const onTimeout = () => {
         cleanup();
-        dlog(`[Modbus] Socket timeout for group ${group.key} during connect`);
+        dlog("MODBUS_CONNECT_TIMEOUT", "Socket timeout during connect", { groupKey: group.key });
         reject(new Error("Socket timeout during connect"));
         socket.destroy();
       };
@@ -395,20 +405,10 @@ async function ensureConnectionForGroup(group) {
     return { state, status: "ok" };
   } catch (err) {
     const msg = err && err.message ? err.message : String(err);
-
-    // Connection failed -> hard close.
     await safeCloseConnection(group.key);
-
     return { state, status: "error", message: `connect failed: ${msg}` };
   }
 }
-
-// --- MODBUS: READ DISCRETE INPUTS FOR GROUP ---------------------------------
-//
-// Returns:
-//   { status: "ok", inputs: boolean[] }
-//   { status: "backoff" }
-//   { status: "error", message: string }
 
 async function readInputsForGroup(group) {
   const { state, status, message } = await ensureConnectionForGroup(group);
@@ -421,79 +421,80 @@ async function readInputsForGroup(group) {
     return { status: "error", message };
   }
 
-  // At this point we should have a connected client.
   if (!state.client || !state.socket) {
-    return {
-      status: "error",
-      message: "no active Modbus client/socket after ensureConnection",
-    };
+    return { status: "error", message: "no active Modbus client/socket after ensureConnection" };
   }
 
   try {
-    const startAddr  = group.minOffset;
+    const startAddr = group.minOffset;
     const readLength = group.sites.length === 1 ? 1 : group.length;
 
-    dlog(
-      `[MODBUS-REQ] ${group.key} readDiscreteInputs(addr=${startAddr}, len=${readLength})`
+    dlog("MODBUS_REQ", "readDiscreteInputs", { groupKey: group.key, startAddr, length: readLength });
+
+    const resp = await withTimeout(
+      state.client.readDiscreteInputs(startAddr, readLength),
+      MODBUS_REQUEST_TIMEOUT_MS,
+      "readDiscreteInputs"
     );
 
-    const resp = await state.client.readDiscreteInputs(startAddr, readLength);
     const inputs = extractInputsFromResponse(resp);
 
     if (!inputs) {
-      return {
-        status: "error",
-        message: "invalid readDiscreteInputs response format",
-      };
+      return { status: "error", message: "invalid readDiscreteInputs response format" };
     }
 
-    const maxAddr = startAddr + inputs.length - 1;
-    dlog(
-      `[MODBUS-RESP] ${group.key} len=${inputs.length} inputs[${startAddr}..${maxAddr}] =`,
-      inputs
-    );
-
+    dlog("MODBUS_RESP", "readDiscreteInputs ok", { groupKey: group.key, length: inputs.length });
     return { status: "ok", inputs };
   } catch (err) {
     const msg = err && err.message ? err.message : String(err);
-
-    // Read failed -> hard close connection, so PLC clearly sees client gone.
     await safeCloseConnection(group.key);
-
-    return {
-      status: "error",
-      message: `readDiscreteInputs failed: ${msg}`,
-    };
+    return { status: "error", message: `readDiscreteInputs failed: ${msg}` };
   }
 }
 
-// --- RDS: WRITE WORKSITE STATE ----------------------------------------------
-//
-// filledBool: true = FILLED, false = EMPTY
+let rdsLastErrorTime = 0;
+let rdsConsecutiveErrors = 0;
+
+function logRdsError(message, err, ctx) {
+  const now = nowMs();
+  rdsConsecutiveErrors++;
+  markRdsFail(message);
+
+  if (rdsLastErrorTime === 0 || now - rdsLastErrorTime >= RDS_ERROR_LOG_THROTTLE_MS) {
+    logger.error("RDS_CALL_FAIL", message, { ...ctx, consecutiveErrors: rdsConsecutiveErrors }, err);
+    rdsLastErrorTime = now;
+  } else {
+    dlog("RDS_CALL_FAIL_SUPPRESSED", "Suppressed repeated RDS error", { message });
+  }
+
+  if (ENABLE_RDS_FATAL_ON_ERRORS && rdsConsecutiveErrors >= RDS_MAX_CONSECUTIVE_ERRORS) {
+    fatalExit(
+      "APP_FATAL",
+      "Too many consecutive RDS errors",
+      { consecutiveErrors: rdsConsecutiveErrors },
+      new Error("Too many consecutive RDS errors")
+    );
+  }
+}
 
 async function writeWorksiteState(api, site, filledBool, context) {
   try {
-    if (filledBool) {
-      await api.setWorkSiteFilled(site.siteId);
-    } else {
-      await api.setWorkSiteEmpty(site.siteId);
-    }
+    if (filledBool) await api.setWorkSiteFilled(site.siteId);
+    else await api.setWorkSiteEmpty(site.siteId);
 
-    // Sukces – zerujemy licznik błędów RDS.
     rdsConsecutiveErrors = 0;
+    markRdsOk();
 
-    dlog(
-      `[RDS] Worksite ${site.siteId} => ${filledBool ? "FILLED" : "EMPTY"} (${context})`
-    );
+    dlog("RDS_UPDATE_OK", "Worksite state updated", {
+      siteId: site.siteId,
+      state: filledBool ? "FILLED" : "EMPTY",
+      context,
+    });
   } catch (err) {
     const msg = err && err.message ? err.message : String(err);
-    logRdsError(
-      `[RDS] Failed to update worksite ${site.siteId} (${context}): ${msg}`
-    );
+    logRdsError(`Failed to update worksite ${site.siteId} (${context}): ${msg}`, err, { siteId: site.siteId });
   }
 }
-
-// --- Apply default state (used on Modbus error / missing value) --------------
 
 async function setSitesDefault(api, sites, context) {
   for (const s of sites) {
@@ -503,21 +504,16 @@ async function setSitesDefault(api, sites, context) {
   }
 }
 
-// --- ONE SYNC CYCLE ----------------------------------------------------------
-
 async function syncOnce(api) {
-  dlog("[SYNC] syncOnce start");
+  dlog("SYNC_START", "syncOnce start", { groups: GROUPS.length });
 
   if (!api.sessionId) {
     try {
       await api.login();
-      dlog("[RDS] Initial login succeeded.");
-      rdsConsecutiveErrors = 0;
+      markRdsOk();
     } catch (err) {
       const msg = err && err.message ? err.message : String(err);
-      logRdsError(`[RDS] Initial login failed: ${msg}`);
-      // Nie przerywamy całej pętli – Modbus może dalej działać,
-      // a kolejne wywołania RDS będą nadal próbowały (ale z throttlem logowania).
+      logRdsError(`Initial login failed: ${msg}`, err, { stage: "login" });
     }
   }
 
@@ -527,46 +523,40 @@ async function syncOnce(api) {
     const result = await readInputsForGroup(group);
 
     if (result.status === "backoff") {
-      dlog(`[SYNC] Group ${group.key}: Modbus backoff, skipping this cycle`);
+      dlog("MODBUS_BACKOFF", "Skipping group due to backoff", { groupKey: group.key });
       continue;
     }
 
     if (result.status === "error") {
       const count = registerModbusError(group.key);
+      const msg = `Modbus error for group ${group.key}: ${result.message}`;
 
-      console.error(
-        `[Modbus] Group ${group.key}: communication error, using default states. ` +
-        `Details: ${result.message} (consecutive Modbus errors: ${count})`
-      );
+      logger.error("MODBUS_READ_FAIL", msg, { groupKey: group.key, consecutiveErrors: count }, new Error(result.message));
+      markModbusGroupFail(group.key, result.message);
 
       resetDebounceForSites(sites);
-      await setSitesDefault(
-        api,
-        sites,
-        `Modbus error for group ${group.key}: ${result.message}`
-      );
+      await setSitesDefault(api, sites, `Modbus error for group ${group.key}: ${result.message}`);
 
       if (ENABLE_MODBUS_FATAL_ON_ERRORS && count >= MODBUS_MAX_CONSECUTIVE_ERRORS) {
-        console.error(
-          `[Modbus] Group ${group.key}: too many consecutive errors (${count}). ` +
-          `Exiting process so systemd can restart the service.`
-        );
         await closeAllModbusConnections();
-        process.exit(1);
+        fatalExit(
+          "APP_FATAL",
+          "Too many consecutive Modbus errors",
+          { groupKey: group.key, consecutiveErrors: count },
+          new Error("Too many consecutive Modbus errors")
+        );
       }
 
       continue;
     }
 
-    // status === "ok"
     resetModbusError(group.key);
+    markModbusGroupOk(group.key);
 
     const inputs = result.inputs;
-
     if (!Array.isArray(inputs)) {
-      console.error(
-        `[Modbus] Group ${group.key}: inputs is not an array, using defaults for all sites.`
-      );
+      const msg = `Inputs is not an array for group ${group.key}`;
+      logger.error("MODBUS_INPUT_INVALID", msg, { groupKey: group.key }, new Error(msg));
       resetDebounceForSites(sites);
       await setSitesDefault(api, sites, "invalid inputs array from Modbus");
       continue;
@@ -577,87 +567,116 @@ async function syncOnce(api) {
       const rawVal = inputs[idx];
 
       if (typeof rawVal === "undefined") {
-        const ctx =
-          `Missing Modbus input value (idx=${idx}) for site ${s.siteId}, ` +
-          `probable configuration error (offset=${s.offset}). Using default state (${s.default}).`;
-        console.error(ctx);
+        const ctxMsg = `Missing Modbus input value (idx=${idx}) for site ${s.siteId}, offset=${s.offset}`;
+        logger.error("MODBUS_INPUT_MISSING", ctxMsg, { siteId: s.siteId, groupKey: group.key, offset: s.offset, idx }, new Error(ctxMsg));
         resetDebounceForSites([s]);
-        await setSitesDefault(api, [s], ctx);
+        await setSitesDefault(api, [s], ctxMsg);
         continue;
       }
 
       const ts = nowMs();
       const effectiveBool = updateDebouncedState(s, !!rawVal, ts);
 
-      dlog(
-        `[DEBOUNCE] siteId=${s.siteId} raw=${!!rawVal} default=${s.default} -> debounced=${effectiveBool ? "FILLED" : "EMPTY"}`
-      );
+      dlog("DEBOUNCE", "Debounce state", {
+        siteId: s.siteId,
+        raw: !!rawVal,
+        default: s.default,
+        debounced: effectiveBool ? "FILLED" : "EMPTY",
+      });
 
-      await writeWorksiteState(
-        api,
-        s,
-        effectiveBool,
-        "based on debounced Modbus signal"
-      );
+      await writeWorksiteState(api, s, effectiveBool, "based on debounced Modbus signal");
     }
   }
 
-  dlog("[SYNC] syncOnce end");
+  dlog("SYNC_END", "syncOnce end");
 }
 
-// --- CLEANUP ON EXIT ---------------------------------------------------------
-
-function closeAllModbusConnections() {
+async function closeAllModbusConnections() {
   const closes = [];
   for (const [key] of modbusConnections.entries()) {
     closes.push(safeCloseConnection(key));
   }
-  return Promise.all(closes);
+  await Promise.all(closes);
 }
 
-process.on("SIGINT", async () => {
-  console.log("SIGINT – closing Modbus connections and exiting...");
+async function shutdown(code, reason, opts = {}) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+
+  if (!opts.skipStopLog) {
+    logger.info("APP_STOP", "Service stopping", { reason, code });
+  }
+
+  if (httpServer) {
+    await new Promise((resolve) => httpServer.close(() => resolve()));
+  }
+
   await closeAllModbusConnections();
-  process.exit(0);
+  process.exit(code);
+}
+
+function fatalExit(evt, msg, ctx, err) {
+  logger.fatal(evt, msg, ctx, err);
+  shutdown(1, msg, { skipStopLog: true });
+}
+
+process.on("unhandledRejection", (err) => {
+  fatalExit("APP_FATAL", "Unhandled rejection", { type: typeof err }, err);
 });
 
-process.on("SIGTERM", async () => {
-  console.log("SIGTERM – closing Modbus connections and exiting...");
-  await closeAllModbusConnections();
-  process.exit(0);
+process.on("uncaughtException", (err) => {
+  fatalExit("APP_FATAL", "Uncaught exception", null, err);
 });
 
-// --- MAIN LOOP ---------------------------------------------------------------
+process.on("SIGINT", () => {
+  shutdown(0, "SIGINT");
+});
+
+process.on("SIGTERM", () => {
+  shutdown(0, "SIGTERM");
+});
 
 async function mainLoop() {
-  const api = new APIClient(RDS_HOST, RDS_USER, RDS_PASS, RDS_LANG);
+  const api = new APIClient(cfg.rds.host, RDS_USER, RDS_PASS, RDS_LANG, {
+    logger,
+    requestTimeoutMs: cfg.rds.requestTimeoutMs,
+  });
 
-  console.log(`Starting synchronization loop (every ${POLL_INTERVAL_MS} ms)`);
-  console.log(`Number of Modbus groups: ${GROUPS.length}`);
+  httpServer = await startStatusServer();
 
-  while (true) {
+  logger.info("APP_READY", "Service ready", {
+    appName: APP_NAME,
+    buildId: BUILD_ID,
+    version: VERSION,
+    pollIntervalMs: POLL_INTERVAL_MS,
+    groups: GROUPS.length,
+  });
+
+  while (!shuttingDown) {
     const start = nowMs();
 
     try {
       await syncOnce(api);
     } catch (err) {
-      const msg = err && err.stack ? err.stack : err;
-      console.error("Global error in syncOnce:", msg);
+      logger.error("SYNC_FATAL", "Global error in syncOnce", null, err);
     }
 
     const elapsed = nowMs() - start;
     const wait = Math.max(POLL_INTERVAL_MS - elapsed, 0);
     if (wait > 0) {
-      await sleep(wait);
+      await new Promise((resolve) => setTimeout(resolve, wait));
     }
   }
 }
 
-// --- START -------------------------------------------------------------------
+logger.info("APP_START", "Service starting", {
+  appName: APP_NAME,
+  buildId: BUILD_ID,
+  version: VERSION,
+  node: process.version,
+  configPath,
+});
 
-mainLoop().catch(async (err) => {
-  const msg = err && err.stack ? err.stack : err;
-  console.error("Fatal error in mainLoop:", msg);
-  await closeAllModbusConnections();
-  process.exit(1);
+mainLoop().catch((err) => {
+  fatalExit("APP_FATAL", "Fatal error in mainLoop", null, err);
 });
