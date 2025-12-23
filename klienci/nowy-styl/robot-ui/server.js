@@ -146,6 +146,11 @@ const FORK_HIGH_HEIGHT = CFG.fork.highHeight;
 const MANUAL_DROP_TASK_LABEL = CFG.tasks.manualDropLabel;
 const TASK_MANAGER_HOST = CFG.taskManager.host;
 const TASK_MANAGER_TIMEOUT_MS = CFG.taskManager.timeoutMs;
+// TODO(CHECK_WITH_RDS): Ustal prawidłowe źródło pauzy zadania (order.state vs rbk.task_status)
+// i potwierdź wartości w RDS; na razie używamy trybu "order_state".
+const TASK_PAUSED_MODE = "order_state"; // order_state | rbk_task_status | auto
+const TASK_PAUSED_RBK_STATUS = 3;
+const TASK_PAUSED_ORDER_STATES = new Set(["paused", "pause", "suspended", "suspend"]);
 
 // --- Konfiguracja sterowania ruchem (controlMotion) ---
 // Użytkownik potwierdził: duration jest w ms.
@@ -411,9 +416,28 @@ function mapRobotReportToState(report, systemAlarmsRaw) {
   const alarms = mapAlarms(rbk.alarms || {});
   const systemAlarms = mapAlarms(systemAlarmsRaw || {});
 
+  const isTaskPaused = () => {
+    if (TASK_PAUSED_MODE === "rbk_task_status") {
+      return rbk.task_status === TASK_PAUSED_RBK_STATUS;
+    }
+    if (TASK_PAUSED_MODE === "order_state") {
+      const st = String(order.state || "").toLowerCase();
+      return TASK_PAUSED_ORDER_STATES.has(st);
+    }
+    if (TASK_PAUSED_MODE === "auto") {
+      if (typeof rbk.task_status === "number") {
+        return rbk.task_status === TASK_PAUSED_RBK_STATUS;
+      }
+      const st = String(order.state || "").toLowerCase();
+      return TASK_PAUSED_ORDER_STATES.has(st);
+    }
+    return false;
+  };
+
   const task = {
     id: order.id || "",
     status: order.state || "",
+    paused: isTaskPaused(),
     externalId: order.externalId || "",
     keyRoute,
     msg: order.msg || "",

@@ -112,13 +112,13 @@ let idleHomeTab = currentTab;
 const IDLE_HOME_TABS = new Set(["status"]);
 
 /**
- * Auto-reset UI po bezczynności (domyślnie 60s):
+ * Auto-reset UI po bezczynności (domyślnie 120s):
  * - przełącza tab na "status"
  * - przewija panel do góry
  *
  * Konfiguracja:
- * - query param: ?idleMs=60000 (lub ?idle=60000)
- * - albo globalnie: window.UI_IDLE_RESET_MS = 60000 (np. w index.html)
+ * - query param: ?idleMs=120000 (lub ?idle=120000)
+ * - albo globalnie: window.UI_IDLE_RESET_MS = 120000 (np. w index.html)
  */
 const IDLE_RESET_MS = (() => {
   try {
@@ -721,14 +721,14 @@ function renderTask() {
 
   const btnResume = document.getElementById("btn-resume-task");
   const btnPause = document.getElementById("btn-pause-task");
-  const isPaused = !!(robotState.status && robotState.status.paused);
+  const taskPaused = robotState.task?.paused === true;
   const setStatusBtn = (btn, active) => {
     if (!btn) return;
     btn.classList.toggle("btn-primary", !!active);
     btn.classList.toggle("btn-secondary", !active);
   };
-  setStatusBtn(btnPause, isPaused);
-  setStatusBtn(btnResume, !isPaused);
+  setStatusBtn(btnPause, taskPaused);
+  setStatusBtn(btnResume, !taskPaused);
 }
 
 function renderControl() {
