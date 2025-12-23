@@ -406,6 +406,25 @@ Implementacja:
 
 ---
 
+## 7.1. Fast ship (unsafe) (`seal ship --fast`)
+
+**Cel:** ultra-szybkie prototypowanie bez SEA (fallback bundle + rsync).
+
+Zasady:
+- `seal ship <target> --fast` buduje fallback bundle i synchronizuje go na serwer przez `rsync` (bez `.tgz`).
+- Zawsze tworzy nowy katalog release: `appName-fast-<buildId>`, a po pełnym syncu przełącza `current.buildId` (brak aktualizacji in-place).
+- Do release trafia `appctl` uruchamiający fallback bundle (`app.bundle.cjs`).
+- Frontend (public/) jest obfuskowany/minifikowany zgodnie z configiem.
+- Backend jest obfuskowany w jednym bundlu (jak fallback).
+- **Tryb unsafe**: brak SEA (mimo obfuskacji).
+- `rsync` minimalizuje transfer (przy kolejnych deployach).
+- Wymaga `rsync` lokalnie i na serwerze.
+- `node_modules` nie jest używane (fallback bundle zawiera zależności).
+  - `--fast-no-node-modules` jest ignorowane w tym trybie.
+- Po udanym zwykłym deployu SEAL usuwa wszystkie `*-fast` release'y (niezależnie od retention), żeby nie zostawiać źródeł na dysku.
+
+---
+
 ## 8. Multi-target deploy
 
 Implementacja:

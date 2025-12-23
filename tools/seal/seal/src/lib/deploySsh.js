@@ -78,6 +78,17 @@ function readArtifactFolderName(artifactPath) {
   return cleaned.split("/")[0] || null;
 }
 
+function ensureRsyncAvailable(user, host) {
+  const local = spawnSyncSafe("rsync", ["--version"], { stdio: "pipe" });
+  if (!local.ok) {
+    throw new Error("Fast deploy requires rsync on the local machine.");
+  }
+  const remote = sshExec({ user, host, args: ["bash", "-lc", "command -v rsync >/dev/null 2>&1"], stdio: "pipe" });
+  if (!remote.ok) {
+    throw new Error(`Fast deploy requires rsync on ${host}.`);
+  }
+}
+
 function bootstrapHint(targetCfg, layout, user, host, issues) {
   const targetName = targetLabel(targetCfg);
   const owner = shQuote(`${user}:${user}`);
@@ -288,7 +299,39 @@ function cleanupReleasesSsh({ targetCfg, current, policy }) {
   ok(`Retention: removed ${toDelete.length} old release(s) on ${host}`);
 }
 
-function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootstrap, policy }) {
+function cleanupFastReleasesSsh({ targetCfg, current }) {
+  const { user, host } = sshUserHost(targetCfg);
+  const layout = remoteLayout(targetCfg);
+  const appName = targetCfg.appName || targetCfg.serviceName || "app";
+  const prefix = `${appName}-fast`;
+
+  const listCmd = ["bash", "-lc", `ls -1 ${shQuote(layout.releasesDir)} 2>/dev/null || true`];
+  const listRes = sshExec({ user, host, args: listCmd, stdio: "pipe" });
+  if (!listRes.ok) {
+    warn(`Fast cleanup skipped (cannot list releases on ${host})`);
+    return;
+  }
+
+  const names = (listRes.stdout || "")
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .filter((name) => name.startsWith(prefix));
+  const toDelete = names.filter((name) => name !== current);
+  if (!toDelete.length) return;
+
+  const rmArgs = toDelete.map((name) => shQuote(`${layout.releasesDir}/${name}`)).join(" ");
+  const rmCmd = ["bash", "-lc", `rm -rf ${rmArgs}`];
+  const rmRes = sshExec({ user, host, args: rmCmd, stdio: "pipe" });
+  if (!rmRes.ok) {
+    warn(`Fast cleanup failed on ${host} (status=${rmRes.status})`);
+    return;
+  }
+
+  ok(`Fast cleanup: removed ${toDelete.length} old fast release(s) on ${host}`);
+}
+
+function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootstrap, policy, fast }) {
   const { res: preflight, layout, user, host } = checkRemoteWritable(targetCfg, { requireService: !bootstrap });
   const out = `${preflight.stdout}\n${preflight.stderr}`.trim();
   if (!preflight.ok) {
@@ -405,7 +448,110 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
 
   ok(`Deployed on ${host}: ${folderName}`);
 
-  cleanupReleasesSsh({ targetCfg, current: folderName, policy });
+  if (!fast) cleanupReleasesSsh({ targetCfg, current: folderName, policy });
+  // Always clean fast releases after a successful normal deploy.
+  cleanupFastReleasesSsh({ targetCfg, current: folderName });
+  return { layout, folderName, relDir };
+}
+
+function deploySshFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, bootstrap, buildId }) {
+  const { res: preflight, layout, user, host } = checkRemoteWritable(targetCfg, { requireService: !bootstrap });
+  const out = `${preflight.stdout}\n${preflight.stderr}`.trim();
+  if (!preflight.ok) {
+    throw new Error(`ssh preflight failed: ${out || preflight.error || "unknown"}`);
+  }
+  const issues = [];
+  if (out.includes("__SEAL_MISSING_DIR__")) issues.push(`Missing installDir: ${layout.installDir}`);
+  if (out.includes("__SEAL_NOT_WRITABLE__")) issues.push(`InstallDir not writable: ${layout.installDir}`);
+  if (out.includes("__SEAL_NOT_WRITABLE_RELEASES__")) issues.push(`Releases dir not writable: ${layout.releasesDir}`);
+  if (out.includes("__SEAL_NOT_WRITABLE_SHARED__")) issues.push(`Shared dir not writable: ${layout.sharedDir}`);
+  if (out.includes("__SEAL_MISSING_RUNNER__")) issues.push(`Missing runner: ${layout.runner}`);
+  if (out.includes("__SEAL_MISSING_UNIT__")) issues.push(`Missing systemd unit: ${layout.serviceFile}`);
+  if (issues.length) {
+    throw new Error(bootstrapHint(targetCfg, layout, user, host, issues));
+  }
+
+  let shouldPushConfig = !!pushConfig;
+  const remoteCfg = `${layout.sharedDir}/config.json5`;
+  const remoteCfgQ = shQuote(remoteCfg);
+
+  if (!shouldPushConfig) {
+    const cfgCheck = sshExec({
+      user,
+      host,
+      args: ["bash", "-lc", `if [ -f ${remoteCfgQ} ]; then echo __SEAL_CFG_OK__; else echo __SEAL_CFG_MISSING__; fi`],
+      stdio: "pipe",
+    });
+    if (!cfgCheck.ok) {
+      const cfgOut = `${cfgCheck.stdout}\n${cfgCheck.stderr}`.trim();
+      throw new Error(`ssh config check failed (status=${cfgCheck.status})${cfgOut ? `: ${cfgOut}` : ""}`);
+    }
+    if ((cfgCheck.stdout || "").includes("__SEAL_CFG_MISSING__")) {
+      warn("Remote config missing. Pushing repo config once (safe default for first deploy).");
+      shouldPushConfig = true;
+    }
+  }
+
+  ensureRsyncAvailable(user, host);
+
+  const appName = targetCfg.appName || targetCfg.serviceName || "app";
+  const suffix = buildId ? String(buildId) : "fast";
+  const folderName = `${appName}-fast-${suffix}`;
+  const relDir = `${layout.releasesDir}/${folderName}`;
+
+  const mkdirRes = sshExec({
+    user,
+    host,
+    args: ["bash", "-lc", `mkdir -p ${shQuote(relDir)} ${shQuote(layout.sharedDir)}`],
+    stdio: "pipe",
+  });
+  if (!mkdirRes.ok) {
+    const mkdirOut = `${mkdirRes.stdout}\n${mkdirRes.stderr}`.trim();
+    throw new Error(`ssh mkdir failed (status=${mkdirRes.status})${mkdirOut ? `: ${mkdirOut}` : ""}`);
+  }
+
+  const sshOpts = "-o BatchMode=yes -o StrictHostKeyChecking=accept-new";
+  const baseArgs = [
+    "-az",
+    "--delete",
+    "--info=progress2",
+    "-e",
+    `ssh ${sshOpts}`,
+  ];
+
+  info(`Fast sync (fallback bundle) to ${host}:${relDir}`);
+  const srcArg = releaseDir.endsWith(path.sep) ? releaseDir : `${releaseDir}${path.sep}`;
+  const dstArg = `${user}@${host}:${relDir}/`;
+  const rsyncRes = spawnSyncSafe("rsync", baseArgs.concat([srcArg, dstArg]), { stdio: "inherit" });
+  if (!rsyncRes.ok) {
+    throw new Error(`fast rsync failed (status=${rsyncRes.status})`);
+  }
+
+  if (shouldPushConfig) {
+    const tmpCfg = `/tmp/${targetCfg.serviceName}-config.json5`;
+    const tmpCfgQ = shQuote(tmpCfg);
+    info(`Uploading config to ${host}:${tmpCfg}`);
+    const upCfg = scpTo({ user, host, localPath: repoConfigPath, remotePath: tmpCfg });
+    if (!upCfg.ok) throw new Error(`scp config failed (status=${upCfg.status})`);
+    const cfgCmd = ["bash", "-lc", `cp ${tmpCfgQ} ${remoteCfgQ} && rm -f ${tmpCfgQ}`];
+    const cfgRes = sshExec({ user, host, args: cfgCmd, stdio: "pipe" });
+    if (!cfgRes.ok) {
+      const cfgOut = `${cfgRes.stdout}\n${cfgRes.stderr}`.trim();
+      throw new Error(`config write failed (status=${cfgRes.status})${cfgOut ? `: ${cfgOut}` : ""}`);
+    }
+  }
+
+  const currentFileQ = shQuote(layout.currentFile);
+  const curCmd = ["bash", "-lc", `echo ${shQuote(folderName)} > ${currentFileQ}`];
+  const curRes = sshExec({ user, host, args: curCmd, stdio: "pipe" });
+  if (!curRes.ok) {
+    const curOut = `${curRes.stdout}\n${curRes.stderr}`.trim();
+    throw new Error(`update current.buildId failed (status=${curRes.status})${curOut ? `: ${curOut}` : ""}`);
+  }
+
+  ok(`Deployed on ${host}: ${folderName} (${buildId || "fast"})`);
+
+  cleanupFastReleasesSsh({ targetCfg, current: folderName });
   return { layout, folderName, relDir };
 }
 
@@ -705,6 +851,7 @@ function configPushSsh({ targetCfg, localConfigPath }) {
 module.exports = {
   bootstrapSsh,
   deploySsh,
+  deploySshFast,
   statusSsh,
   logsSsh,
   enableSsh,

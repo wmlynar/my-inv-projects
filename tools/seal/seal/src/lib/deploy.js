@@ -5,7 +5,7 @@ const path = require("path");
 const os = require("os");
 
 const { spawnSyncSafe } = require("./spawn");
-const { ensureDir, fileExists, rmrf, copyFile } = require("./fsextra");
+const { ensureDir, fileExists, rmrf, copyFile, copyDir } = require("./fsextra");
 const { info, warn, err, ok, hr } = require("./ui");
 const { normalizeRetention, filterReleaseNames, computeKeepSet } = require("./retention");
 
@@ -14,6 +14,7 @@ function expandHome(p) {
   if (p.startsWith("~/")) return path.join(os.homedir(), p.slice(2));
   return p;
 }
+
 
 function systemctlArgs(targetCfg) {
   const scope = (targetCfg.serviceScope || "user").toLowerCase();
@@ -191,7 +192,26 @@ function cleanupLocalReleases({ targetCfg, layout, current, policy }) {
   ok(`Retention: removed ${toDelete.length} old release(s)`);
 }
 
-function deployLocal({ targetCfg, artifactPath, repoConfigPath, pushConfig, policy }) {
+function cleanupFastReleasesLocal({ targetCfg, layout, current }) {
+  const appName = targetCfg.appName || targetCfg.serviceName || "app";
+  const prefix = `${appName}-fast`;
+
+  const releases = fs.readdirSync(layout.releasesDir, { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .map((d) => d.name)
+    .filter((name) => name.startsWith(prefix));
+
+  const toDelete = releases.filter((name) => name !== current);
+  if (!toDelete.length) return;
+
+  for (const name of toDelete) {
+    rmrf(path.join(layout.releasesDir, name));
+  }
+
+  ok(`Fast cleanup: removed ${toDelete.length} old fast release(s)`);
+}
+
+function deployLocal({ targetCfg, artifactPath, repoConfigPath, pushConfig, policy, fast }) {
   const layout = localInstallLayout(targetCfg);
 
   // Deploy is deploy: copy/extract files and update pointers.
@@ -223,9 +243,43 @@ function deployLocal({ targetCfg, artifactPath, repoConfigPath, pushConfig, poli
 
   ok(`Deployed (files only): ${folderName}`);
 
-  cleanupLocalReleases({ targetCfg, layout, current: folderName, policy });
+  if (!fast) cleanupLocalReleases({ targetCfg, layout, current: folderName, policy });
+  // Always clean fast releases after a successful normal deploy.
+  cleanupFastReleasesLocal({ targetCfg, layout, current: folderName });
 
   return { layout, extractedDir, folderName };
+}
+
+function deployLocalFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, buildId }) {
+  const layout = localInstallLayout(targetCfg);
+
+  ensureDir(layout.installDir);
+  ensureDir(layout.releasesDir);
+  ensureDir(layout.sharedDir);
+
+  const appName = targetCfg.appName || targetCfg.serviceName || "app";
+  const suffix = buildId ? String(buildId) : "fast";
+  const folderName = `${appName}-fast-${suffix}`;
+  const relDir = path.join(layout.releasesDir, folderName);
+
+  rmrf(relDir);
+  ensureDir(relDir);
+
+  copyDir(releaseDir, relDir);
+
+  fs.writeFileSync(layout.currentFile, folderName, "utf-8");
+
+  const sharedCfg = path.join(layout.sharedDir, "config.json5");
+  if (pushConfig || !fileExists(sharedCfg)) {
+    copyFile(repoConfigPath, sharedCfg);
+    ok(`Config updated: ${sharedCfg}`);
+  } else {
+    ok(`Config preserved (drift-safe): ${sharedCfg}`);
+  }
+
+  ok(`Deployed (fast): ${folderName} (${buildId || "fast"})`);
+  cleanupFastReleasesLocal({ targetCfg, layout, current: folderName });
+  return { layout, relDir, folderName };
 }
 
 function ensureCurrentReleaseLocal(targetCfg) {
@@ -396,6 +450,7 @@ function uninstallLocal(targetCfg) {
 module.exports = {
   bootstrapLocal,
   deployLocal,
+  deployLocalFast,
   statusLocal,
   logsLocal,
   enableLocal,

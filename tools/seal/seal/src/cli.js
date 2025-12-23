@@ -104,6 +104,8 @@ async function main(argv) {
     .option("--push-config", "Overwrite server runtime config with repo config (explicit)", false)
     .option("--restart", "Restart target service after deploy (explicit)", false)
     .option("--artifact <path>", "Deploy a specific artifact (.tgz) instead of building", null)
+    .option("--fast", "Fast deploy from sources (unsafe)", false)
+    .option("--fast-no-node-modules", "Exclude node_modules in fast mode", false)
     .action(async (target, opts) => cmdDeploy(process.cwd(), target, opts));
 
   program
@@ -114,6 +116,8 @@ async function main(argv) {
     .option("--push-config", "Overwrite server runtime config with repo config (explicit)", false)
     .option("--skip-check", "Skip preflight checks", false)
     .option("--packager <packager>", "Override packager: auto|sea|fallback", null)
+    .option("--fast", "Fast ship from sources (unsafe)", false)
+    .option("--fast-no-node-modules", "Exclude node_modules in fast mode", false)
     .action(async (target, opts) => cmdShip(process.cwd(), target, opts));
 
   program

@@ -9,8 +9,9 @@ const { fileExists } = require("../lib/fsextra");
 const { info, warn, ok, hr } = require("../lib/ui");
 
 const { cmdRelease } = require("./release");
-const { deployLocal, bootstrapLocal, statusLocal, logsLocal, enableLocal, startLocal, restartLocal, stopLocal, disableLocalOnly, disableLocal, rollbackLocal, downLocal, uninstallLocal, runLocalForeground, ensureCurrentReleaseLocal } = require("../lib/deploy");
-const { deploySsh, bootstrapSsh, installServiceSsh, statusSsh, logsSsh, enableSsh, startSsh, restartSsh, stopSsh, disableSshOnly, disableSsh, rollbackSsh, downSsh, uninstallSsh, runSshForeground, ensureCurrentReleaseSsh } = require("../lib/deploySsh");
+const { buildFastRelease } = require("../lib/fastRelease");
+const { deployLocal, deployLocalFast, bootstrapLocal, statusLocal, logsLocal, enableLocal, startLocal, restartLocal, stopLocal, disableLocalOnly, disableLocal, rollbackLocal, downLocal, uninstallLocal, runLocalForeground, ensureCurrentReleaseLocal } = require("../lib/deploy");
+const { deploySsh, deploySshFast, bootstrapSsh, installServiceSsh, statusSsh, logsSsh, enableSsh, startSsh, restartSsh, stopSsh, disableSshOnly, disableSsh, rollbackSsh, downSsh, uninstallSsh, runSshForeground, ensureCurrentReleaseSsh } = require("../lib/deploySsh");
 
 function resolveTarget(projectRoot, targetArg) {
   const proj = loadProjectConfig(projectRoot);
@@ -38,6 +39,16 @@ async function ensureArtifact(projectRoot, proj, opts, targetName, configName) {
   return built;
 }
 
+function ensureFastRelease(projectRoot, proj, targetCfg, configName, opts) {
+  if (opts.artifact) {
+    throw new Error("Fast deploy ignores --artifact (fallback bundle is built locally).");
+  }
+  if (opts && opts.fastNoNodeModules) {
+    warn("FAST mode ignores --fast-no-node-modules (fallback bundle has no node_modules).");
+  }
+  return buildFastRelease({ projectRoot, projectCfg: proj, targetCfg, configName });
+}
+
 async function cmdDeploy(cwd, targetArg, opts) {
   const projectRoot = findProjectRoot(cwd);
   const { proj, targetName, targetCfg } = resolveTarget(projectRoot, targetArg);
@@ -47,11 +58,18 @@ async function cmdDeploy(cwd, targetArg, opts) {
   const configFile = getConfigFile(projectRoot, configName);
   if (!fileExists(configFile)) throw new Error(`Missing repo config: ${configFile}`);
 
-  const artifactPath = await ensureArtifact(projectRoot, proj, opts, targetName, configName);
+  const isFast = !!opts.fast;
+  const fastRelease = isFast ? await ensureFastRelease(projectRoot, proj, targetCfg, configName, opts) : null;
+  const artifactPath = isFast
+    ? null
+    : await ensureArtifact(projectRoot, proj, opts, targetName, configName);
 
   hr();
   info(`Deploy -> ${targetName} (${targetCfg.kind})`);
-  info(`Artifact: ${artifactPath}`);
+  if (!isFast) info(`Artifact: ${artifactPath}`);
+  if (isFast) {
+    warn("FAST mode: fallback bundle synced via rsync (unsafe, no SEA).");
+  }
   hr();
 
   if (opts.bootstrap) {
@@ -60,10 +78,31 @@ async function cmdDeploy(cwd, targetArg, opts) {
   }
 
   if ((targetCfg.kind || "local").toLowerCase() === "ssh") {
-    deploySsh({ targetCfg, artifactPath, repoConfigPath: configFile, pushConfig: !!opts.pushConfig, bootstrap: !!opts.bootstrap, policy });
+    if (isFast) {
+      deploySshFast({
+        targetCfg,
+        releaseDir: fastRelease.releaseDir,
+        repoConfigPath: configFile,
+        pushConfig: !!opts.pushConfig,
+        bootstrap: !!opts.bootstrap,
+        buildId: fastRelease.buildId,
+      });
+    } else {
+      deploySsh({ targetCfg, artifactPath, repoConfigPath: configFile, pushConfig: !!opts.pushConfig, bootstrap: !!opts.bootstrap, policy });
+    }
     if (opts.bootstrap) installServiceSsh(targetCfg);
   } else {
-    deployLocal({ targetCfg, artifactPath, repoConfigPath: configFile, pushConfig: !!opts.pushConfig, policy });
+    if (isFast) {
+      deployLocalFast({
+        targetCfg,
+        releaseDir: fastRelease.releaseDir,
+        repoConfigPath: configFile,
+        pushConfig: !!opts.pushConfig,
+        buildId: fastRelease.buildId,
+      });
+    } else {
+      deployLocal({ targetCfg, artifactPath, repoConfigPath: configFile, pushConfig: !!opts.pushConfig, policy });
+    }
   }
 
   if (opts.restart) {
@@ -83,6 +122,21 @@ async function cmdDeploy(cwd, targetArg, opts) {
 }
 
 async function cmdShip(cwd, targetArg, opts) {
+  if (opts.fast) {
+    if (opts.packager) warn("FAST mode ignores --packager.");
+    if (opts.skipCheck) warn("FAST mode ignores --skip-check.");
+    const deployOpts = {
+      bootstrap: !!opts.bootstrap,
+      pushConfig: !!opts.pushConfig,
+      restart: true,
+      artifact: null,
+      fast: true,
+      fastNoNodeModules: !!opts.fastNoNodeModules,
+    };
+    await cmdDeploy(cwd, targetArg, deployOpts);
+    return;
+  }
+
   const releaseOpts = {
     config: null,
     skipCheck: !!opts.skipCheck,
