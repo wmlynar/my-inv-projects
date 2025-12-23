@@ -11,6 +11,9 @@
 - Blad: obfuskacja/minifikacja frontendu byla wylaczona.
   - Wymaganie: `build.frontendObfuscation` i `build.frontendMinify` sa **domyslnie wlaczone** dla UI.
 
+- Blad: `upx` byl wlaczony, ale jego blad byl ignorowany (build przechodzil mimo `CantUnpackException` itp.).
+  - Wymaganie: jezeli `upx` jest wlaczony i sie nie powiedzie, build **musi** sie przerwac z bledem.
+
 ## Deploy / infrastruktura
 
 - Blad: instalacja w `/opt` (mala partycja) powodowala brak miejsca.
@@ -74,6 +77,7 @@
 ## Co sprawdzac po zmianach (checklist)
 
 - `seal release` bez `postject` musi failowac (chyba ze fallback jawnie wlaczony).
+- `upx` wlaczony + blad `upx` => build musi failowac.
 - `seal deploy` nie wysyla artefaktu podwojnie.
 - `installDir` w targetach jest w `/home/admin/apps/...`.
 - `config.runtime.json5` jest obecny i poprawny JSON5.

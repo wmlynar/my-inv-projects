@@ -880,7 +880,9 @@ SEA w Node (Single Executable Application) ma twarde ograniczenia, które determ
 6) **Hardening/pack (domyślnie włączone):**
    - **SEA:** Seal domyślnie pakuje backend bundle do „loadera” (Brotli/Gzip) *przed* generacją blobu SEA, aby w blobie nie było plaintext JS.
    - **Fallback:** gdy SEA nie jest możliwe, Seal domyślnie pakuje backend bundle do `app.bundle.cjs.gz` i uruchamia go przez mały loader (brak czytelnego pliku JS obok launchera).
-   - **UPX/strip:** dostępne jako opcje (eksperymentalne) i **OFF by default**, bo postject-ed binarki potrafią się po tym wysypać. Jeśli włączone i narzędzie nie jest dostępne (`strip`/`upx`), Seal wypisuje ostrzeżenie, ale nie musi przerywać builda.
+   - **UPX/strip:** dostępne jako opcje (eksperymentalne) i **OFF by default**, bo postject-ed binarki potrafią się po tym wysypać.
+     - Gdy `upx` jest włączony i nie działa (brak narzędzia lub błąd typu `CantUnpackException: bad e_phoff`), build **musi** się przerwać z błędem.
+     - Gdy `strip` jest włączony i narzędzie jest niedostępne, Seal wypisuje ostrzeżenie (bez przerywania builda).
   - Użytkownik **MUST** mieć możliwość wyłączenia hardeningu w `seal-config/project.json5` (np. `build.hardening.enabled=false`).
    - (MAY) w przyszłości: self-integrity / anti-tamper jako opcja (nie domyślna w v0.5).
 

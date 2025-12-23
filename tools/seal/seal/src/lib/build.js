@@ -593,9 +593,14 @@ function applyHardeningPost(releaseDir, appName, packagerUsed, hardCfg) {
 
   const upxEnabled = cfg.upx === true; // default false
   if (!isScript && upxEnabled) {
-    steps.push({ step: 'upx', ...tryUpxPack(exePath) });
+    const r = tryUpxPack(exePath);
+    if (!r.ok) {
+      const reason = r.reason || 'upx_failed';
+      throw new Error(`UPX failed: ${reason}`);
+    }
+    steps.push({ step: 'upx', ...r });
   } else if (!isScript) {
-    steps.push({ step: 'upx', ok: false, skipped: true, reason: upxEnabled ? 'upx_failed' : 'disabled_by_default' });
+    steps.push({ step: 'upx', ok: false, skipped: true, reason: 'disabled_by_default' });
   }
 
   return { enabled: true, steps };
