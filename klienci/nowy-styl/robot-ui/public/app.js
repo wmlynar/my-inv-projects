@@ -108,6 +108,8 @@ let robotState = {
 };
 
 let currentTab = "status";
+let idleHomeTab = currentTab;
+const IDLE_HOME_TABS = new Set(["status"]);
 
 /**
  * Auto-reset UI po bezczynności (domyślnie 60s):
@@ -135,7 +137,7 @@ const IDLE_RESET_MS = (() => {
   } catch {
     // ignore
   }
-  return 60_000;
+  return 120_000;
 })();
 
 let idleTimer = null;
@@ -157,10 +159,13 @@ function applyTabVisibility() {
   });
 }
 
-function setTab(targetTab, { scrollTop = false } = {}) {
+function setTab(targetTab, { scrollTop = false, setAsIdleHome = false } = {}) {
   if (!targetTab) return;
 
   currentTab = targetTab;
+  if (setAsIdleHome && IDLE_HOME_TABS.has(targetTab)) {
+    idleHomeTab = targetTab;
+  }
 
   const tabButtons = document.querySelectorAll(".tab");
   tabButtons.forEach((b) => {
@@ -180,7 +185,8 @@ function resetIdleTimer() {
   if (idleTimer) clearTimeout(idleTimer);
 
   idleTimer = setTimeout(() => {
-    setTab("status", { scrollTop: true });
+    const homeTab = IDLE_HOME_TABS.has(idleHomeTab) ? idleHomeTab : "status";
+    setTab(homeTab, { scrollTop: true });
     resetIdleTimer(); // odpal kolejny cykl
   }, IDLE_RESET_MS);
 }
@@ -620,12 +626,18 @@ function renderDispatch() {
   const badge = document.getElementById("dispatch-badge");
   const dot = document.getElementById("dispatch-dot");
   const label = document.getElementById("dispatch-label");
+  const btnDispatchable = document.getElementById("btn-dispatchable");
+  const btnUndOnline = document.getElementById("btn-undispatchable-online");
+  const btnUndOffline = document.getElementById("btn-undispatchable-offline");
   if (!badge || !dot || !label) return;
 
   badge.classList.remove("badge-dispatch-ok", "badge-dispatch-undispatchable");
   dot.classList.remove("dot-undispatchable", "dot-offline");
 
   let text = "—";
+  const isDispatchable = robotState.dispatchState === "DISPATCHABLE";
+  const isUndOnline = robotState.dispatchState === "UNDISPATCHABLE_ONLINE";
+  const isUndOffline = robotState.dispatchState === "UNDISPATCHABLE_OFFLINE";
 
   switch (robotState.dispatchState) {
     case "DISPATCHABLE":
@@ -653,6 +665,16 @@ function renderDispatch() {
   }
 
   label.textContent = text;
+
+  const setStatusBtn = (btn, active) => {
+    if (!btn) return;
+    btn.classList.toggle("btn-primary", !!active);
+    btn.classList.toggle("btn-secondary", !active);
+  };
+
+  setStatusBtn(btnDispatchable, isDispatchable);
+  setStatusBtn(btnUndOnline, isUndOnline);
+  setStatusBtn(btnUndOffline, isUndOffline);
 }
 
 function renderTask() {
@@ -696,6 +718,17 @@ function renderTask() {
     const p = robotState.task?.priority;
     prioEl.textContent = p === null || p === undefined ? "—" : String(p);
   }
+
+  const btnResume = document.getElementById("btn-resume-task");
+  const btnPause = document.getElementById("btn-pause-task");
+  const isPaused = !!(robotState.status && robotState.status.paused);
+  const setStatusBtn = (btn, active) => {
+    if (!btn) return;
+    btn.classList.toggle("btn-primary", !!active);
+    btn.classList.toggle("btn-secondary", !active);
+  };
+  setStatusBtn(btnPause, isPaused);
+  setStatusBtn(btnResume, !isPaused);
 }
 
 function renderControl() {
@@ -703,6 +736,19 @@ function renderControl() {
   const statusText = byRds ? "RDS" : "Zewnętrzna";
   const statusEl = document.getElementById("control-status");
   if (statusEl) statusEl.textContent = statusText;
+
+  const btnSeize = document.getElementById("btn-seize");
+  const btnRelease = document.getElementById("btn-release");
+  const isByRds = !!byRds;
+
+  const setStatusBtn = (btn, active) => {
+    if (!btn) return;
+    btn.classList.toggle("btn-primary", !!active);
+    btn.classList.toggle("btn-secondary", !active);
+  };
+
+  setStatusBtn(btnSeize, isByRds);
+  setStatusBtn(btnRelease, !isByRds);
 }
 
 function renderStatusInfo() {
@@ -744,6 +790,24 @@ function renderStatusInfo() {
   if (disconnectEl) disconnectEl.textContent = s.disconnect ? "Tak" : "Nie";
   if (invalidMapEl) invalidMapEl.textContent = s.invalidMap ? "Tak" : "Nie";
   if (softEmcEl) softEmcEl.textContent = s.softEmc ? "Tak" : "Nie";
+
+  const btnSoftOn = document.getElementById("btn-soft-emc-on");
+  const btnSoftOff = document.getElementById("btn-soft-emc-off");
+  const setStatusBtn = (btn, active) => {
+    if (!btn) return;
+    btn.classList.toggle("btn-primary", !!active);
+    btn.classList.toggle("btn-secondary", !active);
+  };
+  if (s.softEmc === true) {
+    setStatusBtn(btnSoftOn, true);
+    setStatusBtn(btnSoftOff, false);
+  } else if (s.softEmc === false) {
+    setStatusBtn(btnSoftOn, false);
+    setStatusBtn(btnSoftOff, true);
+  } else {
+    setStatusBtn(btnSoftOn, false);
+    setStatusBtn(btnSoftOff, false);
+  }
 
   if (networkDelayEl) {
     networkDelayEl.textContent = typeof s.networkDelay === "number" ? String(s.networkDelay) : "—";
@@ -874,7 +938,11 @@ function setupTabs() {
     setupPressAction(btn, () => {
       const target = btn.dataset.tabTarget;
       if (!target) return;
-      setTab(target);
+      if (IDLE_HOME_TABS.has(target)) {
+        setTab(target, { setAsIdleHome: true });
+      } else {
+        setTab(target);
+      }
       resetIdleTimer();
     });
   });
