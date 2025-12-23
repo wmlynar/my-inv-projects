@@ -4,6 +4,8 @@ const path = require("path");
 const bodyParser = require("body-parser");
 const fs = require("fs");
 const JSON5 = require("json5");
+const http = require("http");
+const https = require("https");
 
 const DEFAULT_CONFIG = {
   rds: {
@@ -20,6 +22,10 @@ const DEFAULT_CONFIG = {
   },
   tasks: {
     manualDropLabel: "WT_DROP_MANUAL"
+  },
+  taskManager: {
+    host: "http://127.0.0.1:3100",
+    timeoutMs: 4000
   },
   motion: {
     speed: 0.3,
@@ -53,6 +59,7 @@ function normalizeConfig(raw) {
   const robot = isObject(cfg.robot) ? cfg.robot : {};
   const fork = isObject(cfg.fork) ? cfg.fork : {};
   const tasks = isObject(cfg.tasks) ? cfg.tasks : {};
+  const taskManager = isObject(cfg.taskManager) ? cfg.taskManager : {};
   const motion = isObject(cfg.motion) ? cfg.motion : {};
   const http = isObject(cfg.http) ? cfg.http : {};
 
@@ -71,6 +78,10 @@ function normalizeConfig(raw) {
     },
     tasks: {
       manualDropLabel: str(tasks.manualDropLabel, DEFAULT_CONFIG.tasks.manualDropLabel)
+    },
+    taskManager: {
+      host: str(taskManager.host, DEFAULT_CONFIG.taskManager.host),
+      timeoutMs: num(taskManager.timeoutMs, DEFAULT_CONFIG.taskManager.timeoutMs)
     },
     motion: {
       speed: num(motion.speed, DEFAULT_CONFIG.motion.speed),
@@ -133,6 +144,8 @@ const FORK_HIGH_HEIGHT = CFG.fork.highHeight;
 
 // Nazwa zadania ręcznego (odłożenie towaru)
 const MANUAL_DROP_TASK_LABEL = CFG.tasks.manualDropLabel;
+const TASK_MANAGER_HOST = CFG.taskManager.host;
+const TASK_MANAGER_TIMEOUT_MS = CFG.taskManager.timeoutMs;
 
 // --- Konfiguracja sterowania ruchem (controlMotion) ---
 // Użytkownik potwierdził: duration jest w ms.
@@ -165,6 +178,102 @@ function logApiCall(label, payload = {}) {
   console.log(`[API] ${label}`, payload);
 }
 
+function taskManagerUrl(route) {
+  const base = String(TASK_MANAGER_HOST || "").replace(/\/+$/, "");
+  if (!base) return "";
+  return `${base}${route}`;
+}
+
+function postWithTimeout(url, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    let parsed;
+    try {
+      parsed = new URL(url);
+    } catch (err) {
+      reject(err);
+      return;
+    }
+
+    const lib = parsed.protocol === "https:" ? https : http;
+    const req = lib.request(
+      {
+        method: "POST",
+        hostname: parsed.hostname,
+        port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
+        path: `${parsed.pathname}${parsed.search || ""}`,
+        headers: {
+          "Content-Length": 0
+        }
+      },
+      (res) => {
+        let body = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk) => {
+          body += chunk;
+        });
+        res.on("end", () => {
+          resolve({ status: res.statusCode || 0, body });
+        });
+      }
+    );
+
+    req.on("error", (err) => reject(err));
+    req.setTimeout(timeoutMs, () => {
+      req.destroy(new Error("timeout"));
+    });
+    req.end();
+  });
+}
+
+async function postTaskManagerAction(route, label, res) {
+  if (USE_MOCK_RDS) {
+    logApiCall(`MOCK taskManager ${label}`, { robotId: ROBOT_ID });
+    return res.json({ ok: true, mock: true });
+  }
+  const url = taskManagerUrl(route);
+  if (!url) {
+    return res.status(503).json({ error: "Task manager host not configured" });
+  }
+
+  logApiCall(`TASK-MANAGER ${label}`, { robotId: ROBOT_ID, url });
+
+  let respStatus = 0;
+  let text = "";
+  try {
+    if (typeof fetch === "function" && typeof AbortController === "function") {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), TASK_MANAGER_TIMEOUT_MS);
+      const resp = await fetch(url, { method: "POST", signal: controller.signal });
+      clearTimeout(timer);
+      respStatus = resp.status;
+      text = await resp.text();
+    } else {
+      const out = await postWithTimeout(url, TASK_MANAGER_TIMEOUT_MS);
+      respStatus = out.status;
+      text = out.body || "";
+    }
+  } catch (err) {
+    console.error(`Błąd task manager (${label})`, err);
+    return res.status(502).json({ error: "Task manager unreachable" });
+  }
+
+  let data = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { raw: text };
+    }
+  }
+
+  if (respStatus < 200 || respStatus >= 300) {
+    const msg = data && data.error ? data.error : (text || "Task manager error");
+    return res.status(respStatus || 502).json({ error: msg });
+  }
+
+  return res.status(respStatus || 200).json(data);
+}
+
 console.log("Robot UI – konfiguracja:");
 console.log("  USE_MOCK_RDS          =", USE_MOCK_RDS ? "1 (MOCK)" : "0 (RDS)");
 console.log("  LOG_API_CALLS         =", LOG_API_CALLS ? "1" : "0");
@@ -173,6 +282,8 @@ console.log("  ROBOT_ID              =", ROBOT_ID);
 console.log("  FORK_LOW_HEIGHT       =", FORK_LOW_HEIGHT);
 console.log("  FORK_HIGH_HEIGHT      =", FORK_HIGH_HEIGHT);
 console.log("  MANUAL_DROP_TASK_LABEL=", MANUAL_DROP_TASK_LABEL);
+console.log("  TASK_MANAGER_HOST     =", TASK_MANAGER_HOST);
+console.log("  TASK_MGR_TIMEOUT_MS   =", TASK_MANAGER_TIMEOUT_MS);
 console.log("  MOTION_SPEED          =", MOTION_SPEED);
 console.log("  MOTION_DURATION_MS    =", MOTION_DURATION_MS);
 
@@ -198,6 +309,7 @@ app.get("/api/status", (req, res) => {
 });
 
 let mockRobotListRaw = null;
+let lastRobotState = null;
 if (USE_MOCK_RDS) {
   try {
     mockRobotListRaw = require("./mock-robot-list.json");
@@ -367,11 +479,21 @@ function mapRobotReportToState(report, systemAlarmsRaw) {
 app.get("/api/robot/state", async (req, res) => {
   try {
     let raw;
+    let rdsOk = true;
+    let rdsSource = "rds";
 
     if (USE_MOCK_RDS || !rdsClient) {
-      if (!mockRobotListRaw) return res.status(500).json({ error: "Brak mock-robot-list.json" });
+      if (!mockRobotListRaw) {
+        return res.status(503).json({
+          rdsOk: false,
+          rdsSource: USE_MOCK_RDS ? "mock-missing" : "no-rds-client",
+          error: "Brak mock-robot-list.json"
+        });
+      }
       logApiCall("MOCK /api/robot/state", { robotId: ROBOT_ID });
       raw = mockRobotListRaw;
+      rdsOk = USE_MOCK_RDS ? true : false;
+      rdsSource = USE_MOCK_RDS ? "mock" : "no-rds-client";
     } else {
       logApiCall("RDS getRobotListRaw (state)", { robotId: ROBOT_ID });
       raw = await rdsClient.getRobotListRaw();
@@ -380,10 +502,17 @@ app.get("/api/robot/state", async (req, res) => {
     const data = raw && raw.data ? raw.data : {};
     const report = findRobotReport(raw, ROBOT_ID);
     if (!report) {
-      return res.status(404).json({ error: "Nie znaleziono robota", robotId: ROBOT_ID });
+      return res.status(404).json({
+        error: "Nie znaleziono robota",
+        robotId: ROBOT_ID,
+        rdsOk,
+        rdsSource
+      });
     }
 
     const state = mapRobotReportToState(report, data.alarms);
+    state.rdsOk = rdsOk;
+    state.rdsSource = rdsSource;
 
     state.createOn = data.create_on || null;
     state.disablePaths = data.disable_paths || [];
@@ -393,10 +522,19 @@ app.get("/api/robot/state", async (req, res) => {
     state.topCode = data.code ?? null;
     state.topIsError = data.is_error ?? null;
 
+    lastRobotState = state;
     return res.json(state);
   } catch (err) {
     console.error("Błąd /api/robot/state:", err);
-    return res.status(500).json({ error: "Internal error" });
+    if (lastRobotState) {
+      return res.json({
+        ...lastRobotState,
+        rdsOk: false,
+        rdsSource: "rds-error",
+        stale: true
+      });
+    }
+    return res.status(503).json({ rdsOk: false, rdsSource: "rds-error", error: "RDS error" });
   }
 });
 
@@ -800,6 +938,38 @@ app.post("/api/robot/soft-emergency-cancel", async (req, res) => {
   } catch (err) {
     console.error("Błąd /api/robot/soft-emergency-cancel:", err);
     return res.status(500).json({ error: "RDS error" });
+  }
+});
+
+// ------------------ API: PROBLEMY (task manager) ------------------
+
+app.post("/api/robot/pick-temp-block", async (req, res) => {
+  try {
+    const route = `/api/robots/${encodeURIComponent(ROBOT_ID)}/temp-block-from`;
+    return await postTaskManagerAction(route, "TEMP-BLOCK", res);
+  } catch (err) {
+    console.error("Błąd /api/robot/pick-temp-block:", err);
+    return res.status(500).json({ error: "Task manager error" });
+  }
+});
+
+app.post("/api/robot/pick-perm-block", async (req, res) => {
+  try {
+    const route = `/api/robots/${encodeURIComponent(ROBOT_ID)}/block-from-perm`;
+    return await postTaskManagerAction(route, "PERM-BLOCK", res);
+  } catch (err) {
+    console.error("Błąd /api/robot/pick-perm-block:", err);
+    return res.status(500).json({ error: "Task manager error" });
+  }
+});
+
+app.post("/api/robot/put-down-next", async (req, res) => {
+  try {
+    const route = `/api/robots/${encodeURIComponent(ROBOT_ID)}/put-down`;
+    return await postTaskManagerAction(route, "PUT-DOWN", res);
+  } catch (err) {
+    console.error("Błąd /api/robot/put-down-next:", err);
+    return res.status(500).json({ error: "Task manager error" });
   }
 });
 

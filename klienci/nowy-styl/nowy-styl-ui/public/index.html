@@ -307,8 +307,8 @@
 <body>
   <div id="backend-overlay" class="backend-overlay" aria-live="polite" aria-hidden="true">
     <div class="overlay-box">
-      <div class="overlay-title">Brak połączenia z serwerem</div>
-      <div class="overlay-sub">Czekam na wznowienie połączenia…</div>
+      <div class="overlay-title" id="backend-overlay-title">Brak połączenia z serwerem aplikacji</div>
+      <div class="overlay-sub" id="backend-overlay-sub">Czekam na wznowienie połączenia. Zgłoś: brak połączenia z serwerem aplikacji.</div>
     </div>
   </div>
   <div id="debug-toast" class="debug-toast" aria-live="polite"></div>
@@ -747,12 +747,19 @@
     async function refreshStateFromServer() {
       try {
         const resp = await fetchWithTimeout("/api/state");
-        if (!resp.ok) {
-          // można ewentualnie zalogować raz na jakiś czas
+        let data = null;
+        try {
+          data = await resp.json();
+        } catch {
+          updateConnectionOverlay();
           return;
         }
-        const data = await resp.json();
-        if (!data.slots) return;
+
+        if (!data || data.rdsOk !== false) {
+          rdsMonitor.lastOkAt = Date.now();
+        }
+        updateConnectionOverlay();
+        if (!data || !data.slots) return;
 
         const stateMap = {};
         for (const s of data.slots) {
@@ -782,6 +789,7 @@
         });
       } catch (e) {
         // cicho, żeby nie spamować konsoli
+        updateConnectionOverlay();
       }
     }
 
@@ -830,11 +838,36 @@
       }, 1200);
     }
 
-    function setBackendOverlay(visible) {
+    const RDS_GRACE_MS = 2000;
+    const rdsMonitor = { lastOkAt: Date.now() };
+
+    function updateConnectionOverlay() {
       const overlay = document.getElementById("backend-overlay");
       if (!overlay) return;
+      const titleEl = document.getElementById("backend-overlay-title");
+      const subEl = document.getElementById("backend-overlay-sub");
+
+      const backendDown = Date.now() - backendMonitor.lastOkAt > BACKEND_GRACE_MS;
+      const rdsDown = Date.now() - rdsMonitor.lastOkAt > RDS_GRACE_MS;
+
+      let visible = false;
+      let title = "";
+      let sub = "";
+
+      if (backendDown) {
+        visible = true;
+        title = "Brak połączenia z serwerem aplikacji";
+        sub = "Czekam na wznowienie połączenia. Zgłoś: brak połączenia z serwerem aplikacji.";
+      } else if (rdsDown) {
+        visible = true;
+        title = "Brak połączenia serwera z RDS";
+        sub = "Serwer aplikacji działa, ale nie ma dostępu do RDS. Zgłoś: brak połączenia z RDS.";
+      }
+
       overlay.classList.toggle("visible", visible);
       overlay.setAttribute("aria-hidden", visible ? "false" : "true");
+      if (titleEl && title) titleEl.textContent = title;
+      if (subEl && sub) subEl.textContent = sub;
     }
 
     async function fetchWithTimeout(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
@@ -856,7 +889,7 @@
         if (!resp.ok) throw new Error(`status ${resp.status}`);
         const data = await resp.json();
         backendMonitor.lastOkAt = Date.now();
-        setBackendOverlay(false);
+        updateConnectionOverlay();
         if (data && data.buildId) {
           if (backendMonitor.lastBuildId && data.buildId !== backendMonitor.lastBuildId) {
             if (!backendMonitor.reloadPending) {
@@ -875,6 +908,7 @@
         updateDebugBadge(backendMonitor.lastBuildId);
       } catch {
         // cicho: overlay ogarnie brak połączenia
+        updateConnectionOverlay();
       } finally {
         backendMonitor.inFlight = false;
       }
@@ -884,8 +918,7 @@
       pollBackendStatus();
       setInterval(() => {
         pollBackendStatus();
-        const offlineTooLong = Date.now() - backendMonitor.lastOkAt > BACKEND_GRACE_MS;
-        setBackendOverlay(offlineTooLong);
+        updateConnectionOverlay();
       }, BACKEND_POLL_MS);
     }
 

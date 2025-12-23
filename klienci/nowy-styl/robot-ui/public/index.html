@@ -8,8 +8,8 @@
 <body>
   <div id="backend-overlay" class="backend-overlay" aria-live="polite" aria-hidden="true">
     <div class="overlay-box">
-      <div class="overlay-title">Brak połączenia z serwerem</div>
-      <div class="overlay-sub">Czekam na wznowienie połączenia…</div>
+      <div class="overlay-title" id="backend-overlay-title">Brak połączenia z serwerem aplikacji</div>
+      <div class="overlay-sub" id="backend-overlay-sub">Czekam na wznowienie połączenia. Zgłoś: brak połączenia z serwerem aplikacji.</div>
     </div>
   </div>
   <div id="debug-toast" class="debug-toast" aria-live="polite"></div>
@@ -125,6 +125,21 @@
           <div class="controls-row">
             <button class="btn btn-secondary" id="btn-lift-forks">Podnieś widły</button>
             <button class="btn btn-secondary" id="btn-lower-forks">Opuść widły</button>
+          </div>
+        </section>
+
+        <section class="card" data-tab="control">
+          <h2>Problem przy podbieraniu</h2>
+          <div class="controls-row">
+            <button class="btn btn-secondary btn-wrap" id="btn-pick-temp-block">Zablokuj pole tymczasowo i podbierz z następnego</button>
+            <button class="btn btn-danger btn-wrap" id="btn-pick-perm-block">Zablokuj pole na stałe i pobierz z następnego</button>
+          </div>
+        </section>
+
+        <section class="card" data-tab="control">
+          <h2>Problem przy odkładaniu</h2>
+          <div class="controls-row">
+            <button class="btn btn-primary btn-wrap" id="btn-put-mark-occupied">Oznacz pole jako zajęte i odłóż do następnego</button>
           </div>
         </section>
 

@@ -272,6 +272,11 @@ const backendMonitor = {
 const FETCH_TIMEOUT_MS = 2500;
 const BACKEND_POLL_MS = 1000;
 const BACKEND_GRACE_MS = 2000;
+const RDS_GRACE_MS = 2000;
+
+const rdsMonitor = {
+  lastOkAt: Date.now()
+};
 
 const DEBUG_UI = (() => {
   try {
@@ -307,11 +312,33 @@ function showDebugToast(message) {
   }, 1200);
 }
 
-function setBackendOverlay(visible) {
+function updateConnectionOverlay() {
   const overlay = document.getElementById("backend-overlay");
   if (!overlay) return;
+  const titleEl = document.getElementById("backend-overlay-title");
+  const subEl = document.getElementById("backend-overlay-sub");
+
+  const backendDown = Date.now() - backendMonitor.lastOkAt > BACKEND_GRACE_MS;
+  const rdsDown = Date.now() - rdsMonitor.lastOkAt > RDS_GRACE_MS;
+
+  let visible = false;
+  let title = "";
+  let sub = "";
+
+  if (backendDown) {
+    visible = true;
+    title = "Brak połączenia z serwerem aplikacji";
+    sub = "Czekam na wznowienie połączenia. Zgłoś: brak połączenia z serwerem aplikacji.";
+  } else if (rdsDown) {
+    visible = true;
+    title = "Brak połączenia serwera z RDS";
+    sub = "Serwer aplikacji działa, ale nie ma dostępu do RDS. Zgłoś: brak połączenia z RDS.";
+  }
+
   overlay.classList.toggle("visible", visible);
   overlay.setAttribute("aria-hidden", visible ? "false" : "true");
+  if (titleEl && title) titleEl.textContent = title;
+  if (subEl && sub) subEl.textContent = sub;
 }
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
@@ -333,7 +360,7 @@ async function pollBackendStatus() {
     if (!resp.ok) throw new Error(`status ${resp.status}`);
     const data = await resp.json();
     backendMonitor.lastOkAt = Date.now();
-    setBackendOverlay(false);
+    updateConnectionOverlay();
     if (data && data.buildId) {
       if (backendMonitor.lastBuildId && data.buildId !== backendMonitor.lastBuildId) {
         if (!backendMonitor.reloadPending) {
@@ -352,6 +379,7 @@ async function pollBackendStatus() {
     updateDebugBadge(backendMonitor.lastBuildId);
   } catch {
     // cicho: overlay ogarnie brak połączenia
+    updateConnectionOverlay();
   } finally {
     backendMonitor.inFlight = false;
   }
@@ -361,24 +389,38 @@ function startBackendMonitor() {
   pollBackendStatus();
   setInterval(() => {
     pollBackendStatus();
-    const offlineTooLong = Date.now() - backendMonitor.lastOkAt > BACKEND_GRACE_MS;
-    setBackendOverlay(offlineTooLong);
+    updateConnectionOverlay();
   }, BACKEND_POLL_MS);
 }
 
 async function fetchRobotStateFromServer() {
   try {
     const resp = await fetchWithTimeout("/api/robot/state");
-    if (!resp.ok) {
-      console.error("Błąd /api/robot/state:", await resp.text());
+    let data = null;
+    try {
+      data = await resp.json();
+    } catch (err) {
+      console.error("Błąd parsowania /api/robot/state:", err);
+      updateConnectionOverlay();
       return;
     }
-    const data = await resp.json();
 
-    robotState = data;
-    renderAll();
+    if (!resp.ok) {
+      console.error("Błąd /api/robot/state:", data && data.error ? data.error : resp.status);
+    }
+
+    if (!data || data.rdsOk !== false) {
+      rdsMonitor.lastOkAt = Date.now();
+    }
+    updateConnectionOverlay();
+
+    if (data && data.status && data.task) {
+      robotState = data;
+      renderAll();
+    }
   } catch (err) {
     console.error("fetchRobotStateFromServer error:", err);
+    updateConnectionOverlay();
   }
 }
 
@@ -389,11 +431,9 @@ async function callDispatchEndpoint(path) {
     if (!resp.ok) {
       const txt = await resp.text().catch(() => "");
       console.error("Błąd wywołania", path, resp.status, txt);
-      alert("Nie udało się zmienić stanu dostępności.");
     }
   } catch (err) {
     console.error("callDispatchEndpoint error:", err);
-    alert("Błąd połączenia z backendem przy zmianie dostępności.");
   }
 }
 
@@ -406,11 +446,9 @@ async function callRobotAction(path) {
     if (!resp.ok) {
       const txt = await resp.text().catch(() => "");
       console.error("Błąd wywołania", path, resp.status, txt);
-      alert("Nie udało się wykonać akcji robota.");
     }
   } catch (err) {
     console.error("callRobotAction error:", err);
-    alert("Błąd połączenia z backendem przy akcji robota.");
   }
 }
 
@@ -1175,6 +1213,9 @@ function setupControls() {
 
   const btnLift = document.getElementById("btn-lift-forks");
   const btnLower = document.getElementById("btn-lower-forks");
+  const btnPickTemp = document.getElementById("btn-pick-temp-block");
+  const btnPickPerm = document.getElementById("btn-pick-perm-block");
+  const btnPutNext = document.getElementById("btn-put-mark-occupied");
   if (btnLift) {
     setupPressAction(btnLift, async () => {
       console.log("[UI] Kliknięto PODNIEŚ WIDŁY (wysoki poziom)");
@@ -1186,6 +1227,27 @@ function setupControls() {
     setupPressAction(btnLower, async () => {
       console.log("[UI] Kliknięto OPUŚĆ WIDŁY (niski poziom)");
       await callRobotAction("/api/robot/fork-low");
+      fetchRobotStateFromServer();
+    });
+  }
+  if (btnPickTemp) {
+    setupPressAction(btnPickTemp, async () => {
+      console.log("[UI] Kliknięto PROBLEM PRZY PODBIERANIU (TEMP BLOCK)");
+      await callRobotAction("/api/robot/pick-temp-block");
+      fetchRobotStateFromServer();
+    });
+  }
+  if (btnPickPerm) {
+    setupPressAction(btnPickPerm, async () => {
+      console.log("[UI] Kliknięto PROBLEM PRZY PODBIERANIU (PERM BLOCK)");
+      await callRobotAction("/api/robot/pick-perm-block");
+      fetchRobotStateFromServer();
+    });
+  }
+  if (btnPutNext) {
+    setupPressAction(btnPutNext, async () => {
+      console.log("[UI] Kliknięto PROBLEM PRZY ODKŁADANIU (PUT DOWN)");
+      await callRobotAction("/api/robot/put-down-next");
       fetchRobotStateFromServer();
     });
   }
@@ -1206,7 +1268,7 @@ function setupControls() {
       try {
         const resp = await fetchWithTimeout("/api/robot/raw", {}, 4000);
         if (!resp.ok) {
-          alert("Nie udało się pobrać danych getRobotListRaw");
+          console.error("Nie udało się pobrać danych getRobotListRaw");
           return;
         }
         const raw = await resp.json();

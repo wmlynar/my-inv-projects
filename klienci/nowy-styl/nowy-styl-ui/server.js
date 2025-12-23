@@ -195,7 +195,11 @@ app.get("/api/state", async (req, res) => {
       slotId,
       filled: !!currentFilledBySlotId[slotId]
     }));
-    return res.json({ slots, source: USE_MOCK_RDS ? "mock" : "no-rds-client" });
+    return res.json({
+      slots,
+      source: USE_MOCK_RDS ? "mock" : "no-rds-client",
+      rdsOk: !!USE_MOCK_RDS
+    });
   }
 
   try {
@@ -213,14 +217,14 @@ app.get("/api/state", async (req, res) => {
       });
     }
 
-    res.json({ slots, source: "rds" });
+    res.json({ slots, source: "rds", rdsOk: true });
   } catch (err) {
     console.error("RDS state error", err);
     const slots = Object.entries(slotToSiteId).map(([slotId]) => ({
       slotId,
       filled: !!currentFilledBySlotId[slotId]
     }));
-    res.status(500).json({ slots, source: "fallback", error: "RDS state error" });
+    res.status(500).json({ slots, source: "fallback", rdsOk: false, error: "RDS state error" });
   }
 });
 

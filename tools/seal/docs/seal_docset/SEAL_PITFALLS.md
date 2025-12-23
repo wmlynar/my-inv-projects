@@ -13,6 +13,15 @@
 
 - Blad: `upx` byl wlaczony, ale jego blad byl ignorowany (build przechodzil mimo `CantUnpackException` itp.).
   - Wymaganie: jezeli `upx` jest wlaczony i sie nie powiedzie, build **musi** sie przerwac z bledem.
+  - Wymaganie: `upx` domyslnie wylaczony dla SEA; wlaczaj tylko po potwierdzeniu `upx -t` na binarce.
+
+- Blad: `postject` byl dostepny w `seal check`, ale brakowal w `seal release` (inne PATH / sudo).
+  - Wymaganie: `postject` musi byc w PATH **procesu builda**; nie polegaj na PATH roota lub innego shella.
+
+- Blad: tryb FAST byl uruchamiany niejawnie lub zostawial niebezpieczne artefakty.
+  - Wymaganie: FAST jest **jawny** (`--fast`) i zawsze ostrzega o ryzyku.
+  - Wymaganie: FAST nie tworzy SEA ani `.tgz`, uzywa osobnego katalogu `*-fast`.
+  - Wymaganie: zwykly deploy usuwa poprzedni `*-fast` (zeby nie zostawiac zrodel na dysku).
 
 ## Deploy / infrastruktura
 
@@ -27,6 +36,32 @@
 
 - Blad: uruchamianie aplikacji jako root (np. przez sudo) bez potrzeby.
   - Wymaganie: domyslnie uruchamiamy jako uzytkownik uslugi; `--sudo` tylko jawnie.
+
+- Blad: stare releasy rosly bez limitu (brak cleanup).
+  - Wymaganie: retention (np. ostatnie N release) + usuwanie starych katalogow.
+  - Wymaganie: cleanup dotyczy takze `*-fast`.
+
+- Blad: `status` lapal przypadkowe procesy (np. edytor `nano appctl`) i mylil z running service.
+  - Wymaganie: detekcja procesu musi byc precyzyjna (systemd lub filtr na faktyczna binarke/PID).
+
+- Blad: `seal run` zostawial proces po zamknieciu konsoli.
+  - Wymaganie: foreground run musi zbijac proces przy rozlaczeniu lub miec `--kill`.
+  - Wymaganie: `--kill` dziala bez sudo (ten sam user), bez ubijania cudzych procesow.
+
+## CLI / UX spojnosci
+
+- Blad: `appctl` i `seal remote` mialy rozne komendy i semantyke.
+  - Wymaganie: komendy sa symetryczne (`up/down/start/stop/restart/enable/disable/status/logs`).
+  - Wymaganie: `appctl up` == `seal remote <target> up` (ta sama operacja).
+
+- Blad: 3 osobne kroki (release + deploy + restart) powodowaly pomylki.
+  - Wymaganie: jedno polecenie `seal ship <target>` wykonuje release + deploy + restart.
+
+- Blad: `npx seal` z podfolderu monorepo nie widzial CLI.
+  - Wymaganie: zapewnij globalny link (`tools/seal/scripts/link-global-seal.sh`) albo uzywaj `npx --prefix <repo-root>`.
+
+- Blad: `seal config diff <sciezka>` zwracal `Missing target`.
+  - Wymaganie: `config diff` przyjmuje **nazwe targetu**; nowe targety dodaj `seal target add <target> <config>`.
 
 ## Runtime config
 
@@ -54,6 +89,20 @@
   - Polling do `/api/status` ma timeout (AbortController), aby zawieszone requesty nie blokowaly kolejnych prob.
   - `?debug=1` moze pokazywac badge `buildId` i toast przed reloadem.
 
+## UI niezawodnosc / polaczenia
+
+- Blad: UI uzywalo blokujacych `alert()` przy problemach polaczenia (psulo UX).
+  - Wymaganie: bledy polaczen komunikujemy przez **nieblokujacy overlay** lub toast.
+
+- Blad: UI probowalo zgadywac brak RDS na podstawie pustych danych.
+  - Wymaganie: backend zwraca **jawny status** polaczenia z RDS (`rdsOk`, opcjonalnie `rdsSource`).
+  - Wymaganie: backend zwraca `rdsOk`/`rdsSource` **takze przy non-200** (np. 404/500).
+  - Wymaganie: UI parsuje JSON nawet przy `resp.ok=false` i na tej podstawie aktualizuje overlay.
+  - UI pokazuje dwa rozne komunikaty:
+    - "Brak polaczenia z serwerem aplikacji" (stan RDS nieznany),
+    - "Brak polaczenia serwera z RDS" (backend dziala, RDS nie).
+  - Komunikat powinien zawierac prosty tekst do przekazania serwisowi ("Zglos: ...").
+
 ## UI input / tablety (klik, long-press, scroll)
 
 - Blad: klik/long-press na przyciskach i tabach nie reagowal (dlugie przytrzymanie lub lekki ruch palca).
@@ -68,11 +117,27 @@
   - Wymaganie: akcja toggle albo na `pointerdown` (touch) albo na `pointerup` z "slopem".
   - Nie polegaj na samym `click` na tabletach.
 
+- Blad: szybki polling nadpisywal lokalne zmiany w UI (migotanie stanu).
+  - Wymaganie: optimistic UI + lokalny grace 300-500 ms zanim backend nadpisze stan.
+
 - Blad: scroll blokowal sie po lekkim ruchu w bok (poziomy pan "przejmowal" gest).
   - Wymaganie (CSS): `touch-action: pan-y; overflow-x: hidden; overscroll-behavior-x: none; -webkit-overflow-scrolling: touch` na kontenerze scrolla.
   - Wymaganie (JS): `setupTouchScrollAssist` dla kontenera scrolla:
     - nasluch `touchstart`/`touchmove`, start tylko poza `.btn/.tab`.
     - po przekroczeniu progu (np. 8px) wymus `preventDefault()` i aktualizuj `scrollTop`.
+
+## UI guidelines (praktyki z hali)
+
+- Pokazuj zrodlo danych i czas ostatniej aktualizacji (np. RDS/Mock + timestamp).
+- Uzywaj stanow przyciskow: `loading/disabled/success/error` zamiast blokowania UI.
+- Akcje niekrytyczne: optimistic UI + debounce 300-500 ms, zeby uniknac podwojnych klikow.
+- Etykiety dlugie musza sie zawijac (`white-space: normal`) dla akcji krytycznych.
+- Tablet-first: duze hit-area, brak zaleznosci od hover, akcja na `pointerdown`.
+- Tylko destrukcyjne akcje wymagaja potwierdzen; reszta jednym kliknieciem.
+- Overlay z opóźnieniem 1-2 s; brak panicznych komunikatow przy krotkich przerwach.
+- `?debug=1` pokazuje buildId, timestamp, ostatni blad polaczenia (pomoc serwisowi).
+- Teksty overlayu musza byc spójne w HTML i JS (najlepiej z jednego zrodla).
+- Backend mapping (np. slotId -> siteId) musi pokrywac wszystkie elementy widoczne w UI.
 
 ## Co sprawdzac po zmianach (checklist)
 
@@ -82,5 +147,11 @@
 - `installDir` w targetach jest w `/home/admin/apps/...`.
 - `config.runtime.json5` jest obecny i poprawny JSON5.
 - UI: overlay po 2s braku polaczenia, reload tylko po zmianie `buildId`.
+- UI: brak `alert()` przy bledach polaczen; overlay rozroznia backend vs RDS na podstawie `rdsOk`.
+- UI: backend zwraca `rdsOk`/`rdsSource` takze przy non-200; UI parsuje JSON mimo `resp.ok=false`.
+- UI: optimistic toggle nie miga (grace 300-500 ms).
 - UI (tablet): klik/long-press dziala na `.btn/.tab` i scroll nie blokuje sie po ruchu w bok.
 - Logi nie zawieraja `JSESSIONID` ani danych auth.
+- FAST: `seal ship --fast` ostrzega, nie tworzy `.tgz`, zapisuje do `*-fast`, a cleanup usuwa stare fast releasy.
+- CLI: `appctl` i `seal remote` maja te same komendy/semantyke; `seal ship` dziala jako 1 krok.
+- CLI: `seal` jest dostepny globalnie (link lub `npx --prefix`) i `config diff` uzywa nazwy targetu.
