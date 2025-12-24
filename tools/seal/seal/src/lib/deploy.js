@@ -303,6 +303,7 @@ function deployLocal({ targetCfg, artifactPath, repoConfigPath, pushConfig, poli
 
 function deployLocalFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, buildId }) {
   const layout = localInstallLayout(targetCfg);
+  const thinMode = String(targetCfg.thinMode || "aio").toLowerCase();
 
   ensureDir(layout.installDir);
   ensureDir(layout.releasesDir);
@@ -317,6 +318,11 @@ function deployLocalFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, bu
   ensureDir(relDir);
 
   copyDir(releaseDir, relDir);
+
+  if (thinMode === "bootstrap") {
+    warn("FAST mode: removing thin bootstrap runtime so fallback release can run.");
+  }
+  cleanupThinBootstrapLocal(layout);
 
   fs.writeFileSync(layout.currentFile, folderName, "utf-8");
 
@@ -420,6 +426,8 @@ function runLocalForeground(targetCfg, opts = {}) {
       path.join(rel, "seal.loader.cjs"),
       path.join(rel, "app.bundle.cjs"),
     ];
+    const rootLauncher = path.join(layout.installDir, "b", "a");
+    if (fileExists(rootLauncher)) patterns.push(rootLauncher);
     for (const pattern of patterns) {
       if (scope === "system") {
         spawnSyncSafe("sudo", ["-n", "pkill", "-f", pattern], { stdio: "pipe" });
@@ -443,6 +451,7 @@ function runLocalForeground(targetCfg, opts = {}) {
 
 function rollbackLocal(targetCfg) {
   const layout = localInstallLayout(targetCfg);
+  const thinMode = String(targetCfg.thinMode || "aio").toLowerCase();
   if (!fileExists(layout.currentFile)) throw new Error("No current.buildId – deploy first.");
 
   const current = fs.readFileSync(layout.currentFile, "utf-8").trim();
@@ -457,6 +466,12 @@ function rollbackLocal(targetCfg) {
     throw new Error("No previous release to rollback to.");
   }
   const prev = releases[idx + 1];
+  const prevDir = path.join(layout.releasesDir, prev);
+  if (thinMode === "bootstrap") {
+    applyThinBootstrapLocal(layout, prevDir);
+  } else {
+    cleanupThinBootstrapLocal(layout);
+  }
   fs.writeFileSync(layout.currentFile, prev, "utf-8");
 
   restartLocal(targetCfg);

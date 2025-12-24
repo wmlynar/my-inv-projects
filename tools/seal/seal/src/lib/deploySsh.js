@@ -513,6 +513,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
 }
 
 function deploySshFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, bootstrap, buildId }) {
+  const thinMode = String(targetCfg.thinMode || "aio").toLowerCase();
   const { res: preflight, layout, user, host } = checkRemoteWritable(targetCfg, { requireService: !bootstrap });
   const out = `${preflight.stdout}\n${preflight.stderr}`.trim();
   if (!preflight.ok) {
@@ -597,6 +598,19 @@ function deploySshFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, boot
       const cfgOut = `${cfgRes.stdout}\n${cfgRes.stderr}`.trim();
       throw new Error(`config write failed (status=${cfgRes.status})${cfgOut ? `: ${cfgOut}` : ""}`);
     }
+  }
+
+  if (thinMode === "bootstrap") {
+    warn("FAST mode: removing thin bootstrap runtime so fallback release can run.");
+  }
+  const cleanupCmd = [
+    "bash", "-lc",
+    `rm -f ${shQuote(`${layout.installDir}/b/a`)} ${shQuote(`${layout.installDir}/r/rt`)} ${shQuote(`${layout.installDir}/r/pl`)}`
+  ];
+  const cleanupRes = sshExec({ user, host, args: cleanupCmd, stdio: "pipe" });
+  if (!cleanupRes.ok) {
+    const cleanupOut = `${cleanupRes.stdout}\n${cleanupRes.stderr}`.trim();
+    throw new Error(`fast cleanup failed (status=${cleanupRes.status})${cleanupOut ? `: ${cleanupOut}` : ""}`);
   }
 
   const currentFileQ = shQuote(layout.currentFile);
@@ -742,10 +756,16 @@ function runSshForeground(targetCfg, opts = {}) {
     "      sudo -n pkill -f \"$REL/$APP\" || true",
     "      sudo -n pkill -f \"$REL/seal.loader.cjs\" || true",
     "      sudo -n pkill -f \"$REL/app.bundle.cjs\" || true",
+    "      if [ -x \"$ROOT/b/a\" ]; then",
+    "        sudo -n pkill -f \"$ROOT/b/a\" || true",
+    "      fi",
     "    fi",
     "    pkill -f \"$REL/$APP\" || true",
     "    pkill -f \"$REL/seal.loader.cjs\" || true",
     "    pkill -f \"$REL/app.bundle.cjs\" || true",
+    "    if [ -x \"$ROOT/b/a\" ]; then",
+    "      pkill -f \"$ROOT/b/a\" || true",
+    "    fi",
     "  fi",
     "fi",
     "if [ \"$RUN_AS_ROOT\" = \"1\" ]; then",
@@ -797,6 +817,7 @@ echo "__SEAL_OK__"
 function rollbackSsh(targetCfg) {
   const { user, host } = sshUserHost(targetCfg);
   const layout = remoteLayout(targetCfg);
+  const thinMode = String(targetCfg.thinMode || "aio").toLowerCase();
   const cmd = ["bash","-lc", `
 set -euo pipefail
 ROOT=${shQuote(layout.installDir)}
@@ -810,6 +831,18 @@ for r in $rels; do
   if [ "$r" = "$cur" ]; then found=1; fi
 done
 if [ -z "$prev" ]; then echo "No previous release"; exit 2; fi
+if [ "${thinMode}" = "bootstrap" ]; then
+  PREV_DIR="$ROOT/releases/$prev"
+  test -f "$PREV_DIR/b/a"
+  test -f "$PREV_DIR/r/rt"
+  test -f "$PREV_DIR/r/pl"
+  mkdir -p "$ROOT/b" "$ROOT/r"
+  cp "$PREV_DIR/b/a" "$ROOT/b/a.tmp" && mv "$ROOT/b/a.tmp" "$ROOT/b/a" && chmod 755 "$ROOT/b/a"
+  cp "$PREV_DIR/r/rt" "$ROOT/r/rt.tmp" && mv "$ROOT/r/rt.tmp" "$ROOT/r/rt" && chmod 644 "$ROOT/r/rt"
+  cp "$PREV_DIR/r/pl" "$ROOT/r/pl.tmp" && mv "$ROOT/r/pl.tmp" "$ROOT/r/pl" && chmod 644 "$ROOT/r/pl"
+else
+  rm -f "$ROOT/b/a" "$ROOT/r/rt" "$ROOT/r/pl"
+fi
 echo "$prev" > ${shQuote(layout.currentFile)}
 sudo -n systemctl restart ${shQuote(`${targetCfg.serviceName}.service`)}
 echo "Rolled back to $prev"
