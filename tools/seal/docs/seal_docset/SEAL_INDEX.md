@@ -16,6 +16,8 @@
 - [SEAL_PACKAGER_THIN_SPEC_SCALONA.md](SEAL_PACKAGER_THIN_SPEC_SCALONA.md)
 - [SEAL_CHANGELOG.md](SEAL_CHANGELOG.md)
 
+**TL;DR review checklist:** zob. poczatek `SEAL_PITFALLS.md` + `SEAL_STANDARD.md` (sekcja “TL;DR dla review”).
+
 ## Co jest w docsecie
 
 Docset v0.5 składa się z:
