@@ -131,6 +131,26 @@ cp config/local.json5 seal-out/release/config.runtime.json5
 ./seal-out/release/<app>
 ```
 
+### Krok E: (opcjonalnie) E2E UI po sealingu
+
+Jeśli masz UI i chcesz sprawdzić realne działanie w przeglądarce po sealingu:
+
+1) Zainstaluj Playwright (jednorazowo):
+```bash
+npm --prefix tools/seal/seal install
+npx playwright install
+```
+
+2) Uruchom test (przykład dla `example`):
+```bash
+SEAL_UI_E2E=1 npm --prefix tools/seal/seal run test:ui
+```
+
+Uwagi:
+- test odpala **sealed** binarkę i otwiera przeglądarkę headless,
+- timeouty są twarde; brak postępu = błąd,
+- integracje zewnętrzne są stubowane lokalnie (brak zależności od internetu).
+
 ---
 
 ## 5) (Opcjonalnie) Lokalny deploy na localhost jako usługa systemd
