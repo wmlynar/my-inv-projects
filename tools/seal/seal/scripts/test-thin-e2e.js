@@ -161,7 +161,7 @@ function writeRuntimeConfig(releaseDir, port) {
   writeJson5(path.join(releaseDir, "config.runtime.json5"), cfg);
 }
 
-async function runRelease({ releaseDir, buildId, runTimeoutMs }) {
+async function runRelease({ releaseDir, buildId, runTimeoutMs, env }) {
   if (runRelease.skipListen) {
     log("SKIP: listen not permitted; runtime check disabled");
     return;
@@ -172,11 +172,30 @@ async function runRelease({ releaseDir, buildId, runTimeoutMs }) {
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
 
-  const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe" });
+  const childEnv = Object.assign({}, process.env, env || {});
+  const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe", env: childEnv });
+  const outChunks = [];
+  const errChunks = [];
+  child.stdout.on("data", (c) => outChunks.push(c));
+  child.stderr.on("data", (c) => errChunks.push(c));
+  const childExit = new Promise((resolve) => {
+    child.on("exit", (code, signal) => resolve({ code, signal }));
+  });
 
   let status;
   try {
-    status = await withTimeout("waitForStatus", runTimeoutMs, () => waitForStatus(port));
+    const earlyExit = childExit.then(({ code, signal }) => {
+      const stdout = Buffer.concat(outChunks).toString("utf8").trim();
+      const stderr = Buffer.concat(errChunks).toString("utf8").trim();
+      const detail = [
+        code !== null ? `code=${code}` : null,
+        signal ? `signal=${signal}` : null,
+        stdout ? `stdout: ${stdout.slice(0, 400)}` : null,
+        stderr ? `stderr: ${stderr.slice(0, 400)}` : null,
+      ].filter(Boolean).join("; ");
+      throw new Error(`process exited early (${detail || "no output"})`);
+    });
+    status = await withTimeout("waitForStatus", runTimeoutMs, () => Promise.race([waitForStatus(port), earlyExit]));
   } finally {
     child.kill("SIGTERM");
     await new Promise((resolve) => {
@@ -209,6 +228,22 @@ async function testThinAio(ctx) {
   log("Running thin AIO binary...");
   await runRelease({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs });
 
+  const badEnv = {
+    NODE_OPTIONS: "--require /nonexistent",
+    NODE_PATH: "/nonexistent",
+    NODE_V8_COVERAGE: "/tmp/cover",
+  };
+  log("Running thin AIO with hardened env (default)...");
+  await runRelease({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs, env: badEnv });
+
+  log("Running thin AIO with hardened env (strict)...");
+  await runRelease({
+    releaseDir,
+    buildId,
+    runTimeoutMs: ctx.runTimeoutMs,
+    env: { ...badEnv, SEAL_THIN_ENV_STRICT: "1", PATH: "" },
+  });
+
   fs.rmSync(outRoot, { recursive: true, force: true });
 }
 
@@ -226,6 +261,22 @@ async function testThinBootstrap(ctx) {
 
   log("Running thin BOOTSTRAP wrapper...");
   await runRelease({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs });
+
+  const badEnv = {
+    NODE_OPTIONS: "--require /nonexistent",
+    NODE_PATH: "/nonexistent",
+    NODE_V8_COVERAGE: "/tmp/cover",
+  };
+  log("Running thin BOOTSTRAP with hardened env (default)...");
+  await runRelease({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs, env: badEnv });
+
+  log("Running thin BOOTSTRAP with hardened env (strict)...");
+  await runRelease({
+    releaseDir,
+    buildId,
+    runTimeoutMs: ctx.runTimeoutMs,
+    env: { ...badEnv, SEAL_THIN_ENV_STRICT: "1", PATH: "" },
+  });
 
   fs.rmSync(outRoot, { recursive: true, force: true });
 }

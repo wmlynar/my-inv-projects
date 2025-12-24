@@ -90,7 +90,16 @@ async function cmdDeploy(cwd, targetArg, opts) {
         buildId: fastRelease.buildId,
       });
     } else {
-      deploySsh({ targetCfg, artifactPath, repoConfigPath: configFile, pushConfig: !!opts.pushConfig, bootstrap: !!opts.bootstrap, policy });
+      deploySsh({
+        targetCfg,
+        artifactPath,
+        repoConfigPath: configFile,
+        pushConfig: !!opts.pushConfig,
+        bootstrap: !!opts.bootstrap,
+        policy,
+        releaseDir: opts.releaseDir || null,
+        buildId: opts.buildId || null,
+      });
     }
     if (opts.bootstrap) installServiceSsh(targetCfg);
   } else {
@@ -103,7 +112,7 @@ async function cmdDeploy(cwd, targetArg, opts) {
         buildId: fastRelease.buildId,
       });
     } else {
-      deployLocal({ targetCfg, artifactPath, repoConfigPath: configFile, pushConfig: !!opts.pushConfig, policy });
+      deployLocal({ targetCfg, artifactPath, repoConfigPath: configFile, pushConfig: !!opts.pushConfig, policy, bootstrap: !!opts.bootstrap });
     }
   }
 
@@ -144,13 +153,15 @@ async function cmdShip(cwd, targetArg, opts) {
     skipCheck: !!opts.skipCheck,
     packager: opts.packager || null,
   };
-  await cmdRelease(cwd, targetArg, releaseOpts);
+  const releaseRes = await cmdRelease(cwd, targetArg, releaseOpts);
 
   const deployOpts = {
     bootstrap: !!opts.bootstrap,
     pushConfig: !!opts.pushConfig,
     restart: true,
-    artifact: null,
+    artifact: releaseRes && releaseRes.artifactPath ? releaseRes.artifactPath : null,
+    releaseDir: releaseRes && releaseRes.releaseDir ? releaseRes.releaseDir : null,
+    buildId: releaseRes && releaseRes.buildId ? releaseRes.buildId : null,
   };
   await cmdDeploy(cwd, targetArg, deployOpts);
 }

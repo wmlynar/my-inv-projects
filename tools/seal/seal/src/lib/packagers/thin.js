@@ -434,6 +434,7 @@ m._compile(code, entry);
     .join("\n");
 
   return `#include <errno.h>
+#include <dirent.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <stdint.h>
@@ -441,6 +442,7 @@ m._compile(code, entry);
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/prctl.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
@@ -451,6 +453,9 @@ extern char **environ;
 
 #ifndef MFD_CLOEXEC
 #define MFD_CLOEXEC 0x0001
+#endif
+#ifndef MFD_ALLOW_SEALING
+#define MFD_ALLOW_SEALING 0x0002
 #endif
 #ifndef F_DUPFD_CLOEXEC
 #define F_DUPFD_CLOEXEC F_DUPFD
@@ -584,7 +589,10 @@ static int write_all(int fd, const uint8_t *buf, size_t len) {
 static int make_memfd(const char *name) {
   int fd = -1;
 #ifdef SYS_memfd_create
-  fd = (int)syscall(SYS_memfd_create, name, MFD_CLOEXEC);
+  fd = (int)syscall(SYS_memfd_create, name, MFD_CLOEXEC | MFD_ALLOW_SEALING);
+  if (fd < 0 && errno == EINVAL) {
+    fd = (int)syscall(SYS_memfd_create, name, MFD_CLOEXEC);
+  }
   if (fd >= 0) return fd;
 #endif
   char tmp[64];
@@ -602,6 +610,12 @@ static int set_no_cloexec(int fd) {
   return fcntl(fd, F_SETFD, flags & ~FD_CLOEXEC);
 }
 
+static int set_cloexec(int fd) {
+  int flags = fcntl(fd, F_GETFD);
+  if (flags < 0) return -1;
+  return fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
+}
+
 static int ensure_fd_min(int fd, int min_fd) {
   if (fd < 0) return -1;
   if (fd >= min_fd) return fd;
@@ -609,6 +623,66 @@ static int ensure_fd_min(int fd, int min_fd) {
   if (dupfd < 0) return -1;
   close(fd);
   return dupfd;
+}
+
+static int move_fd(int fd, int target_fd) {
+  if (fd < 0) return -1;
+  if (fd == target_fd) return fd;
+  int dupfd = dup2(fd, target_fd);
+  if (dupfd < 0) return -1;
+  close(fd);
+  return dupfd;
+}
+
+static void seal_memfd(int fd) {
+#ifdef F_ADD_SEALS
+  int seals = F_SEAL_SEAL | F_SEAL_SHRINK | F_SEAL_GROW | F_SEAL_WRITE;
+  fcntl(fd, F_ADD_SEALS, seals);
+#else
+  (void)fd;
+#endif
+}
+
+static int open_regular(const char *path) {
+  int flags = O_RDONLY | O_CLOEXEC;
+#ifdef O_NOFOLLOW
+  flags |= O_NOFOLLOW;
+#endif
+  int fd = open(path, flags);
+  if (fd < 0) return -1;
+  struct stat st;
+  if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode)) {
+    close(fd);
+    errno = EINVAL;
+    return -1;
+  }
+  return fd;
+}
+
+static int dir_exists(const char *path) {
+  struct stat st;
+  return stat(path, &st) == 0 && S_ISDIR(st.st_mode);
+}
+
+static void close_extra_fds(int keep_a, int keep_b) {
+#ifdef SYS_close_range
+  if (keep_a <= 4 && keep_b <= 4) {
+    if (syscall(SYS_close_range, 5, ~0U, 0) == 0) return;
+  }
+#endif
+  DIR *dir = opendir("/proc/self/fd");
+  if (!dir) return;
+  int dir_fd = dirfd(dir);
+  struct dirent *ent;
+  while ((ent = readdir(dir)) != NULL) {
+    if (ent->d_name[0] == '.') continue;
+    int fd = atoi(ent->d_name);
+    if (fd < 0) continue;
+    if (fd == dir_fd || fd == keep_a || fd == keep_b) continue;
+    if (fd <= 4) continue;
+    close(fd);
+  }
+  closedir(dir);
 }
 
 static int decode_container(int src_fd, uint64_t off, uint64_t len, int out_fd) {
@@ -750,10 +824,108 @@ static int set_virtual_entry(const char *root) {
   return setenv("SEAL_VIRTUAL_ENTRY", entry, 1);
 }
 
+static char *dup_env_value(const char *name) {
+  const char *val = getenv(name);
+  if (!val) return NULL;
+  size_t len = strlen(val);
+  char *copy = (char *)malloc(len + 1);
+  if (!copy) return NULL;
+  memcpy(copy, val, len + 1);
+  return copy;
+}
+
+static void set_env_paths(const char *root) {
+  char buf[PATH_MAX + 64];
+  setenv("SEAL_APP_DIR", root, 1);
+  snprintf(buf, sizeof(buf), "%s/shared", root);
+  setenv("SEAL_SHARED_DIR", buf, 1);
+  snprintf(buf, sizeof(buf), "%s/var", root);
+  if (dir_exists(buf)) setenv("SEAL_VAR_DIR", buf, 1);
+  snprintf(buf, sizeof(buf), "%s/data", root);
+  if (dir_exists(buf)) setenv("SEAL_DATA_DIR", buf, 1);
+  setenv("SEAL_BUNDLE_FD", "4", 1);
+  set_virtual_entry(root);
+}
+
 static void harden_env(void) {
-  unsetenv("LD_PRELOAD");
-  unsetenv("LD_LIBRARY_PATH");
-  unsetenv("NODE_OPTIONS");
+  const char *strict = getenv("SEAL_THIN_ENV_STRICT");
+  int strict_mode = (strict && strcmp(strict, "1") == 0);
+
+  const char *existing_path = getenv("PATH");
+
+  if (strict_mode) {
+    char *lang = dup_env_value("LANG");
+    char *lc_all = dup_env_value("LC_ALL");
+    char *lc_ctype = dup_env_value("LC_CTYPE");
+    char *tz = dup_env_value("TZ");
+    char *term = dup_env_value("TERM");
+    char *home = dup_env_value("HOME");
+    char *user = dup_env_value("USER");
+    char *logname = dup_env_value("LOGNAME");
+    char *ssl_file = dup_env_value("SSL_CERT_FILE");
+    char *ssl_dir = dup_env_value("SSL_CERT_DIR");
+
+    if (clearenv() != 0) {
+      // If clearenv fails, fall back to a denylist below.
+      strict_mode = 0;
+    } else {
+      if (lang) setenv("LANG", lang, 1);
+      if (lc_all) setenv("LC_ALL", lc_all, 1);
+      if (lc_ctype) setenv("LC_CTYPE", lc_ctype, 1);
+      if (tz) setenv("TZ", tz, 1);
+      if (term) setenv("TERM", term, 1);
+      if (home) setenv("HOME", home, 1);
+      if (user) setenv("USER", user, 1);
+      if (logname) setenv("LOGNAME", logname, 1);
+      if (ssl_file) setenv("SSL_CERT_FILE", ssl_file, 1);
+      if (ssl_dir) setenv("SSL_CERT_DIR", ssl_dir, 1);
+      setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", 1);
+    }
+
+    free(lang);
+    free(lc_all);
+    free(lc_ctype);
+    free(tz);
+    free(term);
+    free(home);
+    free(user);
+    free(logname);
+    free(ssl_file);
+    free(ssl_dir);
+  }
+
+  if (!strict_mode) {
+    const char *deny[] = {
+      "LD_PRELOAD",
+      "LD_LIBRARY_PATH",
+      "LD_AUDIT",
+      "LD_DEBUG",
+      "LD_DEBUG_OUTPUT",
+      "LD_PROFILE",
+      "LD_SHOW_AUXV",
+      "LD_USE_LOAD_BIAS",
+      "LD_ORIGIN_PATH",
+      "LD_ASSUME_KERNEL",
+      "LD_DYNAMIC_WEAK",
+      "NODE_OPTIONS",
+      "NODE_PATH",
+      "NODE_V8_COVERAGE",
+      "NODE_DEBUG",
+      "NODE_REPL_HISTORY",
+      "NODE_DISABLE_COLORS",
+      "GCONV_PATH",
+      "LOCPATH",
+      "MALLOC_TRACE",
+      "MALLOC_CHECK_",
+      NULL
+    };
+    for (int i = 0; deny[i]; i++) {
+      unsetenv(deny[i]);
+    }
+    if (!existing_path || existing_path[0] == 0) {
+      setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", 1);
+    }
+  }
 }
 
 static void harden_limits(void) {
@@ -761,6 +933,10 @@ static void harden_limits(void) {
   lim.rlim_cur = 0;
   lim.rlim_max = 0;
   setrlimit(RLIMIT_CORE, &lim);
+  prctl(PR_SET_DUMPABLE, 0, 0, 0, 0);
+#ifdef PR_SET_NO_NEW_PRIVS
+  prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0);
+#endif
 }
 
 int main(int argc, char **argv) {
@@ -774,7 +950,7 @@ int main(int argc, char **argv) {
     }
   }
 
-  int self_fd = open("/proc/self/exe", O_RDONLY);
+  int self_fd = open("/proc/self/exe", O_RDONLY | O_CLOEXEC);
   if (self_fd < 0) {
     fprintf(stderr, "[thin] open self failed\\n");
     return 20;
@@ -837,12 +1013,12 @@ int main(int argc, char **argv) {
     snprintf(rt_path, sizeof(rt_path), "%s/r/rt", root);
     snprintf(pl_path, sizeof(pl_path), "%s/r/pl", root);
 
-    rt_file_fd = open(rt_path, O_RDONLY);
+    rt_file_fd = open_regular(rt_path);
     if (rt_file_fd < 0) {
       fprintf(stderr, "[thin] runtime missing: %s\\n", rt_path);
       return 10;
     }
-    pl_file_fd = open(pl_path, O_RDONLY);
+    pl_file_fd = open_regular(pl_path);
     if (pl_file_fd < 0) {
       fprintf(stderr, "[thin] payload missing: %s\\n", pl_path);
       return 11;
@@ -897,24 +1073,34 @@ int main(int argc, char **argv) {
   }
   if (lseek(bundle_fd, 0, SEEK_SET) < 0) return 29;
 
+  seal_memfd(node_fd);
+  seal_memfd(bundle_fd);
+
   if (rt_file_fd >= 0) close(rt_file_fd);
   if (pl_file_fd >= 0) close(pl_file_fd);
+  if (self_fd >= 0) close(self_fd);
 
-  if (bundle_fd != 4) {
-    if (dup2(bundle_fd, 4) < 0) {
-      fprintf(stderr, "[thin] dup2 failed\\n");
-      return 33;
-    }
-    close(bundle_fd);
+  node_fd = move_fd(node_fd, 3);
+  if (node_fd < 0) {
+    fprintf(stderr, "[thin] dup2 failed\\n");
+    return 33;
+  }
+  set_cloexec(node_fd);
+
+  bundle_fd = move_fd(bundle_fd, 4);
+  if (bundle_fd < 0) {
+    fprintf(stderr, "[thin] dup2 failed\\n");
+    return 33;
   }
   if (set_no_cloexec(4) < 0) {
     fprintf(stderr, "[thin] dup2 failed\\n");
     return 33;
   }
 
-  setenv("SEAL_BUNDLE_FD", "4", 1);
-  set_virtual_entry(root);
+  close_extra_fds(node_fd, 4);
+
   harden_env();
+  set_env_paths(root);
   harden_limits();
 
   char *exec_argv[] = { (char *)"node", (char *)"-e", (char *)BOOTSTRAP_JS, NULL };
@@ -941,8 +1127,12 @@ function buildLauncher(stageDir, codecState, allowBootstrap) {
     "-O2",
     "-s",
     "-D_GNU_SOURCE",
+    "-D_FORTIFY_SOURCE=2",
+    "-fPIE",
     "-fstack-protector-strong",
     "-Wl,-z,relro,-z,now",
+    "-Wl,-z,noexecstack",
+    "-pie",
     "-o", outPath,
     cPath,
     ...zstdFlags,
@@ -1034,7 +1224,7 @@ async function packThin({ stageDir, releaseDir, appName, obfPath, mode, level, c
       fs.writeFileSync(path.join(rDir, "rt"), runtimeContainer);
       fs.writeFileSync(path.join(rDir, "pl"), payloadContainer);
 
-      const wrapper = `#!/usr/bin/env bash
+      const wrapper = `#!/bin/bash
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 exec "$DIR/b/a" "$@"

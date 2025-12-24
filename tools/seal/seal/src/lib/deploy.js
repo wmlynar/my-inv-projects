@@ -180,7 +180,8 @@ function extractArtifactToLocal(layout, artifactPath) {
   return path.join(layout.releasesDir, folder);
 }
 
-function applyThinBootstrapLocal(layout, extractedDir) {
+function applyThinBootstrapLocal(layout, extractedDir, opts = {}) {
+  const onlyPayload = !!opts.onlyPayload;
   const launcherSrc = path.join(extractedDir, "b", "a");
   const rtSrc = path.join(extractedDir, "r", "rt");
   const plSrc = path.join(extractedDir, "r", "pl");
@@ -194,8 +195,10 @@ function applyThinBootstrapLocal(layout, extractedDir) {
   ensureDir(bDir);
   ensureDir(rDir);
 
-  copyAtomic(launcherSrc, path.join(bDir, "a"), 0o755);
-  copyAtomic(rtSrc, path.join(rDir, "rt"), 0o644);
+  if (!onlyPayload) {
+    copyAtomic(launcherSrc, path.join(bDir, "a"), 0o755);
+    copyAtomic(rtSrc, path.join(rDir, "rt"), 0o644);
+  }
   copyAtomic(plSrc, path.join(rDir, "pl"), 0o644);
 }
 
@@ -255,7 +258,7 @@ function cleanupFastReleasesLocal({ targetCfg, layout, current }) {
   ok(`Fast cleanup: removed ${toDelete.length} old fast release(s)`);
 }
 
-function deployLocal({ targetCfg, artifactPath, repoConfigPath, pushConfig, policy, fast }) {
+function deployLocal({ targetCfg, artifactPath, repoConfigPath, pushConfig, policy, fast, bootstrap }) {
   const layout = localInstallLayout(targetCfg);
   const thinMode = String(targetCfg.thinMode || "aio").toLowerCase();
 
@@ -275,7 +278,15 @@ function deployLocal({ targetCfg, artifactPath, repoConfigPath, pushConfig, poli
   const folderName = path.basename(extractedDir); // <appName>-<buildId>
 
   if (thinMode === "bootstrap") {
-    applyThinBootstrapLocal(layout, extractedDir);
+    const hasLauncher = fileExists(path.join(layout.installDir, "b", "a"));
+    const hasRuntime = fileExists(path.join(layout.installDir, "r", "rt"));
+    const canReuse = !bootstrap && hasLauncher && hasRuntime;
+    if (canReuse) {
+      info("Thin bootstrap: reusing launcher/runtime; updating payload only.");
+    } else if (!bootstrap && (!hasLauncher || !hasRuntime)) {
+      warn("Thin bootstrap: launcher/runtime missing; copying full bootstrap.");
+    }
+    applyThinBootstrapLocal(layout, extractedDir, { onlyPayload: canReuse });
   } else {
     cleanupThinBootstrapLocal(layout);
   }

@@ -343,8 +343,9 @@ function cleanupFastReleasesSsh({ targetCfg, current }) {
   ok(`Fast cleanup: removed ${toDelete.length} old fast release(s) on ${host}`);
 }
 
-function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootstrap, policy, fast }) {
+function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootstrap, policy, fast, releaseDir, buildId }) {
   const thinMode = String(targetCfg.thinMode || "aio").toLowerCase();
+  const reuseBootstrap = thinMode === "bootstrap" && !bootstrap;
   const { res: preflight, layout, user, host } = checkRemoteWritable(targetCfg, { requireService: !bootstrap });
   const out = `${preflight.stdout}\n${preflight.stderr}`.trim();
   if (!preflight.ok) {
@@ -359,6 +360,21 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
   if (out.includes("__SEAL_MISSING_UNIT__")) issues.push(`Missing systemd unit: ${layout.serviceFile}`);
   if (issues.length) {
     throw new Error(bootstrapHint(targetCfg, layout, user, host, issues));
+  }
+
+  const payloadLocal = releaseDir ? path.join(releaseDir, "r", "pl") : null;
+  let payloadOnly = thinMode === "bootstrap" && !bootstrap && payloadLocal && fileExists(payloadLocal);
+  if (payloadOnly) {
+    const checkRt = sshExec({
+      user,
+      host,
+      args: ["bash", "-lc", `if [ -x ${shQuote(`${layout.installDir}/b/a`)} ] && [ -f ${shQuote(`${layout.installDir}/r/rt`)} ]; then echo __SEAL_THIN_RT_OK__; else echo __SEAL_THIN_RT_MISSING__; fi`],
+      stdio: "pipe",
+    });
+    if (!checkRt.ok || !(checkRt.stdout || "").includes("__SEAL_THIN_RT_OK__")) {
+      warn("Thin bootstrap: runtime/launcher missing on target; falling back to full upload.");
+      payloadOnly = false;
+    }
   }
 
   let shouldPushConfig = !!pushConfig;
@@ -382,84 +398,127 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
     }
   }
 
-  // Upload artifact
-  const base = path.basename(artifactPath);
-  const remoteTmp = `/tmp/${base}`;
-  const remoteTmpQ = shQuote(remoteTmp);
-  info(`Uploading artifact to ${host}:${remoteTmp}`);
-  const up = scpTo({ user, host, localPath: artifactPath, remotePath: remoteTmp });
-  if (!up.ok) throw new Error(`scp failed (status=${up.status})`);
-
-  // Determine folderName from artifact file name without .tgz
-  const fromTar = readArtifactFolderName(artifactPath);
+  const appName = targetCfg.appName || targetCfg.serviceName || "app";
+  const base = artifactPath ? path.basename(artifactPath) : `${appName}-${buildId || "release"}.tgz`;
+  const remoteArtifactTmp = `/tmp/${base}`;
+  const remoteArtifactTmpQ = shQuote(remoteArtifactTmp);
+  const fromTar = artifactPath ? readArtifactFolderName(artifactPath) : null;
   const folderName = fromTar || base.replace(/\.tgz$/, "");
   const relDir = `${layout.releasesDir}/${folderName}`;
   const relDirQ = shQuote(relDir);
 
-  // Extract and switch current
   const releasesDirQ = shQuote(layout.releasesDir);
   const sharedDirQ = shQuote(layout.sharedDir);
   const currentFileQ = shQuote(layout.currentFile);
-  const cmdParts = [
-    `mkdir -p ${releasesDirQ} ${sharedDirQ}`,
-  ];
 
-  // Config: only overwrite if explicit or missing
-  if (shouldPushConfig) {
-    // upload repo config to tmp then move into shared
-    const tmpCfg = `/tmp/${targetCfg.serviceName}-config.json5`;
-    const tmpCfgQ = shQuote(tmpCfg);
-    info(`Uploading config to ${host}:${tmpCfg}`);
-    const upCfg = scpTo({ user, host, localPath: repoConfigPath, remotePath: tmpCfg });
-    if (!upCfg.ok) throw new Error(`scp config failed (status=${upCfg.status})`);
-    cmdParts.push(`tar -xzf ${remoteTmpQ} -C ${releasesDirQ}`);
-    cmdParts.push(`cp ${tmpCfgQ} ${remoteCfgQ}`);
-    cmdParts.push(`rm -f ${tmpCfgQ}`);
-  } else {
-    cmdParts.push(`if [ ! -f ${remoteCfgQ} ]; then echo '[seal] remote config missing -> creating from repo'; exit 99; fi`);
-    cmdParts.push(`tar -xzf ${remoteTmpQ} -C ${releasesDirQ}`);
-  }
-  if (thinMode === "bootstrap") {
+  let res;
+  if (payloadOnly) {
+    info("Thin bootstrap: payload-only upload (no runtime).");
+    const remoteTmp = `/tmp/${appName}-payload-${buildId || Date.now()}.pl`;
+    const remoteTmpQ = shQuote(remoteTmp);
+    info(`Uploading payload to ${host}:${remoteTmp}`);
+    const upPl = scpTo({ user, host, localPath: payloadLocal, remotePath: remoteTmp });
+    if (!upPl.ok) throw new Error(`scp payload failed (status=${upPl.status})`);
+
+    const cmdParts = [
+      `mkdir -p ${releasesDirQ} ${sharedDirQ}`,
+    ];
+    if (shouldPushConfig) {
+      const tmpCfg = `/tmp/${targetCfg.serviceName}-config.json5`;
+      const tmpCfgQ = shQuote(tmpCfg);
+      info(`Uploading config to ${host}:${tmpCfg}`);
+      const upCfg = scpTo({ user, host, localPath: repoConfigPath, remotePath: tmpCfg });
+      if (!upCfg.ok) throw new Error(`scp config failed (status=${upCfg.status})`);
+      cmdParts.push(`cp ${tmpCfgQ} ${remoteCfgQ}`);
+      cmdParts.push(`rm -f ${tmpCfgQ}`);
+    }
+
     const bDir = `${layout.installDir}/b`;
     const rDir = `${layout.installDir}/r`;
-    const launcherSrc = `${relDir}/b/a`;
-    const rtSrc = `${relDir}/r/rt`;
-    const plSrc = `${relDir}/r/pl`;
     const bDirQ = shQuote(bDir);
     const rDirQ = shQuote(rDir);
-    const launcherSrcQ = shQuote(launcherSrc);
-    const rtSrcQ = shQuote(rtSrc);
-    const plSrcQ = shQuote(plSrc);
-    cmdParts.push(`test -f ${launcherSrcQ}`);
-    cmdParts.push(`test -f ${rtSrcQ}`);
-    cmdParts.push(`test -f ${plSrcQ}`);
-    cmdParts.push(`mkdir -p ${bDirQ} ${rDirQ}`);
-    cmdParts.push(`cp ${launcherSrcQ} ${bDirQ}/a.tmp && mv ${bDirQ}/a.tmp ${bDirQ}/a && chmod 755 ${bDirQ}/a`);
-    cmdParts.push(`cp ${rtSrcQ} ${rDirQ}/rt.tmp && mv ${rDirQ}/rt.tmp ${rDirQ}/rt && chmod 644 ${rDirQ}/rt`);
-    cmdParts.push(`cp ${plSrcQ} ${rDirQ}/pl.tmp && mv ${rDirQ}/pl.tmp ${rDirQ}/pl && chmod 644 ${rDirQ}/pl`);
-  } else {
-    const bFileQ = shQuote(`${layout.installDir}/b/a`);
-    const rtFileQ = shQuote(`${layout.installDir}/r/rt`);
-    const plFileQ = shQuote(`${layout.installDir}/r/pl`);
-    cmdParts.push(`rm -f ${bFileQ} ${rtFileQ} ${plFileQ}`);
-  }
-  cmdParts.push(`echo ${shQuote(folderName)} > ${currentFileQ}`);
-  cmdParts.push(`rm -f ${remoteTmpQ}`);
+    cmdParts.push(`mkdir -p ${relDirQ}/b ${relDirQ}/r`);
+    cmdParts.push(`cp ${bDirQ}/a ${relDirQ}/b/a`);
+    cmdParts.push(`cp ${rDirQ}/rt ${relDirQ}/r/rt`);
+    cmdParts.push(`cp ${remoteTmpQ} ${relDirQ}/r/pl && chmod 644 ${relDirQ}/r/pl`);
+    cmdParts.push(`cp ${remoteTmpQ} ${rDirQ}/pl.tmp && mv ${rDirQ}/pl.tmp ${rDirQ}/pl && chmod 644 ${rDirQ}/pl`);
+    cmdParts.push(`echo ${shQuote(folderName)} > ${currentFileQ}`);
+    cmdParts.push(`rm -f ${remoteTmpQ}`);
 
-  const fullCmd = ["bash", "-lc", cmdParts.join(" && ")];
-  let res = sshExec({ user, host, args: fullCmd, stdio: "pipe" });
-  if (!res.ok && res.status === 99) {
+    const fullCmd = ["bash", "-lc", cmdParts.join(" && ")];
+    res = sshExec({ user, host, args: fullCmd, stdio: "pipe" });
+  } else {
+    // Upload artifact
+    info(`Uploading artifact to ${host}:${remoteArtifactTmp}`);
+    const up = scpTo({ user, host, localPath: artifactPath, remotePath: remoteArtifactTmp });
+    if (!up.ok) throw new Error(`scp failed (status=${up.status})`);
+
+    // Extract and switch current
+    const cmdParts = [
+      `mkdir -p ${releasesDirQ} ${sharedDirQ}`,
+    ];
+
+    // Config: only overwrite if explicit or missing
+    if (shouldPushConfig) {
+      // upload repo config to tmp then move into shared
+      const tmpCfg = `/tmp/${targetCfg.serviceName}-config.json5`;
+      const tmpCfgQ = shQuote(tmpCfg);
+      info(`Uploading config to ${host}:${tmpCfg}`);
+      const upCfg = scpTo({ user, host, localPath: repoConfigPath, remotePath: tmpCfg });
+      if (!upCfg.ok) throw new Error(`scp config failed (status=${upCfg.status})`);
+      cmdParts.push(`tar -xzf ${remoteArtifactTmpQ} -C ${releasesDirQ}`);
+      cmdParts.push(`cp ${tmpCfgQ} ${remoteCfgQ}`);
+      cmdParts.push(`rm -f ${tmpCfgQ}`);
+    } else {
+      cmdParts.push(`if [ ! -f ${remoteCfgQ} ]; then echo '[seal] remote config missing -> creating from repo'; exit 99; fi`);
+      cmdParts.push(`tar -xzf ${remoteArtifactTmpQ} -C ${releasesDirQ}`);
+    }
+    if (thinMode === "bootstrap") {
+      const bDir = `${layout.installDir}/b`;
+      const rDir = `${layout.installDir}/r`;
+      const launcherSrc = `${relDir}/b/a`;
+      const rtSrc = `${relDir}/r/rt`;
+      const plSrc = `${relDir}/r/pl`;
+      const bDirQ = shQuote(bDir);
+      const rDirQ = shQuote(rDir);
+      const launcherSrcQ = shQuote(launcherSrc);
+      const rtSrcQ = shQuote(rtSrc);
+      const plSrcQ = shQuote(plSrc);
+      cmdParts.push(`test -f ${launcherSrcQ}`);
+      cmdParts.push(`test -f ${rtSrcQ}`);
+      cmdParts.push(`test -f ${plSrcQ}`);
+      cmdParts.push(`mkdir -p ${bDirQ} ${rDirQ}`);
+      if (reuseBootstrap) {
+        cmdParts.push(`if [ -x ${bDirQ}/a ] && [ -f ${rDirQ}/rt ]; then echo '[seal] thin bootstrap: reuse launcher/runtime'; else cp ${launcherSrcQ} ${bDirQ}/a.tmp && mv ${bDirQ}/a.tmp ${bDirQ}/a && chmod 755 ${bDirQ}/a && cp ${rtSrcQ} ${rDirQ}/rt.tmp && mv ${rDirQ}/rt.tmp ${rDirQ}/rt && chmod 644 ${rDirQ}/rt; fi`);
+      } else {
+        cmdParts.push(`cp ${launcherSrcQ} ${bDirQ}/a.tmp && mv ${bDirQ}/a.tmp ${bDirQ}/a && chmod 755 ${bDirQ}/a`);
+        cmdParts.push(`cp ${rtSrcQ} ${rDirQ}/rt.tmp && mv ${rDirQ}/rt.tmp ${rDirQ}/rt && chmod 644 ${rDirQ}/rt`);
+      }
+      cmdParts.push(`cp ${plSrcQ} ${rDirQ}/pl.tmp && mv ${rDirQ}/pl.tmp ${rDirQ}/pl && chmod 644 ${rDirQ}/pl`);
+    } else {
+      const bFileQ = shQuote(`${layout.installDir}/b/a`);
+      const rtFileQ = shQuote(`${layout.installDir}/r/rt`);
+      const plFileQ = shQuote(`${layout.installDir}/r/pl`);
+      cmdParts.push(`rm -f ${bFileQ} ${rtFileQ} ${plFileQ}`);
+    }
+    cmdParts.push(`echo ${shQuote(folderName)} > ${currentFileQ}`);
+    cmdParts.push(`rm -f ${remoteArtifactTmpQ}`);
+
+    const fullCmd = ["bash", "-lc", cmdParts.join(" && ")];
+    res = sshExec({ user, host, args: fullCmd, stdio: "pipe" });
+  }
+  if (!res.ok && res.status === 99 && !payloadOnly) {
     // Missing config (race) -> push config and retry without reuploading artifact
     warn("Remote config missing (race). Pushing repo config and retrying without reupload.");
     const tmpCheck = sshExec({
       user,
       host,
-      args: ["bash", "-lc", `if [ -f ${remoteTmpQ} ]; then echo __SEAL_TMP_OK__; fi`],
+      args: ["bash", "-lc", `if [ -f ${remoteArtifactTmpQ} ]; then echo __SEAL_TMP_OK__; fi`],
       stdio: "pipe",
     });
     if (!tmpCheck.ok || !(tmpCheck.stdout || "").includes("__SEAL_TMP_OK__")) {
-      info(`Re-uploading artifact to ${host}:${remoteTmp}`);
-      const upRetry = scpTo({ user, host, localPath: artifactPath, remotePath: remoteTmp });
+      info(`Re-uploading artifact to ${host}:${remoteArtifactTmp}`);
+      const upRetry = scpTo({ user, host, localPath: artifactPath, remotePath: remoteArtifactTmp });
       if (!upRetry.ok) throw new Error(`scp failed (status=${upRetry.status})`);
     }
 
@@ -471,7 +530,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
 
     const retryParts = [
       `mkdir -p ${releasesDirQ} ${sharedDirQ}`,
-      `tar -xzf ${remoteTmpQ} -C ${releasesDirQ}`,
+      `tar -xzf ${remoteArtifactTmpQ} -C ${releasesDirQ}`,
       `cp ${tmpCfgQ} ${remoteCfgQ}`,
       `rm -f ${tmpCfgQ}`,
     ];
@@ -490,8 +549,12 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       retryParts.push(`test -f ${rtSrcQ}`);
       retryParts.push(`test -f ${plSrcQ}`);
       retryParts.push(`mkdir -p ${bDirQ} ${rDirQ}`);
-      retryParts.push(`cp ${launcherSrcQ} ${bDirQ}/a.tmp && mv ${bDirQ}/a.tmp ${bDirQ}/a && chmod 755 ${bDirQ}/a`);
-      retryParts.push(`cp ${rtSrcQ} ${rDirQ}/rt.tmp && mv ${rDirQ}/rt.tmp ${rDirQ}/rt && chmod 644 ${rDirQ}/rt`);
+      if (reuseBootstrap) {
+        retryParts.push(`if [ -x ${bDirQ}/a ] && [ -f ${rDirQ}/rt ]; then echo '[seal] thin bootstrap: reuse launcher/runtime'; else cp ${launcherSrcQ} ${bDirQ}/a.tmp && mv ${bDirQ}/a.tmp ${bDirQ}/a && chmod 755 ${bDirQ}/a && cp ${rtSrcQ} ${rDirQ}/rt.tmp && mv ${rDirQ}/rt.tmp ${rDirQ}/rt && chmod 644 ${rDirQ}/rt; fi`);
+      } else {
+        retryParts.push(`cp ${launcherSrcQ} ${bDirQ}/a.tmp && mv ${bDirQ}/a.tmp ${bDirQ}/a && chmod 755 ${bDirQ}/a`);
+        retryParts.push(`cp ${rtSrcQ} ${rDirQ}/rt.tmp && mv ${rDirQ}/rt.tmp ${rDirQ}/rt && chmod 644 ${rDirQ}/rt`);
+      }
       retryParts.push(`cp ${plSrcQ} ${rDirQ}/pl.tmp && mv ${rDirQ}/pl.tmp ${rDirQ}/pl && chmod 644 ${rDirQ}/pl`);
     } else {
       const bFileQ = shQuote(`${layout.installDir}/b/a`);
@@ -500,7 +563,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       retryParts.push(`rm -f ${bFileQ} ${rtFileQ} ${plFileQ}`);
     }
     retryParts.push(`echo ${shQuote(folderName)} > ${currentFileQ}`);
-    retryParts.push(`rm -f ${remoteTmpQ}`);
+    retryParts.push(`rm -f ${remoteArtifactTmpQ}`);
     res = sshExec({ user, host, args: ["bash", "-lc", retryParts.join(" && ")], stdio: "pipe" });
   }
   if (!res.ok) {

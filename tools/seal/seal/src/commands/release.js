@@ -64,6 +64,7 @@ async function cmdRelease(cwd, targetArg, opts) {
     // ignore
   }
 
+  return result;
 }
 
 module.exports = { cmdRelease };

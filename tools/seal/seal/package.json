@@ -8,6 +8,7 @@
   "type": "commonjs",
   "scripts": {
     "test:thin": "node scripts/test-thin-e2e.js",
+    "test:ship": "node scripts/test-ship-e2e.js",
     "test:ui": "node scripts/test-example-ui-e2e.js"
   },
   "engines": {
