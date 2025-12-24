@@ -39,10 +39,8 @@ async function cmdRelease(cwd, targetArg, opts) {
     packagerOverride: opts.packager,
   });
 
-  console.log("");
   ok(`Release ready: ${result.releaseDir}`);
   ok(`Artifact: ${result.artifactPath}`);
-  console.log("");
   console.log("Next:");
   console.log("  seal verify --explain");
   console.log("  seal run-local --sealed");
