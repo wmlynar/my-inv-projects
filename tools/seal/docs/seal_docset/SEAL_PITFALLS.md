@@ -44,6 +44,7 @@
   - Wymaganie: loguj postep (co kilka sekund) podczas kodowania runtime/payload.
   - Wymaganie: kompresja `zstd` musi miec timeout (domyslnie > 0) z jasnym bledem.
   - Wymaganie: timeout musi byc konfigurowalny (`build.thinZstdTimeoutMs` / `targets.<target>.thinZstdTimeoutMs` lub `SEAL_THIN_ZSTD_TIMEOUT_MS`).
+  - Wymaganie: kompresja nie moze wisiec na `spawnSync` z `stdin` (uzyj streamu i obslugi `error`).
 
 - Blad: `codec_state` ginal miedzy deployami (brak zgodnosci kodeka).
   - Wymaganie: `codec_state` musi byc zapisywany lokalnie i utrzymany (`.seal/cache/thin/<target>/codec_state.json`).
@@ -62,6 +63,9 @@
   - Wymaganie: **kazdy** test E2E ma timeout (per‑test + per‑krok/subprocess).
   - Wymaganie: brak postepu > timeout = twarde przerwanie z jasnym bledem.
   - Wymaganie: E2E uzywa **szybkich przykladow/fixture** (minimalny projekt), nie pelnych produkcyjnych buildow.
+  - Wymaganie: procesy uruchamiane w testach musza miec drenaz stdout/stderr (albo `stdio: inherit`), zeby nie blokowac procesu.
+  - Wymaganie: testy UI musza zawsze zamykac browser (`finally`), nawet przy bledzie.
+  - Wymaganie: subprocess musi zawsze obslugiwac zdarzenie `error` (i resolve/reject), aby nie zostawiac wiszacej obietnicy.
 
 ## Deploy / infrastruktura
 

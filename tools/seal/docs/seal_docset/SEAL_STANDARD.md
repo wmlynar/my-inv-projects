@@ -31,6 +31,7 @@ SEAL_STANDARD jest **modułowy**.
   - `ui_resilience` (MUST, jeśli aplikacja ma UI)
   - `integrations` (SHOULD, jeśli aplikacja ma zależności zewnętrzne / integracje)
   - `diagnostics` (SHOULD)
+  - `testing` (SHOULD, jeśli projekt ma E2E/CI)
 
 ### 0.3. Deklaracja zgodności (lock)
 Projekt deklaruje wersję i moduły w pliku:
@@ -320,7 +321,18 @@ Dlatego standard rozróżnia dwa tryby:
 
 ---
 
-## 10. Minimalny „kontrakt dla AI” (wersja promptable)
+## 10. Moduł `testing` (SHOULD)
+
+Ten moduł dotyczy testów E2E (zwłaszcza po sealingu), które mają potwierdzać, że aplikacja działa w realnych warunkach.
+
+- TEST-001 (MUST): każdy test E2E ma **timeout** (per‑test + per‑krok/await).
+- TEST-002 (MUST): każdy subprocess w testach ma obsługę `error` i **nie może wisieć** (resolve/reject zawsze musi nastąpić).
+- TEST-003 (MUST): procesy uruchamiane w testach muszą mieć drenowane stdout/stderr (`stdio: inherit` lub `data` handlers).
+- TEST-004 (MUST): zasoby UI (browser/page) muszą być zamykane w `finally`, nawet przy błędzie.
+- TEST-005 (SHOULD): E2E używa **szybkich fixture** (minimalny projekt), nie pełnych buildów produkcyjnych.
+- TEST-006 (SHOULD): zewnętrzne integracje są stubowane lokalnie (brak zależności od internetu).
+
+## 11. Minimalny „kontrakt dla AI” (wersja promptable)
 
 Poniższy fragment jest celowo krótki, żeby dało się go wkleić do prompta przy generowaniu projektu.
 
@@ -334,7 +346,7 @@ Poniższy fragment jest celowo krótki, żeby dało się go wkleić do prompta p
 
 ---
 
-## 11. Changelog
+## 12. Changelog
 
 ### v1.1
 - Dodane tryby diagnostyki `full`/`safe` (bez konfliktu z polityką sekretów).
