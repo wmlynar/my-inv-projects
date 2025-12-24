@@ -3,6 +3,14 @@
 > Cel: lista realnych bledow, ktore juz naprawilismy. Traktuj ponizsze jako wymagania.
 > AI/autor zmian **MUST** dopisywac nowe bledy i wymagania zapobiegawcze do tego pliku.
 
+**TL;DR review:**
+1) Bledy/reguly dopisane do `SEAL_PITFALLS.md`.
+2) Reguly ogolne dopisane do `SEAL_STANDARD.md`.
+3) E2E ma timeouty per‑test/per‑krok.
+4) Subprocessy obsluguja `error` i nie wisza.
+5) Procesy w testach maja drenaz stdout/stderr.
+6) UI testy zamykaja browser/page w `finally`.
+
 ## Build / packaging
 
 - Blad: SEA fallback uruchomil build bez postject (cichy spadek poziomu zabezpieczen).
