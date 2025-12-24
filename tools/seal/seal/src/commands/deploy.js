@@ -27,17 +27,17 @@ function resolveTarget(projectRoot, targetArg) {
 }
 
 async function ensureArtifact(projectRoot, proj, opts, targetName, configName) {
-  if (opts.artifact) return path.resolve(opts.artifact);
+  if (opts.artifact) return { path: path.resolve(opts.artifact), built: false };
 
   // Prefer last artifact if exists and user didn't ask to rebuild.
   const last = findLastArtifact(projectRoot, proj.appName);
-  if (last) return last;
+  if (last) return { path: last, built: false };
 
   // Build now
   await cmdRelease(projectRoot, targetName, { config: configName, skipCheck: false, packager: null });
   const built = findLastArtifact(projectRoot, proj.appName);
   if (!built) throw new Error("Build produced no artifact");
-  return built;
+  return { path: built, built: true };
 }
 
 function ensureFastRelease(projectRoot, proj, targetCfg, configName, opts) {
@@ -61,13 +61,14 @@ async function cmdDeploy(cwd, targetArg, opts) {
 
   const isFast = !!opts.fast;
   const fastRelease = isFast ? await ensureFastRelease(projectRoot, proj, targetCfg, configName, opts) : null;
-  const artifactPath = isFast
+  const artifactInfo = isFast
     ? null
     : await ensureArtifact(projectRoot, proj, opts, targetName, configName);
+  const artifactPath = isFast ? null : artifactInfo.path;
 
   hr();
   info(`Deploy -> ${targetName} (${targetCfg.kind})`);
-  if (!isFast) info(`Artifact: ${artifactPath}`);
+  if (!isFast && !artifactInfo.built) info(`Artifact: ${artifactPath}`);
   if (isFast) {
     warn("FAST mode: fallback bundle synced via rsync (unsafe, no SEA).");
   }
