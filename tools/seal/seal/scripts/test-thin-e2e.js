@@ -23,8 +23,8 @@ function fail(msg) {
   process.stderr.write(`[thin-e2e] ERROR: ${msg}\n`);
 }
 
-function runCmd(cmd, args) {
-  return spawnSync(cmd, args, { stdio: "pipe" });
+function runCmd(cmd, args, timeoutMs = 5000) {
+  return spawnSync(cmd, args, { stdio: "pipe", timeout: timeoutMs });
 }
 
 function hasCommand(cmd) {
@@ -55,6 +55,18 @@ function checkPrereqs() {
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function withTimeout(label, ms, fn) {
+  let timer = null;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${ms}ms`));
+    }, ms);
+  });
+  return Promise.race([fn(), timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
 }
 
 function httpJson({ port, path: reqPath, timeoutMs }) {
@@ -115,7 +127,7 @@ function getFreePort() {
   });
 }
 
-async function buildThinRelease(mode) {
+async function buildThinRelease(mode, buildTimeoutMs) {
   const projectCfg = loadProjectConfig(EXAMPLE_ROOT);
   const targetCfg = loadTargetConfig(EXAMPLE_ROOT, "local").cfg;
   const configName = resolveConfigName(targetCfg, "local");
@@ -126,14 +138,16 @@ async function buildThinRelease(mode) {
   const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), `seal-thin-${mode}-`));
   const outDir = path.join(outRoot, "seal-out");
 
-  const res = await buildRelease({
-    projectRoot: EXAMPLE_ROOT,
-    projectCfg,
-    targetCfg,
-    configName,
-    packagerOverride: "thin",
-    outDirOverride: outDir,
-  });
+  const res = await withTimeout(`buildRelease(${mode})`, buildTimeoutMs, () =>
+    buildRelease({
+      projectRoot: EXAMPLE_ROOT,
+      projectCfg,
+      targetCfg,
+      configName,
+      packagerOverride: "thin",
+      outDirOverride: outDir,
+    })
+  );
 
   return { ...res, outRoot, outDir };
 }
@@ -147,7 +161,11 @@ function writeRuntimeConfig(releaseDir, port) {
   writeJson5(path.join(releaseDir, "config.runtime.json5"), cfg);
 }
 
-async function runRelease({ releaseDir, buildId }) {
+async function runRelease({ releaseDir, buildId, runTimeoutMs }) {
+  if (runRelease.skipListen) {
+    log("SKIP: listen not permitted; runtime check disabled");
+    return;
+  }
   const port = await getFreePort();
   writeRuntimeConfig(releaseDir, port);
 
@@ -158,7 +176,7 @@ async function runRelease({ releaseDir, buildId }) {
 
   let status;
   try {
-    status = await waitForStatus(port);
+    status = await withTimeout("waitForStatus", runTimeoutMs, () => waitForStatus(port));
   } finally {
     child.kill("SIGTERM");
     await new Promise((resolve) => {
@@ -178,9 +196,9 @@ async function runRelease({ releaseDir, buildId }) {
   assert.strictEqual(status.http.port, port);
 }
 
-async function testThinAio() {
+async function testThinAio(ctx) {
   log("Building thin AIO...");
-  const res = await buildThinRelease("aio");
+  const res = await buildThinRelease("aio", ctx.buildTimeoutMs);
   const { releaseDir, buildId, outRoot } = res;
 
   const aioB = path.join(releaseDir, "b", "a");
@@ -189,14 +207,14 @@ async function testThinAio() {
   assert.ok(!fs.existsSync(aioR), "AIO release should not contain r/rt");
 
   log("Running thin AIO binary...");
-  await runRelease({ releaseDir, buildId });
+  await runRelease({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs });
 
   fs.rmSync(outRoot, { recursive: true, force: true });
 }
 
-async function testThinBootstrap() {
+async function testThinBootstrap(ctx) {
   log("Building thin BOOTSTRAP...");
-  const res = await buildThinRelease("bootstrap");
+  const res = await buildThinRelease("bootstrap", ctx.buildTimeoutMs);
   const { releaseDir, buildId, outRoot } = res;
 
   const launcher = path.join(releaseDir, "b", "a");
@@ -207,7 +225,7 @@ async function testThinBootstrap() {
   assert.ok(fs.existsSync(pl), "BOOTSTRAP release missing r/pl");
 
   log("Running thin BOOTSTRAP wrapper...");
-  await runRelease({ releaseDir, buildId });
+  await runRelease({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs });
 
   fs.rmSync(outRoot, { recursive: true, force: true });
 }
@@ -224,15 +242,33 @@ async function main() {
 
   const prevChunk = process.env.SEAL_THIN_CHUNK_SIZE;
   const prevZstd = process.env.SEAL_THIN_ZSTD_LEVEL;
-  process.env.SEAL_THIN_CHUNK_SIZE = "2097152";
-  process.env.SEAL_THIN_ZSTD_LEVEL = "1";
+  const prevZstdTimeout = process.env.SEAL_THIN_ZSTD_TIMEOUT_MS;
+  process.env.SEAL_THIN_CHUNK_SIZE = process.env.SEAL_THIN_CHUNK_SIZE || "8388608";
+  process.env.SEAL_THIN_ZSTD_LEVEL = process.env.SEAL_THIN_ZSTD_LEVEL || "1";
+  process.env.SEAL_THIN_ZSTD_TIMEOUT_MS = process.env.SEAL_THIN_ZSTD_TIMEOUT_MS || "120000";
+
+  const buildTimeoutMs = Number(process.env.SEAL_THIN_E2E_BUILD_TIMEOUT_MS || "180000");
+  const runTimeoutMs = Number(process.env.SEAL_THIN_E2E_RUN_TIMEOUT_MS || "15000");
+  const testTimeoutMs = Number(process.env.SEAL_THIN_E2E_TIMEOUT_MS || "240000");
+  const ctx = { buildTimeoutMs, runTimeoutMs };
+
+  try {
+    await getFreePort();
+  } catch (e) {
+    if (e && e.code === "EPERM") {
+      runRelease.skipListen = true;
+      log("SKIP: cannot listen on localhost (EPERM)");
+    } else {
+      throw e;
+    }
+  }
 
   const tests = [testThinAio, testThinBootstrap];
   let failures = 0;
   try {
     for (const t of tests) {
       try {
-        await t();
+        await withTimeout(t.name, testTimeoutMs, () => t(ctx));
         log(`OK: ${t.name}`);
       } catch (e) {
         failures += 1;
@@ -244,6 +280,8 @@ async function main() {
     else process.env.SEAL_THIN_CHUNK_SIZE = prevChunk;
     if (prevZstd === undefined) delete process.env.SEAL_THIN_ZSTD_LEVEL;
     else process.env.SEAL_THIN_ZSTD_LEVEL = prevZstd;
+    if (prevZstdTimeout === undefined) delete process.env.SEAL_THIN_ZSTD_TIMEOUT_MS;
+    else process.env.SEAL_THIN_ZSTD_TIMEOUT_MS = prevZstdTimeout;
   }
 
   if (failures > 0) {

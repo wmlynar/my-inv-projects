@@ -3,7 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
-const { spawnSync } = require("child_process");
+const { spawn, spawnSync } = require("child_process");
 
 const { spawnSyncSafe } = require("../spawn");
 const { ensureDir, fileExists } = require("../fsextra");
@@ -21,7 +21,7 @@ const THIN_LEVELS = {
 
 const DEFAULT_LIMITS = {
   maxChunks: 1_000_000,
-  maxChunkRaw: 2 * 1024 * 1024,
+  maxChunkRaw: 8 * 1024 * 1024,
   maxIndexBytes: 128 * 1024 * 1024,
   maxTotalRaw: 4 * 1024 * 1024 * 1024,
 };
@@ -71,34 +71,89 @@ function hasCommand(cmd) {
 
 function spawnBinary(cmd, args, input, opts = {}) {
   const timeoutMs = Number.isFinite(opts.timeoutMs) && opts.timeoutMs > 0 ? opts.timeoutMs : undefined;
-  const res = spawnSync(cmd, args, {
-    input,
-    encoding: null,
-    maxBuffer: 1024 * 1024 * 200,
-    timeout: timeoutMs,
-    killSignal: timeoutMs ? "SIGKILL" : undefined,
+  const maxBuffer = Number.isFinite(opts.maxBuffer) && opts.maxBuffer > 0 ? opts.maxBuffer : 1024 * 1024 * 200;
+  return new Promise((resolve) => {
+    const child = spawn(cmd, args, { stdio: ["pipe", "pipe", "pipe"] });
+    const stdoutChunks = [];
+    const stderrChunks = [];
+    let stdoutLen = 0;
+    let stderrLen = 0;
+    let finished = false;
+    let timeout = null;
+    let errObj = null;
+    let timedOut = false;
+
+    if (timeoutMs) {
+      timeout = setTimeout(() => {
+        timedOut = true;
+        errObj = Object.assign(new Error("ETIMEDOUT"), { code: "ETIMEDOUT" });
+        child.kill("SIGKILL");
+      }, timeoutMs);
+    }
+
+    const onData = (chunks, lenRef, chunk) => {
+      chunks.push(chunk);
+      lenRef.value += chunk.length;
+      if (lenRef.value > maxBuffer && !timedOut) {
+        errObj = Object.assign(new Error("EMAXBUFFER"), { code: "EMAXBUFFER" });
+        child.kill("SIGKILL");
+      }
+    };
+
+    const outLen = { value: 0 };
+    const errLen = { value: 0 };
+
+    child.stdout.on("data", (c) => onData(stdoutChunks, outLen, c));
+    child.stderr.on("data", (c) => onData(stderrChunks, errLen, c));
+
+    child.on("error", (err) => {
+      errObj = err;
+    });
+
+    child.on("close", (code, signal) => {
+      if (finished) return;
+      finished = true;
+      if (timeout) clearTimeout(timeout);
+      stdoutLen = outLen.value;
+      stderrLen = errLen.value;
+      resolve({
+        ok: code === 0 && !timedOut && !errObj,
+        status: code,
+        signal,
+        stdout: stdoutChunks.length ? Buffer.concat(stdoutChunks, stdoutLen) : null,
+        stderr: stderrChunks.length ? Buffer.concat(stderrChunks, stderrLen) : null,
+        error: errObj,
+      });
+    });
+
+    if (input) child.stdin.end(input);
+    else child.stdin.end();
   });
-  return {
-    ok: res.status === 0,
-    status: res.status,
-    stdout: res.stdout,
-    stderr: res.stderr,
-    error: res.error ? (res.error.message || String(res.error)) : null,
-  };
 }
 
-function zstdCompress(buf) {
+async function zstdCompress(buf) {
   const args = ["-q", "-c", "-"];
   if (typeof zstdCompress.level === "number") {
     args.unshift(`-${zstdCompress.level}`);
   }
-  const res = spawnBinary("zstd", args, buf, { timeoutMs: zstdCompress.timeoutMs });
+  const res = await spawnBinary("zstd", args, buf, { timeoutMs: zstdCompress.timeoutMs });
   if (!res.ok || !Buffer.isBuffer(res.stdout)) {
+    const timeoutMs = zstdCompress.timeoutMs;
+    if (timeoutMs && (res.error && res.error.code === "ETIMEDOUT")) {
+      throw new Error(`zstd compress timed out after ${timeoutMs}ms`);
+    }
+    if (timeoutMs && res.signal === "SIGKILL") {
+      throw new Error(`zstd compress timed out after ${timeoutMs}ms`);
+    }
     if (res.error && String(res.error).toLowerCase().includes("timed out")) {
       const ms = zstdCompress.timeoutMs ? `${zstdCompress.timeoutMs}ms` : "timeout";
       throw new Error(`zstd compress timed out after ${ms}`);
     }
-    const msg = res.stderr ? res.stderr.toString("utf-8") : (res.error || "zstd failed");
+    const stderrMsg = res.stderr ? res.stderr.toString("utf-8").trim() : "";
+    const errMsg = res.error ? (res.error.message || String(res.error)) : "";
+    const statusMsg = res.status !== null && res.status !== undefined ? `status=${res.status}` : "";
+    const signalMsg = res.signal ? `signal=${res.signal}` : "";
+    const msg = [errMsg, stderrMsg, statusMsg, signalMsg].filter(Boolean).join("; ") || "zstd failed";
     throw new Error(`zstd compress failed: ${msg}`);
   }
   return res.stdout;
@@ -204,7 +259,7 @@ function resolveZstdTimeout(timeoutOpt) {
   return 300000;
 }
 
-function encodeContainer(rawBuf, codecState, chunkSize, zstdLevel, opts = {}) {
+async function encodeContainer(rawBuf, codecState, chunkSize, zstdLevel, opts = {}) {
   if (!rawBuf || rawBuf.length === 0) {
     throw new Error("raw buffer is empty");
   }
@@ -233,7 +288,7 @@ function encodeContainer(rawBuf, codecState, chunkSize, zstdLevel, opts = {}) {
 
     const nonce = randomU32();
     zstdCompress.level = zstdLevel;
-    const comp = zstdCompress(rawChunk);
+    const comp = await zstdCompress(rawChunk);
     const seed = (codecState.seed ^ i ^ nonce) >>> 0;
     const masked = encodeBytes(comp, seed, codecState.rot, codecState.add);
 
@@ -876,7 +931,7 @@ function buildLauncher(stageDir, codecState, allowBootstrap) {
   return { ok: true, path: outPath };
 }
 
-function packThin({ stageDir, releaseDir, appName, obfPath, mode, level, chunkSizeBytes, zstdLevelOverride, zstdTimeoutMs, projectRoot, targetName }) {
+async function packThin({ stageDir, releaseDir, appName, obfPath, mode, level, chunkSizeBytes, zstdLevelOverride, zstdTimeoutMs, projectRoot, targetName }) {
   try {
     if (!hasCommand("zstd")) {
       return { ok: false, errorShort: "zstd not found in PATH", error: "missing_zstd" };
@@ -919,11 +974,11 @@ function packThin({ stageDir, releaseDir, appName, obfPath, mode, level, chunkSi
     const payload = fs.readFileSync(obfPath);
 
     zstdCompress.timeoutMs = zstdTimeout;
-    const runtimeContainer = encodeContainer(nodeBin, codecState, chunkSize, zstdLevel, {
+    const runtimeContainer = await encodeContainer(nodeBin, codecState, chunkSize, zstdLevel, {
       progress: (i, total) => info(`Thin: runtime ${i}/${total}`),
     });
     info("Thin: encoding payload (zstd + mask)...");
-    const payloadContainer = encodeContainer(payload, codecState, chunkSize, zstdLevel, {
+    const payloadContainer = await encodeContainer(payload, codecState, chunkSize, zstdLevel, {
       progress: (i, total) => info(`Thin: payload ${i}/${total}`),
     });
 

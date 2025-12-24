@@ -731,7 +731,7 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
 
   if (packagerRequested === "thin") {
     info(`Packaging (thin ${thinMode}, level=${thinLevel})...`);
-    const res = packThin({
+    const res = await packThin({
       stageDir,
       releaseDir,
       appName,
