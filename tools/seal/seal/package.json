@@ -7,7 +7,8 @@
   },
   "type": "commonjs",
   "scripts": {
-    "test:thin": "node scripts/test-thin-e2e.js"
+    "test:thin": "node scripts/test-thin-e2e.js",
+    "test:ui": "node scripts/test-example-ui-e2e.js"
   },
   "engines": {
     "node": ">=20"
@@ -21,5 +22,8 @@
     "json5": "^2.2.3",
     "postject": "1.0.0-alpha.6",
     "tar": "^6.2.1"
+  },
+  "devDependencies": {
+    "playwright": "^1.50.0"
   }
 }
