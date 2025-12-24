@@ -80,6 +80,7 @@ function spawnBinary(cmd, args, input, opts = {}) {
     let stderrLen = 0;
     let finished = false;
     let timeout = null;
+    let killTimer = null;
     let errObj = null;
     let timedOut = false;
 
@@ -88,6 +89,20 @@ function spawnBinary(cmd, args, input, opts = {}) {
         timedOut = true;
         errObj = Object.assign(new Error("ETIMEDOUT"), { code: "ETIMEDOUT" });
         child.kill("SIGKILL");
+        killTimer = setTimeout(() => {
+          if (finished) return;
+          finished = true;
+          stdoutLen = outLen.value;
+          stderrLen = errLen.value;
+          resolve({
+            ok: false,
+            status: null,
+            signal: "SIGKILL",
+            stdout: stdoutChunks.length ? Buffer.concat(stdoutChunks, stdoutLen) : null,
+            stderr: stderrChunks.length ? Buffer.concat(stderrChunks, stderrLen) : null,
+            error: errObj,
+          });
+        }, 2000);
       }, timeoutMs);
     }
 
@@ -107,13 +122,26 @@ function spawnBinary(cmd, args, input, opts = {}) {
     child.stderr.on("data", (c) => onData(stderrChunks, errLen, c));
 
     child.on("error", (err) => {
+      if (finished) return;
       errObj = err;
+      finished = true;
+      if (timeout) clearTimeout(timeout);
+      if (killTimer) clearTimeout(killTimer);
+      resolve({
+        ok: false,
+        status: null,
+        signal: null,
+        stdout: stdoutChunks.length ? Buffer.concat(stdoutChunks, stdoutLen) : null,
+        stderr: stderrChunks.length ? Buffer.concat(stderrChunks, stderrLen) : null,
+        error: errObj,
+      });
     });
 
     child.on("close", (code, signal) => {
       if (finished) return;
       finished = true;
       if (timeout) clearTimeout(timeout);
+      if (killTimer) clearTimeout(killTimer);
       stdoutLen = outLen.value;
       stderrLen = errLen.value;
       resolve({
@@ -126,6 +154,7 @@ function spawnBinary(cmd, args, input, opts = {}) {
       });
     });
 
+    child.stdin.on("error", () => {});
     if (input) child.stdin.end(input);
     else child.stdin.end();
   });

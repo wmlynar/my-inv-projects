@@ -172,7 +172,9 @@ async function runRelease({ releaseDir, buildId, runTimeoutMs }) {
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
 
-  const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe" });
+  const child = spawn(binPath, [], { cwd: releaseDir, stdio: ["ignore", "pipe", "pipe"] });
+  child.stdout.on("data", () => {});
+  child.stderr.on("data", () => {});
   let exitErr = null;
   child.on("exit", (code, signal) => {
     if (code && code !== 0) {
@@ -201,42 +203,45 @@ async function runUiTest({ url, buildId, headless }) {
   }
 
   const browser = await playwright.chromium.launch({ headless });
-  const page = await browser.newPage();
+  let page;
+  try {
+    page = await browser.newPage();
 
-  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 10_000 });
-  await page.waitForSelector("#status", { timeout: 10_000 });
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 10_000 });
+    await page.waitForSelector("#status", { timeout: 10_000 });
 
-  await page.waitForFunction(
-    (expectedBuildId) => {
-      const el = document.querySelector("#status");
-      if (!el) return false;
-      const txt = el.textContent || "";
-      return txt.includes('"appName": "seal-example"') && txt.includes(expectedBuildId);
-    },
-    buildId,
-    { timeout: 10_000 }
-  );
+    await page.waitForFunction(
+      (expectedBuildId) => {
+        const el = document.querySelector("#status");
+        if (!el) return false;
+        const txt = el.textContent || "";
+        return txt.includes('"appName": "seal-example"') && txt.includes(expectedBuildId);
+      },
+      buildId,
+      { timeout: 10_000 }
+    );
 
-  await page.fill("#md5Input", "abc");
-  await page.click("#btnMd5");
-  await page.waitForFunction(
-    () => {
-      const el = document.querySelector("#md5Out");
-      return el && (el.textContent || "").includes("900150983cd24fb0d6963f7d28e17f72");
-    },
-    { timeout: 10_000 }
-  );
+    await page.fill("#md5Input", "abc");
+    await page.click("#btnMd5");
+    await page.waitForFunction(
+      () => {
+        const el = document.querySelector("#md5Out");
+        return el && (el.textContent || "").includes("900150983cd24fb0d6963f7d28e17f72");
+      },
+      { timeout: 10_000 }
+    );
 
-  await page.click("#btnExternal");
-  await page.waitForFunction(
-    () => {
-      const el = document.querySelector("#externalOut");
-      return el && (el.textContent || "").includes('"ok": true');
-    },
-    { timeout: 10_000 }
-  );
-
-  await browser.close();
+    await page.click("#btnExternal");
+    await page.waitForFunction(
+      () => {
+        const el = document.querySelector("#externalOut");
+        return el && (el.textContent || "").includes('"ok": true');
+      },
+      { timeout: 10_000 }
+    );
+  } finally {
+    await browser.close();
+  }
 }
 
 async function testUi(ctx) {
