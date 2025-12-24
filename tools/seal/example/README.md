@@ -65,10 +65,10 @@ Artefakty:
 
 Dodane są przykładowe pliki:
 
-- `example/seal-config/targets/server.json5` – target SSH (host `10.6.44.2`, user `admin`, installDir `/opt/apps/seal-example`)
+- `example/seal-config/targets/server.json5` – target SSH (host `10.6.44.2`, user `admin`, installDir `/home/admin/apps/seal-example`)
 - `example/config/server.json5` – runtime config (host `0.0.0.0`, port `3200`)
 
-Bootstrap tworzy `/opt/apps/seal-example` przez `sudo` i ustawia właściciela na `admin`, a po deployu instaluje runner + unit (bez startu usługi).
+Bootstrap tworzy `/home/admin/apps/seal-example` przez `sudo` i ustawia właściciela na `admin`, a po deployu instaluje runner + unit (bez startu usługi).
 
 Komendy do testu deployu i uruchomienia:
 

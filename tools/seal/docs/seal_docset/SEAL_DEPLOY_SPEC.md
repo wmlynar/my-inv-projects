@@ -518,7 +518,7 @@ seal-deploy/
 - `seal deploy <target>` wykonuje:
   1) snapshot configu z serwera do `seal-out/remote/` (jeśli serwer już działa i ma config),
   2) upload release,
-  3) instalację wersji do `/opt/<app>/releases/<buildId>`,
+  3) instalację wersji do `/home/admin/apps/<app>/releases/<buildId>`,
   4) ustawienie `current.buildId`,
   5) restart usługi,
   6) (opcjonalnie) health-check i rollback.
@@ -554,7 +554,7 @@ Plik `seal-config/targets/<target>.json5` zawiera wyłącznie:
 **Wymaganie:** config ma wspierać obiekty i tablice wprost.
 
 ### 10.3. Seed configu na serwerze
-- Jeśli `/opt/<app>/shared/config.json5` nie istnieje – tworzymy go na podstawie `config/<config>.json5`.
+- Jeśli `/home/admin/apps/<app>/shared/config.json5` nie istnieje – tworzymy go na podstawie `config/<config>.json5`.
 - Jeśli istnieje – nie nadpisujemy (domyślnie).
 
 ### 10.4. Edycja configu na serwerze (serwis)
@@ -682,7 +682,7 @@ MVP: wymagamy `sudo` do operacji bootstrap/systemd; po bootstrapie zapis w `<ins
 > v0.4: **bez symlinków** jako domyślna polityka (mniej „gotcha” na dziwnych FS-ach).
 
 ```
-/opt/my-app/
+/home/admin/apps/my-app/
   releases/
     2025-12-20_1615/
       my-app            (binarka)
@@ -727,8 +727,8 @@ Release musi zawierać `manifest.json` z co najmniej:
 
 ### 13.1. Wymagania systemd
 
-- `WorkingDirectory=/opt/<app>`
-- `ExecStart=/opt/<app>/run-current.sh`
+- `WorkingDirectory=/home/admin/apps/<app>`
+- `ExecStart=/home/admin/apps/<app>/run-current.sh`
 - `Restart=on-failure` lub `always`
 - uruchomienie jako osobny user (nie root)
 - logi w journald (StandardOutput/StandardError = journal)
@@ -1202,7 +1202,7 @@ Celem sample-app jest:
   host: "10.0.0.23",
   user: "robot",
   sshPort: 22,
-  installDir: "/opt/my-app",
+  installDir: "/home/admin/apps/my-app",
   serviceName: "my-app",
   serviceUser: "my-app",
 }
@@ -1458,7 +1458,7 @@ Kompatybilność (MAY): aliasy historyczne `seal diff-config`, `seal pull-config
 - `host` (string)
 - `user` (string)
 - `sshPort` (number, domyślnie 22)
-- `installDir` (string, domyślnie `/opt/<app>`)
+- `installDir` (string, domyślnie `/home/admin/apps/<app>`)
 - `serviceName` (string)
 
 **Opcjonalnie:**
@@ -1732,7 +1732,7 @@ Paczka **SHOULD** zawiera (domyślnie w v0.4):
 
 ### 28.1. Milestone 1 – minimalny działający deploy
 - `seal init`, `seal release`, `seal deploy --bootstrap`, `seal deploy`, `seal logs/status/restart`, `seal doctor`.
-- Struktura `/opt/<app>/releases/` + `shared/` + `current.buildId`.
+- Struktura `/home/admin/apps/<app>/releases/` + `shared/` + `current.buildId`.
 
 ### 28.2. Milestone 2 – atomic deploy + rollback + manifest
 - current.buildId, buildId, health-check, rollback.

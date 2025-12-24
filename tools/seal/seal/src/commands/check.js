@@ -35,7 +35,7 @@ function resolvePostjectBin() {
 }
 
 function remoteLayout(targetCfg) {
-  const installDir = targetCfg.installDir || `/opt/${targetCfg.appName || "app"}`;
+  const installDir = targetCfg.installDir || `/home/admin/apps/${targetCfg.appName || "app"}`;
   return {
     installDir,
     releasesDir: `${installDir}/releases`,

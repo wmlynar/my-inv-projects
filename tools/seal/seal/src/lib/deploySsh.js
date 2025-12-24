@@ -20,7 +20,7 @@ const { normalizeRetention, filterReleaseNames, computeKeepSet } = require("./re
  */
 
 function remoteLayout(targetCfg) {
-  const installDir = targetCfg.installDir || `/opt/${targetCfg.appName || "app"}`;
+  const installDir = targetCfg.installDir || `/home/admin/apps/${targetCfg.appName || "app"}`;
   return {
     installDir,
     releasesDir: `${installDir}/releases`,
@@ -107,7 +107,7 @@ function bootstrapHint(targetCfg, layout, user, host, issues) {
   return [
     ...header,
     `Run: seal deploy ${targetName} --bootstrap`,
-    "Bootstrap uses sudo to create /opt dirs and chown them to the SSH user, then installs runner+unit after deploy.",
+    "Bootstrap uses sudo to create install dirs and chown them to the SSH user, then installs runner+unit after deploy.",
     "If you cannot use passwordless sudo, run manually:",
     manualLine,
   ].join("\n");
@@ -829,7 +829,7 @@ function rollbackSsh(targetCfg) {
 set -euo pipefail
 ROOT=${shQuote(layout.installDir)}
 APP=${shQuote(targetCfg.appName || targetCfg.serviceName || "app")}
-FAST_PREFIX="${targetCfg.appName || targetCfg.serviceName || "app"}-fast-"
+FAST_PREFIX="${APP}-fast-"
 cur="$(cat "$ROOT/current.buildId" || true)"
 cd ${shQuote(layout.releasesDir)}
 rels="$(ls -1 | sort -r)"

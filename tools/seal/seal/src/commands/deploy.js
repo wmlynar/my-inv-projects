@@ -21,7 +21,7 @@ function resolveTarget(projectRoot, targetArg) {
   if (!t) throw new Error(`Brak targetu ${targetName}. Zrób: seal target add ${targetName}`);
   t.cfg.appName = proj.appName;
   t.cfg.serviceName = t.cfg.serviceName || proj.appName;
-  t.cfg.installDir = t.cfg.installDir || (t.cfg.kind === "ssh" ? `/opt/${proj.appName}` : `~/.local/share/seal/${proj.appName}`);
+  t.cfg.installDir = t.cfg.installDir || (t.cfg.kind === "ssh" ? `/home/admin/apps/${proj.appName}` : `~/.local/share/seal/${proj.appName}`);
   t.cfg.thinMode = t.cfg.thinMode || proj.build?.thinMode || "aio";
   return { proj, targetName, targetCfg: t.cfg };
 }

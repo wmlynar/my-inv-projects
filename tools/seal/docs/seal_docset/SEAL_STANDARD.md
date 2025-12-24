@@ -123,7 +123,7 @@ Jeśli log dotyczy błędu:
 
 ### 2.8. Przykłady (JSONL)
 ```json
-{"ts":"2025-12-20T16:20:01.123Z","lvl":"info","evt":"APP_START","version":"1.0.0","buildId":"2025-12-20_1615","node":"v22.11.0","configPath":"/opt/my-app/releases/<buildId>/config.runtime.json5"}
+{"ts":"2025-12-20T16:20:01.123Z","lvl":"info","evt":"APP_START","version":"1.0.0","buildId":"2025-12-20_1615","node":"v22.11.0","configPath":"/home/admin/apps/my-app/releases/<buildId>/config.runtime.json5"}
 {"ts":"2025-12-20T16:20:03.017Z","lvl":"error","evt":"INT_RDS_CONN_FAIL","errorId":"E7K3-2Q9M","err":{"name":"Error","message":"ECONNREFUSED","stack":"..."},"ctx":{"url":"http://127.0.0.1:8080"}}
 {"ts":"2025-12-20T16:20:04.000Z","lvl":"info","evt":"APP_READY"}
 ```

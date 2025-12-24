@@ -172,7 +172,7 @@ NOTES:
   host: "10.0.0.23",
   user: "robot",
   sshPort: 22,
-  installDir: "/opt/my-app",
+  installDir: "/home/admin/apps/my-app",
   serviceName: "my-app",
   serviceUser: "my-app",
 
