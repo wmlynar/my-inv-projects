@@ -88,6 +88,15 @@ npx seal release prod --packager thin
 - `build.thinMode: "aio" | "bootstrap"` (domyślnie `"aio"`)
 - `targets/<target>.json5` może nadpisać przez `thinMode`.
 
+**Poziomy wydajności (MUST):**
+- `build.thinLevel: "low" | "high"` (domyślnie `"low"`).
+  - `low`: chunk ok. **2MB**, `zstd` level **1** (szybsze buildy).
+  - `high`: chunk ok. **64KB**, `zstd` level **3** (wolniejsze, mniejsze paczki).
+- `targets/<target>.json5` może nadpisać przez `thinLevel`.
+- Dodatkowe override (opcjonalne, najwyższy priorytet):
+  - `build.thinChunkSize` / `targets.<target>.thinChunkSize` (liczba bajtów).
+  - `build.thinZstdLevel` / `targets.<target>.thinZstdLevel` (1..19).
+
 ### 2.3 Idempotencja i rozpoznawanie stanu (MUST)
 `seal ship --packager thin`:
 - rozpoznaje stan targetu (runtime/payload/usługa),

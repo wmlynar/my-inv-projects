@@ -685,6 +685,9 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   const packagerRequested = (packagerOverride || targetCfg.packager || projectCfg.build.packager || "auto").toLowerCase();
   const allowFallback = !!(targetCfg.allowFallback ?? projectCfg.build.allowFallback ?? false);
   const thinMode = String(targetCfg.thinMode || projectCfg.build.thinMode || "aio").toLowerCase();
+  const thinLevel = String(targetCfg.thinLevel || projectCfg.build.thinLevel || "low").toLowerCase();
+  const thinChunkSize = targetCfg.thinChunkSize ?? projectCfg.build.thinChunkSize ?? null;
+  const thinZstdLevel = targetCfg.thinZstdLevel ?? projectCfg.build.thinZstdLevel ?? null;
 
   // Normalize hardening config early (used for SEA main packing)
   const hardCfgRaw = projectCfg.build.hardening;
@@ -726,13 +729,16 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   }
 
   if (packagerRequested === "thin") {
-    info(`Packaging (thin ${thinMode})...`);
+    info(`Packaging (thin ${thinMode}, level=${thinLevel})...`);
     const res = packThin({
       stageDir,
       releaseDir,
       appName,
       obfPath,
       mode: thinMode,
+      level: thinLevel,
+      chunkSizeBytes: thinChunkSize,
+      zstdLevelOverride: thinZstdLevel,
       projectRoot,
       targetName: targetCfg.target || targetCfg.config || "default",
     });

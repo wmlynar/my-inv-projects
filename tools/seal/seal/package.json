@@ -6,6 +6,9 @@
     "seal": "bin/seal.js"
   },
   "type": "commonjs",
+  "scripts": {
+    "test:thin": "node scripts/test-thin-e2e.js"
+  },
   "engines": {
     "node": ">=20"
   },

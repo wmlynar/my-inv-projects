@@ -14,10 +14,14 @@ const THIN_FOOTER_LEN = 32;
 const THIN_AIO_FOOTER_LEN = 64;
 const THIN_INDEX_ENTRY_LEN = 24;
 const THIN_CHUNK_SIZE = 64 * 1024;
+const THIN_LEVELS = {
+  low: { chunkSize: 2 * 1024 * 1024, zstdLevel: 1 },
+  high: { chunkSize: 64 * 1024, zstdLevel: 3 },
+};
 
 const DEFAULT_LIMITS = {
   maxChunks: 1_000_000,
-  maxChunkRaw: 512 * 1024,
+  maxChunkRaw: 2 * 1024 * 1024,
   maxIndexBytes: 128 * 1024 * 1024,
   maxTotalRaw: 4 * 1024 * 1024 * 1024,
 };
@@ -81,7 +85,11 @@ function spawnBinary(cmd, args, input) {
 }
 
 function zstdCompress(buf) {
-  const res = spawnBinary("zstd", ["-q", "-c", "-"], buf);
+  const args = ["-q", "-c", "-"];
+  if (typeof zstdCompress.level === "number") {
+    args.unshift(`-${zstdCompress.level}`);
+  }
+  const res = spawnBinary("zstd", args, buf);
   if (!res.ok || !Buffer.isBuffer(res.stdout)) {
     const msg = res.stderr ? res.stderr.toString("utf-8") : (res.error || "zstd failed");
     throw new Error(`zstd compress failed: ${msg}`);
@@ -141,7 +149,43 @@ function writeU64LE(buf, offset, value) {
   buf.writeBigUInt64LE(BigInt(value), offset);
 }
 
-function encodeContainer(rawBuf, codecState) {
+function normalizeThinLevel(level) {
+  const lvl = String(level || "low").toLowerCase();
+  if (!THIN_LEVELS[lvl]) {
+    throw new Error(`Unknown thinLevel: ${lvl}`);
+  }
+  return lvl;
+}
+
+function resolveChunkSize(level, chunkSizeOpt) {
+  const raw = chunkSizeOpt ?? process.env.SEAL_THIN_CHUNK_SIZE;
+  if (raw !== undefined && raw !== null && raw !== "") {
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value <= 0) {
+      throw new Error(`Invalid thinChunkSize: ${raw}`);
+    }
+    const size = Math.floor(value);
+    if (size > DEFAULT_LIMITS.maxChunkRaw) {
+      throw new Error(`thinChunkSize too large (${size} > ${DEFAULT_LIMITS.maxChunkRaw})`);
+    }
+    return size;
+  }
+  return THIN_LEVELS[level].chunkSize || THIN_CHUNK_SIZE;
+}
+
+function resolveZstdLevel(level, zstdLevelOpt) {
+  const raw = zstdLevelOpt ?? process.env.SEAL_THIN_ZSTD_LEVEL;
+  if (raw !== undefined && raw !== null && raw !== "") {
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value < 1 || value > 19) {
+      throw new Error(`Invalid thinZstdLevel: ${raw} (expected 1..19)`);
+    }
+    return Math.floor(value);
+  }
+  return THIN_LEVELS[level].zstdLevel;
+}
+
+function encodeContainer(rawBuf, codecState, chunkSize, zstdLevel) {
   if (!rawBuf || rawBuf.length === 0) {
     throw new Error("raw buffer is empty");
   }
@@ -150,14 +194,15 @@ function encodeContainer(rawBuf, codecState) {
   let rawTotal = 0;
   let offset = 0;
 
-  const chunkCount = Math.ceil(rawBuf.length / THIN_CHUNK_SIZE) || 1;
+  const size = chunkSize || THIN_CHUNK_SIZE;
+  const chunkCount = Math.ceil(rawBuf.length / size) || 1;
   if (chunkCount > DEFAULT_LIMITS.maxChunks) {
     throw new Error(`Too many chunks (${chunkCount} > ${DEFAULT_LIMITS.maxChunks})`);
   }
 
   for (let i = 0; i < chunkCount; i++) {
-    const start = i * THIN_CHUNK_SIZE;
-    const end = Math.min(start + THIN_CHUNK_SIZE, rawBuf.length);
+    const start = i * size;
+    const end = Math.min(start + size, rawBuf.length);
     const rawChunk = rawBuf.subarray(start, end);
     rawTotal += rawChunk.length;
 
@@ -166,6 +211,7 @@ function encodeContainer(rawBuf, codecState) {
     }
 
     const nonce = randomU32();
+    zstdCompress.level = zstdLevel;
     const comp = zstdCompress(rawChunk);
     const seed = (codecState.seed ^ i ^ nonce) >>> 0;
     const masked = encodeBytes(comp, seed, codecState.rot, codecState.add);
@@ -788,7 +834,7 @@ function buildLauncher(stageDir, codecState, allowBootstrap) {
   return { ok: true, path: outPath };
 }
 
-function packThin({ stageDir, releaseDir, appName, obfPath, mode, projectRoot, targetName }) {
+function packThin({ stageDir, releaseDir, appName, obfPath, mode, level, chunkSizeBytes, zstdLevelOverride, projectRoot, targetName }) {
   try {
     if (!hasCommand("zstd")) {
       return { ok: false, errorShort: "zstd not found in PATH", error: "missing_zstd" };
@@ -798,6 +844,9 @@ function packThin({ stageDir, releaseDir, appName, obfPath, mode, projectRoot, t
     }
 
     const thinMode = String(mode || "aio").toLowerCase();
+    const thinLevel = normalizeThinLevel(level);
+    const chunkSize = resolveChunkSize(thinLevel, chunkSizeBytes);
+    const zstdLevel = resolveZstdLevel(thinLevel, zstdLevelOverride);
     let codecState = null;
     if (thinMode === "bootstrap") {
       codecState = loadCodecState(projectRoot, targetName);
@@ -820,13 +869,14 @@ function packThin({ stageDir, releaseDir, appName, obfPath, mode, projectRoot, t
       };
     }
 
-    info("Thin: encoding runtime (zstd + mask)...");
+    info(`Thin: level=${thinLevel} (chunk=${chunkSize}, zstd=${zstdLevel})`);
+    info(`Thin: encoding runtime (zstd + mask, chunk=${chunkSize})...`);
     const nodeBin = fs.readFileSync(process.execPath);
     const payload = fs.readFileSync(obfPath);
 
-    const runtimeContainer = encodeContainer(nodeBin, codecState);
+    const runtimeContainer = encodeContainer(nodeBin, codecState, chunkSize, zstdLevel);
     info("Thin: encoding payload (zstd + mask)...");
-    const payloadContainer = encodeContainer(payload, codecState);
+    const payloadContainer = encodeContainer(payload, codecState, chunkSize, zstdLevel);
 
     ensureDir(stageDir);
     ensureDir(releaseDir);
