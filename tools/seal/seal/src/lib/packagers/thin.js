@@ -69,11 +69,14 @@ function hasCommand(cmd) {
   return !!res.ok;
 }
 
-function spawnBinary(cmd, args, input) {
+function spawnBinary(cmd, args, input, opts = {}) {
+  const timeoutMs = Number.isFinite(opts.timeoutMs) && opts.timeoutMs > 0 ? opts.timeoutMs : undefined;
   const res = spawnSync(cmd, args, {
     input,
     encoding: null,
     maxBuffer: 1024 * 1024 * 200,
+    timeout: timeoutMs,
+    killSignal: timeoutMs ? "SIGKILL" : undefined,
   });
   return {
     ok: res.status === 0,
@@ -89,8 +92,12 @@ function zstdCompress(buf) {
   if (typeof zstdCompress.level === "number") {
     args.unshift(`-${zstdCompress.level}`);
   }
-  const res = spawnBinary("zstd", args, buf);
+  const res = spawnBinary("zstd", args, buf, { timeoutMs: zstdCompress.timeoutMs });
   if (!res.ok || !Buffer.isBuffer(res.stdout)) {
+    if (res.error && String(res.error).toLowerCase().includes("timed out")) {
+      const ms = zstdCompress.timeoutMs ? `${zstdCompress.timeoutMs}ms` : "timeout";
+      throw new Error(`zstd compress timed out after ${ms}`);
+    }
     const msg = res.stderr ? res.stderr.toString("utf-8") : (res.error || "zstd failed");
     throw new Error(`zstd compress failed: ${msg}`);
   }
@@ -185,10 +192,24 @@ function resolveZstdLevel(level, zstdLevelOpt) {
   return THIN_LEVELS[level].zstdLevel;
 }
 
-function encodeContainer(rawBuf, codecState, chunkSize, zstdLevel) {
+function resolveZstdTimeout(timeoutOpt) {
+  const raw = timeoutOpt ?? process.env.SEAL_THIN_ZSTD_TIMEOUT_MS;
+  if (raw !== undefined && raw !== null && raw !== "") {
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value < 0) {
+      throw new Error(`Invalid thinZstdTimeoutMs: ${raw} (expected >= 0)`);
+    }
+    return Math.floor(value);
+  }
+  return 300000;
+}
+
+function encodeContainer(rawBuf, codecState, chunkSize, zstdLevel, opts = {}) {
   if (!rawBuf || rawBuf.length === 0) {
     throw new Error("raw buffer is empty");
   }
+  const progress = opts.progress;
+  let lastLog = 0;
   const chunks = [];
   const entries = [];
   let rawTotal = 0;
@@ -227,6 +248,17 @@ function encodeContainer(rawBuf, codecState, chunkSize, zstdLevel) {
     chunks.push(masked);
     entries.push(entry);
     offset += masked.length;
+
+    if (progress && chunkCount > 1) {
+      const now = Date.now();
+      if (now - lastLog > 2000) {
+        progress(i + 1, chunkCount);
+        lastLog = now;
+      }
+    }
+  }
+  if (progress && chunkCount > 1) {
+    progress(chunkCount, chunkCount, true);
   }
 
   const indexLen = entries.length * THIN_INDEX_ENTRY_LEN;
@@ -844,7 +876,7 @@ function buildLauncher(stageDir, codecState, allowBootstrap) {
   return { ok: true, path: outPath };
 }
 
-function packThin({ stageDir, releaseDir, appName, obfPath, mode, level, chunkSizeBytes, zstdLevelOverride, projectRoot, targetName }) {
+function packThin({ stageDir, releaseDir, appName, obfPath, mode, level, chunkSizeBytes, zstdLevelOverride, zstdTimeoutMs, projectRoot, targetName }) {
   try {
     if (!hasCommand("zstd")) {
       return { ok: false, errorShort: "zstd not found in PATH", error: "missing_zstd" };
@@ -857,6 +889,7 @@ function packThin({ stageDir, releaseDir, appName, obfPath, mode, level, chunkSi
     const thinLevel = normalizeThinLevel(level);
     const chunkSize = resolveChunkSize(thinLevel, chunkSizeBytes);
     const zstdLevel = resolveZstdLevel(thinLevel, zstdLevelOverride);
+    const zstdTimeout = resolveZstdTimeout(zstdTimeoutMs);
     let codecState = null;
     if (thinMode === "bootstrap") {
       codecState = loadCodecState(projectRoot, targetName);
@@ -879,14 +912,20 @@ function packThin({ stageDir, releaseDir, appName, obfPath, mode, level, chunkSi
       };
     }
 
-    info(`Thin: level=${thinLevel} (chunk=${chunkSize}, zstd=${zstdLevel})`);
+    const timeoutLabel = zstdTimeout === 0 ? "none" : `${zstdTimeout}ms`;
+    info(`Thin: level=${thinLevel} (chunk=${chunkSize}, zstd=${zstdLevel}, timeout=${timeoutLabel})`);
     info(`Thin: encoding runtime (zstd + mask, chunk=${chunkSize})...`);
     const nodeBin = fs.readFileSync(process.execPath);
     const payload = fs.readFileSync(obfPath);
 
-    const runtimeContainer = encodeContainer(nodeBin, codecState, chunkSize, zstdLevel);
+    zstdCompress.timeoutMs = zstdTimeout;
+    const runtimeContainer = encodeContainer(nodeBin, codecState, chunkSize, zstdLevel, {
+      progress: (i, total) => info(`Thin: runtime ${i}/${total}`),
+    });
     info("Thin: encoding payload (zstd + mask)...");
-    const payloadContainer = encodeContainer(payload, codecState, chunkSize, zstdLevel);
+    const payloadContainer = encodeContainer(payload, codecState, chunkSize, zstdLevel, {
+      progress: (i, total) => info(`Thin: payload ${i}/${total}`),
+    });
 
     ensureDir(stageDir);
     ensureDir(releaseDir);

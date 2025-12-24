@@ -96,6 +96,8 @@ npx seal release prod --packager thin
 - Dodatkowe override (opcjonalne, najwyższy priorytet):
   - `build.thinChunkSize` / `targets.<target>.thinChunkSize` (liczba bajtów).
   - `build.thinZstdLevel` / `targets.<target>.thinZstdLevel` (1..19).
+  - `build.thinZstdTimeoutMs` / `targets.<target>.thinZstdTimeoutMs` (ms; `0` = bez limitu).
+  - ENV: `SEAL_THIN_ZSTD_TIMEOUT_MS` (ms; nadpisuje domyślne).
 
 ### 2.3 Idempotencja i rozpoznawanie stanu (MUST)
 `seal ship --packager thin`:
@@ -324,21 +326,20 @@ Lock (opcjonalnie / SHOULD):
 
 ---
 
-## 7. Launcher: kontrakt uruchomienia (memfd + FD 3/4) i hardening
+## 7. Launcher: kontrakt uruchomienia (memfd + FD 4) i hardening
 
 ### 7.1 Uruchomienie Node bez zapisywania na dysk
 - Launcher dekoduje `node.runtime` do `memfd_node` i uruchamia przez `fexecve(memfd_node, argv, envp)` (lub `execveat`).
 - Launcher dekoduje bundla do `memfd_bundle`.
-- Bootstrap JS jest uruchamiany jako `/proc/self/fd/3` i czyta bundla z FD 4.
+- Bootstrap JS jest uruchamiany przez `node -e` (inline) i czyta bundla z FD 4.
 
-### 7.2 Kontrakt FD 3/4 (MUST)
-- **FD 3**: bootstrap JS (CJS)
+### 7.2 Kontrakt FD 4 (MUST)
 - **FD 4**: bundle CJS (zdekompresowany)
 
 W launcherze (przed `fexecve/execveat`):
-- mapuj deskryptory dokładnie na 3 i 4 przez `dup2(fd, 3)` i `dup2(fd, 4)`,
-- zdejmij `FD_CLOEXEC` z FD 3 i 4 (muszą przeżyć `exec`):
-  - `fcntl(3, F_SETFD, flags & ~FD_CLOEXEC)` analogicznie dla 4,
+- mapuj deskryptor dokładnie na 4 przez `dup2(fd, 4)`,
+- zdejmij `FD_CLOEXEC` z FD 4 (musi przeżyć `exec`):
+  - `fcntl(4, F_SETFD, flags & ~FD_CLOEXEC)`,
 - zamknij wszystkie FD > 4:
   - preferowane: `close_range(5, UINT_MAX, 0)`,
   - fallback: iteracja po `/proc/self/fd` i zamknięcie wszystkiego > 4.
@@ -347,7 +348,7 @@ W launcherze (przed `fexecve/execveat`):
 - `clearenv()` + whitelist env:
   - dozwolone: minimalne systemowe (`LANG`, `LC_ALL`, `TZ` opcjonalnie) + `SEAL_*` (ścieżki instalacji),
   - niedozwolone: `NODE_OPTIONS`, `NODE_PATH`, `LD_PRELOAD`, `LD_LIBRARY_PATH`, `LD_AUDIT`, `LD_DEBUG`, `NODE_V8_COVERAGE`, itp.
-- brak kodu w argv (bootstrap i bundle idą przez FD, nie przez argumenty).
+- bundle idzie przez FD 4; bootstrap jest uruchamiany przez `node -e`.
 
 ### 7.4 Core dumps i dumpowalność (MUST/SHOULD)
 - `setrlimit(RLIMIT_CORE, 0)` (MUST)
@@ -387,11 +388,11 @@ Debug:
 
 ---
 
-## 8. Bootstrap JS (FD 3) — kontrakt minimalny
+## 8. Bootstrap JS (inline) — kontrakt minimalny
 
 ### 8.1 Rola bootstrapu
 Bootstrap jest krótki i stały (kilkadziesiąt linii):
-- uruchamiany jako `/proc/self/fd/3`,
+- uruchamiany przez `node -e` (inline),
 - czyta bundle z FD 4,
 - uruchamia go jako CommonJS z wirtualną ścieżką (§4.3).
 
@@ -687,7 +688,7 @@ Produkcja: krótkie kody. Szczegóły tylko w trybie debug (`SEAL_DEBUG=1`).
 
 ### 13.1 MVP (Etap 1)
 - Kontener THIN v1: chunking + zstd + codec maskowanie + index + footer + szybki hash (bez dict, bez padding/dummy).
-- Launcher: decode+decompress do memfd, FD 3/4, `fexecve/execveat`.
+- Launcher: decode+decompress do memfd, FD 4, `fexecve/execveat`.
 - Hardening: env wipe, FD hygiene, RLIMIT_CORE, O_NOFOLLOW/fstat, memfd seals.
 - Wariant AIO end‑to‑end.
 

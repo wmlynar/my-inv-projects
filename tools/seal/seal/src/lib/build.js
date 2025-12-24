@@ -688,6 +688,7 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   const thinLevel = String(targetCfg.thinLevel || projectCfg.build.thinLevel || "low").toLowerCase();
   const thinChunkSize = targetCfg.thinChunkSize ?? projectCfg.build.thinChunkSize ?? null;
   const thinZstdLevel = targetCfg.thinZstdLevel ?? projectCfg.build.thinZstdLevel ?? null;
+  const thinZstdTimeoutMs = targetCfg.thinZstdTimeoutMs ?? projectCfg.build.thinZstdTimeoutMs ?? null;
 
   // Normalize hardening config early (used for SEA main packing)
   const hardCfgRaw = projectCfg.build.hardening;
@@ -739,6 +740,7 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
       level: thinLevel,
       chunkSizeBytes: thinChunkSize,
       zstdLevelOverride: thinZstdLevel,
+      zstdTimeoutMs: thinZstdTimeoutMs,
       projectRoot,
       targetName: targetCfg.target || targetCfg.config || "default",
     });

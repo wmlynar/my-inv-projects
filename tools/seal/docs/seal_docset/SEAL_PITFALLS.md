@@ -40,6 +40,11 @@
 - Blad: memfd dla runtime/payload dostal fd 3/4 i zostal nadpisany przez `dup2`, co powodowalo `Exec format error`.
   - Wymaganie: memfd-y musza byc przenoszone na fd >= 10 przed `dup2(3/4)`.
 
+- Blad: thin nie wypisywal postepu i nie mial timeoutu na kompresji `zstd`, przez co wygladalo jak zawieszenie (brak diagnozy).
+  - Wymaganie: loguj postep (co kilka sekund) podczas kodowania runtime/payload.
+  - Wymaganie: kompresja `zstd` musi miec timeout (domyslnie > 0) z jasnym bledem.
+  - Wymaganie: timeout musi byc konfigurowalny (`build.thinZstdTimeoutMs` / `targets.<target>.thinZstdTimeoutMs` lub `SEAL_THIN_ZSTD_TIMEOUT_MS`).
+
 - Blad: `codec_state` ginal miedzy deployami (brak zgodnosci kodeka).
   - Wymaganie: `codec_state` musi byc zapisywany lokalnie i utrzymany (`.seal/cache/thin/<target>/codec_state.json`).
   - Wymaganie: `.seal/` jest ignorowany w VCS.
