@@ -436,6 +436,14 @@ function runLocalForeground(targetCfg, opts = {}) {
     }
   }
 
+  if (fileExists(layout.runner)) {
+    const res = opts.sudo
+      ? spawnSyncSafe("sudo", ["-n", "bash", layout.runner], { stdio: "inherit" })
+      : spawnSyncSafe("bash", [layout.runner], { stdio: "inherit" });
+    if (!res.ok) throw new Error(`run failed (status=${res.status})`);
+    return;
+  }
+
   const appctl = path.join(rel, "appctl");
   if (!fileExists(appctl)) throw new Error(`Missing appctl: ${appctl}`);
   // copy config
@@ -451,21 +459,34 @@ function runLocalForeground(targetCfg, opts = {}) {
 
 function rollbackLocal(targetCfg) {
   const layout = localInstallLayout(targetCfg);
+  const appName = targetCfg.appName || targetCfg.serviceName || "app";
+  const fastPrefix = `${appName}-fast-`;
   const thinMode = String(targetCfg.thinMode || "aio").toLowerCase();
   if (!fileExists(layout.currentFile)) throw new Error("No current.buildId – deploy first.");
 
   const current = fs.readFileSync(layout.currentFile, "utf-8").trim();
-  const releases = fs.readdirSync(layout.releasesDir, { withFileTypes: true })
-    .filter(d => d.isDirectory())
-    .map(d => d.name)
-    .sort()
-    .reverse();
+  const releases = filterReleaseNames(
+    fs.readdirSync(layout.releasesDir, { withFileTypes: true })
+      .filter(d => d.isDirectory())
+      .map(d => d.name),
+    appName
+  ).sort().reverse();
 
   const idx = releases.indexOf(current);
-  if (idx < 0 || idx === releases.length - 1) {
+  if (idx < 0) {
+    throw new Error("Current release not found in releases dir.");
+  }
+  let prev = null;
+  for (let i = idx + 1; i < releases.length; i += 1) {
+    const candidate = releases[i];
+    if (!candidate.startsWith(fastPrefix)) {
+      prev = candidate;
+      break;
+    }
+  }
+  if (!prev) {
     throw new Error("No previous release to rollback to.");
   }
-  const prev = releases[idx + 1];
   const prevDir = path.join(layout.releasesDir, prev);
   if (thinMode === "bootstrap") {
     applyThinBootstrapLocal(layout, prevDir);

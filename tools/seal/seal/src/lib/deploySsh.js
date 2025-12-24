@@ -32,6 +32,10 @@ function remoteLayout(targetCfg) {
 }
 
 function sshUserHost(targetCfg) {
+  const scope = (targetCfg.serviceScope || "system").toLowerCase();
+  if (scope !== "system") {
+    throw new Error(`SSH targets currently support only serviceScope=system (got: ${scope}).`);
+  }
   const user = targetCfg.user || "root";
   const host = targetCfg.host;
   if (!host) throw new Error("target.host missing");
@@ -656,6 +660,9 @@ function statusSsh(targetCfg) {
     "else",
     "  patterns=(\"$ROOT/releases/\")",
     "fi",
+    "if [ -x \"$ROOT/b/a\" ]; then",
+    "  patterns+=(\"$ROOT/b/a\")",
+    "fi",
     "out=\"\"",
     "for p in \"${patterns[@]}\"; do",
     "  r=\"$(pgrep -af -- \"$p\" || true)\"",
@@ -821,14 +828,25 @@ function rollbackSsh(targetCfg) {
   const cmd = ["bash","-lc", `
 set -euo pipefail
 ROOT=${shQuote(layout.installDir)}
+APP=${shQuote(targetCfg.appName || targetCfg.serviceName || "app")}
+FAST_PREFIX="${targetCfg.appName || targetCfg.serviceName || "app"}-fast-"
 cur="$(cat "$ROOT/current.buildId" || true)"
 cd ${shQuote(layout.releasesDir)}
 rels="$(ls -1 | sort -r)"
 prev=""
 found=0
 for r in $rels; do
-  if [ "$found" = "1" ]; then prev="$r"; break; fi
-  if [ "$r" = "$cur" ]; then found=1; fi
+  case "$r" in
+    "$APP"-*) ;;
+    *) continue ;;
+  esac
+  if [ "$r" = "$cur" ]; then found=1; continue; fi
+  if [ "$found" = "1" ]; then
+    case "$r" in
+      "$FAST_PREFIX"*) continue ;;
+    esac
+    prev="$r"; break;
+  fi
 done
 if [ -z "$prev" ]; then echo "No previous release"; exit 2; fi
 if [ "${thinMode}" = "bootstrap" ]; then
