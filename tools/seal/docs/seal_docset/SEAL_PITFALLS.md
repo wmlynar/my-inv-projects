@@ -56,6 +56,13 @@
   - Wymaganie: zwykly deploy usuwa poprzedni `*-fast` (zeby nie zostawiac zrodel na dysku).
   - Wymaganie: FAST usuwa `b/a` + `r/rt` + `r/pl`, zeby nie uruchamiac starego BOOTSTRAP runtime.
 
+## Testy / CI
+
+- Blad: testy E2E potrafily wisiec bez wyjscia (brak timeoutu na krokach/komendach).
+  - Wymaganie: **kazdy** test E2E ma timeout (per‑test + per‑krok/subprocess).
+  - Wymaganie: brak postepu > timeout = twarde przerwanie z jasnym bledem.
+  - Wymaganie: E2E uzywa **szybkich przykladow/fixture** (minimalny projekt), nie pelnych produkcyjnych buildow.
+
 ## Deploy / infrastruktura
 
 - Blad: instalacja w `/opt` (mala partycja) powodowala brak miejsca.
