@@ -261,6 +261,8 @@ Każda zależność to obiekt o polach:
 
 - UI-004 (SHOULD): UI uznaje „brak połączenia” dopiero po N kolejnych nieudanych próbach (np. N=2–3), aby pojedynczy timeout nie powodował migotania.
 - UI-005 (SHOULD): UI może pokazywać „ostatni znany stan” jako read-only, gdy backend jest niedostępny.
+- UI-006 (MUST): zapytania HTTP w UI mają timeout (AbortController), brak wieszenia się requestów.
+- UI-007 (SHOULD): jeśli UI używa cache/service‑worker, musi wersjonować zasoby i wymuszać reload po zmianie `buildId` (albo całkowicie wyłączyć SW).
 
 ### 7.2. Degradacja zależności
 - UI-010 (MUST): jeśli backend żyje, ale `deps.*.state != ok`, UI pokazuje:
@@ -331,6 +333,8 @@ Ten moduł dotyczy testów E2E (zwłaszcza po sealingu), które mają potwierdza
 - TEST-004 (MUST): zasoby UI (browser/page) muszą być zamykane w `finally`, nawet przy błędzie.
 - TEST-005 (SHOULD): E2E używa **szybkich fixture** (minimalny projekt), nie pełnych buildów produkcyjnych.
 - TEST-006 (SHOULD): zewnętrzne integracje są stubowane lokalnie (brak zależności od internetu).
+- TEST-007 (SHOULD): testy używają losowych portów (brak hardcode `3000`).
+- TEST-008 (SHOULD): testy sprzątają katalogi tymczasowe po zakończeniu (żeby nie zapychać dysku).
 
 ## 11. Minimalny „kontrakt dla AI” (wersja promptable)
 

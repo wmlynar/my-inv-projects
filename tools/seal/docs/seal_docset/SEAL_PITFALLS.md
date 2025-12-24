@@ -66,6 +66,16 @@
   - Wymaganie: zwykly deploy usuwa poprzedni `*-fast` (zeby nie zostawiac zrodel na dysku).
   - Wymaganie: FAST usuwa `b/a` + `r/rt` + `r/pl`, zeby nie uruchamiac starego BOOTSTRAP runtime.
 
+- Blad: w release brakowalo `public/` lub `data/` (UI/plikowe zasoby nie dzialaly po sealingu).
+  - Wymaganie: `build.includeDirs` musi zawierac wszystkie katalogi runtime (np. `public`, `data`).
+  - Wymaganie: po `seal release` zawsze uruchom `seal run-local --sealed` i sprawdz UI/zasoby.
+
+- Blad: kod szukal zasobow przez `__dirname`, co po bundlingu wskazywalo zla sciezke.
+  - Wymaganie: zasoby runtime lokalizuj wzgledem `process.cwd()` (release dir) i jawnych katalogow (`public/`, `shared/`).
+
+- Blad: build wykonany na innej architekturze/OS niz target (AIO zawiera runtime z build machine).
+  - Wymaganie: builduj na tej samej architekturze/OS co serwer docelowy lub uzywaj trybu BOOTSTRAP.
+
 ## Testy / CI
 
 - Blad: testy E2E potrafily wisiec bez wyjscia (brak timeoutu na krokach/komendach).
@@ -75,6 +85,10 @@
   - Wymaganie: procesy uruchamiane w testach musza miec drenaz stdout/stderr (albo `stdio: inherit`), zeby nie blokowac procesu.
   - Wymaganie: testy UI musza zawsze zamykac browser (`finally`), nawet przy bledzie.
   - Wymaganie: subprocess musi zawsze obslugiwac zdarzenie `error` (i resolve/reject), aby nie zostawiac wiszacej obietnicy.
+  - Wymaganie: testy E2E uzywaja losowych portow (bez hardcode `3000`), aby uniknac `EADDRINUSE`.
+  - Wymaganie: po testach usuwaj katalogi tymczasowe (np. `/tmp/seal-*`) zeby nie zapychac dysku.
+  - Wymaganie: testy nie zalezne od internetu; zewnetrzne call'e stubuj lokalnie.
+  - Wymaganie: jesli srodowisko blokuje `listen` (EPERM), testy powinny sie jawnie oznaczyc jako SKIP.
 
 ## Deploy / infrastruktura
 
@@ -89,6 +103,12 @@
 
 - Blad: uruchamianie aplikacji jako root (np. przez sudo) bez potrzeby.
   - Wymaganie: domyslnie uruchamiamy jako uzytkownik uslugi; `--sudo` tylko jawnie.
+
+- Blad: unit systemd nie ustawial `WorkingDirectory`, przez co `config.runtime.json5` nie byl znajdowany.
+  - Wymaganie: `WorkingDirectory` wskazuje katalog release (albo `run-current.sh` ustawia CWD przed startem).
+
+- Blad: unit/komendy operowaly na zlej nazwie uslugi (status/stop/restart nie trafialy w odpowiedni unit).
+  - Wymaganie: nazwa uslugi jest zapisywana w `<root>/service.name` i uzywana konsekwentnie przez `seal` i `appctl`.
 
 - Blad: stare releasy rosly bez limitu (brak cleanup).
   - Wymaganie: retention (np. ostatnie N release) + usuwanie starych katalogow.
@@ -139,10 +159,16 @@
 - Blad: dane RDS (login/haslo/lang) byly w configach lub logach.
   - Wymaganie: RDS login/haslo/lang sa stalymi w kodzie (swiadomy wyjatek), bez ekspozycji w logach.
 
+- Blad: domyslne wartosci byly ustawiane przez `||`, co nadpisywalo poprawne `0`/`false`.
+  - Wymaganie: dla configu uzywaj `??` (nullish) albo jawnej walidacji typow.
+
 ## Logowanie / bezpieczenstwo
 
 - Blad: logowanie `JSESSIONID` i komunikatow login/logout.
   - Wymaganie: **nie logujemy danych uwierzytelniajacych ani sesji**. Logi auth maja byc wyciszone lub zakomentowane.
+
+- Blad: logowanie pelnych payloadow/odpowiedzi (duze logi, ryzyko sekretow).
+  - Wymaganie: loguj tylko metadane i krotkie preview (limit znakow), bez pelnych body.
 
 ## UI availability / aktualizacje
 
@@ -150,9 +176,15 @@
   - Wymaganie: UI nie robi reloadu na bledzie backendu.
   - Backend wystawia `/api/status` z `buildId`.
   - UI pokazuje overlay po ok. 2s braku polaczenia.
-  - UI robi reload **tylko** po zmianie `buildId` i po odzyskaniu polaczenia.
+- UI robi reload **tylko** po zmianie `buildId` i po odzyskaniu polaczenia.
   - Polling do `/api/status` ma timeout (AbortController), aby zawieszone requesty nie blokowaly kolejnych prob.
   - `?debug=1` moze pokazywac badge `buildId` i toast przed reloadem.
+
+- Blad: UI używal service worker/cache i pokazywal stary build po deployu.
+  - Wymaganie: wylacz service worker albo wersjonuj cache i wymusz reload po zmianie `buildId`.
+
+- Blad: UI uzywalo `fetch` bez timeoutu, co zamrazalo stan UI.
+  - Wymaganie: `fetch` zawsze z `AbortController` i limitem czasu.
 
 ## UI niezawodnosc / polaczenia
 
