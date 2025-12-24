@@ -84,6 +84,10 @@ Opcjonalnie (lokalny build bez deploy):
 npx seal release prod --packager thin
 ```
 
+**Konfiguracja trybu (MUST):**
+- `build.thinMode: "aio" | "bootstrap"` (domyślnie `"aio"`)
+- `targets/<target>.json5` może nadpisać przez `thinMode`.
+
 ### 2.3 Idempotencja i rozpoznawanie stanu (MUST)
 `seal ship --packager thin`:
 - rozpoznaje stan targetu (runtime/payload/usługa),

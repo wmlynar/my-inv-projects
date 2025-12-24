@@ -15,6 +15,15 @@ function expandHome(p) {
   return p;
 }
 
+function copyAtomic(src, dest, mode) {
+  const dir = path.dirname(dest);
+  ensureDir(dir);
+  const tmp = path.join(dir, `.tmp-${path.basename(dest)}-${Date.now()}`);
+  copyFile(src, tmp);
+  if (mode) fs.chmodSync(tmp, mode);
+  fs.renameSync(tmp, dest);
+}
+
 
 function systemctlArgs(targetCfg) {
   const scope = (targetCfg.serviceScope || "user").toLowerCase();
@@ -79,6 +88,14 @@ function writeRunnerScript(layout, targetCfg) {
   const script = `#!/usr/bin/env bash
 set -euo pipefail
 ROOT="${layout.installDir}"
+if [ -x "$ROOT/b/a" ]; then
+  # Thin BOOTSTRAP layout
+  if [ -f "$ROOT/shared/config.json5" ]; then
+    cp "$ROOT/shared/config.json5" "$ROOT/config.runtime.json5"
+  fi
+  cd "$ROOT"
+  exec "$ROOT/b/a"
+fi
 BUILD_ID="$(cat "$ROOT/current.buildId")"
 REL="$ROOT/releases/$BUILD_ID"
 if [ ! -d "$REL" ]; then
@@ -135,6 +152,8 @@ function bootstrapLocal(targetCfg) {
   ensureDir(layout.installDir);
   ensureDir(layout.releasesDir);
   ensureDir(layout.sharedDir);
+  ensureDir(path.join(layout.installDir, "b"));
+  ensureDir(path.join(layout.installDir, "r"));
 
   writeRunnerScript(layout, targetCfg);
   const svcPath = writeServiceFile(targetCfg, layout);
@@ -159,6 +178,31 @@ function extractArtifactToLocal(layout, artifactPath) {
   if (!first) throw new Error("empty tar?");
   const folder = first.split("/")[0];
   return path.join(layout.releasesDir, folder);
+}
+
+function applyThinBootstrapLocal(layout, extractedDir) {
+  const launcherSrc = path.join(extractedDir, "b", "a");
+  const rtSrc = path.join(extractedDir, "r", "rt");
+  const plSrc = path.join(extractedDir, "r", "pl");
+
+  if (!fileExists(launcherSrc)) throw new Error(`Missing thin launcher: ${launcherSrc}`);
+  if (!fileExists(rtSrc)) throw new Error(`Missing thin runtime: ${rtSrc}`);
+  if (!fileExists(plSrc)) throw new Error(`Missing thin payload: ${plSrc}`);
+
+  const bDir = path.join(layout.installDir, "b");
+  const rDir = path.join(layout.installDir, "r");
+  ensureDir(bDir);
+  ensureDir(rDir);
+
+  copyAtomic(launcherSrc, path.join(bDir, "a"), 0o755);
+  copyAtomic(rtSrc, path.join(rDir, "rt"), 0o644);
+  copyAtomic(plSrc, path.join(rDir, "pl"), 0o644);
+}
+
+function cleanupThinBootstrapLocal(layout) {
+  rmrf(path.join(layout.installDir, "b", "a"));
+  rmrf(path.join(layout.installDir, "r", "rt"));
+  rmrf(path.join(layout.installDir, "r", "pl"));
 }
 
 function pickBuildIdFromFolder(folderName) {
@@ -213,6 +257,7 @@ function cleanupFastReleasesLocal({ targetCfg, layout, current }) {
 
 function deployLocal({ targetCfg, artifactPath, repoConfigPath, pushConfig, policy, fast }) {
   const layout = localInstallLayout(targetCfg);
+  const thinMode = String(targetCfg.thinMode || "aio").toLowerCase();
 
   // Deploy is deploy: copy/extract files and update pointers.
   // It must NOT install or restart a systemd service implicitly.
@@ -229,8 +274,11 @@ function deployLocal({ targetCfg, artifactPath, repoConfigPath, pushConfig, poli
   const extractedDir = extractArtifactToLocal(layout, artifactPath);
   const folderName = path.basename(extractedDir); // <appName>-<buildId>
 
-  // Update current
-  fs.writeFileSync(layout.currentFile, folderName, "utf-8");
+  if (thinMode === "bootstrap") {
+    applyThinBootstrapLocal(layout, extractedDir);
+  } else {
+    cleanupThinBootstrapLocal(layout);
+  }
 
   // Config: do not overwrite unless explicit OR server missing
   const sharedCfg = path.join(layout.sharedDir, "config.json5");
@@ -240,6 +288,9 @@ function deployLocal({ targetCfg, artifactPath, repoConfigPath, pushConfig, poli
   } else {
     ok(`Config preserved (drift-safe): ${sharedCfg}`);
   }
+
+  // Update current after successful deploy steps
+  fs.writeFileSync(layout.currentFile, folderName, "utf-8");
 
   ok(`Deployed (files only): ${folderName}`);
 

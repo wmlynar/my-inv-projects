@@ -264,10 +264,18 @@ case "$cmd" in
 
     # Runner script (create if missing)
     if [ ! -f "$ROOT/run-current.sh" ]; then
-      cat <<'EOF' | _tee_file "$ROOT/run-current.sh"
+cat <<'EOF' | _tee_file "$ROOT/run-current.sh"
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
+if [ -x "$ROOT/b/a" ]; then
+  # Thin BOOTSTRAP layout
+  if [ -f "$ROOT/shared/config.json5" ]; then
+    cp "$ROOT/shared/config.json5" "$ROOT/config.runtime.json5"
+  fi
+  cd "$ROOT"
+  exec "$ROOT/b/a"
+fi
 BUILD_ID="$(cat "$ROOT/current.buildId")"
 REL="$ROOT/releases/$BUILD_ID"
 if [ ! -d "$REL" ]; then

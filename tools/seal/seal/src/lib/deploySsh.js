@@ -170,7 +170,7 @@ function bootstrapSsh(targetCfg) {
   const cmd = [
     "bash", "-lc",
     [
-      `sudo -n mkdir -p ${shQuote(layout.releasesDir)} ${shQuote(layout.sharedDir)}`,
+      `sudo -n mkdir -p ${shQuote(layout.releasesDir)} ${shQuote(layout.sharedDir)} ${shQuote(`${layout.installDir}/b`)} ${shQuote(`${layout.installDir}/r`)}`,
       `sudo -n chown -R ${shQuote(`${user}:${user}`)} ${shQuote(layout.installDir)}`,
     ].join(" && ")
   ];
@@ -190,9 +190,17 @@ function installServiceSsh(targetCfg) {
   const { user: serviceUser, group: serviceGroup } = serviceUserGroup(targetCfg, sshUser);
   const layout = remoteLayout(targetCfg);
 
-  const runnerScript = `#!/usr/bin/env bash
+const runnerScript = `#!/usr/bin/env bash
 set -euo pipefail
 ROOT=${shQuote(layout.installDir)}
+if [ -x "$ROOT/b/a" ]; then
+  # Thin BOOTSTRAP layout
+  if [ -f "$ROOT/shared/config.json5" ]; then
+    cp "$ROOT/shared/config.json5" "$ROOT/config.runtime.json5"
+  fi
+  cd "$ROOT"
+  exec "$ROOT/b/a"
+fi
 BUILD_ID="$(cat "$ROOT/current.buildId")"
 REL="$ROOT/releases/$BUILD_ID"
 if [ ! -d "$REL" ]; then
@@ -332,6 +340,7 @@ function cleanupFastReleasesSsh({ targetCfg, current }) {
 }
 
 function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootstrap, policy, fast }) {
+  const thinMode = String(targetCfg.thinMode || "aio").toLowerCase();
   const { res: preflight, layout, user, host } = checkRemoteWritable(targetCfg, { requireService: !bootstrap });
   const out = `${preflight.stdout}\n${preflight.stderr}`.trim();
   if (!preflight.ok) {
@@ -381,6 +390,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
   const fromTar = readArtifactFolderName(artifactPath);
   const folderName = fromTar || base.replace(/\.tgz$/, "");
   const relDir = `${layout.releasesDir}/${folderName}`;
+  const relDirQ = shQuote(relDir);
 
   // Extract and switch current
   const releasesDirQ = shQuote(layout.releasesDir);
@@ -404,6 +414,30 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
   } else {
     cmdParts.push(`if [ ! -f ${remoteCfgQ} ]; then echo '[seal] remote config missing -> creating from repo'; exit 99; fi`);
     cmdParts.push(`tar -xzf ${remoteTmpQ} -C ${releasesDirQ}`);
+  }
+  if (thinMode === "bootstrap") {
+    const bDir = `${layout.installDir}/b`;
+    const rDir = `${layout.installDir}/r`;
+    const launcherSrc = `${relDir}/b/a`;
+    const rtSrc = `${relDir}/r/rt`;
+    const plSrc = `${relDir}/r/pl`;
+    const bDirQ = shQuote(bDir);
+    const rDirQ = shQuote(rDir);
+    const launcherSrcQ = shQuote(launcherSrc);
+    const rtSrcQ = shQuote(rtSrc);
+    const plSrcQ = shQuote(plSrc);
+    cmdParts.push(`test -f ${launcherSrcQ}`);
+    cmdParts.push(`test -f ${rtSrcQ}`);
+    cmdParts.push(`test -f ${plSrcQ}`);
+    cmdParts.push(`mkdir -p ${bDirQ} ${rDirQ}`);
+    cmdParts.push(`cp ${launcherSrcQ} ${bDirQ}/a.tmp && mv ${bDirQ}/a.tmp ${bDirQ}/a && chmod 755 ${bDirQ}/a`);
+    cmdParts.push(`cp ${rtSrcQ} ${rDirQ}/rt.tmp && mv ${rDirQ}/rt.tmp ${rDirQ}/rt && chmod 644 ${rDirQ}/rt`);
+    cmdParts.push(`cp ${plSrcQ} ${rDirQ}/pl.tmp && mv ${rDirQ}/pl.tmp ${rDirQ}/pl && chmod 644 ${rDirQ}/pl`);
+  } else {
+    const bFileQ = shQuote(`${layout.installDir}/b/a`);
+    const rtFileQ = shQuote(`${layout.installDir}/r/rt`);
+    const plFileQ = shQuote(`${layout.installDir}/r/pl`);
+    cmdParts.push(`rm -f ${bFileQ} ${rtFileQ} ${plFileQ}`);
   }
   cmdParts.push(`echo ${shQuote(folderName)} > ${currentFileQ}`);
   cmdParts.push(`rm -f ${remoteTmpQ}`);
@@ -436,9 +470,33 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       `tar -xzf ${remoteTmpQ} -C ${releasesDirQ}`,
       `cp ${tmpCfgQ} ${remoteCfgQ}`,
       `rm -f ${tmpCfgQ}`,
-      `echo ${shQuote(folderName)} > ${currentFileQ}`,
-      `rm -f ${remoteTmpQ}`,
     ];
+    if (thinMode === "bootstrap") {
+      const bDir = `${layout.installDir}/b`;
+      const rDir = `${layout.installDir}/r`;
+      const launcherSrc = `${relDir}/b/a`;
+      const rtSrc = `${relDir}/r/rt`;
+      const plSrc = `${relDir}/r/pl`;
+      const bDirQ = shQuote(bDir);
+      const rDirQ = shQuote(rDir);
+      const launcherSrcQ = shQuote(launcherSrc);
+      const rtSrcQ = shQuote(rtSrc);
+      const plSrcQ = shQuote(plSrc);
+      retryParts.push(`test -f ${launcherSrcQ}`);
+      retryParts.push(`test -f ${rtSrcQ}`);
+      retryParts.push(`test -f ${plSrcQ}`);
+      retryParts.push(`mkdir -p ${bDirQ} ${rDirQ}`);
+      retryParts.push(`cp ${launcherSrcQ} ${bDirQ}/a.tmp && mv ${bDirQ}/a.tmp ${bDirQ}/a && chmod 755 ${bDirQ}/a`);
+      retryParts.push(`cp ${rtSrcQ} ${rDirQ}/rt.tmp && mv ${rDirQ}/rt.tmp ${rDirQ}/rt && chmod 644 ${rDirQ}/rt`);
+      retryParts.push(`cp ${plSrcQ} ${rDirQ}/pl.tmp && mv ${rDirQ}/pl.tmp ${rDirQ}/pl && chmod 644 ${rDirQ}/pl`);
+    } else {
+      const bFileQ = shQuote(`${layout.installDir}/b/a`);
+      const rtFileQ = shQuote(`${layout.installDir}/r/rt`);
+      const plFileQ = shQuote(`${layout.installDir}/r/pl`);
+      retryParts.push(`rm -f ${bFileQ} ${rtFileQ} ${plFileQ}`);
+    }
+    retryParts.push(`echo ${shQuote(folderName)} > ${currentFileQ}`);
+    retryParts.push(`rm -f ${remoteTmpQ}`);
     res = sshExec({ user, host, args: ["bash", "-lc", retryParts.join(" && ")], stdio: "pipe" });
   }
   if (!res.ok) {
