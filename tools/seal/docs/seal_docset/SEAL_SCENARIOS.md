@@ -61,6 +61,14 @@ ls -la seal-out
 ls -la seal-out/release
 ```
 
+**TL;DR review checklist (przed zamknięciem zadania):**
+1) Bledy/reguly dopisane do `SEAL_PITFALLS.md`.
+2) Reguly ogolne dopisane do `SEAL_STANDARD.md`.
+3) E2E ma timeouty per‑test/per‑krok.
+4) Subprocessy obsluguja `error` i nie wisza.
+5) Procesy w testach maja drenaz stdout/stderr.
+6) UI testy zamykaja browser/page w `finally`.
+
 ---
 
 ## S6) Uruchomienie lokalne po obfuskacji (sealed)
