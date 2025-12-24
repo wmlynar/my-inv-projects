@@ -158,7 +158,17 @@
    - drenaż stdout/stderr procesów uruchamianych w testach,
    - `finally` dla zamknięcia browserów/zasobów UI.
 
-## 10) Wersja kontraktu
+## 10) Checklist AI review (MUST)
+
+Przed zamknięciem zadania AI **MUST** potwierdzić:
+1) Czy błąd/zmiana została dopisana do `SEAL_PITFALLS.md`?
+2) Czy reguła ogólna trafiła do `SEAL_STANDARD.md`?
+3) Czy testy E2E mają timeouty per‑test i per‑krok?
+4) Czy subprocessy mają obsługę `error` i nie mogą wisieć?
+5) Czy procesy testowe mają drenaż stdout/stderr?
+6) Czy zasoby UI (browser/page) są zamykane w `finally`?
+
+## 11) Wersja kontraktu
 
 - `SEAL_CONTRACT_AI` v1.3 jest kompatybilny z:
   - `SEAL_STANDARD v1.3`
