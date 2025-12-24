@@ -43,6 +43,7 @@
   - Wymaganie: FAST jest **jawny** (`--fast`) i zawsze ostrzega o ryzyku.
   - Wymaganie: FAST nie tworzy SEA ani `.tgz`, uzywa osobnego katalogu `*-fast`.
   - Wymaganie: zwykly deploy usuwa poprzedni `*-fast` (zeby nie zostawiac zrodel na dysku).
+  - Wymaganie: FAST usuwa `b/a` + `r/rt` + `r/pl`, zeby nie uruchamiac starego BOOTSTRAP runtime.
 
 ## Deploy / infrastruktura
 
@@ -68,6 +69,18 @@
 - Blad: `seal run` zostawial proces po zamknieciu konsoli.
   - Wymaganie: foreground run musi zbijac proces przy rozlaczeniu lub miec `--kill`.
   - Wymaganie: `--kill` dziala bez sudo (ten sam user), bez ubijania cudzych procesow.
+
+- Blad: `seal run` uruchamial bezposrednio `appctl` z release, ignorujac `run-current.sh`.
+  - Wymaganie: `seal run` uruchamia `run-current.sh` (jezeli istnieje), zeby zachowac zgodnosc z usluga i BOOTSTRAP.
+
+- Blad: rollback wybieral release `*-fast-*` albo release innej aplikacji.
+  - Wymaganie: rollback filtruje releasy po `appName` i **pomija** `*-fast-*`.
+
+- Blad: `status` nie wykrywal procesu uruchomionego przez BOOTSTRAP (`$ROOT/b/a`) przy braku unitu.
+  - Wymaganie: fallback `status` uwzglednia `$ROOT/b/a` w detekcji procesu.
+
+- Blad: `serviceScope=user` na SSH prowadzil do blednych komend `sudo systemctl`.
+  - Wymaganie: SSH wspiera tylko `serviceScope=system` (inaczej blad), albo implementujemy wariant `--user`.
 
 ## CLI / UX spojnosci
 
