@@ -11,6 +11,15 @@ W docsecie v0.5 wynosimy z SEAL-DEPLOY-SPEC długie elementy implementacyjne, ż
 
 W szczególności: przeniesiona sekcja **14.6** (blueprint implementacji SEA).
 
+## 1.1 Wymagania (Ubuntu, zanim zainstalujesz SEAL)
+
+Jeśli planujesz używać packagera `thin` (AIO), potrzebujesz kompilatora C oraz zstd:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y build-essential pkg-config zstd libzstd-dev
+```
+
 ---
 
 ## 2. Blueprint: implementacja „super sealing (SEA)”

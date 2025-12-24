@@ -187,7 +187,9 @@ async function cmdCheck(cwd, targetArg, opts) {
   // Toolchain checks
   const allowFallback = !!(targetCfg?.allowFallback ?? proj?.build?.allowFallback ?? false);
   const packagerRequested = String(targetCfg?.packager || proj?.build?.packager || "auto").toLowerCase();
-  const seaNeeded = packagerRequested !== "fallback";
+  const seaNeeded = packagerRequested === "sea" || packagerRequested === "auto";
+  const thinNeeded = packagerRequested === "thin";
+  let thinToolchainIssue = false;
   const major = nodeMajor();
   if (major < 18) errors.push(`Node too old: ${process.version} (need >= 18; SEA needs >= 20)`);
   if (seaNeeded && major < 20) {
@@ -221,6 +223,60 @@ async function cmdCheck(cwd, targetArg, opts) {
     }
   }
 
+  // THIN tools
+  if (thinNeeded) {
+    if (!hasCommand("zstd")) {
+      errors.push("zstd not found in PATH (thin). Install: sudo apt-get install -y zstd");
+      thinToolchainIssue = true;
+    } else {
+      ok("zstd: OK");
+    }
+
+    const cc = hasCommand("cc") ? "cc" : (hasCommand("gcc") ? "gcc" : null);
+    if (!cc) {
+      errors.push("C compiler not found (thin). Install: sudo apt-get install -y build-essential");
+      thinToolchainIssue = true;
+    }
+
+    if (!hasCommand("pkg-config")) {
+      warnings.push("pkg-config not found – cannot verify libzstd headers (thin launcher build may fail). Install: sudo apt-get install -y pkg-config");
+      thinToolchainIssue = true;
+    } else {
+      const zstdPc = spawnSyncSafe("pkg-config", ["--cflags", "--libs", "libzstd"], { stdio: "pipe" });
+      if (!zstdPc.ok) {
+        warnings.push("libzstd not found by pkg-config. Install: sudo apt-get install -y libzstd-dev");
+        thinToolchainIssue = true;
+      }
+    }
+
+    if (cc) {
+      const testSrc = "#include <zstd.h>\nint main(void){return 0;}\n";
+      let zstdFlags = [];
+      if (hasCommand("pkg-config")) {
+        const pc = spawnSyncSafe("pkg-config", ["--cflags", "--libs", "libzstd"], { stdio: "pipe" });
+        if (pc.ok) {
+          const out = `${pc.stdout} ${pc.stderr}`.trim();
+          if (out) zstdFlags = out.split(/\s+/).filter(Boolean);
+        }
+      }
+      const args = ["-x", "c", "-", "-o", "/dev/null"];
+      const hasLzstd = zstdFlags.includes("-lzstd");
+      const compileArgs = hasLzstd ? [...args, ...zstdFlags] : [...args, ...zstdFlags, "-lzstd"];
+      const compile = spawnSyncSafe(cc, compileArgs, { stdio: "pipe", input: testSrc });
+      if (!compile.ok) {
+        const msg = `${compile.stderr}\n${compile.stdout}`.trim();
+        const short = msg.split(/\r?\n/)[0] || "zstd compile/link failed";
+        errors.push(`libzstd-dev not usable (compile test failed): ${short}. Install: sudo apt-get install -y libzstd-dev`);
+        thinToolchainIssue = true;
+      }
+    }
+  }
+
+  if (thinNeeded && thinToolchainIssue) {
+    const hint = "Install thin toolchain (Ubuntu): sudo apt-get install -y build-essential pkg-config zstd libzstd-dev";
+    if (!warnings.includes(hint)) warnings.push(hint);
+  }
+
   // Optional hardening tools (recommended; SEAL will still work without them)
   const hardCfg = proj?.build?.hardening;
   const hardEnabled = hardCfg === false ? false : !(typeof hardCfg === 'object' && hardCfg && hardCfg.enabled === false);
@@ -244,8 +300,9 @@ async function cmdCheck(cwd, targetArg, opts) {
     for (const e of errors) console.log(" - " + e);
   }
 
+  const hadNotes = warnings.length || errors.length;
   if (!errors.length && (!opts.strict || !warnings.length)) {
-    console.log("");
+    if (hadNotes) console.log("");
     ok("Check OK");
   } else {
     const e = new Error("Check failed");

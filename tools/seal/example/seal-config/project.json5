@@ -3,7 +3,8 @@
   entry: "src/index.js",
   defaultTarget: "local",
   build: {
-    packager: "auto",
+    // Thin packager (AIO) requires zstd + C compiler + libzstd-dev on build machine.
+    packager: "thin",
     obfuscationProfile: "balanced",
     frontendObfuscation: { enabled: true, profile: "balanced" },
     hardening: {

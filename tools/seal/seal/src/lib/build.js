@@ -15,6 +15,7 @@ const { spawnSyncSafe } = require("./spawn");
 const { renderAppctl } = require("./appctl");
 const { packSea } = require("./packagers/sea");
 const { packFallback } = require("./packagers/fallback");
+const { packThin } = require("./packagers/thin");
 
 function makeBuildId() {
   const now = new Date();
@@ -671,42 +672,43 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   info(`Entry: ${projectCfg.entry}`);
   info(`Target: ${targetCfg.target} (packager=${packagerOverride || targetCfg.packager || projectCfg.build.packager}) config=${configName}`);
 
+  info("Bundling (esbuild)...");
   const bundlePath = await buildBundle({ projectRoot, entryRel: projectCfg.entry, stageDir, buildId, appName });
   ok("Bundle OK (esbuild)");
 
   const obfProfile = projectCfg.build.obfuscationProfile || "balanced";
+  info("Obfuscating bundle...");
   const obfPath = obfuscateBundle(bundlePath, stageDir, obfProfile);
   ok(`Obfuscation OK (${obfProfile})`);
 
-  
-const packagerRequested = (packagerOverride || targetCfg.packager || projectCfg.build.packager || "auto").toLowerCase();
-const allowFallback = !!(targetCfg.allowFallback ?? projectCfg.build.allowFallback ?? false);
+  const packagerRequested = (packagerOverride || targetCfg.packager || projectCfg.build.packager || "auto").toLowerCase();
+  const allowFallback = !!(targetCfg.allowFallback ?? projectCfg.build.allowFallback ?? false);
 
-// Normalize hardening config early (used for SEA main packing)
-const hardCfgRaw = projectCfg.build.hardening;
-const hardEnabled = hardCfgRaw === false ? false : !(typeof hardCfgRaw === 'object' && hardCfgRaw && hardCfgRaw.enabled === false);
-const hardCfg = (typeof hardCfgRaw === 'object' && hardCfgRaw) ? hardCfgRaw : {};
+  // Normalize hardening config early (used for SEA main packing)
+  const hardCfgRaw = projectCfg.build.hardening;
+  const hardEnabled = hardCfgRaw === false ? false : !(typeof hardCfgRaw === 'object' && hardCfgRaw && hardCfgRaw.enabled === false);
+  const hardCfg = (typeof hardCfgRaw === 'object' && hardCfgRaw) ? hardCfgRaw : {};
 
-// Default hardening: pack the SEA main script into a compressed loader.
-// This avoids having plain-text JS inside the executable, while staying compatible.
-let seaMainRel = "./bundle.obf.cjs";
-let seaMainPacking = { ok: false, skipped: true, reason: "not_enabled" };
+  // Default hardening: pack the SEA main script into a compressed loader.
+  // This avoids having plain-text JS inside the executable, while staying compatible.
+  let seaMainRel = "./bundle.obf.cjs";
+  let seaMainPacking = { ok: false, skipped: true, reason: "not_enabled" };
 
-const seaMainPackingEnabled = hardEnabled
-  && (packagerRequested === "sea" || packagerRequested === "auto")
-  && (hardCfg.seaMainPacking !== false);
+  const seaMainPackingEnabled = hardEnabled
+    && (packagerRequested === "sea" || packagerRequested === "auto")
+    && (hardCfg.seaMainPacking !== false);
 
-if (seaMainPackingEnabled) {
-  const method = (hardCfg.seaMainPackingMethod || "brotli");
-  const chunkSize = (hardCfg.seaMainPackingChunkSize || 8000);
-  seaMainPacking = packStageMainToLoader(stageDir, "bundle.obf.cjs", "bundle.packed.cjs", method, chunkSize);
-  if (seaMainPacking.ok) {
-    seaMainRel = "./bundle.packed.cjs";
-    ok(`SEA main packed (${seaMainPacking.method})`);
-  } else if (!seaMainPacking.skipped) {
-    warn(`SEA main packing failed, continuing without it: ${seaMainPacking.reason}`);
+  if (seaMainPackingEnabled) {
+    const method = (hardCfg.seaMainPackingMethod || "brotli");
+    const chunkSize = (hardCfg.seaMainPackingChunkSize || 8000);
+    seaMainPacking = packStageMainToLoader(stageDir, "bundle.obf.cjs", "bundle.packed.cjs", method, chunkSize);
+    if (seaMainPacking.ok) {
+      seaMainRel = "./bundle.packed.cjs";
+      ok(`SEA main packed (${seaMainPacking.method})`);
+    } else if (!seaMainPacking.skipped) {
+      warn(`SEA main packing failed, continuing without it: ${seaMainPacking.reason}`);
+    }
   }
-}
 
   let packagerUsed = packagerRequested;
 
@@ -714,7 +716,21 @@ if (seaMainPackingEnabled) {
   let packError = null;
   let packErrorShort = null;
 
-  if (packagerRequested === "sea" || packagerRequested === "auto") {
+  if (!["auto", "sea", "fallback", "thin"].includes(packagerRequested)) {
+    throw new Error(`Unknown packager: ${packagerRequested}`);
+  }
+
+  if (packagerRequested === "thin") {
+    info("Packaging (thin AIO)...");
+    const res = packThin({ stageDir, releaseDir, appName, obfPath });
+    if (!res.ok) {
+      throw new Error(`Thin packager failed: ${res.errorShort}`);
+    }
+    packOk = true;
+    packagerUsed = "thin";
+    ok("Packager thin OK");
+  } else if (packagerRequested === "sea" || packagerRequested === "auto") {
+    info("Packaging (SEA)...");
     const res = packSea({ stageDir, releaseDir, appName, mainRel: seaMainRel });
     if (res.ok) {
       packOk = true;
@@ -743,8 +759,6 @@ if (seaMainPackingEnabled) {
     ok("Packager fallback OK (node + obfuscated bundle)");
   }
 
-
-  
 
 // Hardening (post-pack): make it harder to recover code by casually viewing files.
 // Default: enabled (can be disabled in seal-config/project.json5 -> build.hardening.enabled=false)

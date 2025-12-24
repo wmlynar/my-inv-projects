@@ -18,6 +18,13 @@
 - Blad: `postject` byl dostepny w `seal check`, ale brakowal w `seal release` (inne PATH / sudo).
   - Wymaganie: `postject` musi byc w PATH **procesu builda**; nie polegaj na PATH roota lub innego shella.
 
+- Blad: `thin` dopuszczal niespojne offsety/rozmiary kontenera (latwo o bledy przy uszkodzonych artefaktach).
+  - Wymaganie: `index_len == chunk_count * THIN_INDEX_ENTRY_LEN`.
+  - Wymaganie: `comp_len > 0` i `raw_len > 0`.
+  - Wymaganie: `rt_off + rt_len` i `pl_off + pl_len` w granicach pliku (z kontrola overflow).
+  - Wymaganie: brak overlapu runtime/payload (`rt_off + rt_len <= pl_off`).
+  - Wymaganie: encoder odrzuca 0-B runtime/payload.
+
 - Blad: tryb FAST byl uruchamiany niejawnie lub zostawial niebezpieczne artefakty.
   - Wymaganie: FAST jest **jawny** (`--fast`) i zawsze ostrzega o ryzyku.
   - Wymaganie: FAST nie tworzy SEA ani `.tgz`, uzywa osobnego katalogu `*-fast`.

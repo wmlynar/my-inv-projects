@@ -21,6 +21,14 @@ SEAL działa wtedy jak „wizard”: wykrywa stan projektu i mówi **co zrobić 
 - Node.js (zgodny z toolchainem Seala)
 - `seal` (CLI) dostępny w PATH
 
+#### Ubuntu – wymagane pakiety (przed instalacją/uruchomieniem SEAL)
+Jeśli używasz packagera `thin` (AIO), potrzebujesz kompilatora C i `zstd`:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y build-essential pkg-config zstd libzstd-dev
+```
+
 ### Na serwerze (tylko jeśli robisz deploy)
 - Linux + systemd
 - dostęp SSH do użytkownika, który może wykonać akcje instalacyjne (przez `sudo`)

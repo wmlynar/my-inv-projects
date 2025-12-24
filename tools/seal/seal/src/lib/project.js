@@ -58,7 +58,7 @@ function loadProjectConfig(projectRoot) {
   cfg.entry = cfg.entry || detectEntry(projectRoot) || "src/index.js";
   cfg.defaultTarget = cfg.defaultTarget || "local";
   cfg.build = cfg.build || {};
-  cfg.build.packager = cfg.build.packager || "auto"; // auto|sea|fallback
+  cfg.build.packager = cfg.build.packager || "auto"; // auto|sea|fallback|thin
   if (cfg.build.allowFallback === undefined) cfg.build.allowFallback = false;
   cfg.build.obfuscationProfile = cfg.build.obfuscationProfile || "balanced";
   cfg.build.includeDirs = cfg.build.includeDirs || ["public", "data"];
