@@ -11,6 +11,7 @@
 - Generator musi zachować **dev-friendly** projekt: da się uruchomić aplikację normalnie (node/npm), bez Seala.
 - Aplikacja w runtime czyta `config.runtime.json5` (a SEAL kopiuje/ustawia ten plik w deployu).
 - SEAL operuje pojęciami **target** (gdzie wdrażam) i **config** (jaki wariant konfiguracji runtime). Domyślnie `config == target`.
+- Jeśli naprawiasz błąd lub dodajesz reguły jakościowe, **MUST** uaktualnij `SEAL_PITFALLS.md` i (jeśli reguła jest generyczna) `SEAL_STANDARD.md`.
 
 
 
@@ -146,7 +147,18 @@
 
 ---
 
-## 9) Wersja kontraktu
+## 9) Nauka na błędach (MUST)
+
+1. Po znalezieniu błędu lub ryzyka **MUST**:
+   - dodać wpis do `SEAL_PITFALLS.md` (błąd + wymaganie zapobiegawcze),
+   - jeżeli reguła jest ogólna (jakość/testy/UX/bezpieczeństwo), dopisać ją też do `SEAL_STANDARD.md`.
+2. Dla testów E2E **MUST**:
+   - timeouty per‑test i per‑krok/await,
+   - obsługa `error` w subprocessach (brak wiszących obietnic),
+   - drenaż stdout/stderr procesów uruchamianych w testach,
+   - `finally` dla zamknięcia browserów/zasobów UI.
+
+## 10) Wersja kontraktu
 
 - `SEAL_CONTRACT_AI` v1.3 jest kompatybilny z:
   - `SEAL_STANDARD v1.3`

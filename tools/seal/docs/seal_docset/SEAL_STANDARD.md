@@ -343,6 +343,7 @@ Poniższy fragment jest celowo krótki, żeby dało się go wkleić do prompta p
 - Obsłuż `SIGTERM` i kończ proces kontrolowanie.
 - Nie używaj `eval`/`new Function` ani dynamicznych importów/require po stringach (kompatybilność bundla/SEA).
 - Jeśli jest UI: pokazuj banner braku połączenia z backendem i czas ostatniej udanej aktualizacji.
+- Jeśli naprawiasz błąd lub wprowadzasz regułę jakościową, **dopisz** ją do `SEAL_PITFALLS.md`, a regułę ogólną do `SEAL_STANDARD.md`.
 
 ---
 

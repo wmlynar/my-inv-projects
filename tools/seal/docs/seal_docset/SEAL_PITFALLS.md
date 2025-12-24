@@ -1,6 +1,7 @@
 # SEAL_PITFALLS - Bledy do unikania (v0.5.x)
 
 > Cel: lista realnych bledow, ktore juz naprawilismy. Traktuj ponizsze jako wymagania.
+> AI/autor zmian **MUST** dopisywac nowe bledy i wymagania zapobiegawcze do tego pliku.
 
 ## Build / packaging
 
