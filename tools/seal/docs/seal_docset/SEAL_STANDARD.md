@@ -345,6 +345,15 @@ Poniższy fragment jest celowo krótki, żeby dało się go wkleić do prompta p
 - Jeśli jest UI: pokazuj banner braku połączenia z backendem i czas ostatniej udanej aktualizacji.
 - Jeśli naprawiasz błąd lub wprowadzasz regułę jakościową, **dopisz** ją do `SEAL_PITFALLS.md`, a regułę ogólną do `SEAL_STANDARD.md`.
 
+### TL;DR dla review (AI/autor zmian)
+Przed zamknięciem zadania:
+1) Błąd/reguła dopisana do `SEAL_PITFALLS.md`.
+2) Reguła ogólna dopisana do `SEAL_STANDARD.md`.
+3) E2E ma timeouty per‑test/per‑krok.
+4) Subprocessy mają obsługę `error` i nie wiszą.
+5) Procesy w testach mają drenaż stdout/stderr.
+6) Zasoby UI (browser/page) zamykane w `finally`.
+
 ---
 
 ## 12. Changelog
