@@ -40,7 +40,6 @@ async function cmdRelease(cwd, targetArg, opts) {
   });
 
   ok(`Release ready: ${result.releaseDir}`);
-  ok(`Artifact: ${result.artifactPath}`);
   console.log("Next:");
   console.log("  seal verify --explain");
   console.log("  seal run-local --sealed");
