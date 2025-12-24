@@ -25,6 +25,20 @@
   - Wymaganie: brak overlapu runtime/payload (`rt_off + rt_len <= pl_off`).
   - Wymaganie: encoder odrzuca 0-B runtime/payload.
 
+- Blad: launcher AIO probowal fallbackowac do BOOTSTRAP po uszkodzeniu stopki (cichy tryb mieszany).
+  - Wymaganie: tryb AIO i BOOTSTRAP sa **jawne**.
+  - Wymaganie: launcher AIO **nie** szuka `r/rt`/`r/pl`; brak stopki AIO = blad.
+  - Wymaganie: launcher BOOTSTRAP moze czytac `r/rt`/`r/pl`.
+
+- Blad: BOOTSTRAP nie tworzyl struktury `b/a` + `r/rt` + `r/pl`, przez co `appctl run` nie dzialal.
+  - Wymaganie: BOOTSTRAP zawsze tworzy `b/a` (launcher) i `r/rt`/`r/pl` (runtime/payload).
+  - Wymaganie: w release dodaj wrapper `<app>` uruchamiajacy `b/a` (kompatybilnosc z `appctl`).
+
+- Blad: `codec_state` ginal miedzy deployami (brak zgodnosci kodeka).
+  - Wymaganie: `codec_state` musi byc zapisywany lokalnie i utrzymany (`.seal/cache/thin/<target>/codec_state.json`).
+  - Wymaganie: `.seal/` jest ignorowany w VCS.
+  - Wymaganie: brak `codec_state` = rebootstrap.
+
 - Blad: tryb FAST byl uruchamiany niejawnie lub zostawial niebezpieczne artefakty.
   - Wymaganie: FAST jest **jawny** (`--fast`) i zawsze ostrzega o ryzyku.
   - Wymaganie: FAST nie tworzy SEA ani `.tgz`, uzywa osobnego katalogu `*-fast`.

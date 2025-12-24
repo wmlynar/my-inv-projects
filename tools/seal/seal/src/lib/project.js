@@ -78,6 +78,7 @@ function loadProjectConfig(projectRoot) {
   if (cfg.build.hardening === undefined) {
     cfg.build.hardening = { enabled: true, strip: false, upx: false, bundlePacking: true };
   }
+  cfg.build.thinMode = cfg.build.thinMode || "aio";
 
   return cfg;
 }

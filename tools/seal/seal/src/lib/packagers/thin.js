@@ -26,6 +26,40 @@ function randomU32() {
   return crypto.randomBytes(4).readUInt32LE(0);
 }
 
+function normalizeTargetName(name) {
+  return String(name || "default").replace(/[^a-zA-Z0-9_.-]/g, "_");
+}
+
+function getCodecCachePath(projectRoot, targetName) {
+  const safe = normalizeTargetName(targetName);
+  return path.join(projectRoot, ".seal", "cache", "thin", safe, "codec_state.json");
+}
+
+function loadCodecState(projectRoot, targetName) {
+  if (!projectRoot) return null;
+  const p = getCodecCachePath(projectRoot, targetName);
+  if (!fileExists(p)) return null;
+  try {
+    const raw = JSON.parse(fs.readFileSync(p, "utf-8"));
+    const fields = ["codecId", "seed", "rot", "add", "indexNonce", "footerNonce", "aioFooterNonce"];
+    for (const f of fields) {
+      if (typeof raw[f] !== "number" || !Number.isFinite(raw[f])) return null;
+    }
+    if (raw.rot < 1 || raw.rot > 7) return null;
+    if (raw.add < 1 || raw.add > 255) return null;
+    return raw;
+  } catch {
+    return null;
+  }
+}
+
+function saveCodecState(projectRoot, targetName, state) {
+  if (!projectRoot) return;
+  const p = getCodecCachePath(projectRoot, targetName);
+  ensureDir(path.dirname(p));
+  fs.writeFileSync(p, JSON.stringify(state, null, 2) + "\n", "utf-8");
+}
+
 function hasCommand(cmd) {
   const res = spawnSyncSafe("bash", ["-lc", `command -v ${cmd} >/dev/null 2>&1`], { stdio: "pipe" });
   return !!res.ok;
@@ -213,7 +247,7 @@ function getZstdFlags() {
   return out ? out.split(/\s+/).filter(Boolean) : [];
 }
 
-function renderLauncherSource(codecState, limits) {
+function renderLauncherSource(codecState, limits, allowBootstrap) {
   const bootstrapJs = `"use strict";
 const fs = require("fs");
 const path = require("path");
@@ -269,6 +303,7 @@ extern char **environ;
 #define THIN_INDEX_NONCE ${codecState.indexNonce}u
 #define THIN_FOOTER_NONCE ${codecState.footerNonce}u
 #define THIN_AIO_FOOTER_NONCE ${codecState.aioFooterNonce}u
+#define THIN_BOOTSTRAP_ALLOWED ${allowBootstrap ? 1 : 0}
 
 #define MAX_CHUNKS ${limits.maxChunks}u
 #define MAX_CHUNK_RAW ${limits.maxChunkRaw}u
@@ -360,6 +395,14 @@ static int read_exact(int fd, void *buf, size_t len, off_t off) {
     if (r <= 0) return -1;
     got += (size_t)r;
   }
+  return 0;
+}
+
+static int get_file_size(int fd, uint64_t *out) {
+  struct stat st;
+  if (fstat(fd, &st) != 0) return -1;
+  if (st.st_size < 0) return -1;
+  *out = (uint64_t)st.st_size;
   return 0;
 }
 
@@ -512,7 +555,7 @@ static int write_bootstrap(int fd) {
   return 0;
 }
 
-static int set_virtual_entry(void) {
+static int resolve_root(char *out, size_t out_len) {
   char self_path[PATH_MAX + 1];
   ssize_t len = readlink("/proc/self/exe", self_path, PATH_MAX);
   if (len <= 0) return -1;
@@ -520,10 +563,23 @@ static int set_virtual_entry(void) {
 
   char *slash = strrchr(self_path, '/');
   if (!slash) return -1;
+  char *fname = slash + 1;
   *slash = 0;
 
+  if (strcmp(fname, "a") == 0) {
+    char *parent = strrchr(self_path, '/');
+    if (parent && strcmp(parent + 1, "b") == 0) {
+      *parent = 0;
+    }
+  }
+
+  if (snprintf(out, out_len, "%s", self_path) < 0) return -1;
+  return 0;
+}
+
+static int set_virtual_entry(const char *root) {
   char entry[PATH_MAX + 64];
-  snprintf(entry, sizeof(entry), "%s/app.bundle.cjs", self_path);
+  snprintf(entry, sizeof(entry), "%s/app.bundle.cjs", root);
   return setenv("SEAL_VIRTUAL_ENTRY", entry, 1);
 }
 
@@ -544,6 +600,13 @@ int main(int argc, char **argv) {
   (void)argc;
   (void)argv;
 
+  char root[PATH_MAX + 1];
+  if (resolve_root(root, sizeof(root)) != 0) {
+    if (!getcwd(root, sizeof(root))) {
+      snprintf(root, sizeof(root), ".");
+    }
+  }
+
   int self_fd = open("/proc/self/exe", O_RDONLY);
   if (self_fd < 0) {
     fprintf(stderr, "[thin] open self failed\\n");
@@ -551,44 +614,86 @@ int main(int argc, char **argv) {
   }
 
   off_t end = lseek(self_fd, 0, SEEK_END);
-  if (end < (off_t)THIN_AIO_FOOTER_LEN) {
-    fprintf(stderr, "[thin] file too small\\n");
+  if (end < 0) {
+    fprintf(stderr, "[thin] seek failed\\n");
     return 21;
   }
 
-  uint8_t aio_footer[THIN_AIO_FOOTER_LEN];
-  if (read_exact(self_fd, aio_footer, THIN_AIO_FOOTER_LEN, end - THIN_AIO_FOOTER_LEN) != 0) {
-    fprintf(stderr, "[thin] read aio footer failed\\n");
-    return 22;
+  int aio_ok = 0;
+  uint64_t rt_off = 0;
+  uint64_t rt_len = 0;
+  uint64_t pl_off = 0;
+  uint64_t pl_len = 0;
+
+  if (end >= (off_t)THIN_AIO_FOOTER_LEN) {
+    uint8_t aio_footer[THIN_AIO_FOOTER_LEN];
+    if (read_exact(self_fd, aio_footer, THIN_AIO_FOOTER_LEN, end - THIN_AIO_FOOTER_LEN) == 0) {
+      uint32_t aio_seed = THIN_CODEC_SEED ^ THIN_AIO_FOOTER_NONCE;
+      decode_bytes(aio_footer, THIN_AIO_FOOTER_LEN, aio_seed);
+
+      uint32_t version = read_u32_le(aio_footer + 0);
+      uint32_t codec_id = read_u32_le(aio_footer + 4);
+      if (version == THIN_VERSION && codec_id == THIN_CODEC_ID) {
+        rt_off = read_u64_le(aio_footer + 8);
+        rt_len = read_u64_le(aio_footer + 16);
+        pl_off = read_u64_le(aio_footer + 24);
+        pl_len = read_u64_le(aio_footer + 32);
+
+        uint64_t data_end = (uint64_t)(end - (off_t)THIN_AIO_FOOTER_LEN);
+        if (rt_len > 0 && pl_len > 0
+          && rt_off <= data_end && rt_len <= (data_end - rt_off)
+          && pl_off <= data_end && pl_len <= (data_end - pl_off)
+          && rt_off + rt_len <= pl_off) {
+          aio_ok = 1;
+        }
+      }
+    }
   }
 
-  uint32_t aio_seed = THIN_CODEC_SEED ^ THIN_AIO_FOOTER_NONCE;
-  decode_bytes(aio_footer, THIN_AIO_FOOTER_LEN, aio_seed);
-
-  uint32_t version = read_u32_le(aio_footer + 0);
-  uint32_t codec_id = read_u32_le(aio_footer + 4);
-  if (version != THIN_VERSION || codec_id != THIN_CODEC_ID) {
-    fprintf(stderr, "[thin] footer mismatch\\n");
+  if (!aio_ok && !THIN_BOOTSTRAP_ALLOWED) {
+    fprintf(stderr, "[thin] missing AIO footer\\n");
     return 23;
   }
 
-  uint64_t rt_off = read_u64_le(aio_footer + 8);
-  uint64_t rt_len = read_u64_le(aio_footer + 16);
-  uint64_t pl_off = read_u64_le(aio_footer + 24);
-  uint64_t pl_len = read_u64_le(aio_footer + 32);
+  int rt_fd = self_fd;
+  int pl_fd = self_fd;
+  int rt_file_fd = -1;
+  int pl_file_fd = -1;
+  uint64_t rt_src_off = rt_off;
+  uint64_t rt_src_len = rt_len;
+  uint64_t pl_src_off = pl_off;
+  uint64_t pl_src_len = pl_len;
 
-  uint64_t data_end = (uint64_t)(end - (off_t)THIN_AIO_FOOTER_LEN);
-  if (rt_len == 0 || pl_len == 0) {
-    fprintf(stderr, "[thin] invalid lengths\\n");
-    return 24;
-  }
-  if (rt_off > data_end || rt_len > (data_end - rt_off) || pl_off > data_end || pl_len > (data_end - pl_off)) {
-    fprintf(stderr, "[thin] payload offsets out of range\\n");
-    return 25;
-  }
-  if (rt_off + rt_len > pl_off) {
-    fprintf(stderr, "[thin] payload overlap\\n");
-    return 26;
+  if (!aio_ok) {
+    char rt_path[PATH_MAX + 8];
+    char pl_path[PATH_MAX + 8];
+    snprintf(rt_path, sizeof(rt_path), "%s/r/rt", root);
+    snprintf(pl_path, sizeof(pl_path), "%s/r/pl", root);
+
+    rt_file_fd = open(rt_path, O_RDONLY);
+    if (rt_file_fd < 0) {
+      fprintf(stderr, "[thin] runtime missing: %s\\n", rt_path);
+      return 10;
+    }
+    pl_file_fd = open(pl_path, O_RDONLY);
+    if (pl_file_fd < 0) {
+      fprintf(stderr, "[thin] payload missing: %s\\n", pl_path);
+      return 11;
+    }
+
+    if (get_file_size(rt_file_fd, &rt_src_len) != 0 || rt_src_len < THIN_FOOTER_LEN) {
+      fprintf(stderr, "[thin] runtime invalid\\n");
+      return 12;
+    }
+    if (get_file_size(pl_file_fd, &pl_src_len) != 0 || pl_src_len < THIN_FOOTER_LEN) {
+      fprintf(stderr, "[thin] payload invalid\\n");
+      return 13;
+    }
+
+    rt_fd = rt_file_fd;
+    pl_fd = pl_file_fd;
+    rt_src_off = 0;
+    pl_src_off = 0;
   }
 
   int node_fd = make_memfd("seal-node");
@@ -596,7 +701,7 @@ int main(int argc, char **argv) {
     fprintf(stderr, "[thin] memfd node failed\\n");
     return 27;
   }
-  int rc = decode_container(self_fd, rt_off, rt_len, node_fd);
+  int rc = decode_container(rt_fd, rt_src_off, rt_src_len, node_fd);
   if (rc != 0) {
     fprintf(stderr, "[thin] decode runtime failed (%d)\\n", rc);
     return 28;
@@ -608,12 +713,15 @@ int main(int argc, char **argv) {
     fprintf(stderr, "[thin] memfd bundle failed\\n");
     return 29;
   }
-  rc = decode_container(self_fd, pl_off, pl_len, bundle_fd);
+  rc = decode_container(pl_fd, pl_src_off, pl_src_len, bundle_fd);
   if (rc != 0) {
     fprintf(stderr, "[thin] decode payload failed (%d)\\n", rc);
     return 30;
   }
   if (lseek(bundle_fd, 0, SEEK_SET) < 0) return 29;
+
+  if (rt_file_fd >= 0) close(rt_file_fd);
+  if (pl_file_fd >= 0) close(pl_file_fd);
 
   int boot_fd = make_memfd("seal-bootstrap");
   if (boot_fd < 0) {
@@ -633,7 +741,7 @@ int main(int argc, char **argv) {
   set_no_cloexec(4);
 
   setenv("SEAL_BUNDLE_FD", "4", 1);
-  set_virtual_entry();
+  set_virtual_entry(root);
   harden_env();
   harden_limits();
 
@@ -645,7 +753,7 @@ int main(int argc, char **argv) {
 `;
 }
 
-function buildLauncher(stageDir, codecState) {
+function buildLauncher(stageDir, codecState, allowBootstrap) {
   const limits = DEFAULT_LIMITS;
   const cc = resolveCc();
   if (!cc) {
@@ -654,7 +762,7 @@ function buildLauncher(stageDir, codecState) {
 
   const cPath = path.join(stageDir, "thin-launcher.c");
   const outPath = path.join(stageDir, "thin-launcher");
-  fs.writeFileSync(cPath, renderLauncherSource(codecState, limits), "utf-8");
+  fs.writeFileSync(cPath, renderLauncherSource(codecState, limits, allowBootstrap), "utf-8");
 
   const zstdFlags = getZstdFlags();
   const args = [
@@ -680,7 +788,7 @@ function buildLauncher(stageDir, codecState) {
   return { ok: true, path: outPath };
 }
 
-function packThin({ stageDir, releaseDir, appName, obfPath }) {
+function packThin({ stageDir, releaseDir, appName, obfPath, mode, projectRoot, targetName }) {
   try {
     if (!hasCommand("zstd")) {
       return { ok: false, errorShort: "zstd not found in PATH", error: "missing_zstd" };
@@ -689,15 +797,28 @@ function packThin({ stageDir, releaseDir, appName, obfPath }) {
       return { ok: false, errorShort: "bundle missing", error: obfPath };
     }
 
-    const codecState = {
-      codecId: randomU32(),
-      seed: randomU32(),
-      rot: (crypto.randomBytes(1)[0] % 7) + 1,
-      add: (crypto.randomBytes(1)[0] % 255) + 1,
-      indexNonce: randomU32(),
-      footerNonce: randomU32(),
-      aioFooterNonce: randomU32(),
-    };
+    const thinMode = String(mode || "aio").toLowerCase();
+    let codecState = null;
+    if (thinMode === "bootstrap") {
+      codecState = loadCodecState(projectRoot, targetName);
+      if (codecState) {
+        info("Thin: using cached codec_state (bootstrap)...");
+      } else {
+        info("Thin: codec_state missing; generating new (bootstrap)...");
+      }
+    }
+
+    if (!codecState) {
+      codecState = {
+        codecId: randomU32(),
+        seed: randomU32(),
+        rot: (crypto.randomBytes(1)[0] % 7) + 1,
+        add: (crypto.randomBytes(1)[0] % 255) + 1,
+        indexNonce: randomU32(),
+        footerNonce: randomU32(),
+        aioFooterNonce: randomU32(),
+      };
+    }
 
     info("Thin: encoding runtime (zstd + mask)...");
     const nodeBin = fs.readFileSync(process.execPath);
@@ -710,12 +831,39 @@ function packThin({ stageDir, releaseDir, appName, obfPath }) {
     ensureDir(stageDir);
     ensureDir(releaseDir);
 
+    const allowBootstrap = thinMode === "bootstrap";
     info("Thin: building launcher (cc + libzstd)...");
-    const launcherRes = buildLauncher(stageDir, codecState);
+    const launcherRes = buildLauncher(stageDir, codecState, allowBootstrap);
     if (!launcherRes.ok) return launcherRes;
 
-    info("Thin: assembling AIO binary...");
     const outBin = path.join(releaseDir, appName);
+
+    if (thinMode === "bootstrap") {
+      info("Thin: assembling bootstrap layout...");
+      const bDir = path.join(releaseDir, "b");
+      ensureDir(bDir);
+      const launcherPath = path.join(bDir, "a");
+      fs.copyFileSync(launcherRes.path, launcherPath);
+      fs.chmodSync(launcherPath, 0o755);
+
+      const rDir = path.join(releaseDir, "r");
+      ensureDir(rDir);
+      fs.writeFileSync(path.join(rDir, "rt"), runtimeContainer);
+      fs.writeFileSync(path.join(rDir, "pl"), payloadContainer);
+
+      const wrapper = `#!/usr/bin/env bash
+set -euo pipefail
+DIR="$(cd "$(dirname "$0")" && pwd)"
+exec "$DIR/b/a" "$@"
+`;
+      fs.writeFileSync(outBin, wrapper, "utf-8");
+      fs.chmodSync(outBin, 0o755);
+
+      saveCodecState(projectRoot, targetName, codecState);
+      return { ok: true, codecId: codecState.codecId };
+    }
+
+    info("Thin: assembling AIO binary...");
     fs.copyFileSync(launcherRes.path, outBin);
     fs.chmodSync(outBin, 0o755);
 

@@ -584,11 +584,12 @@ function applyHardeningPost(releaseDir, appName, packagerUsed, hardCfg) {
   // Therefore it is OFF by default and must be enabled explicitly.
   const exePath = path.join(releaseDir, appName);
   const isScript = isShebangScript(exePath);
+  const isThin = packagerUsed === 'thin';
 
   const stripEnabled = cfg.strip === true; // default false
   if (!isScript && stripEnabled) {
     steps.push({ step: 'strip', ...tryStripBinary(exePath) });
-  } else if (!isScript) {
+  } else if (!isScript && !isThin) {
     steps.push({ step: 'strip', ok: false, skipped: true, reason: stripEnabled ? 'strip_failed' : 'disabled_by_default' });
   }
 
@@ -600,7 +601,7 @@ function applyHardeningPost(releaseDir, appName, packagerUsed, hardCfg) {
       throw new Error(`UPX failed: ${reason}`);
     }
     steps.push({ step: 'upx', ...r });
-  } else if (!isScript) {
+  } else if (!isScript && !isThin) {
     steps.push({ step: 'upx', ok: false, skipped: true, reason: 'disabled_by_default' });
   }
 
@@ -683,6 +684,7 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
 
   const packagerRequested = (packagerOverride || targetCfg.packager || projectCfg.build.packager || "auto").toLowerCase();
   const allowFallback = !!(targetCfg.allowFallback ?? projectCfg.build.allowFallback ?? false);
+  const thinMode = String(targetCfg.thinMode || projectCfg.build.thinMode || "aio").toLowerCase();
 
   // Normalize hardening config early (used for SEA main packing)
   const hardCfgRaw = projectCfg.build.hardening;
@@ -719,10 +721,21 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   if (!["auto", "sea", "fallback", "thin"].includes(packagerRequested)) {
     throw new Error(`Unknown packager: ${packagerRequested}`);
   }
+  if (packagerRequested === "thin" && !["aio", "bootstrap"].includes(thinMode)) {
+    throw new Error(`Unknown thinMode: ${thinMode}`);
+  }
 
   if (packagerRequested === "thin") {
-    info("Packaging (thin AIO)...");
-    const res = packThin({ stageDir, releaseDir, appName, obfPath });
+    info(`Packaging (thin ${thinMode})...`);
+    const res = packThin({
+      stageDir,
+      releaseDir,
+      appName,
+      obfPath,
+      mode: thinMode,
+      projectRoot,
+      targetName: targetCfg.target || targetCfg.config || "default",
+    });
     if (!res.ok) {
       throw new Error(`Thin packager failed: ${res.errorShort}`);
     }

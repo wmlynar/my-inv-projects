@@ -99,6 +99,8 @@ W praktyce potrzebne są dwa wytrychy:
   - brak lokalnego `codec_state` (stan kodeka zniknął),
   - wykryto `codec_id` mismatch po stronie targetu (patrz §9).
 
+**MUST:** AIO i BOOTSTRAP są trybami jawnie wybieranymi. Launcher AIO **nie** próbuje szukać `r/rt`/`r/pl` — brak stopki AIO to błąd. Launcher BOOTSTRAP może używać `r/rt`/`r/pl`.
+
 ### 2.5 Kiedy wykonywany jest natywny build (C) (MUST)
 - Launcher (ELF) budujemy **na build‑machine** (Ubuntu), **nigdy na serwerze**.
 - Build jest wywoływany przez `seal release` (a `seal ship` woła `release`).
@@ -141,6 +143,8 @@ Unit systemd:
 - `ExecStart=<installDir>/b/a` (bez argumentów)
 
 Launcher w BOOTSTRAP sam odnajduje `r/rt` i `r/pl` względnie do własnej lokalizacji (np. na bazie `realpath()` katalogu `b/`).
+
+**Uwaga praktyczna (MVP):** dla kompatybilności z `appctl run` w release można dodać wrapper `<app>` w katalogu głównym, który wykonuje `b/a`.
 
 **Zasada operacyjna (MUST):** usługa jest instalowana/uruchamiana dopiero gdy istnieje payload (`r/pl`). Brak “warunkowych unitów” — logika stanu jest po stronie `seal ship`.
 
@@ -453,12 +457,12 @@ Maskujemy:
 Cel: wykrywanie korupcji/przerwanych uploadów i sanity (to nie “security” przeciw rootowi).
 
 W źródłach pojawiają się warianty:
-- v0.1: CRC32 (odradzane) lub “lepiej: szybki hash (np. BLAKE3)”
-- v0.7: BLAKE3‑128 (16 bajtów, truncation) dla `raw_hash` + `footer_hash`
-- v0.2: BLAKE3 pełne 32 bajty dla chunków + `container_hash` w footerze
+- v0.1: CRC32 (odradzane) lub “lepiej: szybki hash”
+- v0.7: hash 128‑bit (16 bajtów, truncation) dla `raw_hash` + `footer_hash`
+- v0.2: hash 256‑bit (32 bajty) dla chunków + `container_hash` w footerze
 
 Scalona rekomendacja:
-- używać **BLAKE3**,
+- używać **szybkiego hasha** (nie CRC32),
 - dopuszczać 16B (trunc) lub 32B (pełne) jako parametr formatu (np. przez `entry_size`/`flags`/`index_version`).
 
 ### 9.7 Index i footer — trzy zgodne propozycje (do wyboru implementacyjnego)
@@ -476,7 +480,7 @@ Scalona rekomendacja:
   - `u64 chunk_off`
   - `u32 comp_len`
   - `u32 raw_len`
-  - `u32 check` (CRC32 lub lepiej: BLAKE3_32/SHA256_32)
+  - `u32 check` (CRC32 lub lepiej: 32‑bit hash)
   - `u32 nonce` (opcjonalny)
 
 Zaleta: proste. Wada: słabsza integralność, mniej “self‑describing”.
@@ -491,7 +495,7 @@ Zaleta: proste. Wada: słabsza integralność, mniej “self‑describing”.
   - `u32 chunk_count`
   - `u32 footer_len` (zawsze 64)
   - `u64 total_raw_len`
-  - `bytes[16] footer_hash` (np. BLAKE3‑128 z pól footera bez hash)
+  - `bytes[16] footer_hash` (hash 128‑bit z pól footera bez hash)
 
   Sanity check (MUST):
   - `footer_len == 64`
@@ -507,7 +511,7 @@ Zaleta: proste. Wada: słabsza integralność, mniej “self‑describing”.
     - `u64 offset`
     - `u32 comp_len`
     - `u32 raw_len`
-    - `bytes[16] raw_hash` (BLAKE3‑128)
+    - `bytes[16] raw_hash` (hash 128‑bit)
     - `u64 nonce` (opcjonalny; może być 0)
 
 
@@ -526,13 +530,13 @@ Zaleta: proste. Wada: słabsza integralność, mniej “self‑describing”.
   - `u64 runtime_id`
   - `u64 index_off`
   - `u32 index_len`
-  - `bytes[32] container_hash` (BLAKE3 całego kontenera)  
+  - `bytes[32] container_hash` (hash 256‑bit całego kontenera)  
   (i ewentualne padding/rezervy do stałej długości)
 - **Index record**:
   - `u64 off`
   - `u32 len` (comp)
   - `u32 raw_len`
-  - `bytes[32] h` (BLAKE3 chunku)
+  - `bytes[32] h` (hash 256‑bit chunku)
 
 Zaleta: bardzo jednoznaczne sanity. Wada: większy footer.
 
@@ -578,6 +582,8 @@ W BOOTSTRAP launcher jest stały. Payloady muszą być kodowane tym samym “kod
   - `~/.cache/seal/thin/<target>/codec.json`
   - `seal-out/cache/thin/<target>/codec_state.bin`
   - `.seal/cache/thin/<target>/codec_state.json`
+
+**Wymóg praktyczny:** `codec_state` musi przetrwać między deployami (dodaj `.seal/` do `.gitignore`).
 
 ### 10.3 Recovery gdy cache zniknie (MUST)
 Jeśli brak `codec_state` lokalnie:
@@ -667,7 +673,7 @@ Produkcja: krótkie kody. Szczegóły tylko w trybie debug (`SEAL_DEBUG=1`).
 ## 13. Roadmap (żeby nie było chaosu)
 
 ### 13.1 MVP (Etap 1)
-- Kontener THIN v1: chunking + zstd + codec maskowanie + index + footer + BLAKE3 (bez dict, bez padding/dummy).
+- Kontener THIN v1: chunking + zstd + codec maskowanie + index + footer + szybki hash (bez dict, bez padding/dummy).
 - Launcher: decode+decompress do memfd, FD 3/4, `fexecve/execveat`.
 - Hardening: env wipe, FD hygiene, RLIMIT_CORE, O_NOFOLLOW/fstat, memfd seals.
 - Wariant AIO end‑to‑end.
