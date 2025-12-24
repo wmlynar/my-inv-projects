@@ -34,6 +34,12 @@
   - Wymaganie: BOOTSTRAP zawsze tworzy `b/a` (launcher) i `r/rt`/`r/pl` (runtime/payload).
   - Wymaganie: w release dodaj wrapper `<app>` uruchamiajacy `b/a` (kompatybilnosc z `appctl`).
 
+- Blad: thin uruchamial bootstrap przez sciezke memfd (`/proc/self/fd/...`) i Node probowal `realpath()`, co konczylo sie `ENOENT`.
+  - Wymaganie: bootstrap nie moze byc uruchamiany przez sciezke memfd; uzyj `node -e` z wbudowanym JS albo pliku na dysku.
+
+- Blad: memfd dla runtime/payload dostal fd 3/4 i zostal nadpisany przez `dup2`, co powodowalo `Exec format error`.
+  - Wymaganie: memfd-y musza byc przenoszone na fd >= 10 przed `dup2(3/4)`.
+
 - Blad: `codec_state` ginal miedzy deployami (brak zgodnosci kodeka).
   - Wymaganie: `codec_state` musi byc zapisywany lokalnie i utrzymany (`.seal/cache/thin/<target>/codec_state.json`).
   - Wymaganie: `.seal/` jest ignorowany w VCS.

@@ -127,7 +127,7 @@ W Poziomie B/C natywny build obejmuje też codegen dekodera (część bootstrap/
 
 ### 3.1 Elementy logiczne (zawsze te same)
 Niezależnie od wariantu dystrybucji, system ma logicznie:
-- `launcher` (ELF): dekoduje kontener THIN, dekompresuje zstd strumieniowo, składa runtime Node do `memfd` i uruchamia go przez `fexecve`/`execveat`, przekazuje bundla przez FD 4 i bootstrap JS przez FD 3.
+- `launcher` (ELF): dekoduje kontener THIN, dekompresuje zstd strumieniowo, sklada runtime Node do `memfd` i uruchamia go przez `fexecve`/`execveat`, przekazuje bundla przez FD 4 i uruchamia bootstrap JS przez `node -e` (bez realpath na memfd).
 - `node.runtime`: runtime Node w formie **kontenera THIN** (nie “jawny ELF na dysku” w sensie łatwego odczytu; w AIO może być ogonem binarki).
 - `app.payload`: bundle aplikacji jako **kontener THIN**.
 - `shared/` + (opcjonalnie) `data/` lub `var/`: zwykłe pliki na dysku (config, assety, dane), bo w MVP świadomie upraszczamy operacje.

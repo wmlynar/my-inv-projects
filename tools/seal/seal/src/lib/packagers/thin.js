@@ -336,6 +336,9 @@ extern char **environ;
 #ifndef MFD_CLOEXEC
 #define MFD_CLOEXEC 0x0001
 #endif
+#ifndef F_DUPFD_CLOEXEC
+#define F_DUPFD_CLOEXEC F_DUPFD
+#endif
 
 #define THIN_VERSION ${THIN_VERSION}
 #define THIN_FOOTER_LEN ${THIN_FOOTER_LEN}
@@ -483,6 +486,15 @@ static int set_no_cloexec(int fd) {
   return fcntl(fd, F_SETFD, flags & ~FD_CLOEXEC);
 }
 
+static int ensure_fd_min(int fd, int min_fd) {
+  if (fd < 0) return -1;
+  if (fd >= min_fd) return fd;
+  int dupfd = fcntl(fd, F_DUPFD_CLOEXEC, min_fd);
+  if (dupfd < 0) return -1;
+  close(fd);
+  return dupfd;
+}
+
 static int decode_container(int src_fd, uint64_t off, uint64_t len, int out_fd) {
   if (len < THIN_FOOTER_LEN) return -2;
   uint8_t footer_enc[THIN_FOOTER_LEN];
@@ -591,13 +603,6 @@ static int decode_container(int src_fd, uint64_t off, uint64_t len, int out_fd) 
 
   free(index_buf);
   if (raw_written != raw_total) return -22;
-  return 0;
-}
-
-static int write_bootstrap(int fd) {
-  size_t len = strlen(BOOTSTRAP_JS);
-  if (write_all(fd, (const uint8_t *)BOOTSTRAP_JS, len) != 0) return -1;
-  if (lseek(fd, 0, SEEK_SET) < 0) return -1;
   return 0;
 }
 
@@ -747,6 +752,11 @@ int main(int argc, char **argv) {
     fprintf(stderr, "[thin] memfd node failed\\n");
     return 27;
   }
+  node_fd = ensure_fd_min(node_fd, 10);
+  if (node_fd < 0) {
+    fprintf(stderr, "[thin] memfd node failed\\n");
+    return 27;
+  }
   int rc = decode_container(rt_fd, rt_src_off, rt_src_len, node_fd);
   if (rc != 0) {
     fprintf(stderr, "[thin] decode runtime failed (%d)\\n", rc);
@@ -755,6 +765,11 @@ int main(int argc, char **argv) {
   if (lseek(node_fd, 0, SEEK_SET) < 0) return 26;
 
   int bundle_fd = make_memfd("seal-bundle");
+  if (bundle_fd < 0) {
+    fprintf(stderr, "[thin] memfd bundle failed\\n");
+    return 29;
+  }
+  bundle_fd = ensure_fd_min(bundle_fd, 10);
   if (bundle_fd < 0) {
     fprintf(stderr, "[thin] memfd bundle failed\\n");
     return 29;
@@ -769,29 +784,24 @@ int main(int argc, char **argv) {
   if (rt_file_fd >= 0) close(rt_file_fd);
   if (pl_file_fd >= 0) close(pl_file_fd);
 
-  int boot_fd = make_memfd("seal-bootstrap");
-  if (boot_fd < 0) {
-    fprintf(stderr, "[thin] memfd bootstrap failed\\n");
-    return 31;
+  if (bundle_fd != 4) {
+    if (dup2(bundle_fd, 4) < 0) {
+      fprintf(stderr, "[thin] dup2 failed\\n");
+      return 33;
+    }
+    close(bundle_fd);
   }
-  if (write_bootstrap(boot_fd) != 0) {
-    fprintf(stderr, "[thin] bootstrap write failed\\n");
-    return 32;
-  }
-
-  if (dup2(boot_fd, 3) < 0 || dup2(bundle_fd, 4) < 0) {
+  if (set_no_cloexec(4) < 0) {
     fprintf(stderr, "[thin] dup2 failed\\n");
     return 33;
   }
-  set_no_cloexec(3);
-  set_no_cloexec(4);
 
   setenv("SEAL_BUNDLE_FD", "4", 1);
   set_virtual_entry(root);
   harden_env();
   harden_limits();
 
-  char *exec_argv[] = { (char *)"node", (char *)"/proc/self/fd/3", NULL };
+  char *exec_argv[] = { (char *)"node", (char *)"-e", (char *)BOOTSTRAP_JS, NULL };
   fexecve(node_fd, exec_argv, environ);
   fprintf(stderr, "[thin] exec failed: %s\\n", strerror(errno));
   return 34;
