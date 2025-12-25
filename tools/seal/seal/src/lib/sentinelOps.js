@@ -152,8 +152,11 @@ function extractUsbMounts(lsblk) {
   }
   const out = [];
   for (const row of rows) {
-    const mountpoint = row.mountpoint || row.mountpoints || "";
-    if (!mountpoint) continue;
+    const mountpointsRaw = row.mountpoint !== undefined ? row.mountpoint : row.mountpoints;
+    const mountpoints = Array.isArray(mountpointsRaw)
+      ? mountpointsRaw
+      : (mountpointsRaw ? [mountpointsRaw] : []);
+    if (!mountpoints.length) continue;
     const tran = (row.tran || row.parent && row.parent.tran || "").toLowerCase();
     const rm = row.rm !== undefined ? String(row.rm) : (row.parent && row.parent.rm !== undefined ? String(row.parent.rm) : "");
     const isUsb = tran === "usb";
@@ -161,7 +164,8 @@ function extractUsbMounts(lsblk) {
     if (!isUsb && !isRemovable) continue;
     out.push({
       name: row.name || "",
-      mountpoint: Array.isArray(mountpoint) ? mountpoint.join(",") : mountpoint,
+      mountpoint: mountpoints.join(","),
+      mountpoints,
       tran,
       rm,
       type: row.type || "",
@@ -823,6 +827,7 @@ function probeSentinelSsh({ targetCfg, sentinelCfg }) {
 
 function inspectSentinelSsh({ targetCfg, sentinelCfg }) {
   const { user, host } = sshUserHost(targetCfg);
+  const { user: serviceUser, group: serviceGroup } = serviceUserGroup(targetCfg, user);
   const extCfg = (sentinelCfg && sentinelCfg.externalAnchor) ? sentinelCfg.externalAnchor : {};
   const extType = String(extCfg.type || "none").toLowerCase();
   const extFilePath = extType === "file" && extCfg.file && extCfg.file.path ? String(extCfg.file.path) : "";
@@ -831,6 +836,61 @@ function inspectSentinelSsh({ targetCfg, sentinelCfg }) {
   const baseDir = sentinelCfg && sentinelCfg.storage && sentinelCfg.storage.baseDir ? String(sentinelCfg.storage.baseDir) : "";
   const script = `
 set -euo pipefail
+MID="$(cat /etc/machine-id 2>/dev/null || true)"
+PUID="$(cat /sys/class/dmi/id/product_uuid 2>/dev/null || true)"
+CPU_VENDOR="$(awk -F: '/^vendor_id[[:space:]]*:/ {gsub(/^[ \\t]+|[ \\t]+$/, "", $2); print $2; exit}' /proc/cpuinfo 2>/dev/null || true)"
+CPU_FAMILY="$(awk -F: '/^cpu family[[:space:]]*:/ {gsub(/^[ \\t]+|[ \\t]+$/, "", $2); print $2; exit}' /proc/cpuinfo 2>/dev/null || true)"
+CPU_MODEL="$(awk -F: '/^model[[:space:]]*:/ {gsub(/^[ \\t]+|[ \\t]+$/, "", $2); print $2; exit}' /proc/cpuinfo 2>/dev/null || true)"
+CPU_STEP="$(awk -F: '/^stepping[[:space:]]*:/ {gsub(/^[ \\t]+|[ \\t]+$/, "", $2); print $2; exit}' /proc/cpuinfo 2>/dev/null || true)"
+CPUID=""
+if [ -n "$CPU_VENDOR$CPU_FAMILY$CPU_MODEL$CPU_STEP" ]; then
+  CPUID="$(echo "$CPU_VENDOR:$CPU_FAMILY:$CPU_MODEL:$CPU_STEP" | tr 'A-Z' 'a-z')"
+fi
+LINE="$(awk '$5=="/" {print; exit}' /proc/self/mountinfo)"
+MAJMIN=""
+FSTYPE=""
+if [ -n "$LINE" ]; then
+  MAJMIN="$(echo "$LINE" | awk '{print $3}')"
+  FSTYPE="$(echo "$LINE" | awk '{for (i=1;i<=NF;i++) if ($i=="-"){print $(i+1); exit}}')"
+fi
+RID=""
+if [ -n "$MAJMIN" ]; then
+  for f in /dev/disk/by-uuid/*; do
+    [ -e "$f" ] || break
+    mm_hex="$(stat -Lc '%t:%T' "$f" 2>/dev/null || true)"
+    if [ -n "$mm_hex" ]; then
+      maj=$((0x\${mm_hex%%:*}))
+      min=$((0x\${mm_hex##*:}))
+      if [ "$maj:$min" = "$MAJMIN" ]; then
+        RID="uuid:$(basename "$f")"
+        break
+      fi
+    fi
+  done
+  if [ -z "$RID" ]; then
+    for f in /dev/disk/by-partuuid/*; do
+      [ -e "$f" ] || break
+      mm_hex="$(stat -Lc '%t:%T' "$f" 2>/dev/null || true)"
+      if [ -n "$mm_hex" ]; then
+        maj=$((0x\${mm_hex%%:*}))
+        min=$((0x\${mm_hex##*:}))
+        if [ "$maj:$min" = "$MAJMIN" ]; then
+          RID="partuuid:$(basename "$f")"
+          break
+        fi
+      fi
+    done
+  fi
+  if [ -z "$RID" ]; then
+    RID="dev:$MAJMIN"
+  fi
+fi
+echo "MID=$MID"
+echo "RID=$RID"
+echo "FSTYPE=$FSTYPE"
+echo "PUID=$PUID"
+echo "CPUID=$CPUID"
+
 BASE64_OK=0
 if command -v base64 >/dev/null 2>&1; then
   BASE64_OK=1
@@ -842,6 +902,36 @@ EXT_FILE_PATH=${shQuote(extFilePath)}
 EXT_LEASE_URL=${shQuote(extLeaseUrl)}
 EXT_LEASE_TIMEOUT_MS=${shQuote(Number.isFinite(extLeaseTimeoutMs) ? String(extLeaseTimeoutMs) : "1500")}
 BASE_DIR=${shQuote(baseDir)}
+SVC_USER=${shQuote(serviceUser)}
+SVC_GROUP=${shQuote(serviceGroup)}
+
+BASE_EXISTS=0
+BASE_SYMLINK=0
+BASE_STAT=""
+BASE_EXEC=0
+if [ -n "$BASE_DIR" ] && [ -d "$BASE_DIR" ]; then
+  BASE_EXISTS=1
+  if [ -L "$BASE_DIR" ]; then
+    BASE_SYMLINK=1
+  fi
+  BASE_STAT="$(stat -Lc '%u %g %a' "$BASE_DIR" 2>/dev/null || true)"
+  BASE_EXEC=1
+  if [ "$SVC_USER" != "root" ]; then
+    if command -v sudo >/dev/null 2>&1; then
+      if sudo -n -u "$SVC_USER" test -x "$BASE_DIR"; then
+        BASE_EXEC=1
+      else
+        BASE_EXEC=0
+      fi
+    else
+      BASE_EXEC=0
+    fi
+  fi
+fi
+echo "BASE_EXISTS=$BASE_EXISTS"
+echo "BASE_SYMLINK=$BASE_SYMLINK"
+echo "BASE_STAT=$BASE_STAT"
+echo "BASE_EXEC=$BASE_EXEC"
 
 if [ "$BASE64_OK" = "1" ]; then
   b64() { base64 | tr -d '\\r\\n'; }
@@ -1144,7 +1234,13 @@ echo "TPM_TOOL=$TPM_TOOL"
     note: kv.XATTR_NOTE || null,
   };
 
-  const hostInfo = getHostInfoSsh(targetCfg);
+  const hostInfo = {
+    mid: kv.MID || "",
+    rid: kv.RID || "",
+    fstype: kv.FSTYPE || "",
+    puid: kv.PUID || "",
+    cpuidProc: kv.CPUID || "",
+  };
   let cpuIdAsm = { available: false, unsupported: false };
   try {
     const resAsm = getCpuIdAsmSsh(targetCfg, { allowUnsupported: true });
@@ -1155,7 +1251,20 @@ echo "TPM_TOOL=$TPM_TOOL"
 
   let base = null;
   if (sentinelCfg && sentinelCfg.storage && sentinelCfg.storage.baseDir) {
-    base = probeBaseDirSsh(targetCfg, sentinelCfg);
+    const statParts = (kv.BASE_STAT || "").split(/\s+/);
+    const uid = statParts[0] ? Number(statParts[0]) : null;
+    const gid = statParts[1] ? Number(statParts[1]) : null;
+    const mode = statParts[2] ? String(statParts[2]) : null;
+    base = {
+      exists: kv.BASE_EXISTS !== "0",
+      isSymlink: kv.BASE_SYMLINK === "1",
+      uid,
+      gid,
+      mode,
+      execOk: kv.BASE_EXEC !== "0",
+      serviceUser,
+      serviceGroup,
+    };
   }
 
   const externalAnchor = { type: extType, configured: extType !== "none" };
@@ -1182,7 +1291,12 @@ echo "TPM_TOOL=$TPM_TOOL"
     const parts = stat.split(/\s+/);
     const mount = extFilePath ? findMountForPath(mounts, extFilePath) : null;
     const hostShare = !!(mount && extractHostShares([mount]).length);
-    const usbMount = !!(usbMounts && usbMounts.find((m) => m.mountpoint && mount && m.mountpoint === mount.mountpoint));
+    const usbMount = !!(usbMounts && mount && usbMounts.find((m) => {
+      const points = Array.isArray(m.mountpoints)
+        ? m.mountpoints
+        : (m.mountpoint ? String(m.mountpoint).split(",").map((s) => s.trim()).filter(Boolean) : []);
+      return points.includes(mount.mountpoint);
+    }));
     externalAnchor.file = {
       path: extFilePath,
       exists: kv.EXT_FILE_EXISTS === "1",
