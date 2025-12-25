@@ -131,6 +131,21 @@ seal --help
 
 ---
 
+## Batch dla wielu projektów (monorepo)
+
+Jeśli masz wiele projektów z `seal-config/` pod wspólnym folderem, możesz wykonać komendę dla wszystkich:
+
+```bash
+seal batch deploy prod --root klienci/nowy-styl
+```
+
+Opcje:
+- `--filter <text>` – ogranicz listę po ścieżce/nazwie aplikacji
+- `--dry-run` – tylko wypisz listę projektów
+- `--keep-going` – kontynuuj mimo błędów
+
+---
+
 ## Frontend obfuskacja (domyślnie włączona)
 
 Podczas `seal release` SEAL **obfuskuje również pliki frontendu** w `public/*.js` (np. `public/app.js`).

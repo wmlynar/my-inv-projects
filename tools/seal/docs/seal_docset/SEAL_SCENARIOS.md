@@ -208,6 +208,20 @@ seal deploy robot-01 robot-02 robot-03
 
 ---
 
+## S17b) Deploy na wiele projektów (monorepo)
+**Cel:** jedna komenda dla wielu projektów pod wspólnym folderem.
+
+```bash
+seal batch deploy prod --root klienci/nowy-styl
+```
+
+Przydatne opcje:
+- `--filter <text>` – ogranicz listę po ścieżce/nazwie aplikacji
+- `--dry-run` – tylko wypisz listę projektów
+- `--keep-going` – kontynuuj mimo błędów
+
+---
+
 ## S18) Diagnostyka po awarii
 **Cel:** gdy coś padło, mieć komplet materiału do analizy.
 

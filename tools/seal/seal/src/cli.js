@@ -6,6 +6,7 @@ const { wizard } = require("./commands/wizard");
 const { cmdInit } = require("./commands/init");
 const { cmdExplain } = require("./commands/explain");
 const { cmdCheck } = require("./commands/check");
+const { cmdBatch } = require("./commands/batch");
 const { cmdRelease } = require("./commands/release");
 const { cmdVerify } = require("./commands/verify");
 const { cmdRunLocal } = require("./commands/runLocal");
@@ -99,6 +100,18 @@ async function main(argv) {
     .argument("[artifactOrTarget]", "Artifact path (.tgz) or target name (defaults to last artifact)", null)
     .option("--explain", "Print a readable checklist", false)
     .action(async (arg, opts) => cmdVerify(process.cwd(), arg, opts));
+
+  program
+    .command("batch")
+    .description("Run a seal command across multiple projects under a root folder")
+    .argument("<cmd>", "Seal command to run (e.g. release|deploy|ship|status)")
+    .argument("[args...]", "Arguments passed to the command")
+    .option("--root <dir>", "Root directory to scan (default: cwd)", ".")
+    .option("--depth <n>", "Max scan depth (default: 4)", "4")
+    .option("--filter <text>", "Only include projects whose path/appName matches", null)
+    .option("--dry-run", "Only list projects, do not run command", false)
+    .option("--keep-going", "Continue even if a project fails", false)
+    .action(async (cmd, args, opts) => cmdBatch(process.cwd(), cmd, args, opts));
 
   program
     .command("deploy")
