@@ -219,6 +219,12 @@
   - Wymaganie: `flock` w `<opaque_dir>` + `umask 077` + `fsync` pliku i katalogu przed/po rename.
   - Wymaganie: tmp na serwerze ma losowy sufiks (unikaj kolizji).
 
+- Blad: instalacja sentinela zostawiala pliki tymczasowe po bledzie (np. `$FILE.tmp` lub zdalny blob w `/tmp`).
+  - Wymaganie: cleanup na `EXIT` usuwa tmp na serwerze i lokalne `.tmp` (bez wyciekow po awarii).
+
+- Blad: brak `flock` na hoście dawal nieczytelny error (np. `flock: not found`).
+  - Wymaganie: jawny check `command -v flock` z czytelnym komunikatem i kodem bledu.
+
 ## CLI / UX spojnosci
 
 - Blad: niespojne nazwy/semantyka komend (np. stop/disable).

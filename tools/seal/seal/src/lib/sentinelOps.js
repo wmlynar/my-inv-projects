@@ -231,6 +231,11 @@ SVC_GROUP=${shQuote(serviceGroup)}
 INSECURE=${shQuote(insecure ? "1" : "0")}
 FORCE=${shQuote(force ? "1" : "0")}
 
+cleanup() {
+  rm -f "$TMP" "$FILE.tmp"
+}
+trap cleanup EXIT
+
 fsync_path() {
   path="$1"
   if command -v python3 >/dev/null 2>&1; then
@@ -305,6 +310,10 @@ mkdir -p "$DIR"
 chown root:"$SVC_GROUP" "$DIR"
 chmod 0710 "$DIR"
 
+if ! command -v flock >/dev/null 2>&1; then
+  echo "__SEAL_LOCK_MISSING__"
+  exit 4
+fi
 LOCK="$DIR/.l"
 exec 9>"$LOCK"
 chmod 0600 "$LOCK" || true
@@ -315,11 +324,9 @@ fi
 
 if [ -f "$FILE" ] && [ "$FORCE" != "1" ]; then
   if cmp -s "$FILE" "$TMP"; then
-    rm -f "$TMP"
     echo "__SEAL_SENTINEL_OK__"
     exit 0
   fi
-  rm -f "$TMP"
   echo "__SEAL_SENTINEL_MISMATCH__"
   exit 3
 fi
@@ -330,7 +337,6 @@ chmod 0640 "$FILE.tmp"
 fsync_path "$FILE.tmp"
 mv "$FILE.tmp" "$FILE"
 fsync_path "$DIR"
-rm -f "$TMP"
 echo "__SEAL_SENTINEL_INSTALLED__"
 `;
   const script = sudo ? `${sudo} bash -lc ${shQuote(rootScript)}` : rootScript;
@@ -453,6 +459,11 @@ PY
 if [ ! -d "$DIR" ]; then
   echo "__SEAL_SENTINEL_REMOVED__"
   exit 0
+fi
+
+if ! command -v flock >/dev/null 2>&1; then
+  echo "__SEAL_LOCK_MISSING__"
+  exit 4
 fi
 
 LOCK="$DIR/.l"
