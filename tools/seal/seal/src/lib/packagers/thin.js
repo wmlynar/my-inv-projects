@@ -1009,17 +1009,20 @@ static int sentinel_check(void) {
     if (SENTINEL_CPUID_MODE == 1) {
       char cpuid_proc[128] = { 0 };
       if (get_cpuid_proc(cpuid_proc, sizeof(cpuid_proc)) != 0) return -1;
-      if (snprintf(cpuid, sizeof(cpuid), "proc:%s", cpuid_proc) < 0) return -1;
+      int n = snprintf(cpuid, sizeof(cpuid), "proc:%s", cpuid_proc);
+      if (n < 0 || (size_t)n >= sizeof(cpuid)) return -1;
     } else if (SENTINEL_CPUID_MODE == 2) {
       char cpuid_asm[128] = { 0 };
       if (get_cpuid_asm(cpuid_asm, sizeof(cpuid_asm)) != 0) return -1;
-      if (snprintf(cpuid, sizeof(cpuid), "asm:%s", cpuid_asm) < 0) return -1;
+      int n = snprintf(cpuid, sizeof(cpuid), "asm:%s", cpuid_asm);
+      if (n < 0 || (size_t)n >= sizeof(cpuid)) return -1;
     } else if (SENTINEL_CPUID_MODE == 3) {
       char cpuid_proc[128] = { 0 };
       char cpuid_asm[128] = { 0 };
       if (get_cpuid_proc(cpuid_proc, sizeof(cpuid_proc)) != 0) return -1;
       if (get_cpuid_asm(cpuid_asm, sizeof(cpuid_asm)) != 0) return -1;
-      if (snprintf(cpuid, sizeof(cpuid), "proc:%s|asm:%s", cpuid_proc, cpuid_asm) < 0) return -1;
+      int n = snprintf(cpuid, sizeof(cpuid), "proc:%s|asm:%s", cpuid_proc, cpuid_asm);
+      if (n < 0 || (size_t)n >= sizeof(cpuid)) return -1;
     } else {
       return -1;
     }
