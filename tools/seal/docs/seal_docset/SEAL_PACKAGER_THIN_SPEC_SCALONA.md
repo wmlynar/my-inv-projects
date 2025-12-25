@@ -303,7 +303,7 @@ Propozycja UX (opcjonalnie, ale spójne ze źródłami):
 - `seal rollback` przywraca `r/pl.prev` → `r/pl` i restartuje usługę.
 
 Lock (opcjonalnie / SHOULD):
-- `<installDir>/.seal/deploy.lock` — drugi deploy czeka albo failuje.
+- `<installDir>/seal-thin/deploy.lock` — drugi deploy czeka albo failuje.
 
 ### 6.3 Algorytm `seal ship --packager thin` (BOOTSTRAP) — propozycja
 1) Ensure directories: `<installDir>/b`, `<installDir>/r`, `<installDir>/shared` (+ `var`/`data` jeśli używane).
@@ -592,12 +592,15 @@ W BOOTSTRAP launcher jest stały. Payloady muszą być kodowane tym samym “kod
   - `codec_id` (u64 lub u32 zależnie od profilu),
   - parametry kodeka (seedy/tablice),
   - identyfikator runtime Node (`runtime_id`/`node_runtime_id`).
-- SEAL zapisuje stan kodeka lokalnie per target/env (przykładowe ścieżki z różnych źródeł; do ujednolicenia implementacyjnie):
-  - `~/.cache/seal/thin/<target>/codec.json`
-  - `seal-out/cache/thin/<target>/codec_state.bin`
-  - `.seal/cache/thin/<target>/codec_state.json`
+- SEAL zapisuje stan kodeka lokalnie per target/env:
+  - `seal-thin/cache/<target>/codec_state.json`
+- Na target (BOOTSTRAP) zapisuje się też metadane zgodności kodeka **w formie binarnej i nieopisowej**:
+  - `<installDir>/r/c`
+  - w release: `<release>/r/c`
 
-**Wymóg praktyczny:** `codec_state` musi przetrwać między deployami (dodaj `.seal/` do `.gitignore`).
+**Wymóg praktyczny:** na serwerze **nie zapisujemy** metadanych w formie czytelnej (JSON). Wszystko co trafia na target powinno być binarne/obfuskowane.
+
+**Wymóg praktyczny:** `codec_state` musi przetrwać między deployami (dodaj `seal-thin/` do `.gitignore`).
 
 ### 10.3 Recovery gdy cache zniknie (MUST)
 Jeśli brak `codec_state` lokalnie:
@@ -610,6 +613,10 @@ Launcher podczas startu porównuje:
 - `footer.codec_id` payloadu vs swój zaszyty `codec_id`,
 - `footer.format_version` vs obsługiwana wersja,
 - opcjonalnie `runtime_id`/`node_runtime_id` (gdy runtime jest osobnym plikiem).
+
+Payload-only (BOOTSTRAP) MUSI sprawdzić zgodność `codec_hash`:
+- `release/r/c` vs `<installDir>/r/c`,
+- jeśli brak albo mismatch → **fallback do pełnego bootstrap**.
 
 Przy mismatch:
 - launcher kończy się stabilnym kodem błędu (patrz §12),

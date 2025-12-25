@@ -11,7 +11,24 @@ function shellQuote(value) {
   return "'" + str.replace(/'/g, "'\\''") + "'";
 }
 
-function sshExec({ user, host, args, stdin = null, stdio = "inherit", tty = false }) {
+function normalizeStrictHostKeyChecking(value) {
+  if (value === undefined || value === null || value === "") return "accept-new";
+  if (typeof value === "boolean") return value ? "yes" : "no";
+  const v = String(value).toLowerCase();
+  if (["accept-new", "yes", "no", "ask"].includes(v)) return v;
+  return "accept-new";
+}
+
+function normalizeSshPort(value) {
+  if (value === undefined || value === null || value === "") return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  const port = Math.trunc(n);
+  if (port < 1 || port > 65535) return null;
+  return port;
+}
+
+function sshExec({ user, host, args, stdin = null, stdio = "inherit", tty = false, strictHostKeyChecking, sshPort }) {
   const target = sshTarget(user, host);
   let finalArgs = args || [];
   if (Array.isArray(args) && args[0] === "bash" && args[1] === "-lc" && args.length >= 3) {
@@ -21,7 +38,11 @@ function sshExec({ user, host, args, stdin = null, stdio = "inherit", tty = fals
   }
   const baseArgs = [];
   if (tty) baseArgs.push("-tt");
-  baseArgs.push("-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", target);
+  const strict = normalizeStrictHostKeyChecking(strictHostKeyChecking);
+  const port = normalizeSshPort(sshPort);
+  baseArgs.push("-o", "BatchMode=yes", "-o", `StrictHostKeyChecking=${strict}`);
+  if (port) baseArgs.push("-p", String(port));
+  baseArgs.push(target);
   const sshArgs = baseArgs.concat(finalArgs);
 
   // For capturing output, use stdio=pipe
@@ -29,16 +50,26 @@ function sshExec({ user, host, args, stdin = null, stdio = "inherit", tty = fals
   return res;
 }
 
-function scpTo({ user, host, localPath, remotePath }) {
+function scpTo({ user, host, localPath, remotePath, strictHostKeyChecking, sshPort }) {
   const target = sshTarget(user, host);
-  const res = spawnSyncSafe("scp", ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", localPath, `${target}:${remotePath}`], { stdio: "inherit" });
+  const strict = normalizeStrictHostKeyChecking(strictHostKeyChecking);
+  const port = normalizeSshPort(sshPort);
+  const args = ["-o", "BatchMode=yes", "-o", `StrictHostKeyChecking=${strict}`];
+  if (port) args.push("-P", String(port));
+  args.push(localPath, `${target}:${remotePath}`);
+  const res = spawnSyncSafe("scp", args, { stdio: "inherit" });
   return res;
 }
 
-function scpFrom({ user, host, remotePath, localPath }) {
+function scpFrom({ user, host, remotePath, localPath, strictHostKeyChecking, sshPort }) {
   const target = sshTarget(user, host);
-  const res = spawnSyncSafe("scp", ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", `${target}:${remotePath}`, localPath], { stdio: "inherit" });
+  const strict = normalizeStrictHostKeyChecking(strictHostKeyChecking);
+  const port = normalizeSshPort(sshPort);
+  const args = ["-o", "BatchMode=yes", "-o", `StrictHostKeyChecking=${strict}`];
+  if (port) args.push("-P", String(port));
+  args.push(`${target}:${remotePath}`, localPath);
+  const res = spawnSyncSafe("scp", args, { stdio: "inherit" });
   return res;
 }
 
-module.exports = { sshExec, scpTo, scpFrom };
+module.exports = { sshExec, scpTo, scpFrom, normalizeStrictHostKeyChecking, normalizeSshPort };

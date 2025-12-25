@@ -14,6 +14,10 @@ const THIN_FOOTER_LEN = 32;
 const THIN_AIO_FOOTER_LEN = 64;
 const THIN_INDEX_ENTRY_LEN = 24;
 const THIN_CHUNK_SIZE = 64 * 1024;
+const CODEC_BIN_MAGIC = Buffer.from("SLCB");
+const CODEC_BIN_VERSION = 1;
+const CODEC_BIN_HASH_LEN = 32;
+const CODEC_BIN_LEN = 4 + 1 + 1 + 2 + CODEC_BIN_HASH_LEN;
 const THIN_LEVELS = {
   low: { chunkSize: 2 * 1024 * 1024, zstdLevel: 1 },
   high: { chunkSize: 64 * 1024, zstdLevel: 3 },
@@ -36,7 +40,7 @@ function normalizeTargetName(name) {
 
 function getCodecCachePath(projectRoot, targetName) {
   const safe = normalizeTargetName(targetName);
-  return path.join(projectRoot, ".seal", "cache", "thin", safe, "codec_state.json");
+  return path.join(projectRoot, "seal-thin", "cache", safe, "codec_state.json");
 }
 
 function loadCodecState(projectRoot, targetName) {
@@ -62,6 +66,30 @@ function saveCodecState(projectRoot, targetName, state) {
   const p = getCodecCachePath(projectRoot, targetName);
   ensureDir(path.dirname(p));
   fs.writeFileSync(p, JSON.stringify(state, null, 2) + "\n", "utf-8");
+}
+
+function writeCodecBin(dir, codecState) {
+  const meta = {
+    version: THIN_VERSION,
+    codecId: codecState.codecId,
+    seed: codecState.seed,
+    rot: codecState.rot,
+    add: codecState.add,
+    indexNonce: codecState.indexNonce,
+    footerNonce: codecState.footerNonce,
+    aioFooterNonce: codecState.aioFooterNonce,
+  };
+  const metaJson = JSON.stringify(meta);
+  const codecHash = crypto.createHash("sha256").update(metaJson).digest();
+  const buf = Buffer.alloc(CODEC_BIN_LEN);
+  CODEC_BIN_MAGIC.copy(buf, 0);
+  buf[4] = CODEC_BIN_VERSION;
+  buf[5] = CODEC_BIN_HASH_LEN;
+  buf.writeUInt16BE(0, 6);
+  codecHash.copy(buf, 8);
+  ensureDir(dir);
+  fs.writeFileSync(path.join(dir, "c"), buf);
+  return codecHash.toString("hex");
 }
 
 function hasCommand(cmd) {
@@ -1223,6 +1251,7 @@ async function packThin({ stageDir, releaseDir, appName, obfPath, mode, level, c
       ensureDir(rDir);
       fs.writeFileSync(path.join(rDir, "rt"), runtimeContainer);
       fs.writeFileSync(path.join(rDir, "pl"), payloadContainer);
+      writeCodecBin(rDir, codecState);
 
       const wrapper = `#!/bin/bash
 set -euo pipefail
@@ -1255,6 +1284,7 @@ exec "$DIR/b/a" "$@"
     fs.appendFileSync(outBin, runtimeContainer);
     fs.appendFileSync(outBin, payloadContainer);
     fs.appendFileSync(outBin, aioFooter);
+    writeCodecBin(releaseDir, codecState);
 
     return { ok: true, codecId: codecState.codecId };
   } catch (e) {

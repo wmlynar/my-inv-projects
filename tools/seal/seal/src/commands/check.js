@@ -74,7 +74,7 @@ else
 fi
 exit 0
 `];
-  const res = sshExec({ user, host, args: cmd, stdio: "pipe" });
+  const res = sshExec({ user, host, args: cmd, stdio: "pipe", strictHostKeyChecking: targetCfg.sshStrictHostKeyChecking, sshPort: targetCfg.sshPort });
   return { res, layout, user, host };
 }
 
@@ -156,14 +156,16 @@ async function cmdCheck(cwd, targetArg, opts) {
           }
 
           if (missingDir || notWritable || notWritableReleases || notWritableShared) {
-            const line = `Manual: ssh -t ${user}@${host} "sudo mkdir -p ${shQuote(layout.releasesDir)} ${shQuote(layout.sharedDir)} && sudo chown -R ${shQuote(`${user}:${user}`)} ${shQuote(layout.installDir)}"`;
+            const port = Number(targetCfg.sshPort);
+            const portFlag = Number.isFinite(port) && port > 0 ? `-p ${Math.trunc(port)} ` : "";
+            const line = `Manual: ssh -t ${portFlag}${user}@${host} "sudo mkdir -p ${shQuote(layout.releasesDir)} ${shQuote(layout.sharedDir)} && sudo chown -R ${shQuote(`${user}:${user}`)} ${shQuote(layout.installDir)}"`;
             if (notWritable || notWritableReleases || notWritableShared) errors.push(line);
             else warnings.push(line);
           } else if (missingRunner || missingUnit) {
             warnings.push("Service files missing; bootstrap installs runner + unit after the first deploy.");
           }
 
-          const sudoCheck = sshExec({ user, host, args: ["bash", "-lc", "sudo -n true"], stdio: "pipe" });
+          const sudoCheck = sshExec({ user, host, args: ["bash", "-lc", "sudo -n true"], stdio: "pipe", strictHostKeyChecking: targetCfg.sshStrictHostKeyChecking, sshPort: targetCfg.sshPort });
           if (!sudoCheck.ok) {
             const sudoOut = `${sudoCheck.stdout}\n${sudoCheck.stderr}`.trim();
             const sudoLine = sudoOut.split(/\r?\n/).slice(0, 2).join(" | ");
@@ -171,7 +173,7 @@ async function cmdCheck(cwd, targetArg, opts) {
           }
         } else if (hasOk) {
           ok(`SSH preflight OK: ${user}@${host} (${layout.installDir} writable)`);
-          const sudoCheck = sshExec({ user, host, args: ["bash", "-lc", "sudo -n true"], stdio: "pipe" });
+          const sudoCheck = sshExec({ user, host, args: ["bash", "-lc", "sudo -n true"], stdio: "pipe", strictHostKeyChecking: targetCfg.sshStrictHostKeyChecking, sshPort: targetCfg.sshPort });
           if (!sudoCheck.ok) {
             const sudoOut = `${sudoCheck.stdout}\n${sudoCheck.stderr}`.trim();
             const sudoLine = sudoOut.split(/\r?\n/).slice(0, 2).join(" | ");

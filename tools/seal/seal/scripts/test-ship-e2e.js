@@ -79,7 +79,7 @@ function shellQuote(str) {
 }
 
 async function shipOnce(targetCfg, opts) {
-  await cmdShip(EXAMPLE_ROOT, "prod", opts);
+  await cmdShip(EXAMPLE_ROOT, targetCfg.target, opts);
   if (targetCfg.kind === "ssh") {
     return;
   }
@@ -89,10 +89,11 @@ async function shipOnce(targetCfg, opts) {
 
 async function testShipThinAio() {
   log("Testing seal ship prod (thin AIO)...");
+  const targetName = `ship-e2e-aio-${Date.now()}-${process.pid}`;
   const serviceName = `seal-example-ship-aio-${Date.now()}`;
   const installDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-ship-aio-"));
   const targetCfg = {
-    target: "prod",
+    target: targetName,
     kind: "local",
     host: "127.0.0.1",
     user: "local",
@@ -104,9 +105,9 @@ async function testShipThinAio() {
     config: "prod",
   };
 
-  const targetPath = path.join(EXAMPLE_ROOT, "seal-config", "targets", "prod.json5");
+  const targetPath = path.join(EXAMPLE_ROOT, "seal-config", "targets", `${targetName}.json5`);
   const backup = readFileMaybe(targetPath);
-  writeTargetConfig("prod", targetCfg);
+  writeTargetConfig(targetName, targetCfg);
 
   try {
     await shipOnce(targetCfg, { bootstrap: true, pushConfig: true, skipCheck: true, packager: "thin" });
@@ -120,16 +121,17 @@ async function testShipThinAio() {
     } catch {
       cleanupServiceArtifacts(targetCfg);
     }
-    cleanupTargetConfig("prod", backup);
+    cleanupTargetConfig(targetName, backup);
   }
 }
 
 async function testShipThinBootstrapReuse() {
   log("Testing seal ship prod (thin BOOTSTRAP reuse)...");
+  const targetName = `ship-e2e-boot-${Date.now()}-${process.pid}`;
   const serviceName = `seal-example-ship-boot-${Date.now()}`;
   const installDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-ship-boot-"));
   const targetCfg = {
-    target: "prod",
+    target: targetName,
     kind: "local",
     host: "127.0.0.1",
     user: "local",
@@ -141,9 +143,9 @@ async function testShipThinBootstrapReuse() {
     config: "prod",
   };
 
-  const targetPath = path.join(EXAMPLE_ROOT, "seal-config", "targets", "prod.json5");
+  const targetPath = path.join(EXAMPLE_ROOT, "seal-config", "targets", `${targetName}.json5`);
   const backup = readFileMaybe(targetPath);
-  writeTargetConfig("prod", targetCfg);
+  writeTargetConfig(targetName, targetCfg);
 
   try {
     await shipOnce(targetCfg, { bootstrap: true, pushConfig: true, skipCheck: true, packager: "thin" });
@@ -170,7 +172,7 @@ async function testShipThinBootstrapReuse() {
     } catch {
       cleanupServiceArtifacts(targetCfg);
     }
-    cleanupTargetConfig("prod", backup);
+    cleanupTargetConfig(targetName, backup);
   }
 }
 
@@ -201,8 +203,9 @@ async function testShipThinBootstrapSsh() {
   }
 
   log("Testing seal ship prod (thin BOOTSTRAP over SSH, payload-only)...");
+  const targetName = `ship-e2e-ssh-${Date.now()}-${process.pid}`;
   const targetCfg = {
-    target: "prod",
+    target: targetName,
     kind: "ssh",
     host,
     user,
@@ -214,9 +217,9 @@ async function testShipThinBootstrapSsh() {
     config: "prod",
   };
 
-  const targetPath = path.join(EXAMPLE_ROOT, "seal-config", "targets", "prod.json5");
+  const targetPath = path.join(EXAMPLE_ROOT, "seal-config", "targets", `${targetName}.json5`);
   const backup = readFileMaybe(targetPath);
-  writeTargetConfig("prod", targetCfg);
+  writeTargetConfig(targetName, targetCfg);
 
   try {
     await shipOnce(targetCfg, { bootstrap: true, pushConfig: true, skipCheck: true, packager: "thin" });
@@ -243,7 +246,7 @@ async function testShipThinBootstrapSsh() {
         log(`WARN: SSH cleanup failed: ${e.message || e}`);
       }
     }
-    cleanupTargetConfig("prod", backup);
+    cleanupTargetConfig(targetName, backup);
   }
 }
 

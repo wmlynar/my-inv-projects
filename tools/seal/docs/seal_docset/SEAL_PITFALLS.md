@@ -56,9 +56,17 @@
   - Wymaganie: kompresja nie moze wisiec na `spawnSync` z `stdin` (uzyj streamu i obslugi `error`).
 
 - Blad: `codec_state` ginal miedzy deployami (brak zgodnosci kodeka).
-  - Wymaganie: `codec_state` musi byc zapisywany lokalnie i utrzymany (`.seal/cache/thin/<target>/codec_state.json`).
-  - Wymaganie: `.seal/` jest ignorowany w VCS.
+- Wymaganie: `codec_state` musi byc zapisywany lokalnie i utrzymany (`seal-thin/cache/<target>/codec_state.json`).
+- Wymaganie: `seal-thin/` jest ignorowany w VCS.
   - Wymaganie: brak `codec_state` = rebootstrap.
+
+- Blad: payload-only (BOOTSTRAP) nie sprawdzal zgodnosci kodeka z runtime na target.
+  - Wymaganie: `release/r/c` musi istniec i byc porownany z `<installDir>/r/c`.
+  - Wymaganie: mismatch lub brak `c` = **fallback do pelnego bootstrap**.
+
+- Blad: metadane kodeka byly zapisywane jako JSON na serwerze.
+  - Wymaganie: wszystko co trafia na target powinno byc binarne/obfuskowane (brak czytelnych JSON).
+  - Wymaganie: nazwy plikow na target nie powinny zdradzac roli (uzywaj krotszych/nijakich nazw, np. `c` zamiast `codec.bin`).
 
 - Blad: tryb FAST byl uruchamiany niejawnie lub zostawial niebezpieczne artefakty.
   - Wymaganie: FAST jest **jawny** (`--fast`) i zawsze ostrzega o ryzyku.
@@ -75,6 +83,13 @@
 
 - Blad: build wykonany na innej architekturze/OS niz target (AIO zawiera runtime z build machine).
   - Wymaganie: builduj na tej samej architekturze/OS co serwer docelowy lub uzywaj trybu BOOTSTRAP.
+
+- Blad: `seal uninstall` mogl usunac zbyt wysoki katalog (np. przez bledny `installDir`).
+  - Wymaganie: Seal odmawia `rm -rf` jesli `installDir` jest zbyt plytki lub jest katalogiem systemowym.
+  - Wymaganie: awaryjnie mozna ustawic `SEAL_ALLOW_UNSAFE_RM=1`, ale jest to **niebezpieczne**.
+
+- Blad: polityka SSH byla twardo ustawiona (sporne zachowanie bez opcji).
+  - Wymaganie: parametry sporne/ryzykowne (np. `StrictHostKeyChecking`) musza byc konfigurowalne per‑target.
 
 ## Testy / CI
 
@@ -113,6 +128,9 @@
 - Blad: stare releasy rosly bez limitu (brak cleanup).
   - Wymaganie: retention (np. ostatnie N release) + usuwanie starych katalogow.
   - Wymaganie: cleanup dotyczy takze `*-fast`.
+
+- Blad: `sshPort` w target config byl ignorowany (SSH/SCP/rsync uzywaly domyslnego portu).
+  - Wymaganie: `sshPort` musi byc uwzgledniany we wszystkich polaczeniach (ssh/scp/rsync).
 
 - Blad: `status` lapal przypadkowe procesy (np. edytor `nano appctl`) i mylil z running service.
   - Wymaganie: detekcja procesu musi byc precyzyjna (systemd lub filtr na faktyczna binarke/PID).

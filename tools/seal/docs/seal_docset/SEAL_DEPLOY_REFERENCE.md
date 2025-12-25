@@ -172,6 +172,8 @@ NOTES:
   host: "10.0.0.23",
   user: "robot",
   sshPort: 22,
+  // accept-new | yes | no | ask
+  sshStrictHostKeyChecking: "accept-new",
   installDir: "/home/admin/apps/my-app",
   serviceName: "my-app",
   serviceUser: "my-app",

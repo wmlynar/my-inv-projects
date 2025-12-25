@@ -64,6 +64,13 @@ Przykład:
 - Standard nie narzuca technologii UI (React/vanilla/etc.).
 - Standard nie gwarantuje „nie do złamania” bezpieczeństwa na wrogim hoście.
 
+### 1.3. Zasada decyzji niejednoznacznych
+- STD-010 (SHOULD): jeżeli zachowanie jest sporne/niejednoznaczne (trade‑off bezpieczeństwo vs wygoda), zrób z tego **jawny parametr/opcję** i opisz domyślną wartość.
+- STD-011 (SHOULD): domyślne ustawienie powinno być „bezpieczne”, a zmiana wymaga świadomej decyzji użytkownika.
+- STD-012 (SHOULD): wszelkie metadane trafiające na **target** powinny być w formie binarnej/obfuskowanej (nieczytelne dla człowieka). Jeśli potrzebujesz jawnych danych do debugowania, trzymaj je lokalnie po stronie builda.
+- STD-013 (SHOULD): nazwy plików na target nie powinny zdradzać roli/znaczenia; preferuj krótkie/nijakie nazwy (np. `c` zamiast `codec.bin`), o ile nie utrudnia to operacji serwisowych.
+- STD-014 (SHOULD): jeśli konfiguracja udostępnia opcję (np. `sshPort`, `StrictHostKeyChecking`), to **każda** ścieżka wykonania powinna ją respektować (ssh/scp/rsync); normalizację trzymaj w jednym miejscu, aby uniknąć rozjazdów.
+
 ---
 
 ## 2. Moduł `logging` (CORE, MUST)

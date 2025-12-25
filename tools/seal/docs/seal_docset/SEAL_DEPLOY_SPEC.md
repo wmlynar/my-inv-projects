@@ -542,6 +542,7 @@ Seal zapewnia szybkie komendy:
 ### 10.1. Deployment config (JSON5)
 Plik `seal-config/targets/<target>.json5` zawiera wyłącznie:
 - host, user, sshPort
+- sshStrictHostKeyChecking (opcjonalnie; domyślnie `accept-new`)
 - installDir
 - serviceName
 
@@ -625,6 +626,7 @@ Mechanizmy:
 ### 11.1. Założenia
 - Na serwerze nie ma zainstalowanego Seal.
 - Seal łączy się przez SSH.
+- SSH używa `StrictHostKeyChecking=accept-new` **celowo** (pierwsze połączenie akceptuje nowy host key). Możesz to zmienić per‑target przez `sshStrictHostKeyChecking` w `seal-config/targets/<target>.json5`.
 - Host jest offline, a wdrożenia są idempotentne.
 
 ### 11.2. Kiedy bootstrap jest potrzebny

@@ -24,6 +24,66 @@ function copyAtomic(src, dest, mode) {
   fs.renameSync(tmp, dest);
 }
 
+const CODEC_BIN_MAGIC = "SLCB";
+const CODEC_BIN_VERSION = 1;
+const CODEC_BIN_HASH_LEN = 32;
+const CODEC_BIN_LEN = 4 + 1 + 1 + 2 + CODEC_BIN_HASH_LEN;
+
+function readCodecHashFromBin(buf) {
+  if (!Buffer.isBuffer(buf) || buf.length < CODEC_BIN_LEN) return null;
+  if (buf.slice(0, 4).toString("ascii") !== CODEC_BIN_MAGIC) return null;
+  if (buf[4] !== CODEC_BIN_VERSION) return null;
+  if (buf[5] !== CODEC_BIN_HASH_LEN) return null;
+  const hash = buf.slice(8, 8 + CODEC_BIN_HASH_LEN);
+  return hash.toString("hex");
+}
+
+function readThinCodecHash(dirPath) {
+  if (!dirPath) return null;
+  const candidates = [
+    path.join(dirPath, "r", "c"),
+    path.join(dirPath, "c"),
+  ];
+  for (const p of candidates) {
+    if (!fileExists(p)) continue;
+    try {
+      const buf = fs.readFileSync(p);
+      const hash = readCodecHashFromBin(buf);
+      if (hash) return hash;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function assertSafeInstallDir(installDir) {
+  if (process.env.SEAL_ALLOW_UNSAFE_RM === "1") return;
+  const resolved = path.resolve(installDir || "");
+  const banned = new Set([
+    "/",
+    "/root",
+    "/home",
+    "/opt",
+    "/usr",
+    "/var",
+    "/etc",
+    "/bin",
+    "/sbin",
+    "/lib",
+    "/lib64",
+    "/tmp",
+    "/boot",
+    "/dev",
+    "/proc",
+    "/sys",
+    "/run",
+  ]);
+  const parts = resolved.split(path.sep).filter(Boolean);
+  if (!path.isAbsolute(resolved) || banned.has(resolved) || parts.length < 3) {
+    throw new Error(`Refusing to remove installDir: ${installDir}. Set SEAL_ALLOW_UNSAFE_RM=1 to override.`);
+  }
+}
 
 function systemctlArgs(targetCfg) {
   const scope = (targetCfg.serviceScope || "user").toLowerCase();
@@ -185,6 +245,7 @@ function applyThinBootstrapLocal(layout, extractedDir, opts = {}) {
   const launcherSrc = path.join(extractedDir, "b", "a");
   const rtSrc = path.join(extractedDir, "r", "rt");
   const plSrc = path.join(extractedDir, "r", "pl");
+  const codecSrc = path.join(extractedDir, "r", "c");
 
   if (!fileExists(launcherSrc)) throw new Error(`Missing thin launcher: ${launcherSrc}`);
   if (!fileExists(rtSrc)) throw new Error(`Missing thin runtime: ${rtSrc}`);
@@ -200,12 +261,18 @@ function applyThinBootstrapLocal(layout, extractedDir, opts = {}) {
     copyAtomic(rtSrc, path.join(rDir, "rt"), 0o644);
   }
   copyAtomic(plSrc, path.join(rDir, "pl"), 0o644);
+  if (fileExists(codecSrc)) {
+    copyAtomic(codecSrc, path.join(rDir, "c"), 0o644);
+  } else if (!onlyPayload) {
+    rmrf(path.join(rDir, "c"));
+  }
 }
 
 function cleanupThinBootstrapLocal(layout) {
   rmrf(path.join(layout.installDir, "b", "a"));
   rmrf(path.join(layout.installDir, "r", "rt"));
   rmrf(path.join(layout.installDir, "r", "pl"));
+  rmrf(path.join(layout.installDir, "r", "c"));
 }
 
 function pickBuildIdFromFolder(folderName) {
@@ -280,10 +347,21 @@ function deployLocal({ targetCfg, artifactPath, repoConfigPath, pushConfig, poli
   if (thinMode === "bootstrap") {
     const hasLauncher = fileExists(path.join(layout.installDir, "b", "a"));
     const hasRuntime = fileExists(path.join(layout.installDir, "r", "rt"));
-    const canReuse = !bootstrap && hasLauncher && hasRuntime;
-    if (canReuse) {
-      info("Thin bootstrap: reusing launcher/runtime; updating payload only.");
-    } else if (!bootstrap && (!hasLauncher || !hasRuntime)) {
+    let canReuse = false;
+    if (!bootstrap && hasLauncher && hasRuntime) {
+      const releaseCodec = readThinCodecHash(extractedDir);
+      const installCodec = readThinCodecHash(layout.installDir);
+      if (releaseCodec && installCodec && releaseCodec === installCodec) {
+        canReuse = true;
+        info("Thin bootstrap: reusing launcher/runtime; updating payload only.");
+      } else if (!releaseCodec) {
+        warn("Thin bootstrap: codec metadata missing in release; copying full bootstrap.");
+      } else if (!installCodec) {
+        warn("Thin bootstrap: codec metadata missing on target; copying full bootstrap.");
+      } else {
+        warn("Thin bootstrap: codec mismatch; copying full bootstrap.");
+      }
+    } else if (!bootstrap) {
       warn("Thin bootstrap: launcher/runtime missing; copying full bootstrap.");
     }
     applyThinBootstrapLocal(layout, extractedDir, { onlyPayload: canReuse });
@@ -540,6 +618,7 @@ function uninstallLocal(targetCfg) {
   if (fileExists(svc)) fs.rmSync(svc, { force: true });
 
   // Remove installDir
+  assertSafeInstallDir(layout.installDir);
   rmrf(layout.installDir);
 
   ok(`Uninstalled: ${targetCfg.serviceName}`);
