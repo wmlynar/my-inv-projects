@@ -188,6 +188,62 @@
 - Blad: `seal config diff <sciezka>` zwracal `Missing target`.
   - Wymaganie: `config diff` przyjmuje **nazwe targetu**; nowe targety dodaj `seal target add <target> <config>`.
 
+- Blad: TAB completion podpowiadal targety i blokowal opcje (np. `seal deploy --`).
+  - Wymaganie: gdy biezacy token zaczyna sie od `-`, completion **zawsze** podpowiada opcje.
+  - Wymaganie: podpowiedzi targetow nie moga maskowac opcji (opcje maja priorytet).
+  - Wymaganie: completion musi byc aktualizowany po kazdej zmianie CLI (komendy/opcje).
+
+- Blad: wizard bez kontekstu (lista komend bez wyjasnien) utrudnial decyzje.
+  - Wymaganie: wizard opisuje kazda komende 1 linijka i wskazuje rekomendowana akcje na teraz.
+  - Wymaganie: wizard dziala krok-po-kroku (petla), nie tylko pojedynczy ekran.
+
+- Blad: output CLI byl mylacy (duplikaty, niepotrzebne puste linie).
+  - Wymaganie: output ma byc zwięzly i bez duplikatow (np. artefakt tylko raz).
+  - Wymaganie: kazda linia ma sens (puste linie tylko gdy poprawiaja czytelnosc).
+
+- Blad: brakowalo jasnych instrukcji instalacji narzedzi (np. libzstd-dev).
+  - Wymaganie: `seal check` zwraca **konkretne** instrukcje naprawy (nazwy pakietow, np. `apt-get install ...`).
+  - Wymaganie: dokumentacja onboardingowa musi zawierac te same kroki.
+
+- Blad: rozjazd miedzy CLI, completion, wizard i docs (niespojne komendy/opcje).
+  - Wymaganie: zmiany CLI **zawsze** aktualizuja completion + wizard + docs w tym samym PR.
+  - Wymaganie: nowe komendy/opcje musza byc widoczne w wizardzie i completion.
+
+- Blad: wprowadzane fallbacki obniżaly poziom zabezpieczen bez jasnego ostrzezenia.
+  - Wymaganie: kazdy fallback bezpieczenstwa jest **jawny** i wymaga flagi/konfiguracji.
+  - Wymaganie: fallback wypisuje WARN z konsekwencjami.
+
+- Blad: niekontrolowany wzrost artefaktow (cache/release/tmp) zapychal dysk.
+  - Wymaganie: wszystkie katalogi generowane maja retention/pruning (limit + log).
+  - Wymaganie: brak limitu jest **wyjatkiem** i wymaga jawnej decyzji.
+
+- Blad: check/build rozjezdzal sie co do wykrywania toolchaina i opcji.
+  - Wymaganie: check i build uzywaja identycznego resolvera narzedzi i tych samych opcji.
+  - Wymaganie: `--check-verbose` pokazuje realne komendy (z argumentami).
+
+- Blad: testy zewnetrzne wisialy przez brak timeoutow i brak drenażu stdout/stderr.
+  - Wymaganie: kazdy test/subprocess ma timeout per‑krok i drenaż stdout/stderr.
+  - Wymaganie: brak postepu > timeout = kill + czytelny blad.
+
+- Blad: brak atomowosci zapisu (tmp/rename) powodowal polowiczne pliki po crashu.
+  - Wymaganie: zapisy plikow krytycznych zawsze przez tmp + atomic rename.
+
+- Blad: brak idempotencji komend (bootstrap/deploy/clean) powodowal reczne naprawy.
+  - Wymaganie: operacje infrastrukturalne musza byc idempotentne (bez efektow ubocznych przy powtorzeniu).
+
+- Blad: brak blokad wspolbieznosci powodowal nadpisywanie build/deploy.
+  - Wymaganie: build/deploy/clean uzywa lockfile, z czytelnym komunikatem przy kolizji.
+
+- Blad: niejawne uzycie sudo/roota.
+  - Wymaganie: brak sudo domyslnie; eskalacja tylko jawnie (flaga/konfig).
+  - Wymaganie: waliduj owner/perms/umask w miejscach krytycznych.
+
+- Blad: build uruchomiony na innej wersji toolchaina/OS powodowal trudne do diagnozy problemy.
+  - Wymaganie: preflight waliduje OS/arch i wersje narzedzi; fail-fast przy rozjezdzie.
+
+- Blad: brak timeoutow na operacjach zewnetrznych (ssh/scp/rsync/http) blokowal deploy.
+  - Wymaganie: kazda operacja zewnetrzna ma timeout + jasny komunikat "co dalej".
+
 ## Runtime config
 
 - Blad: `config.runtime.json5` brakowal lub byl parsowany przez `JSON.parse`.
