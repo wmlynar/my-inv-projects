@@ -7,7 +7,7 @@ const { spawn, spawnSync } = require("child_process");
 
 const { spawnSyncSafe } = require("../spawn");
 const { ensureDir, fileExists } = require("../fsextra");
-const { info } = require("../ui");
+const { info, warn } = require("../ui");
 
 const THIN_VERSION = 1;
 const THIN_FOOTER_LEN = 32;
@@ -23,7 +23,7 @@ const THIN_LEVELS = {
   high: { chunkSize: 64 * 1024, zstdLevel: 3 },
 };
 
-const DEFAULT_CODEC_CACHE_LIMIT = 20;
+const DEFAULT_CODEC_CACHE_LIMIT = 2;
 
 const DEFAULT_LIMITS = {
   maxChunks: 1_000_000,
@@ -90,14 +90,24 @@ function pruneCodecCache(projectRoot, keepTargetName) {
     keep.add(item.name);
   }
 
+  const removed = [];
   for (const item of items) {
     if (!keep.has(item.name)) {
       try {
         fs.rmSync(item.dirPath, { recursive: true, force: true });
+        removed.push(item.name);
       } catch {
         // best-effort cleanup
       }
     }
+  }
+
+  if (removed.length > 0) {
+    warn(
+      `Thin cache pruned: kept=${keep.size}/${items.length} limit=${limit}. ` +
+      "This often happens when switching targets/levels/builders. " +
+      "Increase SEAL_THIN_CACHE_LIMIT to keep more."
+    );
   }
 }
 

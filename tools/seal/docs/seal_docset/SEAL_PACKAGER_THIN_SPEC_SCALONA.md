@@ -602,7 +602,8 @@ W BOOTSTRAP launcher jest stały. Payloady muszą być kodowane tym samym “kod
 
 **Wymóg praktyczny:** `codec_state` musi przetrwać między deployami (dodaj `seal-thin/` do `.gitignore`).
 
-**Wymóg praktyczny:** cache nie może rosnąć bez limitu — SEAL automatycznie sprząta `seal-thin/cache/` (domyślnie zostawia ostatnie 20 wpisów).
+**Wymóg praktyczny:** cache nie może rosnąć bez limitu — SEAL automatycznie sprząta `seal-thin/cache/` (domyślnie zostawia ostatnie 2 wpisy).
+Uwaga praktyczna: cache jest kluczowany m.in. po **target/poziom/format/kodek**. Przy częstym przełączaniu środowisk (np. `local`/`prod`), wariantów builda lub buildera, powstają nowe wpisy i stare mogą zostać wyparte przez limit. Jeśli często skaczesz między wariantami i zależy Ci na unikaniu pełnych rebuildów, zwiększ limit przez `SEAL_THIN_CACHE_LIMIT`.
 Limit można ustawić przez `SEAL_THIN_CACHE_LIMIT` (0 = brak sprzątania).
 
 ### 10.3 Recovery gdy cache zniknie (MUST)
