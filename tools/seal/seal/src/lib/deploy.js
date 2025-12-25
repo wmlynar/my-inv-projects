@@ -8,6 +8,7 @@ const { spawnSyncSafe } = require("./spawn");
 const { ensureDir, fileExists, rmrf, copyFile, copyDir } = require("./fsextra");
 const { info, warn, err, ok, hr } = require("./ui");
 const { normalizeRetention, filterReleaseNames, computeKeepSet } = require("./retention");
+const { getTarRoot } = require("./tarSafe");
 
 function expandHome(p) {
   if (!p) return p;
@@ -227,17 +228,13 @@ function bootstrapLocal(targetCfg) {
 }
 
 function extractArtifactToLocal(layout, artifactPath) {
+  const root = getTarRoot(artifactPath);
+
   // Use system tar for speed and compatibility
   const res = spawnSyncSafe("tar", ["-xzf", artifactPath, "-C", layout.releasesDir], { stdio: "inherit" });
   if (!res.ok) throw new Error(`tar extract failed (status=${res.status})`);
 
-  // Find extracted folder name (first entry)
-  const list = spawnSyncSafe("tar", ["-tzf", artifactPath], { stdio: "pipe" });
-  if (!list.ok) throw new Error("tar -tzf failed");
-  const first = (list.stdout || "").split("\n").find(Boolean);
-  if (!first) throw new Error("empty tar?");
-  const folder = first.split("/")[0];
-  return path.join(layout.releasesDir, folder);
+  return path.join(layout.releasesDir, root);
 }
 
 function applyThinBootstrapLocal(layout, extractedDir, opts = {}) {

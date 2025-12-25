@@ -9,6 +9,7 @@ const { spawnSyncSafe } = require("./spawn");
 const { fileExists, ensureDir } = require("./fsextra");
 const { ok, info, warn } = require("./ui");
 const { normalizeRetention, filterReleaseNames, computeKeepSet } = require("./retention");
+const { getTarRoot } = require("./tarSafe");
 
 /**
  * Minimal remote deploy baseline (Linux, systemd system scope).
@@ -173,12 +174,33 @@ function assertSafeInstallDir(installDir) {
 }
 
 function readArtifactFolderName(artifactPath) {
-  const list = spawnSyncSafe("tar", ["-tzf", artifactPath], { stdio: "pipe" });
-  if (!list.ok) return null;
-  const first = (list.stdout || "").split(/\r?\n/).find(Boolean);
-  if (!first) return null;
-  const cleaned = first.replace(/^\.\//, "");
-  return cleaned.split("/")[0] || null;
+  if (!artifactPath) return null;
+  try {
+    return getTarRoot(artifactPath);
+  } catch (e) {
+    throw new Error(`Invalid artifact: ${e && e.message ? e.message : String(e)}`);
+  }
+}
+
+function buildRemoteTarValidateCmd(remoteArtifactTmpQ, expectedRoot) {
+  const expectedQ = shQuote(expectedRoot || "");
+  const parts = [
+    `expected=${expectedQ}`,
+    "root=\"\"",
+    "seen=0",
+    "while IFS= read -r entry; do",
+    "  seen=1",
+    "  p=\"${entry#./}\"",
+    "  p=\"${p//\\\\/\\/}\"",
+    "  if [ -z \"$p\" ]; then echo \"__SEAL_TAR_BAD__ empty\" >&2; exit 10; fi",
+    "  if [ -z \"$root\" ]; then root=\"${p%%/*}\"; if [ -z \"$root\" ]; then echo \"__SEAL_TAR_BAD__ emptyroot\" >&2; exit 11; fi; if [ -n \"$expected\" ] && [ \"$root\" != \"$expected\" ]; then echo \"__SEAL_TAR_ROOT__ $root\" >&2; exit 12; fi; fi",
+    "  case \"$p\" in /*) echo \"__SEAL_TAR_BAD__ $p\" >&2; exit 13;; [A-Za-z]:/*) echo \"__SEAL_TAR_BAD__ $p\" >&2; exit 14;; esac",
+    "  echo \"$p\" | grep -qE '(^|/)\\.\\.(/|$)' && { echo \"__SEAL_TAR_BAD__ $p\" >&2; exit 15; }",
+    "  if [ \"$p\" != \"$root\" ] && [ \"${p#${root}/}\" = \"$p\" ]; then echo \"__SEAL_TAR_BAD__ $p\" >&2; exit 16; fi",
+    `done < <(tar -tzf ${remoteArtifactTmpQ})`,
+    "if [ \"$seen\" = \"0\" ]; then echo \"__SEAL_TAR_BAD__ empty\" >&2; exit 17; fi",
+  ];
+  return `( ${parts.join(" ; ")} )`;
 }
 
 function ensureRsyncAvailable(targetCfg, user, host) {
@@ -617,11 +639,13 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       info(`Uploading config to ${host}:${tmpCfg}`);
       const upCfg = scpToTarget(targetCfg, { user, host, localPath: repoConfigPath, remotePath: tmpCfg });
       if (!upCfg.ok) throw new Error(`scp config failed (status=${upCfg.status})`);
+      cmdParts.push(buildRemoteTarValidateCmd(remoteArtifactTmpQ, folderName));
       cmdParts.push(`tar -xzf ${remoteArtifactTmpQ} -C ${releasesDirQ}`);
       cmdParts.push(`cp ${tmpCfgQ} ${remoteCfgQ}`);
       cmdParts.push(`rm -f ${tmpCfgQ}`);
     } else {
       cmdParts.push(`if [ ! -f ${remoteCfgQ} ]; then echo '[seal] remote config missing -> creating from repo'; exit 99; fi`);
+      cmdParts.push(buildRemoteTarValidateCmd(remoteArtifactTmpQ, folderName));
       cmdParts.push(`tar -xzf ${remoteArtifactTmpQ} -C ${releasesDirQ}`);
     }
     if (thinMode === "bootstrap") {
@@ -685,6 +709,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
 
     const retryParts = [
       `mkdir -p ${releasesDirQ} ${sharedDirQ}`,
+      buildRemoteTarValidateCmd(remoteArtifactTmpQ, folderName),
       `tar -xzf ${remoteArtifactTmpQ} -C ${releasesDirQ}`,
       `cp ${tmpCfgQ} ${remoteCfgQ}`,
       `rm -f ${tmpCfgQ}`,
@@ -868,7 +893,10 @@ function statusSsh(targetCfg) {
 
   const combined = `${res.stdout}\n${res.stderr}`.toLowerCase();
   const missing = combined.includes("could not be found") || combined.includes("not-found") || combined.includes("loaded: not-found");
-  if (!missing) return;
+  if (!missing) {
+    if (combined.includes("active:")) return;
+    throw new Error(`status failed (status=${res.status ?? "?"})`);
+  }
 
   const appName = targetCfg.appName || targetCfg.serviceName || "app";
   const layout = remoteLayout(targetCfg);
@@ -895,6 +923,11 @@ function statusSsh(targetCfg) {
     "printf \"%s\" \"$out\"",
   ].join("\n");
   const pres = sshExecTarget(targetCfg, { user, host, args: ["bash","-lc", pgrepScript], stdio: "pipe" });
+  if (!pres.ok) {
+    const pOut = `${pres.stdout}\n${pres.stderr}`.trim();
+    warn(`pgrep failed: ${pOut || pres.error || "unknown"}`);
+    return;
+  }
   const lines = (pres.stdout || "")
     .split(/\r?\n/)
     .map((l) => l.trim())
@@ -911,7 +944,10 @@ function statusSsh(targetCfg) {
 function logsSsh(targetCfg) {
   const { user, host } = sshUserHost(targetCfg);
   const unit = shQuote(`${targetCfg.serviceName}.service`);
-  sshExecTarget(targetCfg, { user, host, args: ["bash","-lc", `sudo -n journalctl -u ${unit} -n 200 -f`], stdio: "inherit" });
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash","-lc", `sudo -n journalctl -u ${unit} -n 200 -f`], stdio: "inherit" });
+  if (!res.ok && res.signal !== "SIGINT" && res.status !== 130) {
+    throw new Error(`logs failed (status=${res.status ?? "?"})`);
+  }
 }
 
 function enableSsh(targetCfg) {
@@ -1073,18 +1109,23 @@ for r in $rels; do
   fi
 done
 if [ -z "$prev" ]; then echo "No previous release"; exit 2; fi
-if [ "${thinMode}" = "bootstrap" ]; then
-  PREV_DIR="$ROOT/releases/$prev"
-  test -f "$PREV_DIR/b/a"
-  test -f "$PREV_DIR/r/rt"
-  test -f "$PREV_DIR/r/pl"
-  mkdir -p "$ROOT/b" "$ROOT/r"
-  cp "$PREV_DIR/b/a" "$ROOT/b/a.tmp" && mv "$ROOT/b/a.tmp" "$ROOT/b/a" && chmod 755 "$ROOT/b/a"
-  cp "$PREV_DIR/r/rt" "$ROOT/r/rt.tmp" && mv "$ROOT/r/rt.tmp" "$ROOT/r/rt" && chmod 644 "$ROOT/r/rt"
-  cp "$PREV_DIR/r/pl" "$ROOT/r/pl.tmp" && mv "$ROOT/r/pl.tmp" "$ROOT/r/pl" && chmod 644 "$ROOT/r/pl"
-else
-  rm -f "$ROOT/b/a" "$ROOT/r/rt" "$ROOT/r/pl"
-fi
+  if [ "${thinMode}" = "bootstrap" ]; then
+    PREV_DIR="$ROOT/releases/$prev"
+    test -f "$PREV_DIR/b/a"
+    test -f "$PREV_DIR/r/rt"
+    test -f "$PREV_DIR/r/pl"
+    mkdir -p "$ROOT/b" "$ROOT/r"
+    cp "$PREV_DIR/b/a" "$ROOT/b/a.tmp" && mv "$ROOT/b/a.tmp" "$ROOT/b/a" && chmod 755 "$ROOT/b/a"
+    cp "$PREV_DIR/r/rt" "$ROOT/r/rt.tmp" && mv "$ROOT/r/rt.tmp" "$ROOT/r/rt" && chmod 644 "$ROOT/r/rt"
+    cp "$PREV_DIR/r/pl" "$ROOT/r/pl.tmp" && mv "$ROOT/r/pl.tmp" "$ROOT/r/pl" && chmod 644 "$ROOT/r/pl"
+    if [ -f "$PREV_DIR/r/c" ]; then
+      cp "$PREV_DIR/r/c" "$ROOT/r/c.tmp" && mv "$ROOT/r/c.tmp" "$ROOT/r/c" && chmod 644 "$ROOT/r/c"
+    else
+      rm -f "$ROOT/r/c"
+    fi
+  else
+    rm -f "$ROOT/b/a" "$ROOT/r/rt" "$ROOT/r/pl"
+  fi
 echo "$prev" > ${shQuote(layout.currentFile)}
 sudo -n systemctl restart ${shQuote(`${targetCfg.serviceName}.service`)}
 echo "Rolled back to $prev"
