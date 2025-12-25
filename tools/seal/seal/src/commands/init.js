@@ -6,8 +6,8 @@ const path = require("path");
 const { findProjectRoot } = require("../lib/paths");
 const { getSealPaths, detectAppName, detectEntry } = require("../lib/project");
 const { ensureDir, safeWriteFile, fileExists } = require("../lib/fsextra");
-const { writeJson5 } = require("../lib/json5io");
-const { info, warn, ok, hr } = require("../lib/ui");
+const { readJson5, writeJson5 } = require("../lib/json5io");
+const { info, ok, hr } = require("../lib/ui");
 
 function templateProjectJson5(appName, entry) {
   return {
@@ -16,13 +16,14 @@ function templateProjectJson5(appName, entry) {
     defaultTarget: "local",
     build: {
       packager: "auto",
+      allowFallback: false,
       obfuscationProfile: "balanced",
       frontendObfuscation: { enabled: true, profile: "balanced" },
       frontendMinify: { enabled: true, level: "safe", html: true, css: true },
       // NOTE: strip/upx are experimental for postject-ed SEA binaries; keep them OFF by default.
       hardening: { enabled: true, strip: false, upx: false, bundlePacking: true },
-      includeDirs: ["public", "data"]
-    }
+      includeDirs: ["public", "data"],
+    },
   };
 }
 
@@ -33,7 +34,7 @@ function templatePolicyJson5() {
       cleanupOnSuccess: true,
       neverDeleteCurrent: true,
       keepAtLeastOneRollback: true,
-    }
+    },
   };
 }
 
@@ -47,7 +48,7 @@ function templateTargetLocal(appName) {
     installDir: `~/.local/share/seal/${appName}`,
     serviceName: `${appName}-sandbox`,
     packager: "auto",
-    config: "local"
+    config: "local",
   };
 }
 
@@ -97,36 +98,20 @@ async function cmdInit(cwd, opts) {
 
   const force = !!opts.force;
 
-  // project.json5
-  if (!fileExists(paths.projectFile) || force) {
-    // we write as JSON (valid JSON5)
-    const proj = {
-      appName,
-      entry,
-      defaultTarget: "local",
-      build: {
-        packager: "auto",
-        allowFallback: false,
-        obfuscationProfile: "balanced",
-        frontendObfuscation: { enabled: true, profile: "balanced" },
-        frontendMinify: { enabled: true, level: "safe", html: true, css: true },
-        // NOTE: strip/upx are experimental for postject-ed SEA binaries; keep them OFF by default.
-        hardening: { enabled: true, strip: false, upx: false, bundlePacking: true },
-        includeDirs: ["public", "data"]
-      }
-    };
-    writeJson5(paths.projectFile, proj);
-    ok("Created seal-config/project.json5");
+  // seal.json5 (project + policy)
+  const legacyProject = fileExists(paths.projectFile) ? readJson5(paths.projectFile) : null;
+  const legacyPolicy = fileExists(paths.policyFile) ? readJson5(paths.policyFile) : null;
+  if (!fileExists(paths.sealFile) || force) {
+    const proj = legacyProject || templateProjectJson5(appName, entry);
+    if (!proj.appName) proj.appName = appName;
+    if (!proj.entry) proj.entry = entry;
+    if (!proj.defaultTarget) proj.defaultTarget = "local";
+    if (!proj.build) proj.build = templateProjectJson5(appName, entry).build;
+    const sealCfg = { ...proj, policy: legacyPolicy || templatePolicyJson5() };
+    writeJson5(paths.sealFile, sealCfg);
+    ok("Created seal.json5");
   } else {
-    ok("Keeping existing seal-config/project.json5");
-  }
-
-  // policy.json5
-  if (!fileExists(paths.policyFile) || force) {
-    writeJson5(paths.policyFile, templatePolicyJson5());
-    ok("Created seal-config/policy.json5");
-  } else {
-    ok("Keeping existing seal-config/policy.json5");
+    ok("Keeping existing seal.json5");
   }
 
   // local target

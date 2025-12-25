@@ -2,9 +2,8 @@
 
 const fs = require("fs");
 const path = require("path");
-const { SEAL_CONFIG_DIR, SEAL_OUT_DIR } = require("./paths");
-const { readJson5 } = require("./json5io");
-const { fileExists } = require("./fsextra");
+const { SEAL_CONFIG_DIR, SEAL_OUT_DIR, SEAL_FILE } = require("./paths");
+const { readJson5, writeJson5 } = require("./json5io");
 const { normalizeRetention } = require("./retention");
 
 function getSealPaths(projectRoot) {
@@ -13,12 +12,12 @@ function getSealPaths(projectRoot) {
   return {
     projectRoot,
     sealConfigDir,
-    sealOutDir,
+    sealFile: path.join(projectRoot, SEAL_FILE),
     projectFile: path.join(sealConfigDir, "project.json5"),
     policyFile: path.join(sealConfigDir, "policy.json5"),
     targetsDir: path.join(sealConfigDir, "targets"),
-    outDir: sealOutDir,
     configDir: path.join(sealConfigDir, "configs"),
+    outDir: sealOutDir,
     runtimeConfigPath: path.join(projectRoot, "config.runtime.json5"),
   };
 }
@@ -44,14 +43,39 @@ function detectEntry(projectRoot) {
 
 function detectAppName(projectRoot) {
   const pkg = loadPackageJson(projectRoot);
-  if (pkg && typeof pkg.name === "string") return pkg.name.replace(/^@/,"").replace(/\//g,"-");
+  if (pkg && typeof pkg.name === "string") return pkg.name.replace(/^@/, "").replace(/\//g, "-");
   return path.basename(projectRoot);
 }
 
+function loadSealFile(projectRoot) {
+  const { sealFile } = getSealPaths(projectRoot);
+  if (!fs.existsSync(sealFile)) return null;
+  return readJson5(sealFile);
+}
+
+function isWorkspaceConfig(cfg) {
+  return !!cfg && Array.isArray(cfg.projects);
+}
+
+function loadWorkspaceConfig(projectRoot) {
+  const cfg = loadSealFile(projectRoot);
+  if (!cfg || !isWorkspaceConfig(cfg)) return null;
+  return cfg;
+}
+
 function loadProjectConfig(projectRoot) {
-  const { projectFile } = getSealPaths(projectRoot);
-  if (!fs.existsSync(projectFile)) return null;
-  const cfg = readJson5(projectFile);
+  const { sealFile, projectFile } = getSealPaths(projectRoot);
+  let cfg = null;
+
+  if (fs.existsSync(sealFile)) {
+    cfg = readJson5(sealFile);
+    if (isWorkspaceConfig(cfg)) return null;
+  } else if (fs.existsSync(projectFile)) {
+    // Legacy fallback for older projects.
+    cfg = readJson5(projectFile);
+  }
+
+  if (!cfg) return null;
 
   // Fill defaults defensively
   cfg.appName = cfg.appName || detectAppName(projectRoot);
@@ -97,6 +121,10 @@ function loadTargetConfig(projectRoot, targetName) {
 }
 
 function loadPolicy(projectRoot) {
+  const proj = loadProjectConfig(projectRoot);
+  if (proj && proj.policy) {
+    return { retention: normalizeRetention(proj.policy || {}) };
+  }
   const { policyFile } = getSealPaths(projectRoot);
   if (!fs.existsSync(policyFile)) {
     return { retention: normalizeRetention({ retention: {} }) };
@@ -127,14 +155,19 @@ function getConfigFile(projectRoot, configName) {
   return path.join(configDir, `${configName}.json5`);
 }
 
+function saveProjectConfig(projectRoot, cfg) {
+  const { sealFile } = getSealPaths(projectRoot);
+  writeJson5(sealFile, cfg);
+}
+
 function findLastArtifact(projectRoot, appName) {
   const { outDir } = getSealPaths(projectRoot);
   if (!fs.existsSync(outDir)) return null;
-  const files = fs.readdirSync(outDir).filter(f => f.endsWith(".tgz"));
+  const files = fs.readdirSync(outDir).filter((f) => f.endsWith(".tgz"));
   const ours = files
-    .filter(f => f.startsWith(appName + "-"))
-    .map(f => ({ f, mtime: fs.statSync(path.join(outDir, f)).mtimeMs }))
-    .sort((a,b) => b.mtime - a.mtime);
+    .filter((f) => f.startsWith(appName + "-"))
+    .map((f) => ({ f, mtime: fs.statSync(path.join(outDir, f)).mtimeMs }))
+    .sort((a, b) => b.mtime - a.mtime);
   if (!ours.length) return null;
   return path.join(outDir, ours[0].f);
 }
@@ -144,11 +177,15 @@ module.exports = {
   loadPackageJson,
   detectEntry,
   detectAppName,
+  loadSealFile,
+  loadWorkspaceConfig,
+  isWorkspaceConfig,
   loadProjectConfig,
   loadTargetConfig,
   loadPolicy,
   resolveTargetName,
   resolveConfigName,
   getConfigFile,
+  saveProjectConfig,
   findLastArtifact,
 };

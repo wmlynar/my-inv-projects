@@ -1,10 +1,9 @@
 "use strict";
 
 const path = require("path");
-const fs = require("fs");
 
 const { findProjectRoot } = require("../lib/paths");
-const { getSealPaths, loadProjectConfig, loadTargetConfig, loadPolicy, resolveTargetName, resolveConfigName, getConfigFile, findLastArtifact } = require("../lib/project");
+const { loadProjectConfig, loadTargetConfig, loadPolicy, resolveTargetName, resolveConfigName, getConfigFile, findLastArtifact } = require("../lib/project");
 const { fileExists } = require("../lib/fsextra");
 const { info, warn, ok, hr } = require("../lib/ui");
 
@@ -15,7 +14,7 @@ const { deploySsh, deploySshFast, bootstrapSsh, installServiceSsh, statusSsh, lo
 
 function resolveTarget(projectRoot, targetArg) {
   const proj = loadProjectConfig(projectRoot);
-  if (!proj) throw new Error("Brak seal-config/project.json5. Zrób: seal init");
+  if (!proj) throw new Error("Brak seal.json5 (projekt). Jeśli jesteś w root monorepo, użyj seal batch lub przejdź do podprojektu.");
   const targetName = resolveTargetName(projectRoot, targetArg);
   const t = loadTargetConfig(projectRoot, targetName);
   if (!t) throw new Error(`Brak targetu ${targetName}. Zrób: seal target add ${targetName}`);

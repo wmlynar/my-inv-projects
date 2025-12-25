@@ -126,18 +126,22 @@ seal --help
 
 ## Struktura konfiguracji i artefaktów
 
-- `seal-config/` – konfiguracja Seala (commitowana w repo).
+- `seal.json5` – konfiguracja projektu + polityka (commitowane w repo).
+- `seal-config/` – runtime configi (`configs/`) i targety deployu (`targets/`) (commitowane w repo).
 - `seal-out/` – artefakty generowane (jak `target/`); przy `seal release`/`seal verify`/`seal deploy` czyszczone są katalogi robocze, ale `seal-out/cache/` (thin cache) jest zachowywany; dodaj do `.gitignore`.
 
 ---
 
 ## Batch dla wielu projektów (monorepo)
 
-Jeśli masz wiele projektów z `seal-config/` pod wspólnym folderem, możesz wykonać komendę dla wszystkich:
+Jeśli masz wiele projektów z `seal.json5` pod wspólnym folderem, możesz wykonać komendę dla wszystkich:
 
 ```bash
 seal batch deploy prod --root klienci/nowy-styl
 ```
+
+Jeśli w katalogu `--root` znajduje się `seal.json5` z sekcją `projects`, SEAL użyje jawnej listy projektów (jak w Maven).
+Wpisy mogą być stringami (`"robot-ui"`) albo obiektami `{ name, path }`. Gdy `path` jest pominięte, SEAL używa wartości `name`.
 
 Opcje:
 - `--filter <text>` – ogranicz listę po ścieżce/nazwie aplikacji
@@ -150,7 +154,7 @@ Opcje:
 
 Podczas `seal release` SEAL **obfuskuje również pliki frontendu** w `public/*.js` (np. `public/app.js`).
 
-Jeśli z jakiegoś powodu chcesz to wyłączyć (np. debugowanie), dodaj w `seal-config/project.json5`:
+Jeśli z jakiegoś powodu chcesz to wyłączyć (np. debugowanie), dodaj w `seal.json5`:
 
 ```json5
 build: {
@@ -219,7 +223,7 @@ Opcjonalnie (EXPERIMENTAL): `strip`/`upx` na binarce SEA – **OFF by default**,
 
 To nie jest kryptografia – celem jest utrudnienie "zobaczę od razu po otwarciu pliku" i podniesienie kosztu analizy.
 
-Jeśli chcesz to wyłączyć (np. do debugowania), dodaj w `seal-config/project.json5`:
+Jeśli chcesz to wyłączyć (np. do debugowania), dodaj w `seal.json5`:
 
 ```json5
 build: {
@@ -244,7 +248,7 @@ build: {
 }
 ```
 
-> Tip: jeśli chcesz eksperymentować z `upx`/`strip`, włącz je jawnie w `seal-config/project.json5` i przetestuj uruchomienie na docelowym OS/arch (po postject bywa to wrażliwe).
+> Tip: jeśli chcesz eksperymentować z `upx`/`strip`, włącz je jawnie w `seal.json5` i przetestuj uruchomienie na docelowym OS/arch (po postject bywa to wrażliwe).
 
 ## Najkrótsza ścieżka testu „job security” (lokalnie)
 

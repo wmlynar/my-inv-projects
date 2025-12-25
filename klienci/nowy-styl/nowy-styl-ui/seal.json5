@@ -1,0 +1,37 @@
+{
+  "appName": "nowy-styl-ui",
+  "entry": "server.js",
+  "defaultTarget": "local",
+  "build": {
+    "packager": "auto",
+    "allowFallback": false,
+    "obfuscationProfile": "balanced",
+    "frontendObfuscation": {
+      "enabled": true,
+      "profile": "balanced"
+    },
+    "frontendMinify": {
+      "enabled": true,
+      "level": "safe",
+      "html": true,
+      "css": true
+    },
+    "hardening": {
+      "enabled": true,
+      "strip": false,
+      "upx": false,
+      "bundlePacking": true
+    },
+    "includeDirs": [
+      "public"
+    ]
+  },
+  "policy": {
+    "retention": {
+      "keepReleases": 1,
+      "cleanupOnSuccess": true,
+      "neverDeleteCurrent": true,
+      "keepAtLeastOneRollback": true
+    }
+  }
+}

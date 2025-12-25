@@ -4,14 +4,14 @@ const path = require("path");
 const fs = require("fs");
 
 const { findProjectRoot } = require("../lib/paths");
-const { getSealPaths, loadProjectConfig, detectEntry } = require("../lib/project");
+const { getSealPaths, loadProjectConfig, getConfigFile } = require("../lib/project");
 const { info, warn, ok, hr } = require("../lib/ui");
 const { fileExists } = require("../lib/fsextra");
 
 async function wizard(cwd) {
   const projectRoot = findProjectRoot(cwd);
   const paths = getSealPaths(projectRoot);
-  const hasSeal = fileExists(paths.projectFile);
+  const hasSeal = fileExists(paths.sealFile);
   const pkgPath = path.join(projectRoot, "package.json");
 
   hr();
@@ -27,7 +27,7 @@ async function wizard(cwd) {
   }
 
   if (!hasSeal) {
-    warn("Projekt nie jest zainicjalizowany pod SEAL (brak seal-config/project.json5).");
+    warn("Projekt nie jest zainicjalizowany pod SEAL (brak seal.json5).");
     console.log("");
     console.log("Następny krok:");
     console.log("  seal init");
@@ -42,10 +42,10 @@ async function wizard(cwd) {
   const proj = loadProjectConfig(projectRoot);
   ok(`Projekt SEAL: appName=${proj.appName} entry=${proj.entry}`);
 
-  // missing seal-config/configs/local?
-  const localCfg = path.join(paths.configDir, "local.json5");
+  // missing config local?
+  const localCfg = getConfigFile(projectRoot, "local");
   if (!fileExists(localCfg)) {
-    warn("Brak seal-config/configs/local.json5");
+    warn("Brak config local (seal-config/configs/local.json5)");
     console.log("Następny krok:");
     console.log("  seal config add local");
     return;

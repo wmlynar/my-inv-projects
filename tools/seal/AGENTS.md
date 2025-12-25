@@ -33,7 +33,7 @@
 - Sealed build artifacts are stored in `example/seal-out/` and unpacked to `example/seal-out/release/`.
 
 ## Configuration Notes
-- Project metadata lives in `example/seal-config/project.json5` (or in your app’s `seal-config/project.json5`).
+- Project metadata lives in `example/seal.json5` (or in your app’s `seal.json5`).
   - `build.frontendObfuscation` is **enabled by default** and obfuscates `public/**/*.js` (except `*.min.js`).
   - `build.frontendMinify` is **enabled by default** (level: `safe`) and safely minifies `public/**/*.html` and `public/**/*.css` (except `*.min.html`/`*.min.css`).
   - `build.hardening` is **enabled by default**:

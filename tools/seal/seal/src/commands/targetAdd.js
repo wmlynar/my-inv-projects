@@ -1,13 +1,12 @@
 "use strict";
 
 const path = require("path");
-const os = require("os");
 
 const { findProjectRoot } = require("../lib/paths");
 const { getSealPaths, loadProjectConfig } = require("../lib/project");
-const { writeJson5 } = require("../lib/json5io");
 const { ensureDir, fileExists } = require("../lib/fsextra");
-const { info, ok, warn, hr } = require("../lib/ui");
+const { writeJson5 } = require("../lib/json5io");
+const { ok, warn } = require("../lib/ui");
 
 function templateTarget(projectRoot, appName, target) {
   if (target === "local") {
@@ -39,20 +38,20 @@ function templateTarget(projectRoot, appName, target) {
 
 async function cmdTargetAdd(cwd, target) {
   const projectRoot = findProjectRoot(cwd);
-  const paths = getSealPaths(projectRoot);
   const proj = loadProjectConfig(projectRoot);
-  if (!proj) throw new Error("Brak seal-config/project.json5. Zrób: seal init");
+  if (!proj) throw new Error("Brak seal.json5 (projekt). Zrób: seal init");
 
+  const paths = getSealPaths(projectRoot);
   ensureDir(paths.targetsDir);
 
-  const file = path.join(paths.targetsDir, `${target}.json5`);
-  if (fileExists(file)) {
-    warn(`Target already exists: ${file}`);
+  const targetFile = path.join(paths.targetsDir, `${target}.json5`);
+  if (fileExists(targetFile)) {
+    warn(`Target already exists: ${targetFile}`);
     return;
   }
 
-  writeJson5(file, templateTarget(projectRoot, proj.appName, target));
-  ok(`Created target: ${file}`);
+  writeJson5(targetFile, templateTarget(projectRoot, proj.appName, target));
+  ok(`Created target: ${targetFile}`);
   console.log("Next: edit host/user/installDir if needed.");
 }
 

@@ -1,0 +1,35 @@
+{
+  "appName": "seal-example",
+  "entry": "src/index.js",
+  "defaultTarget": "local",
+  "build": {
+    "packager": "thin",
+    "obfuscationProfile": "balanced",
+    "frontendObfuscation": {
+      "enabled": true,
+      "profile": "balanced"
+    },
+    "hardening": {
+      "enabled": true,
+      "seaMainPacking": true,
+      "seaMainPackingMethod": "brotli",
+      "seaMainPackingChunkSize": 8000,
+      "bundlePacking": true,
+      "strip": false,
+      "upx": false
+    },
+    "includeDirs": [
+      "public",
+      "data"
+    ],
+    "keepLocalOut": true
+  },
+  "policy": {
+    "retention": {
+      "keepReleases": 10,
+      "cleanupOnSuccess": true,
+      "neverDeleteCurrent": true,
+      "keepAtLeastOneRollback": true
+    }
+  }
+}

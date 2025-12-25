@@ -13,7 +13,7 @@ async function cmdRunLocal(cwd, opts) {
   const projectRoot = findProjectRoot(cwd);
   const paths = getSealPaths(projectRoot);
   const proj = loadProjectConfig(projectRoot);
-  if (!proj) throw new Error("Brak seal-config/project.json5. Zrób: seal init");
+  if (!proj) throw new Error("Brak seal.json5 (projekt). Jeśli jesteś w root monorepo, użyj seal batch lub przejdź do podprojektu.");
 
   if (!opts.sealed) {
     // Dev run: node entry
@@ -21,9 +21,9 @@ async function cmdRunLocal(cwd, opts) {
     info("DEV run (node)");
     hr();
     if (!fileExists(paths.runtimeConfigPath)) {
-      warn("Missing config.runtime.json5. Copying from seal-config/configs/local.json5");
-      const localCfg = path.join(paths.configDir, "local.json5");
-      if (!fileExists(localCfg)) throw new Error("Missing seal-config/configs/local.json5");
+      const localCfg = getConfigFile(projectRoot, "local");
+      warn("Missing config.runtime.json5. Creating from seal-config/configs/local.json5");
+      if (!fileExists(localCfg)) throw new Error(`Missing config: ${localCfg}`);
       fs.copyFileSync(localCfg, paths.runtimeConfigPath);
     }
     const res = spawnSyncSafe("node", [proj.entry], { cwd: projectRoot, stdio: "inherit" });
@@ -42,10 +42,9 @@ async function cmdRunLocal(cwd, opts) {
   const targetCfg = t ? t.cfg : { target: "local", config: "local" };
   const configName = resolveConfigName(targetCfg, opts.config);
   const configFile = getConfigFile(projectRoot, configName);
+  if (!fileExists(configFile)) throw new Error(`Missing config: ${configFile}`);
 
-  if (!fileExists(configFile)) throw new Error(`Missing config file: ${configFile}`);
-
-  // Copy runtime config into release dir
+  // Write runtime config into release dir
   fs.copyFileSync(configFile, path.join(releaseDir, "config.runtime.json5"));
 
   hr();

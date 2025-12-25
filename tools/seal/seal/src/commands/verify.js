@@ -3,7 +3,7 @@
 const path = require("path");
 
 const { findProjectRoot } = require("../lib/paths");
-const { loadProjectConfig, findLastArtifact, resolveTargetName, loadTargetConfig } = require("../lib/project");
+const { loadProjectConfig, findLastArtifact } = require("../lib/project");
 const { fileExists } = require("../lib/fsextra");
 const { info, warn, ok, err, hr } = require("../lib/ui");
 const { verifyArtifact, explainChecklist } = require("../lib/verify");
@@ -11,7 +11,7 @@ const { verifyArtifact, explainChecklist } = require("../lib/verify");
 async function cmdVerify(cwd, artifactOrTarget, opts) {
   const projectRoot = findProjectRoot(cwd);
   const proj = loadProjectConfig(projectRoot);
-  if (!proj) throw new Error("Brak seal-config/project.json5. Zrób: seal init");
+  if (!proj) throw new Error("Brak seal.json5 (projekt). Jeśli jesteś w root monorepo, użyj seal batch lub przejdź do podprojektu.");
 
   let artifactPath = null;
 

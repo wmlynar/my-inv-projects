@@ -3,14 +3,14 @@
 const { findProjectRoot } = require("../lib/paths");
 const { loadProjectConfig, loadTargetConfig, resolveTargetName, resolveConfigName, getConfigFile } = require("../lib/project");
 const { fileExists } = require("../lib/fsextra");
-const { warn, ok, hr } = require("../lib/ui");
+const { warn, ok } = require("../lib/ui");
 const { cmdCheck } = require("./check");
 const { buildRelease } = require("../lib/build");
 
 async function cmdRelease(cwd, targetArg, opts) {
   const projectRoot = findProjectRoot(cwd);
   const proj = loadProjectConfig(projectRoot);
-  if (!proj) throw new Error("Brak seal-config/project.json5. Zrób: seal init");
+  if (!proj) throw new Error("Brak seal.json5 (projekt). Jeśli jesteś w root monorepo, użyj seal batch lub przejdź do podprojektu.");
 
   const targetName = resolveTargetName(projectRoot, targetArg);
   const t = loadTargetConfig(projectRoot, targetName);
@@ -22,8 +22,7 @@ async function cmdRelease(cwd, targetArg, opts) {
   const configName = resolveConfigName(targetCfg, opts.config);
   const configFile = getConfigFile(projectRoot, configName);
   if (!fileExists(configFile)) {
-    warn(`Missing seal-config/configs/${configName}.json5. Creating template...`);
-    // Suggest user to create
+    warn(`Missing config file: ${configFile}`);
     console.log(`Tip: seal config add ${configName}`);
   }
 

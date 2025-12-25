@@ -65,10 +65,10 @@ W tej filozofii:
 ### 0.6. Zmiany w v0.4 (skrót)
 
 Najważniejsze zmiany względem v0.3.1:
-- `env` → **`config`** (wariant konfiguracji runtime). Zostaje **target** (host) + **config** (plik w `seal-config/configs/`).
+- `env` → **`config`** (wariant konfiguracji runtime). Zostaje **target** (host) + **config** (wariant w `seal-config/configs`).
 - Jedna główna komenda: **`seal deploy <target>`** (a `seal ship` jest aliasem).
 - Bootstrap serwera jest częścią deployu: **`seal deploy <target> --bootstrap`**.
-- Jeden format konfiguracji Seala: **JSON5** (`seal-config/project.json5`, `seal-config/targets/*.json5`, `seal-config/policy.json5`).
+- Jeden format konfiguracji Seala: **JSON5** (`seal.json5` + `seal-config/*`).
 - Serwer bez symlinków: aktywny release jest wskazywany przez `current.buildId`, a `run-current.sh` uruchamia `appctl` z aktywnego release.
 - Retencja release’ów: domyślnie `keep_releases=1` (tylko ostatni release) + cleanup po udanym deployu.
 - Drift configu: domyślnie **błąd** (wymusza jawne `pull-config --apply` albo `--push-config`).
@@ -119,11 +119,11 @@ Seal ma zdejmować z głowy temat „jak zabezpieczyć kod, żeby mnie nie okrad
 - 22. Zakres poza projektem (non-goals)
 - 23. Aneksy: przykłady plików i formatów
 - 24. Specyfikacja CLI (komendy, parametry, wyjścia, exit codes)
-- 25. Specyfikacje plików i schematy (project/targets/seal-config/configs/manifest)
+- 25. Specyfikacje plików i schematy (project/targets/configs/manifest w `seal.json5` + `seal-config/`)
 - 26. Algorytmy operacyjne (release, deploy, rollback, snapshot config)
 - 27. Scenariusze end-to-end i plan testów
 - 28. Plan implementacji (milestones)
-- 29. Specyfikacja metadanych projektu (`seal-config/project.json5`)
+- 29. Specyfikacja metadanych projektu (`seal.json5`)
 - 30. Specyfikacja szablonu usługi systemd (`systemd.service.tpl`)
 - 31. Specyfikacja `appctl` (narzędzie serwisowe na serwerze)
 - 32. Specyfikacja obsługi UI i static assets w trybie single executable
@@ -291,8 +291,7 @@ Seal dostarcza:
 **Aliasowanie komend (MAY):** jeśli chcesz, możesz utrzymać aliasy historyczne (`seal deploy` → `seal deploy`, itp.), ale w specyfikacji „królem” są nazwy powyżej.
 
 ### 4.2. Skrypt serwerowy
-W repo aplikacji znajduje się skrypt:
-- `seal-config/server/seal-server.sh` – skrypt uruchamiany na serwerze (`sudo bash ...`), przygotowujący środowisko.
+Seal używa skryptu `seal-server.sh` uruchamianego na serwerze (`sudo bash ...`), który przygotowuje środowisko.
 
 Seal może:
 - wygenerować ten skrypt i szablony w projekcie,
@@ -380,10 +379,10 @@ Seal oferuje jedną ścieżkę startową:
 - `seal init` automatycznie wybiera tryb:
   - **NEW** (folder pusty / skeleton)
   - **ADOPT** (istniejący projekt)
-- `seal init` materializuje wyniki w plikach (tworzy `seal-config/*` oraz minimalne `seal-config/configs/*`), w tym:
-  - `seal-config/project.json5`
-  - `seal-config/policy.json5`
-  - `seal-config/configs/local.json5` (oraz przykładowe warianty `seal-config/configs/*`)
+- `seal init` materializuje wyniki w plikach, w tym:
+  - `seal.json5` (sekcje: `build`, `policy`)
+  - `seal-config/configs/local.json5` (oraz przykładowe warianty configów)
+  - `seal-config/targets/local.json5`
   - `config.runtime.json5`
 - W przypadku niejednoznaczności rozpoznania projektu: narzędzie **nie zgaduje w ciszy** — przenosi „niepewność” do `seal plan` (decision trace).
 
@@ -405,21 +404,14 @@ my-app/
   public/
   package.json
 
-  seal-config/configs/
-    local.json5
-    robot-01.json5
-
-  config.runtime.json5
-
+  seal.json5
   seal-config/
-    standard.lock.json
-    project.json5
-    policy.json5
+    configs/
+      local.json5
     targets/
-      robot-01.json5
-    server/
-      seal-server.sh
-      systemd.service.tpl
+      local.json5
+    standard.lock.json
+  config.runtime.json5
 
   # generowane automatycznie (gitignore):
   seal-out/
@@ -434,8 +426,8 @@ my-app/
 ```
 
 ### 7.2. Zasady
-- `seal-config/configs/` zawiera tylko konfiguracje aplikacji.
-- `seal-config/targets/` zawiera tylko konfiguracje deploymentu.
+- `seal-config/configs` zawiera tylko konfiguracje aplikacji.
+- `seal-config/targets` zawiera tylko konfiguracje deploymentu.
 - `seal-out/` jest w pełni generowany (jak `target/` w Maven) i może być czyszczony przy każdym `seal release`/`seal verify`/`seal deploy` – wyjątkiem jest `seal-out/cache/` (thin cache), który jest zachowywany; nie trzymaj tam nic ręcznie.
 - `seal-out/remote/` jest zarządzany automatycznie przez Seal (snapshoty configu z serwera) i jest **generowany** (gitignore).
   - Snapshoty mogą zawierać sekrety – to jest akceptowane (repo nie ma „zabezpieczać przed wyciekiem sekretów”, tylko przed wyciekiem kodu).
@@ -446,7 +438,7 @@ my-app/
 #### Wymagania normatywne (REQ-OUT)
 - REQ-OUT-001 (MUST): `seal-out/` jest katalogiem w pełni generowanym; Seal czyści go przed każdym `seal release`/`seal verify`/`seal deploy`, z wyjątkiem `seal-out/cache/` (cache thin).
 - REQ-OUT-002 (MUST): `seal-out/release/` zawiera tylko ostatni lokalny release (zawsze nadpisywany).
-- REQ-OUT-003 (MUST): `seal-config/` zawiera wyłącznie konfiguracje; Seal nie zapisuje tam artefaktów build/deploy.
+- REQ-OUT-003 (MUST): `seal-config/` zawiera wyłącznie konfiguracje (configs/targets); Seal nie zapisuje tam artefaktów build/deploy.
 
 ---
 
@@ -575,7 +567,7 @@ Plik `seal-config/targets/<target>.json5` zawiera wyłącznie:
 - Domyślnie: `config == target` (np. `robot-01` → `seal-config/configs/robot-01.json5`).
 - Wyjątki są dopuszczalne i jawne:
   - `seal deploy <target> --config <config>` (jednorazowo),
-  - albo mapowanie w `seal-config/project.json5` (np. `deploy.targets.<target>.config`).
+  - albo `config: "<config>"` w `seal-config/targets/<target>.json5`.
 
 **Wymaganie:** jeśli `seal-config/configs/<config>.json5` nie istnieje – Seal kończy się błędem z jednoznaczną informacją co stworzyć / jak nazwać plik.
 
@@ -602,7 +594,7 @@ Mechanizmy:
 #### Wymagania normatywne (REQ-CFG)
 
 - REQ-CFG-007 (MUST): Seal **materializuje defaulty** do plików. Jeśli Seal ma parametr sterujący zachowaniem (retencja, timeouty, health-check, hardening, itp.), to:
-  - albo parametr ma jawne pole w `seal-config/project.json5` / `seal-config/targets/<target>.json5`,
+  - albo parametr ma jawne pole w `seal.json5` / `seal-config/targets/<target>.json5`,
   - albo Seal potrafi wygenerować/wyświetlić „pełny config” (patrz `seal print-defaults`) i jednoznacznie wskazać, skąd wzięła się każda wartość (patrz `seal explain`).
 
 - REQ-CFG-008 (MUST): tworzenie nowego targetu/config‑wariantu **nie wymaga ręcznego kopiowania plików**. Seal zapewnia komendy:
@@ -610,7 +602,7 @@ Mechanizmy:
   - `seal config add <config> [--from <template|existing>]` → generuje `seal-config/configs/<config>.json5` jako pełny template.
 
 - REQ-CFG-009 (MUST): Seal zapewnia `seal explain [<target>]`, które wypisuje **effective config** i przy każdej wartości podaje źródło:
-  - `seal-config/project.json5`, `seal-config/targets/<target>.json5`, wartości z `seal-config/configs/<config>.json5`, albo default.
+  - `seal.json5`, `seal-config/targets/<target>.json5`, wartości z `seal-config/configs/<config>.json5`, albo default.
 
 - REQ-CFG-010 (MAY): jeśli chcesz krótszych plików, Seal może mieć tryb „compact/normalize”, ale domyślnie preferujemy jawność.
 
@@ -642,7 +634,7 @@ Serwer jest „nieprzygotowany”, jeśli brakuje któregokolwiek z:
 - `sudo bash seal-server.sh`
 
 ### 11.4. Co robi bootstrap
-Bootstrap (skrypt `seal-config/server/seal-server.sh`) MUST:
+Bootstrap (skrypt `seal-server.sh`) MUST:
 - Utworzyć strukturę katalogów:
   - `<installDir>/releases/`
   - `<installDir>/shared/`
@@ -882,7 +874,7 @@ SEA w Node (Single Executable Application) ma twarde ograniczenia, które determ
    - **UPX/strip:** dostępne jako opcje (eksperymentalne) i **OFF by default**, bo postject-ed binarki potrafią się po tym wysypać.
      - Gdy `upx` jest włączony i nie działa (brak narzędzia lub błąd typu `CantUnpackException: bad e_phoff`), build **musi** się przerwać z błędem.
      - Gdy `strip` jest włączony i narzędzie jest niedostępne, Seal wypisuje ostrzeżenie (bez przerywania builda).
-  - Użytkownik **MUST** mieć możliwość wyłączenia hardeningu w `seal-config/project.json5` (np. `build.hardening.enabled=false`).
+  - Użytkownik **MUST** mieć możliwość wyłączenia hardeningu w `seal.json5` (np. `build.hardening.enabled=false`).
    - (MAY) w przyszłości: self-integrity / anti-tamper jako opcja (nie domyślna w v0.5).
 
 7) **Utworzenie paczki release:**
@@ -936,7 +928,7 @@ Frontend zawsze będzie „łatwiejszy do podejrzenia” (bo działa w przegląd
 - SEAL nie zapisuje żadnych markerów "toolowych" w release (żadne pliki zaczynające się od `.seal_` nie powinny trafiać do artefaktu).
 
 ### 15.2. Konfiguracja
-W `seal-config/project.json5`:
+W `seal.json5`:
 
 #### Poziomy minifikacji
 - `safe` (domyślny):
@@ -1118,7 +1110,7 @@ W ramach SEAL_STANDARD v1.3 Seal dostarcza plik (do skopiowania do repo aplikacj
 - `SEAL_CONTRACT_AI.md` – krótka, jednoznaczna lista zasad dla kodu generowanego przez AI (np. brak `eval`, brak dynamicznych importów, statyczne importy assets, jednolity loader configu, wymagane endpointy `/healthz` i `/status`, format logów).
 
 W repo aplikacji plik ten może żyć jako:
-- `seal-config/SEAL_CONTRACT_AI.md` (wersjonowany razem z projektem).
+- `SEAL_CONTRACT_AI.md` (wersjonowany razem z projektem).
 
 **Wymaganie:** treść kontraktu musi być zwięzła i „promptable” (łatwa do wklejenia do AI), bez wieloznaczności.
 
@@ -1251,7 +1243,7 @@ Celem sample-app jest:
 ### 24.1. Zasady ogólne CLI
 
 - Seal jest instalowany lokalnie na komputerze deweloperskim jako komenda `seal`.
-- Seal jest uruchamiany w katalogu projektu (lub podkatalogu). Root projektu wykrywa po obecności `seal-config/standard.lock.json`.
+- Seal jest uruchamiany w katalogu projektu (lub podkatalogu). Root projektu wykrywa po obecności `seal.json5` (fallback: `seal-config/standard.lock.json`).
 - Seal nie wymaga istnienia Seala na serwerze.
 - Seal działa w trybie offline (nie wymaga internetu do typowego działania; toolchain może być instalowany lokalnie/prefetch).
 - **Zasada minimalnych komend (MUST):**
@@ -1261,7 +1253,7 @@ Celem sample-app jest:
 ### 24.2. Domyślności (żeby nie pisać tego samego)
 
 **Rozpoznanie default targetu (MUST):**
-1) jeśli `seal-config/project.json5` zawiera `default_target`, użyj go,
+1) jeśli `seal.json5` zawiera `default_target`, użyj go,
 2) w przeciwnym razie, jeśli istnieje target `local`, użyj `local`,
 3) w przeciwnym razie, jeśli istnieje dokładnie jeden target, użyj go,
 4) w przeciwnym razie wypisz listę targetów i:
@@ -1280,12 +1272,12 @@ Celem sample-app jest:
 ### 24.3. `seal` jako wizard / help (MUST)
 
 `seal` bez argumentów ma działać jako „wizard”:
-- wykrywa stan projektu (brak `seal-config/` → brak targetów → brak configów → brak buildów),
+- wykrywa stan projektu (brak `seal.json5` → brak targetów → brak configów → brak buildów),
 - wypisuje 3–5 **najbardziej sensownych następnych kroków**,
 - podaje przykładowe komendy dokładnie w formie „copy/paste”.
 
 Przykładowe reguły:
-- jeśli brak `seal-config/` → sugeruj `seal init`,
+- jeśli brak `seal.json5` → sugeruj `seal init`,
 - jeśli brak `seal-config/configs/local.json5` → sugeruj `seal init` (naprawa),
 - jeśli brak artefaktu → sugeruj `seal release`,
 - jeśli ostatni release jest OK → sugeruj `seal run-local` i `seal verify`,
@@ -1304,7 +1296,7 @@ Alias (MAY): `seal wizard`.
 **Cel:** podłączyć projekt pod SEAL (NEW/ADOPT).
 
 **MUST**
-- tworzy `seal-config/` wraz z minimalnymi plikami,
+- tworzy `seal.json5` wraz z minimalną konfiguracją,
 - tworzy `seal-config/configs/local.json5`,
 - tworzy `config.runtime.json5` (dla dev-run),
 - tworzy `seal-config/targets/local.json5`,
@@ -1446,7 +1438,7 @@ Kompatybilność (MAY): aliasy historyczne `seal diff-config`, `seal pull-config
 
 ---
 
-## 25. Specyfikacje plików i schematy (project/targets/seal-config/configs/manifest)
+## 25. Specyfikacje plików i schematy (project/targets/configs/manifest w `seal.json5` + `seal-config/`)
 
 > **Cel tej sekcji:** usunąć niejednoznaczności implementacyjne poprzez jawne “schematy” plików.
 
@@ -1579,7 +1571,7 @@ Minimalne pola (MUST):
 3) Aplikacja czyta `config.runtime.json5` i wystawia `/healthz`.
 
 **Akceptacja:**
-- `seal-config/` istnieje,
+- `seal.json5` istnieje,
 - `seal-config/configs/local.json5` istnieje,
 - `config.runtime.json5` istnieje.
 
@@ -1711,7 +1703,7 @@ Minimalne pola (MUST):
 
 ### 28.3. Milestone 3 – standard jakości i sample-app
 - sample-app spełniający SEAL_STANDARD v1.3.
-- szablony logger/status/seal-config/configs/UI.
+- szablony logger/status w `seal-config/configs`.
 
 ### 28.4. Milestone 4 – frontend obfuskacja + hardening + licencja (opcjonalnie)
 - frontend obfuskacja (domyślnie włączona, z opt-out),
@@ -1721,12 +1713,12 @@ Minimalne pola (MUST):
 
 ---
 
-## 29. Specyfikacja metadanych projektu (`seal-config/project.json5`)
+## 29. Specyfikacja metadanych projektu (`seal.json5`)
 
 > **Cel:** usunąć zgadywanie w implementacji Seala (nazwa aplikacji, entrypoint, katalog UI, domyślne opcje packagera). Plik jest prosty i generowany przez `seal init`.
 
 ### 29.1. Zasada
-- Seal może próbować odczytać nazwę z `package.json`, ale **rekomendowane** jest jawne `project.json5` w repo (szczególnie dla projektów generowanych przez AI).
+- Seal może próbować odczytać nazwę z `package.json`, ale **rekomendowane** jest jawne `seal.json5` w repo (szczególnie dla projektów generowanych przez AI).
 - `seal init` tworzy ten plik z sensownymi defaultami.
 
 
@@ -1774,13 +1766,13 @@ Przykład (aktualny dla v0.5):
 - `build.frontendMinify`: domyślnie `{ enabled: true, level: "safe", html: true, css: true }`.
 - `build.hardening`: domyślnie `{ enabled: true, seaMainPacking: true, seaMainPackingMethod: "brotli", seaMainPackingChunkSize: 8000, bundlePacking: true, strip: false, upx: false }`.
 
-### 29.4. Polityka (`seal-config/policy.json5`)
+### 29.4. Polityka (`seal.json5#policy`)
 
 **Cel:** jedno, jawne miejsce na reguły pakowania i weryfikacji (bez wyboru presetów/szablonów w UX).
 
 **Wymaganie (MUST, v0.4):**
 - Po `seal init` istnieje jedna polityka domyślna (spójna i przewidywalna), używana automatycznie.
-- Polityka może być nadpisywalna w **jednym** pliku (`seal-config/policy.json5`) poprzez jawne reguły include/exclude/exception.
+- Polityka może być nadpisywalna w **jednym** pliku (`seal.json5#policy`) poprzez jawne reguły include/exclude/exception.
 - Narzędzie nie oferuje wyboru „policy templates” jako elementu UX.
 
 Przykład (minimalny, poglądowy):
@@ -1928,7 +1920,7 @@ WantedBy=multi-user.target
 - Domyślnie (v0.5): SEAL **obfuskuje** `public/**/*.js` (pomija `*.min.js`).
   - SEAL **bezpiecznie minifikuje** `public/**/*.html` i `public/**/*.css` (pomija `*.min.html`/`*.min.css`).
 - Podsumowanie obfuskacji/minifikacji jest zapisywane lokalnie w `seal-out/meta.json` (pola `frontendObfuscation`, `frontendMinify`). `meta.json` nie jest częścią paczki release.
-- Wyłączenie jest możliwe w `seal-config/project.json5` (patrz sekcja 15).
+- Wyłączenie jest możliwe w `seal.json5` (patrz sekcja 15).
 
 ### 32.4. Rozszerzenie (opcjonalne)
 - W przyszłości Seal może wspierać serwowanie UI z wbudowanych assets (np. SEA assets) bez katalogu `public/`, ale nie jest to wymagane dla MVP.
@@ -2049,7 +2041,7 @@ Ta sekcja zbiera tematy „do decyzji” lub „do dopięcia” – żeby nie ro
 - Dodane: **SEAL_SCENARIOS v0.5** (pełna lista scenariuszy użytkownika).
 - Doprecyzowane: „SEAL prowadzi za rękę” jako wymóg UX:
   - `seal` bez argumentów działa jak wizard,
-  - domyślności dla target/seal-config/configs/ostatniego builda.
+  - domyślności dla target/config (`seal-config/configs`) i ostatniego builda.
 - Doprecyzowane: lokalne testowanie zabezpieczenia:
   - `seal release` buduje artefakt + rozpakowuje do `seal-out/release/`,
   - `seal run-local` uruchamia sealed lokalnie.

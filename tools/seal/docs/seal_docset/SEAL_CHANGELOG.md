@@ -3,7 +3,7 @@
 ## Repo/CLI v0.6.0 (docset v0.5.x)
 
 ### Build / struktura (P0)
-- **Rozdzielone foldery:** `seal-config/` (w repo) vs `seal-out/` (artefakty, gitignore).
+- **Projekt + polityka:** przeniesione do `seal.json5` (w repo); targety/configi runtime pozostają w `seal-config/`.
 - **Tylko ostatni release:** `seal-out/` jest czyszczony na każdym buildzie (brak historii i symlinków), z wyjątkiem `seal-out/cache/` (thin cache).
 - **Runtime configs w jednym miejscu:** `seal-config/configs/` zamiast osobnego `config/` w root.
 
@@ -62,5 +62,5 @@
 - `env` → `config` (koniec mindfucka).
 - Jedna główna komenda: `seal deploy <target>` (`seal ship` jako alias).
 - `seal deploy --bootstrap` zamiast osobnego kroku „server”.
-- JSON5 jako wspólny format dla `seal-config/*`.
+- JSON5 jako wspólny format dla `seal.json5` i `seal-config/*`.
 - Domyślna retencja release’ów + automatyczny cleanup.

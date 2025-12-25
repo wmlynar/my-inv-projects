@@ -102,7 +102,7 @@ Seal powinien mieć interfejs packagera, aby można było podmieniać metodę pa
 - Domyślnie SEAL próbuje wykonać `strip` (Linux) oraz spakować binarkę przez `upx` (jeśli dostępny).
 - Gdy SEA nie jest możliwe i **fallback jest jawnie włączony**, backend bundle jest pakowany do `app.bundle.cjs.gz` i uruchamiany przez mały loader (żeby nie leżał czytelny plik JS).
 - Fallback wymaga jawnego włączenia: `build.allowFallback=true` lub `packager=fallback`.
-- Hardening można wyłączyć w `seal-config/project.json5` (`build.hardening.enabled=false`).
+- Hardening można wyłączyć w `seal.json5` (`build.hardening.enabled=false`).
 - (MAY w przyszłości) self-integrity / anti-tamper jako opt-in.
 
 **G) Manifest i paczka `.tgz`**
@@ -141,13 +141,13 @@ $ seal explain robot-01
 
 EFFECTIVE CONFIG (robot-01)
 
-project.json5:
+seal.json5:
   app.name = my-app
   seal.packager = sea
   seal.obfuscation = aggressive
   retention.keep_releases = 1
 
-robot-01.json5:
+seal-config/targets/robot-01.json5:
   host = 10.0.0.23
   user = robot
 
@@ -315,9 +315,9 @@ Ta sekcja jest stricte „jak to zaimplementować”, żeby SEAL był używalny 
 **Cel:** użytkownik wpisuje `seal` i dostaje 3–5 komend „co dalej”.
 
 Proponowana implementacja:
-1) wykryj root projektu (`seal-config/standard.lock.json`); jeśli brak – komunikat „to nie jest projekt SEAL” + sugestia `seal init`.
+1) wykryj root projektu (`seal.json5`); jeśli brak – komunikat „to nie jest projekt SEAL” + sugestia `seal init`.
 2) wykryj stan:
-   - brak `seal-config/` / brak `seal-config/configs/local.json5` → `seal init`,
+   - brak `seal.json5` / brak `seal-config/configs/local.json5` → `seal init`,
    - brak targetów → `seal target add local`,
    - brak artefaktu → `seal release`,
    - jest artefakt → `seal verify` i `seal run-local`,
@@ -327,7 +327,7 @@ Proponowana implementacja:
 ### 6.2. Rozpoznanie default target/config
 
 Minimalny algorytm (zgodny ze SPEC v0.5):
-- `default_target` z `seal-config/project.json5` → jeśli istnieje,
+- `default_target` z `seal.json5` → jeśli istnieje,
 - inaczej `local` → jeśli istnieje,
 - inaczej jedyny target → jeśli jest dokładnie jeden,
 - inaczej: lista + wybór (interaktywnie) albo błąd z instrukcją.

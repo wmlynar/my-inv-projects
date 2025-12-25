@@ -2,7 +2,6 @@
 
 const fs = require("fs");
 const path = require("path");
-const os = require("os");
 
 const { findProjectRoot } = require("../lib/paths");
 const { getSealPaths, loadProjectConfig, loadTargetConfig, resolveTargetName, resolveConfigName, getConfigFile } = require("../lib/project");
@@ -104,12 +103,12 @@ async function cmdCheck(cwd, targetArg, opts) {
 
   const proj = loadProjectConfig(projectRoot);
   if (!proj) {
-    errors.push("Missing seal-config/project.json5 (run: seal init)");
+    errors.push("Missing seal.json5 (project). If this is a workspace root, use seal batch or cd into a project.");
   }
 
   const targetName = resolveTargetName(projectRoot, targetArg || null);
   const t = loadTargetConfig(projectRoot, targetName);
-  if (!t) warnings.push(`Missing target '${targetName}' (seal-config/targets/${targetName}.json5)`);
+  if (!t) warnings.push(`Missing target '${targetName}' in seal-config/targets`);
   const targetCfg = t ? t.cfg : { target: targetName, config: targetName, packager: "auto" };
   if (proj) {
     targetCfg.appName = targetCfg.appName || proj.appName;
@@ -118,12 +117,12 @@ async function cmdCheck(cwd, targetArg, opts) {
 
   const configName = resolveConfigName(targetCfg, null);
   const configFile = getConfigFile(projectRoot, configName);
-  if (!fileExists(configFile)) warnings.push(`Missing runtime config: seal-config/configs/${configName}.json5`);
+  if (!fileExists(configFile)) warnings.push(`Missing runtime config: ${configFile}`);
 
   if (!fileExists(paths.runtimeConfigPath) && fileExists(configFile)) {
     try {
       fs.copyFileSync(configFile, paths.runtimeConfigPath);
-      ok(`Created config.runtime.json5 (from seal-config/configs/${configName}.json5)`);
+      ok(`Created config.runtime.json5 (from ${configFile})`);
     } catch (e) {
       warnings.push(`Missing config.runtime.json5 (dev convenience). Failed to create: ${e.message || e}`);
     }

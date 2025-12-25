@@ -778,7 +778,7 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   if (!packOk) {
     const fallbackAllowed = packagerRequested === "fallback" || allowFallback;
     if (!fallbackAllowed) {
-      const hint = "Set build.allowFallback=true in seal-config/project.json5 or use --packager fallback.";
+      const hint = "Set build.allowFallback=true in seal.json5 or use --packager fallback.";
       const reason = packErrorShort ? `Reason: ${packErrorShort}.` : "Reason: SEA packager failed.";
       throw new Error(`SEA packager failed and fallback is disabled. ${reason} ${hint}`);
     }
@@ -793,7 +793,7 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
 
 
 // Hardening (post-pack): make it harder to recover code by casually viewing files.
-// Default: enabled (can be disabled in seal-config/project.json5 -> build.hardening.enabled=false)
+// Default: enabled (can be disabled in seal.json5 -> build.hardening.enabled=false)
 const hardPost = applyHardeningPost(releaseDir, appName, packagerUsed, hardCfgRaw);
 const hardening = { enabled: hardEnabled, seaMainPacking, post: hardPost };
 

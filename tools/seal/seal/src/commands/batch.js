@@ -5,7 +5,7 @@ const path = require("path");
 
 const { spawnSyncSafe } = require("../lib/spawn");
 const { hr, info, warn, ok } = require("../lib/ui");
-const { loadProjectConfig } = require("../lib/project");
+const { loadProjectConfig, loadSealFile, isWorkspaceConfig } = require("../lib/project");
 
 const SKIP_DIRS = new Set([
   "node_modules",
@@ -29,8 +29,31 @@ const SKIP_DIRS = new Set([
 ]);
 
 function isSealProject(dir) {
-  const p = path.join(dir, "seal-config", "project.json5");
-  return fs.existsSync(p);
+  const sealPath = path.join(dir, "seal.json5");
+  if (fs.existsSync(sealPath)) {
+    try {
+      const cfg = loadSealFile(dir);
+      return !!cfg && !isWorkspaceConfig(cfg);
+    } catch {
+      return true;
+    }
+  }
+  const legacyProject = path.join(dir, "seal-config", "project.json5");
+  const legacyStandard = path.join(dir, "seal-config", "standard.lock.json");
+  return fs.existsSync(legacyProject) || fs.existsSync(legacyStandard);
+}
+
+function loadWorkspaceProjects(rootDir) {
+  const p = path.join(rootDir, "seal.json5");
+  if (!fs.existsSync(p)) return null;
+  const cfg = loadSealFile(rootDir);
+  if (!cfg || !isWorkspaceConfig(cfg)) return null;
+  const projects = Array.isArray(cfg.projects) ? cfg.projects : [];
+  return projects.map((p) => {
+    if (typeof p === "string") return { path: p, name: path.basename(p) };
+    const projPath = p.path || p.name;
+    return { path: projPath, name: p.name || (projPath ? path.basename(projPath) : "project") };
+  }).filter((p) => p.path);
 }
 
 function matchesFilter(projectRoot, appName, filter) {
@@ -42,6 +65,23 @@ function matchesFilter(projectRoot, appName, filter) {
 function findSealProjects(rootDir, maxDepth, filter) {
   const results = [];
   const seen = new Set();
+
+  const workspaceProjects = loadWorkspaceProjects(rootDir);
+  if (workspaceProjects && workspaceProjects.length) {
+    for (const p of workspaceProjects) {
+      const abs = path.resolve(rootDir, p.path);
+      if (seen.has(abs)) continue;
+      if (!isSealProject(abs)) continue;
+      const proj = loadProjectConfig(abs);
+      const appName = proj && proj.appName ? proj.appName : p.name || path.basename(abs);
+      if (matchesFilter(abs, appName, filter)) {
+        results.push({ root: abs, appName });
+      }
+      seen.add(abs);
+    }
+    results.sort((a, b) => a.root.localeCompare(b.root));
+    return results;
+  }
 
   function walk(dir, depth) {
     if (depth < 0) return;

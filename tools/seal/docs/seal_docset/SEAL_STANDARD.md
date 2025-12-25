@@ -34,7 +34,7 @@ SEAL_STANDARD jest **modułowy**.
   - `testing` (SHOULD, jeśli projekt ma E2E/CI)
 
 ### 0.3. Deklaracja zgodności (lock)
-Projekt deklaruje wersję i moduły w pliku:
+Projekt deklaruje wersję i moduły w:
 
 - `seal-config/standard.lock.json`
 

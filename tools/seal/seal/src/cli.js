@@ -31,7 +31,7 @@ async function main(argv) {
 
   program
     .command("init")
-    .description("Initialize / adopt project into SEAL (creates seal-config/ and seal-config/configs templates)")
+    .description("Initialize / adopt project into SEAL (creates seal.json5 + local target/config)")
     .option("--force", "Overwrite existing files (careful)", false)
     .action(async (opts) => cmdInit(process.cwd(), opts));
 
@@ -54,26 +54,26 @@ async function main(argv) {
     .command("target")
     .description("Manage targets")
     .command("add <target>")
-    .description("Create seal-config/targets/<target>.json5")
+    .description("Add target in seal-config/targets")
     .action(async (target) => cmdTargetAdd(process.cwd(), target));
 
   const configCmd = program.command("config").description("Manage runtime config (and drift helpers)");
   configCmd
     .command("add <config>")
-    .description("Create seal-config/configs/<config>.json5 template")
+    .description("Add config in seal-config/configs")
     .action(async (name) => cmdConfigAdd(process.cwd(), name));
   configCmd
     .command("diff [targetOrConfig]")
-    .description("Show diff between repo seal-config/configs/<config>.json5 and server shared/config.json5 (requires SSH). Accepts target or config path/name.")
+    .description("Show diff between repo seal-config/configs and server shared/config.json5 (requires SSH). Accepts target or config path/name.")
     .action(async (targetOrConfig) => cmdConfigDiff(process.cwd(), targetOrConfig));
   configCmd
     .command("pull [targetOrConfig]")
-    .description("Pull server shared/config.json5 into repo seal-config/configs/<config>.json5 (requires SSH)")
+    .description("Pull server shared/config.json5 into repo seal-config/configs (requires SSH)")
     .option("--apply", "Overwrite repo config file", false)
     .action(async (targetOrConfig, opts) => cmdConfigPull(process.cwd(), targetOrConfig, opts));
   configCmd
     .command("push [targetOrConfig]")
-    .description("Push repo seal-config/configs/<config>.json5 to server shared/config.json5 (requires SSH)")
+    .description("Push repo seal-config/configs to server shared/config.json5 (requires SSH)")
     .action(async (targetOrConfig) => cmdConfigPush(process.cwd(), targetOrConfig));
 
   program

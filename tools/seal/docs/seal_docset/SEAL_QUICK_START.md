@@ -44,7 +44,7 @@ seal init
 ```
 
 `seal init`:
-- tworzy `seal-config/` (konfiguracja SEAL, commitowana),
+- tworzy `seal.json5` (konfiguracja projektu + policy, commitowana),
 - tworzy `seal-config/configs/local.json5`,
 - tworzy `config.runtime.json5` (domyślny link/kopia do uruchomień),
 - tworzy `seal-config/targets/local.json5`,
@@ -130,7 +130,7 @@ seal run-local
 
 Jeśli wolisz ręcznie (bez magii):
 ```bash
-cp seal-config/configs/local.json5 seal-out/release/config.runtime.json5
+# utwórz config.runtime.json5 z seal-config/configs/local.json5 (kopiuj treść)
 ./seal-out/release/<app>
 ```
 

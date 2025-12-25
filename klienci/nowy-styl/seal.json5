@@ -1,0 +1,8 @@
+{
+  "projects": [
+    { "name": "modbus-sync-worksites" },
+    { "name": "nowy-styl-ui" },
+    { "name": "robot-task-manager" },
+    { "name": "robot-ui" }
+  ]
+}

@@ -6,12 +6,10 @@ const path = require("path");
 const { findProjectRoot } = require("../lib/paths");
 const { getSealPaths, loadProjectConfig, loadTargetConfig, resolveConfigName, getConfigFile } = require("../lib/project");
 const { ensureDir, fileExists, safeWriteFile } = require("../lib/fsextra");
-const { ok, warn, info, hr } = require("../lib/ui");
-const { writeJson5 } = require("../lib/json5io");
+const { ok, warn } = require("../lib/ui");
 const { configDiffSsh, configPullSsh, configPushSsh } = require("../lib/deploySsh");
 
 function templateConfig(name, appName) {
-  // Very similar to local; user can tweak ports/log levels.
   return `// seal-config/configs/${name}.json5 – runtime config
 {
   appName: "${appName}",
@@ -39,7 +37,7 @@ async function cmdConfigAdd(cwd, name) {
   const projectRoot = findProjectRoot(cwd);
   const paths = getSealPaths(projectRoot);
   const proj = loadProjectConfig(projectRoot);
-  if (!proj) throw new Error("Brak seal-config/project.json5. Zrób: seal init");
+  if (!proj) throw new Error("Brak seal.json5 (projekt). Zrób: seal init");
 
   ensureDir(paths.configDir);
   const file = path.join(paths.configDir, `${name}.json5`);
@@ -99,7 +97,7 @@ function normalizeConfigArg(arg) {
 
 function resolveTargetAndConfig(projectRoot, targetNameOrConfig) {
   const proj = loadProjectConfig(projectRoot);
-  if (!proj) throw new Error("Brak seal-config/project.json5. Zrób: seal init");
+  if (!proj) throw new Error("Brak seal.json5 (projekt). Zrób: seal init");
 
   const targets = listTargets(projectRoot);
   const input = targetNameOrConfig ? String(targetNameOrConfig).trim() : "";

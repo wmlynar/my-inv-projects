@@ -1,7 +1,5 @@
 "use strict";
 
-const path = require("path");
-
 const { findProjectRoot } = require("../lib/paths");
 const { getSealPaths, loadProjectConfig, loadTargetConfig, resolveTargetName, resolveConfigName, getConfigFile, findLastArtifact } = require("../lib/project");
 const { info, warn, ok, hr } = require("../lib/ui");
@@ -13,7 +11,7 @@ async function cmdExplain(cwd, opts) {
 
   const proj = loadProjectConfig(projectRoot);
   if (!proj) {
-    throw new Error("Brak seal-config/project.json5. Zrób: seal init");
+    throw new Error("Brak seal.json5 (projekt). Jeśli jesteś w root monorepo, użyj seal batch lub przejdź do podprojektu.");
   }
 
   const targetName = resolveTargetName(projectRoot, null);
@@ -22,6 +20,7 @@ async function cmdExplain(cwd, opts) {
 
   const configName = targetCfg ? resolveConfigName(targetCfg, null) : "local";
   const configFile = getConfigFile(projectRoot, configName);
+  const configOk = fileExists(configFile);
 
   const out = {
     projectRoot,
@@ -29,11 +28,11 @@ async function cmdExplain(cwd, opts) {
     entry: proj.entry,
     defaultTarget: proj.defaultTarget,
     build: proj.build,
-    target: targetCfg || { missing: true, expected: path.join(paths.targetsDir, `${targetName}.json5`) },
+    target: targetCfg || { missing: true, expected: `seal-config/targets/${targetName}.json5` },
     configName,
-    configFile,
+    configFromSeal: configOk,
     runtimeConfig: paths.runtimeConfigPath,
-    sealConfigDir: paths.sealConfigDir,
+    sealFile: paths.sealFile,
     outDir: paths.outDir,
     artifactPath: findLastArtifact(projectRoot, proj.appName),
   };
@@ -51,9 +50,9 @@ async function cmdExplain(cwd, opts) {
   console.log(`entry:        ${proj.entry}`);
   console.log(`defaultTarget:${proj.defaultTarget}`);
   console.log(`configName:   ${configName}`);
-  console.log(`configFile:   ${fileExists(configFile) ? configFile : configFile + " (missing)"}`);
+  console.log(`config:       ${configOk ? configFile : "missing"}`);
   console.log(`runtimeConfig:${fileExists(paths.runtimeConfigPath) ? paths.runtimeConfigPath : paths.runtimeConfigPath + " (missing)"}`);
-  console.log(`sealConfigDir:${paths.sealConfigDir}`);
+  console.log(`sealFile:     ${paths.sealFile}`);
   console.log(`outDir:       ${paths.outDir}`);
   console.log(`artifact:     ${findLastArtifact(projectRoot, proj.appName) || "(none)"}`);
   console.log("");

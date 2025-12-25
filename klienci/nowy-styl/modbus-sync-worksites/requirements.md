@@ -87,7 +87,7 @@
 
 - Repozytorium:
   - Projekt w git + GitHub.
-  - Commitowane: kod (`*.js`), `seal-config/`, `seal-config/configs/*.json5`, skrypty bash (legacy), `package.json`, `package-lock.json`, `.gitignore`, dokumentacja (`requirements.md`).
+  - Commitowane: kod (`*.js`), `seal.json5`, `seal-config/configs/*.json5`, `seal-config/targets/*.json5`, skrypty bash (legacy), `package.json`, `package-lock.json`, `.gitignore`, dokumentacja (`requirements.md`).
   - `.gitignore` ignoruje `node_modules/`, logi, śmieci edytorów, `.env` itp.
 
 ---
@@ -165,4 +165,4 @@
 - Repozytorium:
   - kod w gicie,
   - powtarzalny sposób wdrożenia przez SEAL (release + deploy),
-  - `seal-config/` i `seal-config/configs/*.json5` są wersjonowane; `.env` nie.
+  - `seal.json5`, `seal-config/configs/*.json5` i `seal-config/targets/*.json5` są wersjonowane; `.env` nie.
