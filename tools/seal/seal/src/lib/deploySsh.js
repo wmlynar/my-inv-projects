@@ -1165,6 +1165,45 @@ echo "Service removed ${targetCfg.serviceName}"
   if (!res.ok) throw new Error(`down ssh failed (status=${res.status})`);
 }
 
+function checkConfigDriftSsh({ targetCfg, localConfigPath, showDiff = true }) {
+  const { user, host } = sshUserHost(targetCfg);
+  const layout = remoteLayout(targetCfg);
+  const remoteCfg = `${layout.sharedDir}/config.json5`;
+  const remoteCfgQ = shQuote(remoteCfg);
+
+  const exists = sshExecTarget(targetCfg, {
+    user,
+    host,
+    args: ["bash", "-lc", `test -f ${remoteCfgQ}`],
+    stdio: "pipe",
+  });
+  if (!exists.ok) {
+    if (exists.status === 1) return { status: "missing", path: remoteCfg };
+    const out = `${exists.stdout}\n${exists.stderr}`.trim();
+    return {
+      status: "error",
+      message: `ssh config check failed (status=${exists.status})${out ? `: ${out}` : ""}`,
+    };
+  }
+
+  const tmpLocal = path.join(os.tmpdir(), `${targetCfg.serviceName || targetCfg.appName || "app"}-remote-config.json5`);
+  ensureDir(path.dirname(tmpLocal));
+  const get = scpFromTarget(targetCfg, { user, host, remotePath: remoteCfg, localPath: tmpLocal });
+  if (!get.ok) return { status: "error", message: "scp remote config failed" };
+
+  const diffRes = spawnSyncSafe("diff", ["-u", localConfigPath, tmpLocal], {
+    stdio: showDiff ? "inherit" : "pipe",
+  });
+  if (diffRes.status === 0) return { status: "same" };
+  if (diffRes.status === 1) return { status: "diff" };
+  const diffOut = `${diffRes.stdout}\n${diffRes.stderr}`.trim();
+  const errMsg = diffRes.error || diffOut;
+  return {
+    status: "error",
+    message: `diff failed (status=${diffRes.status ?? "?"})${errMsg ? `: ${errMsg}` : ""}`,
+  };
+}
+
 function configDiffSsh({ targetCfg, localConfigPath }) {
   const { user, host } = sshUserHost(targetCfg);
   const layout = remoteLayout(targetCfg);
@@ -1240,6 +1279,7 @@ module.exports = {
   ensureCurrentReleaseSsh,
   uninstallSsh,
   downSsh,
+  checkConfigDriftSsh,
   configDiffSsh,
   configPullSsh,
   configPushSsh,

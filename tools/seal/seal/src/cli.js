@@ -159,6 +159,7 @@ async function main(argv) {
     .option("--bootstrap", "Install prerequisites on the target (first time)", false)
     .option("--push-config", "Overwrite server runtime config with repo config (explicit)", false)
     .option("--restart", "Restart target service after deploy (explicit)", false)
+    .option("--accept-drift, --allow-drift", "Allow start/restart when repo config differs from target", false)
     .option("--artifact <path>", "Deploy a specific artifact (.tgz) instead of building", null)
     .option("--fast", "Fast deploy from sources (unsafe)", false)
     .option("--fast-no-node-modules", "Exclude node_modules in fast mode", false)
@@ -170,6 +171,7 @@ async function main(argv) {
     .argument("[target]", "Target name (default: project defaultTarget)", null)
     .option("--bootstrap", "Install prerequisites on the target (first time)", false)
     .option("--push-config", "Overwrite server runtime config with repo config (explicit)", false)
+    .option("--accept-drift, --allow-drift", "Allow start/restart when repo config differs from target", false)
     .option("--skip-check", "Skip preflight checks", false)
     .option("--check-verbose", "Show tool output during preflight checks", false)
     .option("--check-cc <compiler>", "C compiler for preflight checks (e.g. gcc/clang)", null)
@@ -182,7 +184,8 @@ async function main(argv) {
     .command("rollback")
     .description("Rollback to previous release on target (minimal implementation)")
     .argument("[target]", "Target name", null)
-    .action(async (target) => cmdRollback(process.cwd(), target));
+    .option("--accept-drift, --allow-drift", "Allow rollback when repo config differs from target", false)
+    .action(async (target, opts) => cmdRollback(process.cwd(), target, opts));
 
   program
     .command("run")
@@ -190,6 +193,7 @@ async function main(argv) {
     .argument("[target]", "Target name", null)
     .option("--kill", "Kill running app process from current release before starting", false)
     .option("--sudo", "Run application as root (uses sudo)", false)
+    .option("--accept-drift, --allow-drift", "Allow run when repo config differs from target", false)
     .action(async (target, opts) => cmdRunRemote(process.cwd(), target, opts));
 
   program
@@ -203,7 +207,8 @@ async function main(argv) {
     .description("Service control on target (mirrors appctl)")
     .argument("<target>", "Target name")
     .argument("<action>", "up|enable|start|restart|stop|disable|down|status|logs")
-    .action(async (target, action) => cmdRemote(process.cwd(), target, action));
+    .option("--accept-drift, --allow-drift", "Allow start/restart when repo config differs from target", false)
+    .action(async (target, action, opts) => cmdRemote(process.cwd(), target, action, opts));
 
   await program.parseAsync(argv);
 }

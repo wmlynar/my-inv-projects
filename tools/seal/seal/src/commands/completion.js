@@ -120,9 +120,11 @@ _seal_complete() {
     release) opts="--config --skip-check --check-verbose --check-cc --packager" ;;
     run-local) opts="--sealed --config" ;;
     verify) opts="--explain" ;;
-    deploy) opts="--bootstrap --push-config --restart --artifact --fast --fast-no-node-modules" ;;
-    ship) opts="--bootstrap --push-config --skip-check --check-verbose --check-cc --packager --fast --fast-no-node-modules" ;;
-    run) opts="--kill --sudo" ;;
+    deploy) opts="--bootstrap --push-config --restart --accept-drift --allow-drift --artifact --fast --fast-no-node-modules" ;;
+    ship) opts="--bootstrap --push-config --accept-drift --allow-drift --skip-check --check-verbose --check-cc --packager --fast --fast-no-node-modules" ;;
+    run) opts="--kill --sudo --accept-drift --allow-drift" ;;
+    rollback) opts="--accept-drift --allow-drift" ;;
+    remote) opts="--accept-drift --allow-drift" ;;
     completion) opts="bash" ;;
   esac
   if [[ "$cmd" == "config" && "${words[2]}" == "pull" ]]; then

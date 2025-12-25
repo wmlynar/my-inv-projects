@@ -425,6 +425,24 @@ function deployLocalFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, bu
   return { layout, relDir, folderName };
 }
 
+function checkConfigDriftLocal({ targetCfg, localConfigPath, showDiff = true }) {
+  const layout = localInstallLayout(targetCfg);
+  const sharedCfg = path.join(layout.sharedDir, "config.json5");
+  if (!fileExists(sharedCfg)) return { status: "missing", path: sharedCfg };
+
+  const diffRes = spawnSyncSafe("diff", ["-u", localConfigPath, sharedCfg], {
+    stdio: showDiff ? "inherit" : "pipe",
+  });
+  if (diffRes.status === 0) return { status: "same" };
+  if (diffRes.status === 1) return { status: "diff" };
+  const diffOut = `${diffRes.stdout}\n${diffRes.stderr}`.trim();
+  const errMsg = diffRes.error || diffOut;
+  return {
+    status: "error",
+    message: `diff failed (status=${diffRes.status ?? "?"})${errMsg ? `: ${errMsg}` : ""}`,
+  };
+}
+
 function ensureCurrentReleaseLocal(targetCfg) {
   const layout = localInstallLayout(targetCfg);
   if (!fileExists(layout.currentFile)) {
@@ -638,4 +656,5 @@ module.exports = {
   uninstallLocal,
   ensureCurrentReleaseLocal,
   runLocalForeground,
+  checkConfigDriftLocal,
 };

@@ -10,8 +10,36 @@ const { info, warn, ok, hr } = require("../lib/ui");
 
 const { cmdRelease } = require("./release");
 const { buildFastRelease } = require("../lib/fastRelease");
-const { deployLocal, deployLocalFast, bootstrapLocal, statusLocal, logsLocal, enableLocal, startLocal, restartLocal, stopLocal, disableLocalOnly, disableLocal, rollbackLocal, downLocal, uninstallLocal, runLocalForeground, ensureCurrentReleaseLocal } = require("../lib/deploy");
-const { deploySsh, deploySshFast, bootstrapSsh, installServiceSsh, statusSsh, logsSsh, enableSsh, startSsh, restartSsh, stopSsh, disableSshOnly, disableSsh, rollbackSsh, downSsh, uninstallSsh, runSshForeground, ensureCurrentReleaseSsh } = require("../lib/deploySsh");
+const { deployLocal, deployLocalFast, bootstrapLocal, statusLocal, logsLocal, enableLocal, startLocal, restartLocal, stopLocal, disableLocalOnly, disableLocal, rollbackLocal, downLocal, uninstallLocal, runLocalForeground, ensureCurrentReleaseLocal, checkConfigDriftLocal } = require("../lib/deploy");
+const { deploySsh, deploySshFast, bootstrapSsh, installServiceSsh, statusSsh, logsSsh, enableSsh, startSsh, restartSsh, stopSsh, disableSshOnly, disableSsh, rollbackSsh, downSsh, uninstallSsh, runSshForeground, ensureCurrentReleaseSsh, checkConfigDriftSsh } = require("../lib/deploySsh");
+
+function ensureConfigDriftOk({ targetCfg, targetName, configFile, acceptDrift }) {
+  if (acceptDrift) {
+    warn("Config drift allowed (--accept-drift). Skipping diff.");
+    return;
+  }
+
+  if (!fileExists(configFile)) throw new Error(`Missing repo config: ${configFile}`);
+
+  const kind = (targetCfg.kind || "local").toLowerCase();
+  info(`Config drift check (${targetName})`);
+  const res = kind === "ssh"
+    ? checkConfigDriftSsh({ targetCfg, localConfigPath: configFile })
+    : checkConfigDriftLocal({ targetCfg, localConfigPath: configFile });
+
+  if (!res || res.status === "same") return;
+  if (res.status === "missing") {
+    warn(`Config missing on target (${res.path || "shared/config.json5"}).`);
+    throw new Error(`Refusing to start with missing config. Fix: seal config push ${targetName} (or deploy --push-config), or rerun with --accept-drift.`);
+  }
+  if (res.status === "diff") {
+    warn("Config drift detected (repo vs target).");
+    throw new Error(`Refusing to start with config drift. Fix: seal config push ${targetName} (or deploy --push-config), or rerun with --accept-drift.`);
+  }
+  if (res.status === "error") {
+    throw new Error(res.message || "Config drift check failed");
+  }
+}
 
 function resolveTarget(projectRoot, targetArg) {
   const proj = loadProjectConfig(projectRoot);
@@ -123,6 +151,12 @@ async function cmdDeploy(cwd, targetArg, opts) {
   }
 
   if (opts.restart) {
+    ensureConfigDriftOk({
+      targetCfg,
+      targetName,
+      configFile,
+      acceptDrift: !!opts.acceptDrift,
+    });
     hr();
     info("Restart requested (--restart)");
     if ((targetCfg.kind || "local").toLowerCase() === "ssh") restartSsh(targetCfg);
@@ -149,6 +183,7 @@ async function cmdShip(cwd, targetArg, opts) {
       artifact: null,
       fast: true,
       fastNoNodeModules: !!opts.fastNoNodeModules,
+      acceptDrift: !!opts.acceptDrift,
     };
     await cmdDeploy(cwd, targetArg, deployOpts);
     return;
@@ -170,6 +205,7 @@ async function cmdShip(cwd, targetArg, opts) {
     artifact: releaseRes && releaseRes.artifactPath ? releaseRes.artifactPath : null,
     releaseDir: releaseRes && releaseRes.releaseDir ? releaseRes.releaseDir : null,
     buildId: releaseRes && releaseRes.buildId ? releaseRes.buildId : null,
+    acceptDrift: !!opts.acceptDrift,
   };
   await cmdDeploy(cwd, targetArg, deployOpts);
 }
@@ -202,9 +238,17 @@ async function cmdDisable(cwd, targetArg) {
   else disableLocal(targetCfg);
 }
 
-async function cmdRollback(cwd, targetArg) {
+async function cmdRollback(cwd, targetArg, opts) {
   const projectRoot = findProjectRoot(cwd);
-  const { targetCfg } = resolveTarget(projectRoot, targetArg);
+  const { targetCfg, targetName } = resolveTarget(projectRoot, targetArg);
+  const configName = resolveConfigName(targetCfg, null);
+  const configFile = getConfigFile(projectRoot, configName);
+  ensureConfigDriftOk({
+    targetCfg,
+    targetName,
+    configFile,
+    acceptDrift: !!(opts && opts.acceptDrift),
+  });
   if ((targetCfg.kind || "local").toLowerCase() === "ssh") rollbackSsh(targetCfg);
   else rollbackLocal(targetCfg);
 }
@@ -218,13 +262,21 @@ async function cmdUninstall(cwd, targetArg) {
 
 async function cmdRunRemote(cwd, targetArg, opts) {
   const projectRoot = findProjectRoot(cwd);
-  const { targetCfg } = resolveTarget(projectRoot, targetArg);
+  const { targetCfg, targetName } = resolveTarget(projectRoot, targetArg);
+  const configName = resolveConfigName(targetCfg, null);
+  const configFile = getConfigFile(projectRoot, configName);
+  ensureConfigDriftOk({
+    targetCfg,
+    targetName,
+    configFile,
+    acceptDrift: !!(opts && opts.acceptDrift),
+  });
   const runOpts = { kill: !!(opts && opts.kill), sudo: !!(opts && opts.sudo) };
   if ((targetCfg.kind || "local").toLowerCase() === "ssh") runSshForeground(targetCfg, runOpts);
   else runLocalForeground(targetCfg, runOpts);
 }
 
-async function cmdRemote(cwd, targetArg, action) {
+async function cmdRemote(cwd, targetArg, action, opts) {
   const projectRoot = findProjectRoot(cwd);
   const { targetCfg, targetName } = resolveTarget(projectRoot, targetArg);
   const kind = (targetCfg.kind || "local").toLowerCase();
@@ -239,6 +291,17 @@ async function cmdRemote(cwd, targetArg, action) {
   }
 
   const isSsh = kind === "ssh";
+  const isStartAction = act === "up" || act === "start" || act === "restart";
+  if (isStartAction) {
+    const configName = resolveConfigName(targetCfg, null);
+    const configFile = getConfigFile(projectRoot, configName);
+    ensureConfigDriftOk({
+      targetCfg,
+      targetName,
+      configFile,
+      acceptDrift: !!(opts && opts.acceptDrift),
+    });
+  }
 
   switch (act) {
     case "up":
