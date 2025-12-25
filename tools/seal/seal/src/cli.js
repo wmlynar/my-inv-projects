@@ -46,6 +46,7 @@ async function main(argv) {
     .argument("[target]", "Target name (optional; enables SSH preflight)")
     .option("--strict", "Treat warnings as errors", false)
     .option("--verbose", "Show tool output (diagnostics for slow/hanging checks)", false)
+    .option("--cc <compiler>", "C compiler for thin toolchain check (e.g. gcc/clang)", null)
     .action(async (target, opts) => cmdCheck(process.cwd(), target, opts));
 
   program

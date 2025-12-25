@@ -26,6 +26,13 @@ function hasCommand(cmd) {
   return !!r.ok;
 }
 
+function resolveCcOverride(opts) {
+  const raw = opts.cc || process.env.SEAL_CHECK_CC || process.env.SEAL_THIN_CC;
+  if (!raw) return null;
+  const cc = String(raw).trim();
+  return cc ? cc : null;
+}
+
 function resolvePostjectBin() {
   const localPostject = path.join(__dirname, "..", "..", "node_modules", ".bin", "postject");
   const parentPostject = path.join(__dirname, "..", "..", "..", "node_modules", ".bin", "postject");
@@ -248,7 +255,20 @@ async function cmdCheck(cwd, targetArg, opts) {
       ok("zstd: OK");
     }
 
-    const cc = hasCommand("cc") ? "cc" : (hasCommand("gcc") ? "gcc" : null);
+    const ccOverride = resolveCcOverride(opts);
+    let cc = null;
+    if (ccOverride) {
+      const hasPath = /[\\/]/.test(ccOverride);
+      if (hasPath ? fileExists(ccOverride) : hasCommand(ccOverride)) {
+        cc = ccOverride;
+        info(`Thin: using compiler override: ${cc}`);
+      } else {
+        errors.push(`C compiler not found: ${ccOverride}`);
+        thinToolchainIssue = true;
+      }
+    } else {
+      cc = hasCommand("cc") ? "cc" : (hasCommand("gcc") ? "gcc" : null);
+    }
     if (!cc) {
       errors.push("C compiler not found (thin). Install: sudo apt-get install -y build-essential");
       thinToolchainIssue = true;

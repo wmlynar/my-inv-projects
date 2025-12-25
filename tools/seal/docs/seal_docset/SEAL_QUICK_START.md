@@ -67,7 +67,7 @@ npm run dev
 W logach aplikacji powinieneś widzieć, że czyta `config.runtime.json5`.
 
 > **Tip:** jeśli `config.runtime.json5` nie istnieje, `seal check` i `seal run-local` utworzą go automatycznie z `seal-config/configs/<config>.json5`.
-> **Tip:** jeśli `seal check` wygląda na „zawieszony”, uruchom `seal check --verbose` (pokazuje output narzędzi) lub zwiększ timeouty: `SEAL_CHECK_CC_TIMEOUT_MS=60000`.
+> **Tip:** jeśli `seal check` wygląda na „zawieszony”, uruchom `seal check --verbose` (pokazuje output narzędzi) lub zwiększ timeouty: `SEAL_CHECK_CC_TIMEOUT_MS=60000`. Możesz też wskazać kompilator: `seal check --cc gcc`.
 
 ---
 
