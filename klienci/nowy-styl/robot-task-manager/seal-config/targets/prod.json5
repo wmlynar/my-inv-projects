@@ -7,6 +7,6 @@
   serviceScope: "system",
   installDir: "/home/admin/apps/robot-task-manager",
   serviceName: "robot-task-manager",
-  packager: "auto",
+  packager: "sea",
   config: "prod",
 }

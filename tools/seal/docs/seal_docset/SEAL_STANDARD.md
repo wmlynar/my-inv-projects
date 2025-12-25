@@ -71,6 +71,12 @@ Przykład:
 - STD-013 (SHOULD): nazwy plików na target nie powinny zdradzać roli/znaczenia; preferuj krótkie/nijakie nazwy (np. `c` zamiast `codec.bin`), o ile nie utrudnia to operacji serwisowych.
 - STD-014 (SHOULD): jeśli konfiguracja udostępnia opcję (np. `sshPort`, `StrictHostKeyChecking`), to **każda** ścieżka wykonania powinna ją respektować (ssh/scp/rsync); normalizację trzymaj w jednym miejscu, aby uniknąć rozjazdów.
 
+### 1.4. Narzędzia i automatyzacje (Seal/CLI)
+- STD-015 (SHOULD): wykrywanie narzędzi (np. `postject`) musi mieć **jedno źródło prawdy**; `check` i `build` używają tego samego resolvera binarki.
+- STD-016 (SHOULD): rekurencyjne uruchamianie CLI (workspace/monorepo) **zawsze** używa ścieżek absolutnych, aby nie zależeć od CWD.
+- STD-017 (SHOULD): komenda uruchomiona poza projektem ma fail‑fast i nie generuje efektów ubocznych (brak tworzenia plików/ostrzeżeń „z innego katalogu”).
+- STD-018 (SHOULD): testy automatyczne nie polegają na kruchym parsowaniu stdout/stderr child procesów; preferuj JSON output, kody wyjścia lub wywołania in‑process; gdy parsujesz, zawsze usuwaj ANSI.
+
 ---
 
 ## 2. Moduł `logging` (CORE, MUST)

@@ -10,7 +10,7 @@ const { resolvePostjectBin } = require("../postject");
  * SEA packager (Linux-friendly baseline).
  * Tries to build a single executable using Node SEA blob + postject injection.
  *
- * If it fails (unsupported Node, missing postject, platform issues) caller may fallback if explicitly allowed.
+ * If it fails (unsupported Node, missing postject, platform issues) caller may bundle-fallback if explicitly allowed.
  */
 function packSea({ stageDir, releaseDir, appName, mainRel }) {
   try {
@@ -27,7 +27,7 @@ function packSea({ stageDir, releaseDir, appName, mainRel }) {
 
     // Disable the experimental warning spam when supported.
     // Enable code cache to avoid shipping an always-fresh compilation path.
-    // (Best-effort; if Node rejects the fields, SEA generation will fail and caller will fallback.)
+    // (Best-effort; if Node rejects the fields, SEA generation will fail and caller will bundle-fallback.)
     seaCfg.disableExperimentalSEAWarning = true;
     seaCfg.useCodeCache = true;
 
@@ -48,7 +48,7 @@ function packSea({ stageDir, releaseDir, appName, mainRel }) {
     fs.chmodSync(outBin, 0o755);
 
     // 3) Inject blob (postject)
-    // Sentinel fuse value documented in Node SEA guides; if Node changes it, SEA may fail and we fallback.
+    // Sentinel fuse value documented in Node SEA guides; if Node changes it, SEA may fail and we bundle-fallback.
     const fuse = "NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2";
 
     // postject is optional in v0.6. If it's not installed, SEA is skipped.

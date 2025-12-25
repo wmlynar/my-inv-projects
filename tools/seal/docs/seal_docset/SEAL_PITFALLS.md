@@ -13,9 +13,9 @@
 
 ## Build / packaging
 
-- Blad: SEA fallback uruchomil build bez postject (cichy spadek poziomu zabezpieczen).
+- Blad: SEA bundle fallback uruchomil build bez postject (cichy spadek poziomu zabezpieczen).
   - Wymaganie: brak `postject` to **blad builda**.
-  - Fallback do pakowania JS jest dozwolony **tylko jawnie** (`build.allowFallback=true` lub `--packager fallback`).
+  - Bundle fallback do pakowania JS jest dozwolony **tylko jawnie** (`build.bundleFallback=true` lub `--packager bundle`).
 
 - Blad: obfuskacja/minifikacja frontendu byla wylaczona.
   - Wymaganie: `build.frontendObfuscation` i `build.frontendMinify` sa **domyslnie wlaczone** dla UI.
@@ -26,6 +26,9 @@
 
 - Blad: `postject` byl dostepny w `seal check`, ale brakowal w `seal release` (inne PATH / sudo).
   - Wymaganie: `postject` musi byc w PATH **procesu builda**; nie polegaj na PATH roota lub innego shella.
+- Blad: `seal check` uznawal `postject` za brakujacy mimo dzialajacej binarki (rozne sposoby wykrywania).
+  - Wymaganie: **jedno zrodlo prawdy** dla wykrywania narzedzi (resolver binarki).
+  - Wymaganie: `check` i `build` musza uzywac tego samego resolvera, a dostepna binarka = OK.
 
 - Blad: `seal check` „wieszal sie” na kompilacji testowej (brak timeoutu i brak outputu).
   - Wymaganie: wszystkie komendy preflight/build maja timeout i widoczny postep.
@@ -62,7 +65,7 @@
 - Blad: thin nie wypisywal postepu i nie mial timeoutu na kompresji `zstd`, przez co wygladalo jak zawieszenie (brak diagnozy).
   - Wymaganie: loguj postep (co kilka sekund) podczas kodowania runtime/payload.
   - Wymaganie: kompresja `zstd` musi miec timeout (domyslnie > 0) z jasnym bledem.
-  - Wymaganie: timeout musi byc konfigurowalny (`build.thinZstdTimeoutMs` / `targets.<target>.thinZstdTimeoutMs` lub `SEAL_THIN_ZSTD_TIMEOUT_MS`).
+  - Wymaganie: timeout musi byc konfigurowalny (`build.thin.zstdTimeoutMs` / `targets.<target>.thin.zstdTimeoutMs` lub `SEAL_THIN_ZSTD_TIMEOUT_MS`).
   - Wymaganie: kompresja nie moze wisiec na `spawnSync` z `stdin` (uzyj streamu i obslugi `error`).
 
 - Blad: `codec_state` ginal miedzy deployami (brak zgodnosci kodeka).
@@ -112,6 +115,7 @@
   - Wymaganie: brak postepu > timeout = twarde przerwanie z jasnym bledem.
   - Wymaganie: E2E uzywa **szybkich przykladow/fixture** (minimalny projekt), nie pelnych produkcyjnych buildow.
   - Wymaganie: procesy uruchamiane w testach musza miec drenaz stdout/stderr (albo `stdio: inherit`), zeby nie blokowac procesu.
+  - Wymaganie: testy nie polegaja na **kruchej** analizie stdout child procesu (ANSI/kolory/pipe). Preferuj JSON output, kody wyjscia, lub wywolania in‑process; zawsze stripuj ANSI.
   - Wymaganie: testy UI musza zawsze zamykac browser (`finally`), nawet przy bledzie.
   - Wymaganie: subprocess musi zawsze obslugiwac zdarzenie `error` (i resolve/reject), aby nie zostawiac wiszacej obietnicy.
   - Wymaganie: testy E2E uzywaja losowych portow (bez hardcode `3000`), aby uniknac `EADDRINUSE`.
@@ -176,6 +180,10 @@
 
 - Blad: `npx seal` z podfolderu monorepo nie widzial CLI.
   - Wymaganie: zapewnij globalny link (`tools/seal/scripts/link-global-seal.sh`) albo uzywaj `npx --prefix <repo-root>`.
+- Blad: uruchomienie komendy w monorepo rekurencyjnie (workspace) uzywalo relatywnej sciezki CLI i padalo w podprojektach.
+  - Wymaganie: rekurencyjne uruchomienia CLI musza uzywac **absolutnej** sciezki do binarki/JS.
+- Blad: `seal check` uruchomiony poza projektem nadal tworzyl pliki i generowal mylace warningi.
+  - Wymaganie: brak `seal.json5` = fail-fast **bez efektow ubocznych**.
 
 - Blad: `seal config diff <sciezka>` zwracal `Missing target`.
   - Wymaganie: `config diff` przyjmuje **nazwe targetu**; nowe targety dodaj `seal target add <target> <config>`.
@@ -270,7 +278,7 @@
 
 ## Co sprawdzac po zmianach (checklist)
 
-- `seal release` bez `postject` musi failowac (chyba ze fallback jawnie wlaczony).
+- `seal release` bez `postject` musi failowac (chyba ze bundle fallback jawnie wlaczony).
 - `upx` wlaczony + blad `upx` => build musi failowac.
 - `seal deploy` nie wysyla artefaktu podwojnie.
 - `installDir` w targetach jest w `/home/admin/apps/...`.

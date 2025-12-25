@@ -128,8 +128,8 @@ async function buildThinRelease(mode, buildTimeoutMs) {
   const targetCfg = loadTargetConfig(EXAMPLE_ROOT, "local").cfg;
   const configName = resolveConfigName(targetCfg, "local");
 
-  targetCfg.packager = "thin";
-  targetCfg.thinMode = mode;
+  const packager = mode === "bootstrap" ? "thin-split" : "thin-single";
+  targetCfg.packager = packager;
 
   const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), `seal-ui-${mode}-`));
   const outDir = path.join(outRoot, "seal-out");
@@ -140,7 +140,7 @@ async function buildThinRelease(mode, buildTimeoutMs) {
       projectCfg,
       targetCfg,
       configName,
-      packagerOverride: "thin",
+      packagerOverride: packager,
       outDirOverride: outDir,
     })
   );
@@ -245,7 +245,7 @@ async function runUiTest({ url, buildId, headless }) {
 }
 
 async function testUi(ctx) {
-  log("Building thin AIO...");
+  log("Building thin SINGLE (AIO)...");
   const res = await buildThinRelease("aio", ctx.buildTimeoutMs);
   const { releaseDir, buildId, outRoot } = res;
 

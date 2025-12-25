@@ -38,7 +38,7 @@ fs.writeFileSync(
     "  appName: \"seal-postject-e2e\",",
     "  entry: \"src/index.js\",",
     "  defaultTarget: \"local\",",
-    "  build: { packager: \"auto\" }",
+    "  build: { packager: \"sea\" }",
     "}",
     "",
   ].join("\n"),

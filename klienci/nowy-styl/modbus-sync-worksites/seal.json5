@@ -3,7 +3,8 @@
   "entry": "modbus-sync-worksites.js",
   "defaultTarget": "local",
   "build": {
-    "packager": "auto",
+    "packager": "sea",
+    "bundleFallback": false,
     "obfuscationProfile": "balanced",
     "frontendObfuscation": {
       "enabled": true,
@@ -15,11 +16,11 @@
       "html": true,
       "css": true
     },
-    "hardening": {
+    "protection": {
       "enabled": true,
-      "strip": false,
-      "upx": false,
-      "bundlePacking": true
+      "stripSymbols": false,
+      "upxPack": false,
+      "packBundle": true
     },
     "includeDirs": []
   },

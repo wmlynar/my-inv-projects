@@ -2,7 +2,7 @@
 
 Data: 2025-12-24  
 Status: **proposal → implementacja**  
-Dotyczy: **nowy packager `thin`** w frameworku SEAL (**to NIE jest flaga `--fast`**)
+Dotyczy: **packagery thin** w frameworku SEAL (**to NIE jest flaga `--fast`**): `thin-split` + `thin-single`
 
 Źródła scalone w tym dokumencie:
 - v0.1 (model thinking, “maksymalnie doprecyzowany”)  
@@ -46,7 +46,7 @@ System uznajemy za “sukces”, jeśli:
 ## 1. Terminologia i osie projektu (żeby nie mieszać pojęć)
 
 ### 1.1 Packager vs wariant dystrybucji vs poziom “sprytu”
-- **Packager**: moduł SEAL budujący release. Tutaj: **`thin`**.
+- **Packager**: moduł SEAL budujący release. Tutaj: **rodzina `thin`** (`thin-split` / `thin-single`).
 - **Wariant dystrybucji (operacyjny)**:
   - **AIO**: jeden artefakt (launcher + runtime Node + payload aplikacji).
   - **BOOTSTRAP**: stały launcher + osobne pliki runtime/payload (payload aktualizowany często).
@@ -65,42 +65,44 @@ AIO i BOOTSTRAP korzystają z **tego samego formatu kontenera THIN** i **tego sa
 ## 2. UX i integracja w SEAL
 
 ### 2.1 Dlaczego to NIE jest `--fast`
-W SEAL istnieje już semantyka `--fast` związana z “fast ship from sources (unsafe)”/fallback. Mechanizm thin ma być **osobnym packagerem**:
-- CLI/config: `--packager thin` lub `build.packager = "thin"` (nazwa do dopasowania do istniejącego API SEAL).
+W SEAL istnieje już semantyka `--fast` związana z “fast ship from sources (unsafe)”/bundle. Mechanizm thin ma być **osobnym packagerem**:
+- CLI/config: `--packager thin-split` (BOOTSTRAP) lub `--packager thin-single` (AIO).
+- Legacy kompatybilność: `packager=thin` + `build.thinMode` (ale preferuj nowe nazwy).
 
 ### 2.2 Minimalny UX (do zapamiętania)
 Docelowo użytkownik ma 1–2 komendy:
 
 ```bash
 # pierwszy raz / gdy brakuje runtime / gdy brak codec_state:
-npx seal ship prod --packager thin --bootstrap --push-config
+npx seal ship prod --packager thin-split --bootstrap --push-config
 
 # kolejne deploye (payload only, jeśli BOOTSTRAP jest już gotowy):
-npx seal ship prod --packager thin
+npx seal ship prod --packager thin-split
 ```
 
 Opcjonalnie (lokalny build bez deploy):
 ```bash
-npx seal release prod --packager thin
+npx seal release prod --packager thin-single
 ```
 
 **Konfiguracja trybu (MUST):**
-- `build.thinMode: "aio" | "bootstrap"` (domyślnie `"aio"`)
-- `targets/<target>.json5` może nadpisać przez `thinMode`.
+- `build.packager: "thin-single" | "thin-split"` (domyślnie: `thin-split` w nowych projektach).
+- `targets/<target>.json5` może nadpisać przez `packager`.
+> Legacy: `build.thinMode` / `targets.<target>.thinMode` są akceptowane tylko dla `packager=thin`.
 
 **Poziomy wydajności (MUST):**
-- `build.thinLevel: "low" | "high"` (domyślnie `"low"`).
+- `build.thin.level: "low" | "high"` (domyślnie `"low"`).
   - `low`: chunk ok. **2MB**, `zstd` level **1** (szybsze buildy).
   - `high`: chunk ok. **64KB**, `zstd` level **3** (wolniejsze, mniejsze paczki).
-- `targets/<target>.json5` może nadpisać przez `thinLevel`.
+- `targets/<target>.json5` może nadpisać przez `thin.level`.
 - Dodatkowe override (opcjonalne, najwyższy priorytet):
-  - `build.thinChunkSize` / `targets.<target>.thinChunkSize` (liczba bajtów).
-  - `build.thinZstdLevel` / `targets.<target>.thinZstdLevel` (1..19).
-  - `build.thinZstdTimeoutMs` / `targets.<target>.thinZstdTimeoutMs` (ms; `0` = bez limitu).
+  - `build.thin.chunkSize` / `targets.<target>.thin.chunkSize` (liczba bajtów).
+  - `build.thin.zstdLevel` / `targets.<target>.thin.zstdLevel` (1..19).
+  - `build.thin.zstdTimeoutMs` / `targets.<target>.thin.zstdTimeoutMs` (ms; `0` = bez limitu).
   - ENV: `SEAL_THIN_ZSTD_TIMEOUT_MS` (ms; nadpisuje domyślne).
 
 ### 2.3 Idempotencja i rozpoznawanie stanu (MUST)
-`seal ship --packager thin`:
+`seal ship --packager thin-split`:
 - rozpoznaje stan targetu (runtime/payload/usługa),
 - wykonuje minimalne potrzebne kroki,
 - jest bezpieczne do ponawiania.
@@ -305,7 +307,7 @@ Propozycja UX (opcjonalnie, ale spójne ze źródłami):
 Lock (opcjonalnie / SHOULD):
 - `<installDir>/seal-out/thin/deploy.lock` — drugi deploy czeka albo failuje.
 
-### 6.3 Algorytm `seal ship --packager thin` (BOOTSTRAP) — propozycja
+### 6.3 Algorytm `seal ship --packager thin-split` (BOOTSTRAP) — propozycja
 1) Ensure directories: `<installDir>/b`, `<installDir>/r`, `<installDir>/shared` (+ `var`/`data` jeśli używane).
 2) Jeśli `--bootstrap` lub `!hasRuntime`:
    - upload launcher (`b/a.tmp`→`b/a`)

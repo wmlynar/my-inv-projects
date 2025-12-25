@@ -6,6 +6,6 @@
   serviceScope: "user",
   installDir: "~/.local/share/seal/robot-task-manager",
   serviceName: "robot-task-manager-sandbox",
-  packager: "auto",
+  packager: "sea",
   config: "local",
 }

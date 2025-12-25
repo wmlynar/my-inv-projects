@@ -132,8 +132,8 @@ async function buildThinRelease(mode, buildTimeoutMs) {
   const targetCfg = loadTargetConfig(EXAMPLE_ROOT, "local").cfg;
   const configName = resolveConfigName(targetCfg, "local");
 
-  targetCfg.packager = "thin";
-  targetCfg.thinMode = mode;
+  const packager = mode === "bootstrap" ? "thin-split" : "thin-single";
+  targetCfg.packager = packager;
 
   const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), `seal-out-${mode}-`));
   const outDir = path.join(outRoot, "seal-out");
@@ -144,7 +144,7 @@ async function buildThinRelease(mode, buildTimeoutMs) {
       projectCfg,
       targetCfg,
       configName,
-      packagerOverride: "thin",
+      packagerOverride: packager,
       outDirOverride: outDir,
     })
   );
@@ -216,7 +216,7 @@ async function runRelease({ releaseDir, buildId, runTimeoutMs, env }) {
 }
 
 async function testThinAio(ctx) {
-  log("Building thin AIO...");
+  log("Building thin SINGLE (AIO)...");
   const res = await buildThinRelease("aio", ctx.buildTimeoutMs);
   const { releaseDir, buildId, outRoot } = res;
 
@@ -225,7 +225,7 @@ async function testThinAio(ctx) {
   assert.ok(!fs.existsSync(aioB), "AIO release should not contain b/a");
   assert.ok(!fs.existsSync(aioR), "AIO release should not contain r/rt");
 
-  log("Running thin AIO binary...");
+  log("Running thin SINGLE binary...");
   await runRelease({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs });
 
   const badEnv = {
@@ -233,10 +233,10 @@ async function testThinAio(ctx) {
     NODE_PATH: "/nonexistent",
     NODE_V8_COVERAGE: "/tmp/cover",
   };
-  log("Running thin AIO with hardened env (default)...");
+  log("Running thin SINGLE with hardened env (default)...");
   await runRelease({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs, env: badEnv });
 
-  log("Running thin AIO with hardened env (strict)...");
+  log("Running thin SINGLE with hardened env (strict)...");
   await runRelease({
     releaseDir,
     buildId,
@@ -248,7 +248,7 @@ async function testThinAio(ctx) {
 }
 
 async function testThinBootstrap(ctx) {
-  log("Building thin BOOTSTRAP...");
+  log("Building thin SPLIT (bootstrap)...");
   const res = await buildThinRelease("bootstrap", ctx.buildTimeoutMs);
   const { releaseDir, buildId, outRoot } = res;
 
@@ -259,7 +259,7 @@ async function testThinBootstrap(ctx) {
   assert.ok(fs.existsSync(rt), "BOOTSTRAP release missing r/rt");
   assert.ok(fs.existsSync(pl), "BOOTSTRAP release missing r/pl");
 
-  log("Running thin BOOTSTRAP wrapper...");
+  log("Running thin SPLIT wrapper...");
   await runRelease({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs });
 
   const badEnv = {
@@ -267,10 +267,10 @@ async function testThinBootstrap(ctx) {
     NODE_PATH: "/nonexistent",
     NODE_V8_COVERAGE: "/tmp/cover",
   };
-  log("Running thin BOOTSTRAP with hardened env (default)...");
+  log("Running thin SPLIT with hardened env (default)...");
   await runRelease({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs, env: badEnv });
 
-  log("Running thin BOOTSTRAP with hardened env (strict)...");
+  log("Running thin SPLIT with hardened env (strict)...");
   await runRelease({
     releaseDir,
     buildId,

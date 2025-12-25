@@ -36,10 +36,10 @@
 - Project metadata lives in `example/seal.json5` (or in your app’s `seal.json5`).
   - `build.frontendObfuscation` is **enabled by default** and obfuscates `public/**/*.js` (except `*.min.js`).
   - `build.frontendMinify` is **enabled by default** (level: `safe`) and safely minifies `public/**/*.html` and `public/**/*.css` (except `*.min.html`/`*.min.css`).
-  - `build.hardening` is **enabled by default**:
+  - `build.protection` is **enabled by default**:
     - SEA: can pack the main bundle into a compressed loader (so the SEA blob has no plaintext JS).
-    - fallback: can gzip-pack the backend bundle behind a small loader.
-    - `strip`/`upx` for SEA binaries are **OFF by default** (postject-ed binaries can break). Enable explicitly if you want to experiment.
+    - bundle: can gzip-pack the backend bundle behind a small loader.
+    - `stripSymbols`/`upxPack` for SEA binaries are **OFF by default** (postject-ed binaries can break). Enable explicitly if you want to experiment.
 
 ## Helpful Commands (end-to-end)
 - `npx seal verify --explain` prints a human-readable verification checklist.

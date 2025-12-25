@@ -6,6 +6,6 @@
   serviceScope: "user",
   installDir: "~/.local/share/seal/modbus-sync-worksites",
   serviceName: "modbus-sync-worksites-sandbox",
-  packager: "auto",
+  packager: "sea",
   config: "local",
 }

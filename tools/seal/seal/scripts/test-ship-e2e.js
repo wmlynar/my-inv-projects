@@ -155,7 +155,7 @@ async function shipOnce(targetCfg, opts) {
 }
 
 async function testShipThinAio() {
-  log("Testing seal ship prod (thin AIO)...");
+  log("Testing seal ship prod (thin SINGLE/AIO)...");
   const targetName = `ship-e2e-aio-${Date.now()}-${process.pid}`;
   const serviceName = `seal-example-ship-aio-${Date.now()}`;
   const installDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-ship-aio-"));
@@ -167,8 +167,7 @@ async function testShipThinAio() {
     serviceScope: "user",
     installDir,
     serviceName,
-    packager: "thin",
-    thinMode: "aio",
+    packager: "thin-single",
     config: "local",
   };
 
@@ -177,7 +176,7 @@ async function testShipThinAio() {
   writeTargetConfig(targetName, targetCfg);
 
   try {
-    await shipOnce(targetCfg, { bootstrap: true, pushConfig: true, skipCheck: true, packager: "thin" });
+    await shipOnce(targetCfg, { bootstrap: true, pushConfig: true, skipCheck: true, packager: "thin-single" });
     const bPath = path.join(installDir, "b", "a");
     const rtPath = path.join(installDir, "r", "rt");
     assert.ok(!fs.existsSync(bPath), "AIO should not keep b/a");
@@ -193,7 +192,7 @@ async function testShipThinAio() {
 }
 
 async function testShipThinBootstrapReuse() {
-  log("Testing seal ship prod (thin BOOTSTRAP reuse)...");
+  log("Testing seal ship prod (thin SPLIT/BOOTSTRAP reuse)...");
   const targetName = `ship-e2e-boot-${Date.now()}-${process.pid}`;
   const serviceName = `seal-example-ship-boot-${Date.now()}`;
   const installDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-ship-boot-"));
@@ -205,8 +204,7 @@ async function testShipThinBootstrapReuse() {
     serviceScope: "user",
     installDir,
     serviceName,
-    packager: "thin",
-    thinMode: "bootstrap",
+    packager: "thin-split",
     config: "local",
   };
 
@@ -215,7 +213,7 @@ async function testShipThinBootstrapReuse() {
   writeTargetConfig(targetName, targetCfg);
 
   try {
-    await shipOnce(targetCfg, { bootstrap: true, pushConfig: true, skipCheck: true, packager: "thin" });
+    await shipOnce(targetCfg, { bootstrap: true, pushConfig: true, skipCheck: true, packager: "thin-split" });
     const rtPath = path.join(installDir, "r", "rt");
     const plPath = path.join(installDir, "r", "pl");
     assert.ok(fs.existsSync(rtPath), "BOOTSTRAP should install r/rt");
@@ -224,7 +222,7 @@ async function testShipThinBootstrapReuse() {
     const rtStat1 = fs.statSync(rtPath);
     const plStat1 = fs.statSync(plPath);
 
-    await shipOnce(targetCfg, { bootstrap: false, pushConfig: false, skipCheck: true, packager: "thin" });
+    await shipOnce(targetCfg, { bootstrap: false, pushConfig: false, skipCheck: true, packager: "thin-split" });
 
     const rtStat2 = fs.statSync(rtPath);
     const plStat2 = fs.statSync(plPath);
@@ -270,7 +268,7 @@ async function testShipThinBootstrapSsh() {
     return;
   }
 
-  log("Testing seal ship prod (thin BOOTSTRAP over SSH, payload-only)...");
+  log("Testing seal ship prod (thin SPLIT/BOOTSTRAP over SSH, payload-only)...");
   const targetName = `ship-e2e-ssh-${Date.now()}-${process.pid}`;
   const targetCfg = {
     target: targetName,
@@ -281,8 +279,7 @@ async function testShipThinBootstrapSsh() {
     installDir,
     serviceName,
     sshPort: Number.isFinite(sshPort) ? sshPort : undefined,
-    packager: "thin",
-    thinMode: "bootstrap",
+    packager: "thin-split",
     config: "server",
   };
 
@@ -291,14 +288,14 @@ async function testShipThinBootstrapSsh() {
   writeTargetConfig(targetName, targetCfg);
 
   try {
-    await shipOnce(targetCfg, { bootstrap: true, pushConfig: true, skipCheck: true, packager: "thin" });
+    await shipOnce(targetCfg, { bootstrap: true, pushConfig: true, skipCheck: true, packager: "thin-split" });
     const rtPath = `${installDir}/r/rt`;
     const plPath = `${installDir}/r/pl`;
     const rtStat1 = sshStat(user, host, rtPath, sshPort);
     const plStat1 = sshStat(user, host, plPath, sshPort);
     assert.ok(rtStat1 && plStat1, "Missing r/rt or r/pl after bootstrap ship (ssh)");
 
-    await shipOnce(targetCfg, { bootstrap: false, pushConfig: false, skipCheck: true, packager: "thin" });
+    await shipOnce(targetCfg, { bootstrap: false, pushConfig: false, skipCheck: true, packager: "thin-split" });
     const rtStat2 = sshStat(user, host, rtPath, sshPort);
     const plStat2 = sshStat(user, host, plPath, sshPort);
     assert.ok(rtStat2 && plStat2, "Missing r/rt or r/pl after payload ship (ssh)");

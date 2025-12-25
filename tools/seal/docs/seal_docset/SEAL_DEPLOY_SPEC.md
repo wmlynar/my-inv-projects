@@ -351,12 +351,12 @@ Ta sekcja jest celowo krótka: ma umożliwić szybkie zrozumienie *dlaczego* Sea
 6) **Baseline hardening systemd (minimalny)**  
    Bo daje realny wzrost kosztu „łatwych” ataków (NODE_OPTIONS, core dumps) bez rozwalania integracji.
 
-7) **Pack bundla domyślnie (SEA, fallback tylko jawnie)**  
+7) **Pack bundla domyślnie (SEA, bundle tylko jawnie)**  
    Bo usuwa „czytelny kod” z artefaktów bez ryzykownych modyfikacji binarki:
    - **SEA**: main script jest spakowany (Brotli/Gzip loader) zanim trafi do blobu.
-   - **fallback** (jawnie włączony): `app.bundle.cjs` jest zastąpione przez `.gz` + loader.
+   - **bundle** (jawnie włączony): `app.bundle.cjs` jest zastąpione przez `.gz` + loader.
    UPX/strip są dostępne jako opcje, ale **OFF by default** (kompatybilność zależna od platformy i postject).
-   Fallback wymaga jawnego włączenia: `build.allowFallback=true` lub `packager=fallback`.
+   Bundle fallback wymaga jawnego włączenia: `build.bundleFallback=true` lub `packager=bundle`.
 
 8) **Publiczne `/healthz` i `/status`**  
    Bo aplikacje w tym kontekście bywają wdrażane „normalnie”, a UI i serwis potrzebują tych endpointów na standardowym porcie.
@@ -760,7 +760,7 @@ Warstwy (od najbardziej praktycznych):
 2) **Bundle do 1 pliku + agresywna obfuskacja** → nawet jeśli ktoś wyciąga logikę z runtime, dostaje „zupę” trudną do zrozumienia.
 3) **Baseline hardening systemd** → utrudnia szybkie sztuczki typu `NODE_OPTIONS=--inspect`, core dumpy, itp.
 4) **(Opcjonalnie) Anti‑copy / licencja** → utrudnia uruchomienie skopiowanej binarki na innym hoście.
-5) **(Domyślnie) Pack bundla (SEA, fallback tylko jawnie)** → brak plaintext kodu w artefaktach (SEA main packing + gzip loader w fallback, gdy włączony).
+5) **(Domyślnie) Pack bundla (SEA, bundle tylko jawnie)** → brak plaintext kodu w artefaktach (SEA main packing + gzip loader w bundle, gdy włączony).
 6) **(Opcjonalnie) UPX/strip** → eksperymentalne i OFF by default (postject-ed binarki potrafią się po tym wykrzaczyć).
 
 W praktyce:
@@ -776,20 +776,20 @@ W praktyce:
 - **Obfuskacja agresywna**: zaciemnianie przepływu, string encoding, dead code.
 - **Bundlowanie**: ograniczenie liczby plików.
 - **Single artifact**: preferowany jeden plik uruchomieniowy.
-- **Domyślnie**: pack bundla (SEA main packing + gzip loader w fallback, gdy włączony) – bez plaintext JS w artefaktach.
+- **Domyślnie**: pack bundla (SEA main packing + gzip loader w bundle, gdy włączony) – bez plaintext JS w artefaktach.
 
 **Opcjonalnie**: UPX/strip – OFF by default (kompatybilność zależna od platformy i postject).
 
 
 #### 14.2.1. Definicja „SEALED” (weryfikowalna checklista)
 
-Poniższe reguły dotyczą domyślnego trybu `packager=sea` (single executable). Dla packagera fallback Seal może mieć osobny zestaw reguł.
+Poniższe reguły dotyczą domyślnego trybu `packager=sea` (single executable). Dla packagera bundle Seal może mieć osobny zestaw reguł.
 
 **FORBIDDEN w paczce release (MUST):**
 - pliki źródłowe backendu: `**/*.js`, `**/*.ts` **poza** `public/**` (UI)
 - sourcemapy: `**/*.map` oraz osadzone `sourcesContent`
 - ślady sourcemap: linie `//# sourceMappingURL=...` (również poza `public/**`)
-- struktura projektu ułatwiająca analizę: katalogi `src/`, `node_modules/`, `test/` (chyba że jawny tryb fallback)
+- struktura projektu ułatwiająca analizę: katalogi `src/`, `node_modules/`, `test/` (chyba że jawny tryb bundle)
 
 **ALLOWED (MUST):**
 - binarka aplikacji (single executable)
@@ -817,7 +817,7 @@ SEA w Node (Single Executable Application) ma twarde ograniczenia, które determ
 - Wersja Node użyta do wygenerowania blobu i binarka, do której blob jest wstrzykiwany, **musi** być zgodna (praktycznie: ta sama wersja z pinowanego toolchainu).
 - SEA jest oznaczone jako *experimental* w CLI Node – dlatego:
   - Seal **pinuję** wersję Node w toolchainie,
-  - Seal ma plan awaryjny (fallback packager / tryb mniej agresywny), jeśli SEA zawiedzie na danym OS/arch.
+  - Seal ma plan awaryjny (bundle packager / tryb mniej agresywny), jeśli SEA zawiedzie na danym OS/arch.
 
 **Cross‑build:** w v0.4 MVP zakłada build na tej samej platformie co target (najmniej ryzyk). Cross‑build jest dopuszczalny jako MAY, ale wymaga jawnych ustawień „bezpiecznych” dla SEA (bez snapshot/cache tam, gdzie to problematyczne).
 
@@ -832,7 +832,7 @@ SEA w Node (Single Executable Application) ma twarde ograniczenia, które determ
 - nie polegać na nazwach funkcji/klas w logice (obfuskacja je zmienia).
 
 
-### 14.5. Rekomendowana metoda „super sealing” (domyślna): Bundle → Obfuscate → Node SEA → Hardening/Pack
+### 14.5. Rekomendowana metoda „super sealing” (domyślna): Bundle → Obfuscate → Node SEA → Protection/Pack
 
 > **Cel:** uzyskać na serwerze/robocie **pojedynczy artefakt uruchomieniowy** (binarka/single-file) bez czytelnych źródeł `.js`, przy zachowaniu przewidywalnego workflow dev → release → deploy.
 
@@ -868,13 +868,13 @@ SEA w Node (Single Executable Application) ma twarde ograniczenia, które determ
      - albo wciągnięte do bundla przez import/require,
      - albo (jeśli packager to wspiera) wbudowane jako assets w artefakt.
 
-6) **Hardening/pack (domyślnie włączone):**
+6) **Protection/pack (domyślnie włączone):**
    - **SEA:** Seal domyślnie pakuje backend bundle do „loadera” (Brotli/Gzip) *przed* generacją blobu SEA, aby w blobie nie było plaintext JS.
-   - **Fallback:** gdy SEA nie jest możliwe, Seal domyślnie pakuje backend bundle do `app.bundle.cjs.gz` i uruchamia go przez mały loader (brak czytelnego pliku JS obok launchera).
+   - **Bundle fallback:** gdy SEA nie jest możliwe, Seal domyślnie pakuje backend bundle do `app.bundle.cjs.gz` i uruchamia go przez mały loader (brak czytelnego pliku JS obok launchera).
    - **UPX/strip:** dostępne jako opcje (eksperymentalne) i **OFF by default**, bo postject-ed binarki potrafią się po tym wysypać.
      - Gdy `upx` jest włączony i nie działa (brak narzędzia lub błąd typu `CantUnpackException: bad e_phoff`), build **musi** się przerwać z błędem.
      - Gdy `strip` jest włączony i narzędzie jest niedostępne, Seal wypisuje ostrzeżenie (bez przerywania builda).
-  - Użytkownik **MUST** mieć możliwość wyłączenia hardeningu w `seal.json5` (np. `build.hardening.enabled=false`).
+  - Użytkownik **MUST** mieć możliwość wyłączenia protection w `seal.json5` (np. `build.protection.enabled=false`).
    - (MAY) w przyszłości: self-integrity / anti-tamper jako opcja (nie domyślna w v0.5).
 
 7) **Utworzenie paczki release:**
@@ -897,7 +897,7 @@ SEA w Node (Single Executable Application) ma twarde ograniczenia, które determ
   Dlatego profil `aggressive` jest domyślny, a `max` jest świadomą opcją.
 - „Niemożliwe do odczytania” nie jest gwarantowalne przy pełnym dostępie do hosta; celem jest maksymalne utrudnienie i podniesienie kosztu ataku.
 
-#### 14.5.5. Tryby alternatywne (fallback)
+#### 14.5.5. Tryby alternatywne (bundle)
 - Seal powinien przewidywać możliwość wpięcia alternatywnego packagera (np. w razie ograniczeń SEA):
   - zachowując **ten sam interfejs** `seal deploy` i format paczki wdrożeniowej.
 
@@ -1520,7 +1520,7 @@ Minimalne pola (MUST):
 - **Konfiguracja:** `ResolvedConfig` + jawne „sources of values” (pliki/CLI/defaulty widoczne w planie).
 - **Artefakty debug:** `seal-out/run/` + `seal-out/run.last_failed/`.
 - **Remote ops:** atomowy deploy + rollback.
-- **Packager:** jedna domyślna ścieżka + wewnętrzny fallback raportujący „sealed strength”.
+- **Packager:** jedna domyślna ścieżka + wewnętrzny bundle fallback raportujący „sealed strength”.
 
 ### 26.1. Algorytm `release`
 1) Wykryj root projektu.
@@ -1529,7 +1529,7 @@ Minimalne pola (MUST):
 4) Zbundle’uj backend do **jednego** pliku (dla SEA: CommonJS).
 5) Wykonaj minifikację + agresywną obfuskację **na zbundlowanym pliku**.
 6) Spakuj do single artifact (preferowane: SEA → single executable).
-7) (Opcjonalnie) Hardening/pack: `strip`, UPX, itp.
+7) (Opcjonalnie) Protection/pack: `strip`, UPX, itp.
 8) Zbuduj `manifest.json`.
 9) Utwórz paczkę `seal-out/<app>-<buildId>.tgz`.
 
@@ -1708,7 +1708,7 @@ Minimalne pola (MUST):
 ### 28.4. Milestone 4 – frontend obfuskacja + hardening + licencja (opcjonalnie)
 - frontend obfuskacja (domyślnie włączona, z opt-out),
 - frontend minifikacja HTML/CSS (domyślnie włączona, safe),
-- hardening binarki/bundla (strip + upx, gzip fallback),
+- hardening binarki/bundla (strip + upx, gzip bundle),
 - sentinel/licencja (opcjonalnie).
 
 ---
@@ -1731,8 +1731,9 @@ Przykład (aktualny dla v0.5):
   defaultTarget: "local",
 
   build: {
-    // auto|sea|fallback
-    packager: "auto",
+    // packager (kolejnosc rekomendowana): thin-split, thin-single, sea, bundle, none (auto legacy)
+    packager: "thin-split",
+    bundleFallback: false,
 
     // minimal|balanced|aggressive
     obfuscationProfile: "balanced",
@@ -1743,10 +1744,10 @@ Przykład (aktualny dla v0.5):
     // Frontend HTML/CSS – domyślnie bezpiecznie minifikowane
     frontendMinify: { enabled: true, level: "safe", html: true, css: true },
 
-    // Hardening (anti-peek) – domyślnie włączone
-    // - SEA: seaMainPacking (Brotli/Gzip loader); UPX/strip opcjonalne (OFF by default)
-    // - fallback: gzip-pack backend bundle + loader
-    hardening: { enabled: true, seaMainPacking: true, seaMainPackingMethod: "brotli", seaMainPackingChunkSize: 8000, bundlePacking: true, strip: false, upx: false },
+    // Protection (anti-peek) – domyślnie włączone
+    // - SEA: packSeaMain (Brotli/Gzip loader); upx/strip opcjonalne (OFF by default)
+    // - bundle: gzip-pack backend bundle + loader
+    protection: { enabled: true, packSeaMain: true, packSeaMainMethod: "brotli", packSeaMainChunkSize: 8000, packBundle: true, stripSymbols: false, upxPack: false },
 
     // Katalogi kopiowane 1:1 do release (np. static assets, dane)
     includeDirs: ["public", "data"],
@@ -1759,12 +1760,13 @@ Przykład (aktualny dla v0.5):
 - `appName`: z `package.json:name` (fallback: nazwa katalogu).
 - `entry`: kolejno próby: `package.json:main`, `src/index.js`, `index.js`.
 - `defaultTarget`: `local`.
-- `build.packager`: `auto`.
+- `build.packager`: `auto` (legacy, jeśli pole nie jest ustawione).
 - `build.obfuscationProfile`: `balanced`.
 - `build.includeDirs`: `["public", "data"]`.
+- `build.bundleFallback`: `false`.
 - `build.frontendObfuscation`: domyślnie `{ enabled: true, profile: build.obfuscationProfile }`.
 - `build.frontendMinify`: domyślnie `{ enabled: true, level: "safe", html: true, css: true }`.
-- `build.hardening`: domyślnie `{ enabled: true, seaMainPacking: true, seaMainPackingMethod: "brotli", seaMainPackingChunkSize: 8000, bundlePacking: true, strip: false, upx: false }`.
+- `build.protection`: domyślnie `{ enabled: true, packSeaMain: true, packSeaMainMethod: "brotli", packSeaMainChunkSize: 8000, packBundle: true, stripSymbols: false, upxPack: false }`.
 
 ### 29.4. Polityka (`seal.json5#policy`)
 

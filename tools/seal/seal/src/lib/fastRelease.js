@@ -16,14 +16,14 @@ async function buildFastRelease({ projectRoot, projectCfg, targetCfg, configName
     projectCfg,
     targetCfg,
     configName,
-    packagerOverride: "fallback",
+    packagerOverride: "bundle",
     outDirOverride: fastOutDir,
     skipArtifact: true,
   });
 
   const folderName = `${appName}-fast-${res.buildId}`;
   info(`Fast release: ${folderName}`);
-  ok("Fast release ready (fallback bundle)");
+  ok("Fast release ready (bundle)");
 
   return {
     ...res,

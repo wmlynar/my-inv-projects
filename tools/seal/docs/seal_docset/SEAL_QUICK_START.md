@@ -22,7 +22,7 @@ SEAL działa wtedy jak „wizard”: wykrywa stan projektu i mówi **co zrobić 
 - `seal` (CLI) dostępny w PATH
 
 #### Ubuntu – wymagane pakiety (przed instalacją/uruchomieniem SEAL)
-Jeśli używasz packagera `thin` (AIO), potrzebujesz kompilatora C i `zstd`:
+Jeśli używasz packagera `thin-split`/`thin-single`, potrzebujesz kompilatora C i `zstd`:
 
 ```bash
 sudo apt-get update
@@ -83,16 +83,18 @@ Domyślnie `seal release`:
 - robi obfuskację backendu,
 - **domyślnie obfuskuje też frontend** (public/**/*.js),
 - **domyślnie bezpiecznie minifikuje HTML/CSS** (public/**/*.html, public/**/*.css), poziom: `safe`,
-- **domyślnie wykonuje hardening**:
+- **domyślnie wykonuje protection/anti-peek**:
   - **SEA**: pakuje backend bundle do „loadera” (Brotli/Gzip) zanim trafi do SEA blobu (bez plaintext JS),
-  - **fallback** (jawnie włączony): gzip + loader (brak `app.bundle.cjs` w prostym podglądzie),
+  - **bundle** (jawnie włączony): gzip + loader (brak `app.bundle.cjs` w prostym podglądzie),
   - **UPX/strip**: dostępne jako opcje, ale **OFF by default**, bo potrafią psuć postject-ed binarki.
 - uruchamia `seal check` (fail-fast),
 - buduje artefakt do `seal-out/<app>-<buildId>.tgz`,
 - rozpakowuje build do `seal-out/release/` (zawsze tylko ostatni release).
 - czyści `seal-out/` przed buildem (jak `target/`), z wyjątkiem `seal-out/cache/` (thin cache), więc zawsze zostaje tylko ostatni build.
 
-Fallback jest wyłączony domyślnie; włącz go jawnie przez `build.allowFallback=true` albo `--packager fallback`.
+**Packagery (kolejność rekomendowana):** `thin-split`, `thin-single`, `sea`, `bundle`, `none` (`auto` jest legacy).
+
+Bundle fallback jest wyłączony domyślnie; włącz go jawnie przez `build.bundleFallback=true` albo `--packager bundle`.
 
 **Cleanup:** jeśli chcesz ręcznie wyczyścić artefakty, użyj `seal clean` (w monorepo uruchom w root, zadziała dla wszystkich podprojektów).
 

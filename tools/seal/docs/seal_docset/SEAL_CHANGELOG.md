@@ -51,10 +51,10 @@
 - **Frontend minifikacja domyślnie włączona:** `public/**/*.html` i `public/**/*.css` (bez `*.min.html`/`*.min.css`) są bezpiecznie minifikowane podczas `seal release`.
 - Minifikacja ma poziomy (`safe`/`minimal`) oraz opcje per-zachowanie (komentarze/whitespace).
 - SEAL nie zapisuje żadnych "toolowych" markerów w release (np. `public/.seal_frontend_obfuscated` nie trafia do artefaktu).
-- **Hardening domyślnie włączony:**
+- **Protection domyślnie włączony:**
   - **SEA**: main script jest pakowany do loadera (Brotli/Gzip) przed generacją blobu (bez plaintext JS w binarce),
-  - **fallback** (jawnie włączony): backend bundle jest pakowany do `app.bundle.cjs.gz` + loader,
-  - `strip`/`upx` są dostępne jako opcje, ale **OFF by default** (kompatybilność postject).
+  - **bundle** (jawnie włączony): backend bundle jest pakowany do `app.bundle.cjs.gz` + loader,
+  - `stripSymbols`/`upxPack` są dostępne jako opcje, ale **OFF by default** (kompatybilność postject).
 
 ---
 

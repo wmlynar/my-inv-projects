@@ -15,13 +15,22 @@ function templateProjectJson5(appName, entry) {
     entry,
     defaultTarget: "local",
     build: {
-      packager: "auto",
-      allowFallback: false,
+      packager: "thin-split",
+      bundleFallback: false,
       obfuscationProfile: "balanced",
       frontendObfuscation: { enabled: true, profile: "balanced" },
       frontendMinify: { enabled: true, level: "safe", html: true, css: true },
-      // NOTE: strip/upx are experimental for postject-ed SEA binaries; keep them OFF by default.
-      hardening: { enabled: true, strip: false, upx: false, bundlePacking: true },
+      // NOTE: strip/upx are experimental for SEA binaries; keep them OFF by default.
+      protection: {
+        enabled: true,
+        packSeaMain: true,
+        packSeaMainMethod: "brotli",
+        packSeaMainChunkSize: 8000,
+        packBundle: true,
+        stripSymbols: false,
+        upxPack: false,
+      },
+      thin: { level: "low" },
       includeDirs: ["public", "data"],
     },
   };
@@ -47,7 +56,7 @@ function templateTargetLocal(appName) {
     serviceScope: "user",
     installDir: `~/.local/share/seal/${appName}`,
     serviceName: `${appName}-sandbox`,
-    packager: "auto",
+    packager: "thin-split",
     config: "local",
   };
 }

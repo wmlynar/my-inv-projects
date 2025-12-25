@@ -13,7 +13,7 @@ W szczególności: przeniesiona sekcja **14.6** (blueprint implementacji SEA).
 
 ## 1.1 Wymagania (Ubuntu, zanim zainstalujesz SEAL)
 
-Jeśli planujesz używać packagera `thin` (AIO), potrzebujesz kompilatora C oraz zstd:
+Jeśli planujesz używać packagera `thin-split`/`thin-single`, potrzebujesz kompilatora C oraz zstd:
 
 ```bash
 sudo apt-get update
@@ -39,7 +39,7 @@ Poniższa treść pochodzi z poprzednich wersji i jest utrzymywana jako REF.
 Seal powinien mieć interfejs packagera, aby można było podmieniać metodę pakowania bez zmiany CLI i formatu paczki.
 
 - `packagers/sea` – domyślny (super sealing).
-- `packagers/fallback` – alternatywny (na wypadek ograniczeń SEA), ale **ten sam format outputu**.
+- `packagers/fallback` – alternatywny (packager `bundle`, na wypadek ograniczeń SEA), ale **ten sam format outputu**.
 
 **Kontrakt packagera (proponowany):**
 - input: `projectRoot`, `entry`, `appName`, `target`, `buildId`, `obfuscationProfile`, `options`
@@ -98,11 +98,11 @@ Seal powinien mieć interfejs packagera, aby można było podmieniać metodę pa
   - preferowane: przez import/require (wchodzą do bundla),
   - alternatywnie: przez mechanizm assets SEA (jeśli packager to wspiera w danej wersji).
 
-**F) Hardening/pack (domyślnie włączone)**
+**F) Protection/pack (domyślnie włączone)**
 - Domyślnie SEAL próbuje wykonać `strip` (Linux) oraz spakować binarkę przez `upx` (jeśli dostępny).
-- Gdy SEA nie jest możliwe i **fallback jest jawnie włączony**, backend bundle jest pakowany do `app.bundle.cjs.gz` i uruchamiany przez mały loader (żeby nie leżał czytelny plik JS).
-- Fallback wymaga jawnego włączenia: `build.allowFallback=true` lub `packager=fallback`.
-- Hardening można wyłączyć w `seal.json5` (`build.hardening.enabled=false`).
+- Gdy SEA nie jest możliwe i **bundle fallback jest jawnie włączony**, backend bundle jest pakowany do `app.bundle.cjs.gz` i uruchamiany przez mały loader (żeby nie leżał czytelny plik JS).
+- Bundle fallback wymaga jawnego włączenia: `build.bundleFallback=true` lub `packager=bundle`.
+- Protection można wyłączyć w `seal.json5` (`build.protection.enabled=false`).
 - (MAY w przyszłości) self-integrity / anti-tamper jako opt-in.
 
 **G) Manifest i paczka `.tgz`**
@@ -178,8 +178,8 @@ NOTES:
   serviceName: "my-app",
   serviceUser: "my-app",
 
-  // MAY: hardening preset
-  // hardening: "baseline",
+  // MAY: protection preset
+  // protection: "baseline",
 }
 ```
 
@@ -245,7 +245,7 @@ seal-out/run.last_failed/
     "obfuscation": "aggressive",
     "frontendObfuscation": {"enabled": true},
     "frontendMinify": {"enabled": true, "level": "safe"},
-    "hardening": {"enabled": true}
+    "protection": {"enabled": true}
   },
   "decisions": [
     {
@@ -257,7 +257,7 @@ seal-out/run.last_failed/
     {
       "id": "PACKAGER",
       "chosen": "sea",
-      "alternatives": ["fallback"],
+      "alternatives": ["bundle"],
       "reason": "Brak wykrytych blockerów SEA; profil=prod."
     }
   ],
@@ -371,18 +371,18 @@ Implementacja:
 
 ## 7.1. Fast ship (unsafe) (`seal ship --fast`)
 
-**Cel:** ultra-szybkie prototypowanie bez SEA (fallback bundle + rsync).
+**Cel:** ultra-szybkie prototypowanie bez SEA (bundle + rsync).
 
 Zasady:
-- `seal ship <target> --fast` buduje fallback bundle i synchronizuje go na serwer przez `rsync` (bez `.tgz`).
+- `seal ship <target> --fast` buduje bundle i synchronizuje go na serwer przez `rsync` (bez `.tgz`).
 - Zawsze tworzy nowy katalog release: `appName-fast-<buildId>`, a po pełnym syncu przełącza `current.buildId` (brak aktualizacji in-place).
-- Do release trafia `appctl` uruchamiający fallback bundle (`app.bundle.cjs`).
+- Do release trafia `appctl` uruchamiający bundle (`app.bundle.cjs`).
 - Frontend (public/) jest obfuskowany/minifikowany zgodnie z configiem.
-- Backend jest obfuskowany w jednym bundlu (jak fallback).
+- Backend jest obfuskowany w jednym bundlu (jak bundle packager).
 - **Tryb unsafe**: brak SEA (mimo obfuskacji).
 - `rsync` minimalizuje transfer (przy kolejnych deployach).
 - Wymaga `rsync` lokalnie i na serwerze.
-- `node_modules` nie jest używane (fallback bundle zawiera zależności).
+- `node_modules` nie jest używane (bundle zawiera zależności).
   - `--fast-no-node-modules` jest ignorowane w tym trybie.
 - Po udanym zwykłym deployu SEAL usuwa wszystkie `*-fast` release'y (niezależnie od retention), żeby nie zostawiać źródeł na dysku.
 

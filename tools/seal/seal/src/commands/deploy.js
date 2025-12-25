@@ -4,6 +4,7 @@ const path = require("path");
 
 const { findProjectRoot } = require("../lib/paths");
 const { loadProjectConfig, loadTargetConfig, loadPolicy, resolveTargetName, resolveConfigName, getConfigFile, findLastArtifact } = require("../lib/project");
+const { normalizePackager, resolveThinConfig } = require("../lib/packagerConfig");
 const { fileExists } = require("../lib/fsextra");
 const { info, warn, ok, hr } = require("../lib/ui");
 
@@ -21,7 +22,13 @@ function resolveTarget(projectRoot, targetArg) {
   t.cfg.appName = proj.appName;
   t.cfg.serviceName = t.cfg.serviceName || proj.appName;
   t.cfg.installDir = t.cfg.installDir || (t.cfg.kind === "ssh" ? `/home/admin/apps/${proj.appName}` : `~/.local/share/seal/${proj.appName}`);
-  t.cfg.thinMode = t.cfg.thinMode || proj.build?.thinMode || "aio";
+  const thinCfg = resolveThinConfig(t.cfg, proj);
+  const packagerSpec = normalizePackager(t.cfg.packager || proj.build.packager || "auto", thinCfg.mode);
+  t.cfg.thinMode = (packagerSpec.kind === "thin" && packagerSpec.thinMode) ? packagerSpec.thinMode : thinCfg.mode;
+  t.cfg.thinLevel = thinCfg.level;
+  t.cfg.thinChunkSize = thinCfg.chunkSizeBytes;
+  t.cfg.thinZstdLevel = thinCfg.zstdLevel;
+  t.cfg.thinZstdTimeoutMs = thinCfg.zstdTimeoutMs;
   return { proj, targetName, targetCfg: t.cfg };
 }
 
@@ -41,10 +48,10 @@ async function ensureArtifact(projectRoot, proj, opts, targetName, configName) {
 
 function ensureFastRelease(projectRoot, proj, targetCfg, configName, opts) {
   if (opts.artifact) {
-    throw new Error("Fast deploy ignores --artifact (fallback bundle is built locally).");
+    throw new Error("Fast deploy ignores --artifact (bundle is built locally).");
   }
   if (opts && opts.fastNoNodeModules) {
-    warn("FAST mode ignores --fast-no-node-modules (fallback bundle has no node_modules).");
+    warn("FAST mode ignores --fast-no-node-modules (bundle has no node_modules).");
   }
   return buildFastRelease({ projectRoot, projectCfg: proj, targetCfg, configName });
 }
@@ -69,7 +76,7 @@ async function cmdDeploy(cwd, targetArg, opts) {
   info(`Deploy -> ${targetName} (${targetCfg.kind})`);
   if (!isFast && !artifactInfo.built) info(`Artifact: ${artifactPath}`);
   if (isFast) {
-    warn("FAST mode: fallback bundle synced via rsync (unsafe, no SEA).");
+    warn("FAST mode: bundle synced via rsync (unsafe, no SEA).");
   }
   hr();
 

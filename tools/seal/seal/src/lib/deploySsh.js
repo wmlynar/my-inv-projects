@@ -806,7 +806,7 @@ function deploySshFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, boot
     `ssh ${sshOpts}`,
   ];
 
-  info(`Fast sync (fallback bundle) to ${host}:${relDir}`);
+  info(`Fast sync (bundle) to ${host}:${relDir}`);
   const srcArg = releaseDir.endsWith(path.sep) ? releaseDir : `${releaseDir}${path.sep}`;
   const dstArg = `${user}@${host}:${relDir}/`;
   const rsyncRes = spawnSyncSafe("rsync", baseArgs.concat([srcArg, dstArg]), { stdio: "inherit" });
@@ -829,7 +829,7 @@ function deploySshFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, boot
   }
 
   if (thinMode === "bootstrap") {
-    warn("FAST mode: removing thin bootstrap runtime so fallback release can run.");
+    warn("FAST mode: removing thin bootstrap runtime so bundle release can run.");
   }
   const cleanupCmd = [
     "bash", "-lc",

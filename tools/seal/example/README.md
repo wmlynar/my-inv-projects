@@ -43,7 +43,7 @@ node src/index.js
 
 Podczas `seal release` SEAL obfuskuje też frontend (`public/*.js`) i bezpiecznie minifikuje HTML/CSS w `public/**` (pomija `*.min.*`) – domyślnie włączone (poziom: `safe`).
 
-Dodatkowo, SEAL domyślnie wykonuje hardening (np. kompresja backend bundle w SEA/fallback).
+Dodatkowo, SEAL domyślnie wykonuje protection/anti-peek (np. kompresja backend bundle w SEA/bundle).
 `strip`/`upx` dla binarek SEA są **OFF by default** (postject-ed binarki potrafią się po tym wysypać).
 
 ```bash

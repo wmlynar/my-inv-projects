@@ -159,7 +159,7 @@
   - narzędzia operatorskie (SEAL/appctl): logi, restart, status, test.
 
 - Budowanie / SEAL:
-  - brak `postject` (SEA) to **błąd**, a fallback jest dozwolony tylko jawnie (`build.allowFallback=true` lub `--packager fallback`),
+  - brak `postject` (SEA) to **błąd**, a bundle fallback jest dozwolony tylko jawnie (`build.bundleFallback=true` lub `--packager bundle`),
   - `installDir` dla usług w `/home/admin/apps/...` (unikamy małych partycji typu `/opt`).
 
 - Repozytorium:

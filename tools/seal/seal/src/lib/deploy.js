@@ -409,7 +409,7 @@ function deployLocalFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, bu
   copyDir(releaseDir, relDir);
 
   if (thinMode === "bootstrap") {
-    warn("FAST mode: removing thin bootstrap runtime so fallback release can run.");
+    warn("FAST mode: removing thin bootstrap runtime so bundle release can run.");
   }
   cleanupThinBootstrapLocal(layout);
 

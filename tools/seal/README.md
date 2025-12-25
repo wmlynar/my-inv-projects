@@ -2,7 +2,7 @@
 
 To repo jest „piaskownicą” do testowania SEAL end‑to‑end:
 
-- `seal/` – implementacja CLI (budowanie artefaktu, obfuskacja, SEA/fallback, verify, run-local, minimalny deploy baseline)
+- `seal/` – implementacja CLI (budowanie artefaktu, obfuskacja, SEA/bundle, verify, run-local, minimalny deploy baseline)
 - `example/` – reprezentatywna aplikacja webowa do testów „sealed” (runtime config w `seal-config/configs/`, pliki lokalne, UI, external calls, logowanie)
 - `docs/seal_docset/` – docset v0.5 (specyfikacja + scenariusze)
 
@@ -209,12 +209,12 @@ build: {
 Uwaga: `html.stripComments` usuwa tylko puste komentarze HTML (`<!--   -->`), a `html.collapseWhitespace` działa tylko między tagami.
 
 
-## Hardening binarki i backend bundle (domyślnie włączone)
+## Protection (anti-peek) binarki i backend bundle (domyślnie włączone)
 
 SEAL domyślnie dokłada dodatkową warstwę "anti-peek" (utrudnia proste podglądanie zawartości plików):
 
 - **SEA (binarka)**: pakuje backend bundle do „loadera” (Brotli/Gzip) *przed* generacją blobu SEA – w binarce nie ma plaintext JS.
-- **Fallback** (opcja jawna): backendowy bundle jest pakowany do `app.bundle.cjs.gz` + mały loader (`seal.loader.cjs`), żeby nie leżał obok czytelny plik JS.
+- **Bundle** (opcja jawna): backendowy bundle jest pakowany do `app.bundle.cjs.gz` + mały loader (`seal.loader.cjs`), żeby nie leżał obok czytelny plik JS.
 
 Opcjonalnie (EXPERIMENTAL): `strip`/`upx` na binarce SEA – **OFF by default**, bo postject-ed binarki potrafią się po tym wysypać.
 
@@ -224,7 +224,7 @@ Jeśli chcesz to wyłączyć (np. do debugowania), dodaj w `seal.json5`:
 
 ```json5
 build: {
-  hardening: { enabled: false }
+  protection: { enabled: false }
 }
 ```
 
@@ -232,20 +232,30 @@ Możesz też sterować szczegółami:
 
 ```json5
 build: {
-  allowFallback: false, // ustaw true jeśli chcesz jawnie zezwolić na fallback
-  hardening: {
+  bundleFallback: false, // ustaw true jeśli chcesz jawnie zezwolić na bundle fallback
+  protection: {
     enabled: true,
-    seaMainPacking: true,
-    seaMainPackingMethod: "brotli",
-    seaMainPackingChunkSize: 8000,
-    bundlePacking: true, // gzip backend bundle w fallback
-    strip: false,
-    upx: false
+    packSeaMain: true,
+    packSeaMainMethod: "brotli",
+    packSeaMainChunkSize: 8000,
+    packBundle: true, // gzip backend bundle w bundle
+    stripSymbols: false,
+    upxPack: false
   }
 }
 ```
 
-> Tip: jeśli chcesz eksperymentować z `upx`/`strip`, włącz je jawnie w `seal.json5` i przetestuj uruchomienie na docelowym OS/arch (po postject bywa to wrażliwe).
+> Tip: jeśli chcesz eksperymentować z `upxPack`/`stripSymbols`, włącz je jawnie w `seal.json5` i przetestuj uruchomienie na docelowym OS/arch (po postject bywa to wrażliwe).
+
+## Packagery (kolejność rekomendowana)
+
+1) `thin-split` – **najbardziej rekomendowany** (BOOTSTRAP: stały runtime + payload), szybkie aktualizacje.
+2) `thin-single` – AIO (jeden artefakt).
+3) `sea` – klasyczny SEA (single executable).
+4) `bundle` – obfuskowany bundle JS (fallback bez SEA).
+5) `none` – bez pakowania (najmniejsza ochrona, tylko do diagnostyki).
+
+`auto` jest legacy aliasem dla trybu SEA (utrzymywany tylko dla kompatybilności).
 
 ## Najkrótsza ścieżka testu „job security” (lokalnie)
 
@@ -269,7 +279,7 @@ Gdzie są artefakty:
 
 - Deploy zdalny przez SSH jest dodany jako „baseline”, ale nie jest jeszcze „battle tested”.
 - SEA w Node jest funkcją eksperymentalną (Node wypisze warning). To normalne.
-- Jeśli SEA nie zadziała, build kończy się błędem, chyba że fallback jest jawnie włączony (`build.allowFallback=true` lub `--packager fallback`).
+- Jeśli SEA nie zadziała, build kończy się błędem, chyba że bundle fallback jest jawnie włączony (`build.bundleFallback=true` lub `--packager bundle`).
 
 ---
 

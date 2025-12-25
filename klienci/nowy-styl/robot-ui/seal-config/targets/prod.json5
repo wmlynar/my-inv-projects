@@ -7,6 +7,6 @@
   serviceScope: "system",
   installDir: "/home/admin/apps/robot-ui",
   serviceName: "robot-ui",
-  packager: "auto",
+  packager: "sea",
   config: "prod",
 }

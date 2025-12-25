@@ -6,6 +6,6 @@
   serviceScope: "user",
   installDir: "~/.local/share/seal/seal-example",
   serviceName: "seal-example-sandbox",
-  packager: "thin",
+  packager: "thin-split",
   config: "local",
 }

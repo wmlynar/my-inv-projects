@@ -16,6 +16,7 @@ const { renderAppctl } = require("./appctl");
 const { packSea } = require("./packagers/sea");
 const { packFallback } = require("./packagers/fallback");
 const { packThin } = require("./packagers/thin");
+const { normalizePackager, resolveBundleFallback, resolveThinConfig, resolveProtectionConfig } = require("./packagerConfig");
 
 function makeBuildId() {
   const now = new Date();
@@ -573,15 +574,15 @@ exec node "$DIR/seal.loader.cjs" "$@"
 
 function applyHardeningPost(releaseDir, appName, packagerUsed, hardCfg) {
   // Default: enabled.
-  const enabled = hardCfg === false ? false : !(typeof hardCfg === 'object' && hardCfg && hardCfg.enabled === false);
+  const enabled = hardCfg && typeof hardCfg === "object" ? hardCfg.enabled !== false : hardCfg !== false;
   if (!enabled) return { enabled: false, reason: 'disabled', steps: [] };
 
   const cfg = (typeof hardCfg === 'object' && hardCfg) ? hardCfg : {};
   const steps = [];
 
-  // 1) Fallback packager: hide the backend bundle from casual inspection (gzip + loader).
-  const bundlePacking = cfg.bundlePacking !== false; // default true
-  if (packagerUsed === 'fallback') {
+  // 1) Bundle packager: hide the backend bundle from casual inspection (gzip + loader).
+  const bundlePacking = cfg.packBundle !== false; // default true
+  if (packagerUsed === 'bundle' || packagerUsed === 'fallback') {
     const r = bundlePacking
       ? packFallbackBundleGzip(releaseDir, appName)
       : { ok: false, skipped: true, reason: 'bundle_packing_disabled' };
@@ -593,16 +594,16 @@ function applyHardeningPost(releaseDir, appName, packagerUsed, hardCfg) {
   // Therefore it is OFF by default and must be enabled explicitly.
   const exePath = path.join(releaseDir, appName);
   const isScript = isShebangScript(exePath);
-  const isThin = packagerUsed === 'thin';
+  const isThin = typeof packagerUsed === "string" && packagerUsed.startsWith("thin");
 
-  const stripEnabled = cfg.strip === true; // default false
+  const stripEnabled = cfg.stripSymbols === true; // default false
   if (!isScript && stripEnabled) {
     steps.push({ step: 'strip', ...tryStripBinary(exePath) });
   } else if (!isScript && !isThin) {
     steps.push({ step: 'strip', ok: false, skipped: true, reason: stripEnabled ? 'strip_failed' : 'disabled_by_default' });
   }
 
-  const upxEnabled = cfg.upx === true; // default false
+  const upxEnabled = cfg.upxPack === true; // default false
   if (!isScript && upxEnabled) {
     const r = tryUpxPack(exePath);
     if (!r.ok) {
@@ -682,7 +683,10 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
 
   info(`Build: appName=${appName} buildId=${buildId}`);
   info(`Entry: ${projectCfg.entry}`);
-  info(`Target: ${targetCfg.target} (packager=${packagerOverride || targetCfg.packager || projectCfg.build.packager}) config=${configName}`);
+  const thinCfg = resolveThinConfig(targetCfg, projectCfg);
+  const packagerSpec = normalizePackager(packagerOverride || targetCfg.packager || projectCfg.build.packager || "auto", thinCfg.mode);
+
+  info(`Target: ${targetCfg.target} (packager=${packagerSpec.label}) config=${configName}`);
 
   info("Bundling (esbuild)...");
   const bundlePath = await buildBundle({ projectRoot, entryRel: projectCfg.entry, stageDir, buildId, appName });
@@ -693,31 +697,31 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   const obfPath = obfuscateBundle(bundlePath, stageDir, obfProfile);
   ok(`Obfuscation OK (${obfProfile})`);
 
-  const packagerRequested = (packagerOverride || targetCfg.packager || projectCfg.build.packager || "auto").toLowerCase();
-  const allowFallback = !!(targetCfg.allowFallback ?? projectCfg.build.allowFallback ?? false);
-  const thinMode = String(targetCfg.thinMode || projectCfg.build.thinMode || "aio").toLowerCase();
-  const thinLevel = String(targetCfg.thinLevel || projectCfg.build.thinLevel || "low").toLowerCase();
-  const thinChunkSize = targetCfg.thinChunkSize ?? projectCfg.build.thinChunkSize ?? null;
-  const thinZstdLevel = targetCfg.thinZstdLevel ?? projectCfg.build.thinZstdLevel ?? null;
-  const thinZstdTimeoutMs = targetCfg.thinZstdTimeoutMs ?? projectCfg.build.thinZstdTimeoutMs ?? null;
+  const packagerRequested = packagerSpec.kind;
+  const allowBundleFallback = resolveBundleFallback(targetCfg, projectCfg);
+  const thinMode = (packagerSpec.kind === "thin" && packagerSpec.thinMode) ? packagerSpec.thinMode : thinCfg.mode;
+  const thinLevel = thinCfg.level;
+  const thinChunkSize = thinCfg.chunkSizeBytes;
+  const thinZstdLevel = thinCfg.zstdLevel;
+  const thinZstdTimeoutMs = thinCfg.zstdTimeoutMs;
 
-  // Normalize hardening config early (used for SEA main packing)
-  const hardCfgRaw = projectCfg.build.hardening;
-  const hardEnabled = hardCfgRaw === false ? false : !(typeof hardCfgRaw === 'object' && hardCfgRaw && hardCfgRaw.enabled === false);
-  const hardCfg = (typeof hardCfgRaw === 'object' && hardCfgRaw) ? hardCfgRaw : {};
+  // Normalize protection config early (used for SEA main packing)
+  const protectionCfg = resolveProtectionConfig(projectCfg);
+  const hardEnabled = protectionCfg.enabled !== false;
+  const hardCfg = protectionCfg;
 
-  // Default hardening: pack the SEA main script into a compressed loader.
+  // Default protection: pack the SEA main script into a compressed loader.
   // This avoids having plain-text JS inside the executable, while staying compatible.
   let seaMainRel = "./bundle.obf.cjs";
   let seaMainPacking = { ok: false, skipped: true, reason: "not_enabled" };
 
   const seaMainPackingEnabled = hardEnabled
     && (packagerRequested === "sea" || packagerRequested === "auto")
-    && (hardCfg.seaMainPacking !== false);
+    && (hardCfg.packSeaMain !== false);
 
   if (seaMainPackingEnabled) {
-    const method = (hardCfg.seaMainPackingMethod || "brotli");
-    const chunkSize = (hardCfg.seaMainPackingChunkSize || 8000);
+    const method = (hardCfg.packSeaMainMethod || "brotli");
+    const chunkSize = (hardCfg.packSeaMainChunkSize || 8000);
     seaMainPacking = packStageMainToLoader(stageDir, "bundle.obf.cjs", "bundle.packed.cjs", method, chunkSize);
     if (seaMainPacking.ok) {
       seaMainRel = "./bundle.packed.cjs";
@@ -733,15 +737,15 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   let packError = null;
   let packErrorShort = null;
 
-  if (!["auto", "sea", "fallback", "thin"].includes(packagerRequested)) {
-    throw new Error(`Unknown packager: ${packagerRequested}`);
+  if (!["auto", "sea", "bundle", "none", "thin"].includes(packagerRequested)) {
+    throw new Error(`Unknown packager: ${packagerSpec.label}`);
   }
   if (packagerRequested === "thin" && !["aio", "bootstrap"].includes(thinMode)) {
-    throw new Error(`Unknown thinMode: ${thinMode}`);
+    throw new Error(`Unknown thin mode: ${thinMode}`);
   }
 
   if (packagerRequested === "thin") {
-    info(`Packaging (thin ${thinMode}, level=${thinLevel})...`);
+    info(`Packaging (${packagerSpec.label}, level=${thinLevel})...`);
     const res = await packThin({
       stageDir,
       releaseDir,
@@ -759,8 +763,22 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
       throw new Error(`Thin packager failed: ${res.errorShort}`);
     }
     packOk = true;
-    packagerUsed = "thin";
-    ok("Packager thin OK");
+    packagerUsed = packagerSpec.label;
+    ok(`Packager ${packagerSpec.label} OK`);
+  } else if (packagerRequested === "bundle") {
+    info("Packaging (bundle)...");
+    const res = packFallback({ stageDir, releaseDir, appName, obfPath });
+    if (!res.ok) throw new Error(`Bundle packager failed: ${res.errorShort}`);
+    packOk = true;
+    packagerUsed = "bundle";
+    ok("Packager bundle OK (node + obfuscated bundle)");
+  } else if (packagerRequested === "none") {
+    info("Packaging (none)...");
+    const res = packFallback({ stageDir, releaseDir, appName, obfPath });
+    if (!res.ok) throw new Error(`None packager failed: ${res.errorShort}`);
+    packOk = true;
+    packagerUsed = "none";
+    ok("Packager none OK (node + obfuscated bundle)");
   } else if (packagerRequested === "sea" || packagerRequested === "auto") {
     info("Packaging (SEA)...");
     const res = packSea({ stageDir, releaseDir, appName, mainRel: seaMainRel });
@@ -776,41 +794,41 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   }
 
   if (!packOk) {
-    const fallbackAllowed = packagerRequested === "fallback" || allowFallback;
+    const fallbackAllowed = allowBundleFallback;
     if (!fallbackAllowed) {
-      const hint = "Set build.allowFallback=true in seal.json5 or use --packager fallback.";
+      const hint = "Set build.bundleFallback=true in seal.json5 or use --packager bundle.";
       const reason = packErrorShort ? `Reason: ${packErrorShort}.` : "Reason: SEA packager failed.";
-      throw new Error(`SEA packager failed and fallback is disabled. ${reason} ${hint}`);
+      throw new Error(`SEA packager failed and bundle fallback is disabled. ${reason} ${hint}`);
     }
     const res = packFallback({ stageDir, releaseDir, appName, obfPath });
     if (!res.ok) {
-      throw new Error(`Fallback packager failed: ${res.errorShort}`);
+      throw new Error(`Bundle packager failed: ${res.errorShort}`);
     }
     packOk = true;
-    packagerUsed = "fallback";
-    ok("Packager fallback OK (node + obfuscated bundle)");
+    packagerUsed = "bundle";
+    ok("Packager bundle OK (node + obfuscated bundle)");
   }
 
 
-// Hardening (post-pack): make it harder to recover code by casually viewing files.
-// Default: enabled (can be disabled in seal.json5 -> build.hardening.enabled=false)
-const hardPost = applyHardeningPost(releaseDir, appName, packagerUsed, hardCfgRaw);
-const hardening = { enabled: hardEnabled, seaMainPacking, post: hardPost };
+// Protection (post-pack): make it harder to recover code by casually viewing files.
+// Default: enabled (can be disabled in seal.json5 -> build.protection.enabled=false)
+const hardPost = applyHardeningPost(releaseDir, appName, packagerUsed, protectionCfg);
+const protection = { enabled: hardEnabled, seaMainPacking, post: hardPost };
 
 if (!hardEnabled) {
-  info('Hardening disabled');
+  info('Protection disabled');
 } else {
   const stepsOk = (hardPost.steps || []).filter(s => s.ok).map(s => s.step);
   const stepsSkip = (hardPost.steps || []).filter(s => s.skipped).map(s => s.step + ':' + s.reason);
 
   if (stepsSkip.length) {
-    warn(`Hardening partial: ${stepsSkip.join(', ')}`);
+    warn(`Protection partial: ${stepsSkip.join(', ')}`);
   }
 
   const bits = [];
   if (seaMainPacking && seaMainPacking.ok) bits.push(`seaMainPack:${seaMainPacking.method}`);
   bits.push(...stepsOk);
-  ok(`Hardening OK (${bits.length ? bits.join(' + ') : 'no_steps'})`);
+  ok(`Protection OK (${bits.length ? bits.join(' + ') : 'no_steps'})`);
 }
 
 
@@ -897,7 +915,7 @@ if (!hardEnabled) {
     obfuscationProfile: obfProfile,
     frontendObfuscation: frontendResult,
     frontendMinify: minifyResult,
-    hardening,
+    protection,
   };
   writeMeta(baseOutDir, meta);
 

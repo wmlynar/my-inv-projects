@@ -2,9 +2,11 @@
 
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 
 const { findProjectRoot } = require("../lib/paths");
 const { getSealPaths, loadProjectConfig, loadTargetConfig, resolveTargetName, resolveConfigName, getConfigFile } = require("../lib/project");
+const { normalizePackager, resolveBundleFallback, resolveThinConfig, resolveProtectionConfig } = require("../lib/packagerConfig");
 const { info, warn, err, ok, hr } = require("../lib/ui");
 const { spawnSyncSafe } = require("../lib/spawn");
 const { fileExists } = require("../lib/fsextra");
@@ -222,16 +224,17 @@ async function cmdCheck(cwd, targetArg, opts) {
   }
 
   // Toolchain checks
-  const allowFallback = !!(targetCfg?.allowFallback ?? proj?.build?.allowFallback ?? false);
-  const packagerRequested = String(opts.packager || targetCfg?.packager || proj?.build?.packager || "auto").toLowerCase();
-  const seaNeeded = packagerRequested === "sea" || packagerRequested === "auto";
-  const thinNeeded = packagerRequested === "thin";
+  const thinCfg = resolveThinConfig(targetCfg, proj);
+  const packagerSpec = normalizePackager(opts.packager || targetCfg?.packager || proj?.build?.packager || "auto", thinCfg.mode);
+  const allowBundleFallback = resolveBundleFallback(targetCfg, proj);
+  const seaNeeded = packagerSpec.kind === "sea" || packagerSpec.kind === "auto";
+  const thinNeeded = packagerSpec.kind === "thin";
   const verbose = !!opts.verbose || process.env.SEAL_CHECK_VERBOSE === "1";
   let thinToolchainIssue = false;
   const major = nodeMajor();
   if (major < 18) errors.push(`Node too old: ${process.version} (need >= 18; SEA needs >= 20)`);
   if (seaNeeded && major < 20) {
-    warnings.push(`Node < 20: SEA may not work. ${allowFallback ? "Fallback is enabled." : "Build will fail unless fallback is explicitly enabled (build.allowFallback=true or packager=fallback)."} Node=${process.version}`);
+    warnings.push(`Node < 20: SEA may not work. ${allowBundleFallback ? "Bundle fallback is enabled." : "Build will fail unless bundle fallback is explicitly enabled (build.bundleFallback=true or packager=bundle)."} Node=${process.version}`);
   }
 
   // Dependencies present?
@@ -257,9 +260,9 @@ async function cmdCheck(cwd, targetArg, opts) {
     } else {
       try {
         require("postject");
-        warnings.push(`postject module installed but CLI not found in node_modules/.bin or PATH – SEA may fail. ${allowFallback ? "Fallback is enabled." : "Build will fail unless fallback is explicitly enabled (build.allowFallback=true or packager=fallback)."}`);
+        warnings.push(`postject module installed but CLI not found in node_modules/.bin or PATH – SEA may fail. ${allowBundleFallback ? "Bundle fallback is enabled." : "Build will fail unless bundle fallback is explicitly enabled (build.bundleFallback=true or packager=bundle)."}`);
       } catch {
-        warnings.push(`postject not installed – SEA may fail. ${allowFallback ? "Fallback is enabled." : "Build will fail unless fallback is explicitly enabled (build.allowFallback=true or packager=fallback)."}`);
+        warnings.push(`postject not installed – SEA may fail. ${allowBundleFallback ? "Bundle fallback is enabled." : "Build will fail unless bundle fallback is explicitly enabled (build.bundleFallback=true or packager=bundle)."}`);
       }
     }
   }
@@ -356,9 +359,9 @@ async function cmdCheck(cwd, targetArg, opts) {
     if (!warnings.includes(hint)) warnings.push(hint);
   }
 
-  // Optional hardening tools (recommended; SEAL will still work without them)
-  const hardCfg = proj?.build?.hardening;
-  const hardEnabled = hardCfg === false ? false : !(typeof hardCfg === 'object' && hardCfg && hardCfg.enabled === false);
+  // Optional protection tools (recommended; SEAL will still work without them)
+  const protectionCfg = resolveProtectionConfig(proj);
+  const hardEnabled = protectionCfg.enabled !== false;
   if (hardEnabled) {
     if (hasCommand('strip')) ok('strip: OK (symbol stripping)');
     else warnings.push('strip not installed – binaries will be easier to inspect (install binutils)');

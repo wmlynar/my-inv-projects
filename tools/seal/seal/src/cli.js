@@ -123,7 +123,7 @@ async function main(argv) {
     .option("--skip-check", "Skip preflight checks", false)
     .option("--check-verbose", "Show tool output during preflight checks", false)
     .option("--check-cc <compiler>", "C compiler for preflight checks (e.g. gcc/clang)", null)
-    .option("--packager <packager>", "Override packager: auto|sea|fallback|thin", null)
+    .option("--packager <packager>", "Override packager: thin-split|thin-single|sea|bundle|none|auto(legacy)", null)
     .action(async (target, opts) => cmdRelease(process.cwd(), target, opts));
 
   program
@@ -166,7 +166,7 @@ async function main(argv) {
     .option("--skip-check", "Skip preflight checks", false)
     .option("--check-verbose", "Show tool output during preflight checks", false)
     .option("--check-cc <compiler>", "C compiler for preflight checks (e.g. gcc/clang)", null)
-    .option("--packager <packager>", "Override packager: auto|sea|fallback|thin", null)
+    .option("--packager <packager>", "Override packager: thin-split|thin-single|sea|bundle|none|auto(legacy)", null)
     .option("--fast", "Fast ship from sources (unsafe)", false)
     .option("--fast-no-node-modules", "Exclude node_modules in fast mode", false)
     .action(async (target, opts) => cmdShip(process.cwd(), target, opts));
