@@ -23,6 +23,8 @@ const THIN_LEVELS = {
   high: { chunkSize: 64 * 1024, zstdLevel: 3 },
 };
 
+const DEFAULT_CODEC_CACHE_LIMIT = 20;
+
 const DEFAULT_LIMITS = {
   maxChunks: 1_000_000,
   maxChunkRaw: 8 * 1024 * 1024,
@@ -41,6 +43,62 @@ function normalizeTargetName(name) {
 function getCodecCachePath(projectRoot, targetName) {
   const safe = normalizeTargetName(targetName);
   return path.join(projectRoot, "seal-thin", "cache", safe, "codec_state.json");
+}
+
+function getCodecCacheLimit() {
+  const raw = process.env.SEAL_THIN_CACHE_LIMIT || process.env.SEAL_THIN_CACHE_MAX;
+  const n = raw ? Number.parseInt(raw, 10) : NaN;
+  if (Number.isFinite(n) && n >= 0) return n;
+  return DEFAULT_CODEC_CACHE_LIMIT;
+}
+
+function pruneCodecCache(projectRoot, keepTargetName) {
+  const limit = getCodecCacheLimit();
+  if (!projectRoot || limit <= 0) return;
+  const cacheRoot = path.join(projectRoot, "seal-thin", "cache");
+  if (!fileExists(cacheRoot)) return;
+
+  let entries = [];
+  try {
+    entries = fs.readdirSync(cacheRoot, { withFileTypes: true }).filter((d) => d.isDirectory());
+  } catch {
+    return;
+  }
+
+  const items = entries.map((d) => {
+    const dirPath = path.join(cacheRoot, d.name);
+    const statePath = path.join(dirPath, "codec_state.json");
+    if (!fileExists(statePath)) return null;
+    try {
+      const stat = fs.statSync(statePath);
+      return { name: d.name, dirPath, mtime: stat.mtimeMs };
+    } catch {
+      return null;
+    }
+  }).filter(Boolean);
+
+  if (items.length <= limit) return;
+
+  items.sort((a, b) => b.mtime - a.mtime);
+  const keep = new Set();
+  const keepSafe = keepTargetName ? normalizeTargetName(keepTargetName) : null;
+  if (keepSafe) keep.add(keepSafe);
+
+  for (const item of items) {
+    if (keep.has(item.name)) continue;
+    if (keep.size >= limit) continue;
+    keep.add(item.name);
+  }
+
+  for (const item of items) {
+    if (!keep.has(item.name)) {
+      try {
+        fs.rmSync(item.dirPath, { recursive: true, force: true });
+      } catch {
+        // best-effort cleanup
+      }
+    }
+  }
 }
 
 function loadCodecState(projectRoot, targetName) {
@@ -66,6 +124,7 @@ function saveCodecState(projectRoot, targetName, state) {
   const p = getCodecCachePath(projectRoot, targetName);
   ensureDir(path.dirname(p));
   fs.writeFileSync(p, JSON.stringify(state, null, 2) + "\n", "utf-8");
+  pruneCodecCache(projectRoot, targetName);
 }
 
 function writeCodecBin(dir, codecState) {

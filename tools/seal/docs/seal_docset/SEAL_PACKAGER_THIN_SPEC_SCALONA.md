@@ -602,6 +602,9 @@ W BOOTSTRAP launcher jest stały. Payloady muszą być kodowane tym samym “kod
 
 **Wymóg praktyczny:** `codec_state` musi przetrwać między deployami (dodaj `seal-thin/` do `.gitignore`).
 
+**Wymóg praktyczny:** cache nie może rosnąć bez limitu — SEAL automatycznie sprząta `seal-thin/cache/` (domyślnie zostawia ostatnie 20 wpisów).
+Limit można ustawić przez `SEAL_THIN_CACHE_LIMIT` (0 = brak sprzątania).
+
 ### 10.3 Recovery gdy cache zniknie (MUST)
 Jeśli brak `codec_state` lokalnie:
 - SEAL wykonuje **re-bootstrap** (wgrywa nowy launcher + runtime) i od tego momentu używa nowego `codec_id`.
