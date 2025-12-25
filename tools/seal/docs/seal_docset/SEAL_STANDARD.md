@@ -72,33 +72,42 @@ Przykład:
 - STD-014 (SHOULD): jeśli konfiguracja udostępnia opcję (np. `sshPort`, `StrictHostKeyChecking`), to **każda** ścieżka wykonania powinna ją respektować (ssh/scp/rsync); normalizację trzymaj w jednym miejscu, aby uniknąć rozjazdów.
 
 ### 1.4. Narzędzia i automatyzacje (Seal/CLI)
+#### Build / toolchain (priorytet: zgodnosc)
 - STD-015 (SHOULD): wykrywanie narzędzi (np. `postject`) musi mieć **jedno źródło prawdy**; `check` i `build` używają tego samego resolvera binarki.
-- STD-016 (SHOULD): rekurencyjne uruchamianie CLI (workspace/monorepo) **zawsze** używa ścieżek absolutnych, aby nie zależeć od CWD.
-- STD-017 (SHOULD): komenda uruchomiona poza projektem ma fail‑fast i nie generuje efektów ubocznych (brak tworzenia plików/ostrzeżeń „z innego katalogu”).
-- STD-018 (SHOULD): testy automatyczne nie polegają na kruchym parsowaniu stdout/stderr child procesów; preferuj JSON output, kody wyjścia lub wywołania in‑process; gdy parsujesz, zawsze usuwaj ANSI.
-- STD-019 (SHOULD): shell completion nie moze maskowac opcji (gdy token zaczyna sie od `-`, podpowiada opcje). Aktualizuj completion po kazdej zmianie CLI.
-- STD-020 (SHOULD): wizard CLI powinien podawac krotkie opisy komend i rekomendowana akcje na teraz; w trybie TTY dziala krok-po-kroku (petla).
-- STD-021 (SHOULD): output CLI ma byc jednoznaczny i akcjonowalny (bledy/warningi z konkretnym "co dalej" i bez duplikatow).
-- STD-022 (SHOULD): `seal check` podaje dokladne kroki naprawcze (np. nazwy pakietow apt-get) i wskazuje brakujace narzedzia wprost.
-- STD-023 (SHOULD): po zmianach w CLI aktualizuj dokumentacje, completion i wizard jednoczesnie, zeby unikac rozjazdow UX.
-- STD-024 (SHOULD): fallbacki obnizajace zabezpieczenia musza byc jawne (flag/config) i zawsze logowac ostrzezenie.
-- STD-025 (SHOULD): wszystkie generowane katalogi (cache/release/tmp) maja retention/pruning i loguja przyczyny czyszczenia.
 - STD-026 (SHOULD): preflight i build uzywaja tych samych opcji i resolvera narzedzi, zeby uniknac rozjazdow.
-- STD-027 (SHOULD): testy/subprocessy zawsze maja timeout per‑krok i drenaż stdout/stderr; brak postepu = kill + blad.
+- STD-032 (SHOULD): preflight sprawdza OS/arch i wersje toolchaina; mismatch = fail-fast.
+- STD-035 (SHOULD): build zapisuje wersje narzedzi/zaleznosci; build nie pobiera rzeczy z internetu.
+- STD-040 (SHOULD): preflight uzywa tych samych argumentow i srodowiska co runtime.
+- STD-041 (SHOULD): release nie moze polegac na toolchainie builda na serwerze.
+
+#### Operacje / niezawodnosc
+- STD-024 (SHOULD): fallbacki obnizajace zabezpieczenia musza byc jawne (flag/config) i zawsze logowac ostrzezenie.
+- STD-036 (SHOULD): ryzykowne opcje sa OFF domyslnie i wymagaja jawnego wlaczenia.
+- STD-034 (SHOULD): wejscia z CLI/config sa walidowane typami/zakresami; bledne = fail-fast.
+- STD-025 (SHOULD): wszystkie generowane katalogi (cache/release/tmp) maja retention/pruning i loguja przyczyny czyszczenia.
 - STD-028 (SHOULD): zapisy plikow krytycznych sa atomowe (tmp + rename), aby uniknac polowicznych stanow po crashu.
 - STD-029 (SHOULD): operacje bootstrap/deploy/clean sa idempotentne (powtorka nie psuje stanu).
 - STD-030 (SHOULD): build/deploy/clean uzywaja lockfile; kolizje maja czytelny komunikat i nie niszcza stanu.
 - STD-031 (SHOULD): brak sudo domyslnie; eskalacja tylko jawnie. Waliduj owner/perms/umask w punktach krytycznych.
-- STD-032 (SHOULD): preflight sprawdza OS/arch i wersje toolchaina; mismatch = fail-fast.
 - STD-033 (SHOULD): operacje zewnetrzne (ssh/scp/rsync/http) maja timeout i komunikat "co dalej".
-- STD-034 (SHOULD): wejscia z CLI/config sa walidowane typami/zakresami; bledne = fail-fast.
-- STD-035 (SHOULD): build zapisuje wersje narzedzi/zaleznosci; build nie pobiera rzeczy z internetu.
-- STD-036 (SHOULD): ryzykowne opcje sa OFF domyslnie i wymagaja jawnego wlaczenia.
-- STD-037 (SHOULD): nazwy komend i semantyka sa spójne w CLI i dokumentacji.
 - STD-038 (SHOULD): operacje destrukcyjne oferuja `--dry-run`.
 - STD-039 (SHOULD): SIGINT/SIGTERM sprzataja procesy i pliki tymczasowe.
-- STD-040 (SHOULD): preflight uzywa tych samych argumentow i srodowiska co runtime.
-- STD-041 (SHOULD): release nie moze polegac na toolchainie builda na serwerze.
+
+#### Testy / CI
+- STD-018 (SHOULD): testy automatyczne nie polegają na kruchym parsowaniu stdout/stderr child procesów; preferuj JSON output, kody wyjścia lub wywołania in‑process; gdy parsujesz, zawsze usuwaj ANSI.
+- STD-027 (SHOULD): testy/subprocessy zawsze maja timeout per‑krok i drenaż stdout/stderr; brak postepu = kill + blad.
+
+#### CLI / UX
+- STD-016 (SHOULD): rekurencyjne uruchamianie CLI (workspace/monorepo) **zawsze** używa ścieżek absolutnych, aby nie zależeć od CWD.
+- STD-017 (SHOULD): komenda uruchomiona poza projektem ma fail‑fast i nie generuje efektów ubocznych (brak tworzenia plików/ostrzeżeń „z innego katalogu”).
+- STD-019 (SHOULD): shell completion nie moze maskowac opcji (gdy token zaczyna sie od `-`, podpowiada opcje). Aktualizuj completion po kazdej zmianie CLI.
+- STD-020 (SHOULD): wizard CLI powinien podawac krotkie opisy komend i rekomendowana akcje na teraz; w trybie TTY dziala krok-po-kroku (petla).
+- STD-021 (SHOULD): output CLI ma byc jednoznaczny i akcjonowalny (bledy/warningi z konkretnym "co dalej" i bez duplikatow).
+- STD-022 (SHOULD): `seal check` podaje dokladne kroki naprawcze (np. nazwy pakietow apt-get) i wskazuje brakujace narzedzia wprost.
+- STD-023 (SHOULD): po zmianach w CLI aktualizuj dokumentacje, completion i wizard jednoczesnie, zeby uniknac rozjazdow UX.
+- STD-037 (SHOULD): nazwy komend i semantyka sa spójne w CLI i dokumentacji.
+
+#### Logowanie (skrót)
 - STD-042 (SHOULD): logi sa minimalne i bez payloadow; tylko dane potrzebne do diagnozy.
 
 ---

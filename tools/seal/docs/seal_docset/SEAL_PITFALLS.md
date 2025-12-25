@@ -11,6 +11,29 @@
 5) Procesy w testach maja drenaz stdout/stderr.
 6) UI testy zamykaja browser/page w `finally`.
 
+## Zasady ogólne (cross-cutting)
+
+- Blad: brak walidacji argumentow/parametrow powodowal niejasne bledy runtime.
+  - Wymaganie: wszystkie wejscia (CLI/config) maja walidacje typow/zakresow; bledne = fail-fast.
+
+- Blad: ryzykowne opcje/fallbacki byly wlaczone domyslnie.
+  - Wymaganie: ryzykowne opcje OFF domyslnie; wymagaja jawnego wlaczenia i WARN.
+
+- Blad: brak atomowosci zapisu (tmp/rename) powodowal polowiczne pliki po crashu.
+  - Wymaganie: zapisy plikow krytycznych zawsze przez tmp + atomic rename.
+
+- Blad: brak idempotencji komend (bootstrap/deploy/clean) powodowal reczne naprawy.
+  - Wymaganie: operacje infrastrukturalne musza byc idempotentne (bez efektow ubocznych przy powtorzeniu).
+
+- Blad: brak blokad wspolbieznosci powodowal nadpisywanie build/deploy.
+  - Wymaganie: build/deploy/clean uzywa lockfile, z czytelnym komunikatem przy kolizji.
+
+- Blad: operacje destrukcyjne bez trybu podgladu.
+  - Wymaganie: akcje czyszczace/usuwajace maja `--dry-run`.
+
+- Blad: brak sprzatania po SIGINT/SIGTERM.
+  - Wymaganie: przerwania sprzataja procesy i pliki tymczasowe.
+
 ## Build / packaging
 
 - Blad: SEA bundle fallback uruchomil build bez postject (cichy spadek poziomu zabezpieczen).
@@ -24,11 +47,10 @@
   - Wymaganie: jezeli `upx` jest wlaczony i sie nie powiedzie, build **musi** sie przerwac z bledem.
   - Wymaganie: `upx` domyslnie wylaczony dla SEA; wlaczaj tylko po potwierdzeniu `upx -t` na binarce.
 
-- Blad: `postject` byl dostepny w `seal check`, ale brakowal w `seal release` (inne PATH / sudo).
-  - Wymaganie: `postject` musi byc w PATH **procesu builda**; nie polegaj na PATH roota lub innego shella.
-- Blad: `seal check` uznawal `postject` za brakujacy mimo dzialajacej binarki (rozne sposoby wykrywania).
+- Blad: rozjazd wykrywania narzedzi i opcji miedzy `check` i `build` (postject/cc/packager).
   - Wymaganie: **jedno zrodlo prawdy** dla wykrywania narzedzi (resolver binarki).
-  - Wymaganie: `check` i `build` musza uzywac tego samego resolvera, a dostepna binarka = OK.
+  - Wymaganie: `check` i `build` uzywaja tego samego PATH, targetu i packagera.
+  - Wymaganie: release/ship przekazuja opcje preflight (`--check-verbose`, `--check-cc`).
 
 - Blad: `seal check` „wieszal sie” na kompilacji testowej (brak timeoutu i brak outputu).
   - Wymaganie: wszystkie komendy preflight/build maja timeout i widoczny postep.
@@ -36,9 +58,11 @@
   - Wymaganie: preflight uzywa plikow tymczasowych (nie stdin), zeby narzedzia nie blokowaly sie na wejsciu.
   - Wymaganie: opcja override toolchaina (np. `--cc gcc`) dla srodowisk z wrapperami `cc`.
 
-- Blad: `seal release` uruchamial preflight bez targetu i bez uwzglednienia `--packager`, przez co check potwierdzal zly zestaw narzedzi.
-  - Wymaganie: preflight uzywa tego samego targetu i packagera co build.
-  - Wymaganie: release/ship przekazuja opcje preflight (`--check-verbose`, `--check-cc`), gdy uzytkownik ich potrzebuje.
+- Blad: build byl niedeterministyczny lub wykonany na innej architekturze/OS niz target (AIO zawiera runtime z build machine).
+  - Wymaganie: preflight waliduje OS/arch i wersje narzedzi; mismatch = fail-fast.
+  - Wymaganie: zapisuj wersje toolchaina i zaleznosci; unikaj auto‑pobieran w buildzie.
+  - Wymaganie: release nie moze polegac na toolchainie builda na serwerze.
+  - Wymaganie: AIO buduj na tej samej architekturze/OS co target albo uzyj trybu BOOTSTRAP.
 
 - Blad: `thin` dopuszczal niespojne offsety/rozmiary kontenera (latwo o bledy przy uszkodzonych artefaktach).
   - Wymaganie: `index_len == chunk_count * THIN_INDEX_ENTRY_LEN`.
@@ -69,8 +93,8 @@
   - Wymaganie: kompresja nie moze wisiec na `spawnSync` z `stdin` (uzyj streamu i obslugi `error`).
 
 - Blad: `codec_state` ginal miedzy deployami (brak zgodnosci kodeka).
-- Wymaganie: `codec_state` musi byc zapisywany lokalnie i utrzymany (`seal-out/cache/thin/<target>/codec_state.json`).
-- Wymaganie: `seal-out/` jest ignorowany w VCS.
+  - Wymaganie: `codec_state` musi byc zapisywany lokalnie i utrzymany (`seal-out/cache/thin/<target>/codec_state.json`).
+  - Wymaganie: `seal-out/` jest ignorowany w VCS.
   - Wymaganie: brak `codec_state` = rebootstrap.
 
 - Blad: cache `seal-out/cache/thin` rosl bez limitu i zapychal dysk.
@@ -85,28 +109,12 @@
   - Wymaganie: wszystko co trafia na target powinno byc binarne/obfuskowane (brak czytelnych JSON).
   - Wymaganie: nazwy plikow na target nie powinny zdradzac roli (uzywaj krotszych/nijakich nazw, np. `c` zamiast `codec.bin`).
 
-- Blad: tryb FAST byl uruchamiany niejawnie lub zostawial niebezpieczne artefakty.
-  - Wymaganie: FAST jest **jawny** (`--fast`) i zawsze ostrzega o ryzyku.
-  - Wymaganie: FAST nie tworzy SEA ani `.tgz`, uzywa osobnego katalogu `*-fast`.
-  - Wymaganie: zwykly deploy usuwa poprzedni `*-fast` (zeby nie zostawiac zrodel na dysku).
-  - Wymaganie: FAST usuwa `b/a` + `r/rt` + `r/pl`, zeby nie uruchamiac starego BOOTSTRAP runtime.
-
 - Blad: w release brakowalo `public/` lub `data/` (UI/plikowe zasoby nie dzialaly po sealingu).
   - Wymaganie: `build.includeDirs` musi zawierac wszystkie katalogi runtime (np. `public`, `data`).
   - Wymaganie: po `seal release` zawsze uruchom `seal run-local --sealed` i sprawdz UI/zasoby.
 
 - Blad: kod szukal zasobow przez `__dirname`, co po bundlingu wskazywalo zla sciezke.
   - Wymaganie: zasoby runtime lokalizuj wzgledem `process.cwd()` (release dir) i jawnych katalogow (`public/`, `shared/`).
-
-- Blad: build wykonany na innej architekturze/OS niz target (AIO zawiera runtime z build machine).
-  - Wymaganie: builduj na tej samej architekturze/OS co serwer docelowy lub uzywaj trybu BOOTSTRAP.
-
-- Blad: `seal uninstall` mogl usunac zbyt wysoki katalog (np. przez bledny `installDir`).
-  - Wymaganie: Seal odmawia `rm -rf` jesli `installDir` jest zbyt plytki lub jest katalogiem systemowym.
-  - Wymaganie: awaryjnie mozna ustawic `SEAL_ALLOW_UNSAFE_RM=1`, ale jest to **niebezpieczne**.
-
-- Blad: polityka SSH byla twardo ustawiona (sporne zachowanie bez opcji).
-  - Wymaganie: parametry sporne/ryzykowne (np. `StrictHostKeyChecking`) musza byc konfigurowalne per‑target.
 
 ## Testy / CI
 
@@ -128,6 +136,10 @@
 - Blad: instalacja w `/opt` (mala partycja) powodowala brak miejsca.
   - Wymaganie: domyslny `installDir` dla uslug to `/home/admin/apps/<app>`.
 
+- Blad: `seal uninstall` mogl usunac zbyt wysoki katalog (np. przez bledny `installDir`).
+  - Wymaganie: Seal odmawia `rm -rf` jesli `installDir` jest zbyt plytki lub jest katalogiem systemowym.
+  - Wymaganie: awaryjnie mozna ustawic `SEAL_ALLOW_UNSAFE_RM=1`, ale jest to **niebezpieczne**.
+
 - Blad: `run-current.sh` i katalog aplikacji mialy zlego wlasciciela (root) i brak prawa wykonania.
   - Wymaganie: `installDir` i `run-current.sh` musza byc wlascicielem uzytkownika uslugi i `run-current.sh` musi byc wykonywalny.
 
@@ -136,6 +148,7 @@
 
 - Blad: uruchamianie aplikacji jako root (np. przez sudo) bez potrzeby.
   - Wymaganie: domyslnie uruchamiamy jako uzytkownik uslugi; `--sudo` tylko jawnie.
+  - Wymaganie: waliduj owner/perms/umask w miejscach krytycznych.
 
 - Blad: unit systemd nie ustawial `WorkingDirectory`, przez co `config.runtime.json5` nie byl znajdowany.
   - Wymaganie: `WorkingDirectory` wskazuje katalog release (albo `run-current.sh` ustawia CWD przed startem).
@@ -147,8 +160,20 @@
   - Wymaganie: retention (np. ostatnie N release) + usuwanie starych katalogow.
   - Wymaganie: cleanup dotyczy takze `*-fast`.
 
+- Blad: tryb FAST byl uruchamiany niejawnie lub zostawial niebezpieczne artefakty.
+  - Wymaganie: FAST jest **jawny** (`--fast`) i zawsze ostrzega o ryzyku.
+  - Wymaganie: FAST nie tworzy SEA ani `.tgz`, uzywa osobnego katalogu `*-fast`.
+  - Wymaganie: zwykly deploy usuwa poprzedni `*-fast` (zeby nie zostawiac zrodel na dysku).
+  - Wymaganie: FAST usuwa `b/a` + `r/rt` + `r/pl`, zeby nie uruchamiac starego BOOTSTRAP runtime.
+
 - Blad: `sshPort` w target config byl ignorowany (SSH/SCP/rsync uzywaly domyslnego portu).
   - Wymaganie: `sshPort` musi byc uwzgledniany we wszystkich polaczeniach (ssh/scp/rsync).
+
+- Blad: polityka SSH byla twardo ustawiona (sporne zachowanie bez opcji).
+  - Wymaganie: parametry sporne/ryzykowne (np. `StrictHostKeyChecking`) musza byc konfigurowalne per‑target.
+
+- Blad: brak timeoutow na operacjach zewnetrznych (ssh/scp/rsync/http) blokowal deploy.
+  - Wymaganie: kazda operacja zewnetrzna ma timeout + jasny komunikat "co dalej".
 
 - Blad: `status` lapal przypadkowe procesy (np. edytor `nano appctl`) i mylil z running service.
   - Wymaganie: detekcja procesu musi byc precyzyjna (systemd lub filtr na faktyczna binarke/PID).
@@ -171,6 +196,9 @@
 
 ## CLI / UX spojnosci
 
+- Blad: niespojne nazwy/semantyka komend (np. stop/disable).
+  - Wymaganie: ta sama nazwa = ta sama semantyka w CLI i docs.
+
 - Blad: `appctl` i `seal remote` mialy rozne komendy i semantyke.
   - Wymaganie: komendy sa symetryczne (`up/down/start/stop/restart/enable/disable/status/logs`).
   - Wymaganie: `appctl up` == `seal remote <target> up` (ta sama operacja).
@@ -180,8 +208,10 @@
 
 - Blad: `npx seal` z podfolderu monorepo nie widzial CLI.
   - Wymaganie: zapewnij globalny link (`tools/seal/scripts/link-global-seal.sh`) albo uzywaj `npx --prefix <repo-root>`.
+
 - Blad: uruchomienie komendy w monorepo rekurencyjnie (workspace) uzywalo relatywnej sciezki CLI i padalo w podprojektach.
   - Wymaganie: rekurencyjne uruchomienia CLI musza uzywac **absolutnej** sciezki do binarki/JS.
+
 - Blad: `seal check` uruchomiony poza projektem nadal tworzyl pliki i generowal mylace warningi.
   - Wymaganie: brak `seal.json5` = fail-fast **bez efektow ubocznych**.
 
@@ -209,68 +239,6 @@
   - Wymaganie: zmiany CLI **zawsze** aktualizuja completion + wizard + docs w tym samym PR.
   - Wymaganie: nowe komendy/opcje musza byc widoczne w wizardzie i completion.
 
-- Blad: wprowadzane fallbacki obniżaly poziom zabezpieczen bez jasnego ostrzezenia.
-  - Wymaganie: kazdy fallback bezpieczenstwa jest **jawny** i wymaga flagi/konfiguracji.
-  - Wymaganie: fallback wypisuje WARN z konsekwencjami.
-
-- Blad: niekontrolowany wzrost artefaktow (cache/release/tmp) zapychal dysk.
-  - Wymaganie: wszystkie katalogi generowane maja retention/pruning (limit + log).
-  - Wymaganie: brak limitu jest **wyjatkiem** i wymaga jawnej decyzji.
-
-- Blad: check/build rozjezdzal sie co do wykrywania toolchaina i opcji.
-  - Wymaganie: check i build uzywaja identycznego resolvera narzedzi i tych samych opcji.
-  - Wymaganie: `--check-verbose` pokazuje realne komendy (z argumentami).
-
-- Blad: testy zewnetrzne wisialy przez brak timeoutow i brak drenażu stdout/stderr.
-  - Wymaganie: kazdy test/subprocess ma timeout per‑krok i drenaż stdout/stderr.
-  - Wymaganie: brak postepu > timeout = kill + czytelny blad.
-
-- Blad: brak atomowosci zapisu (tmp/rename) powodowal polowiczne pliki po crashu.
-  - Wymaganie: zapisy plikow krytycznych zawsze przez tmp + atomic rename.
-
-- Blad: brak idempotencji komend (bootstrap/deploy/clean) powodowal reczne naprawy.
-  - Wymaganie: operacje infrastrukturalne musza byc idempotentne (bez efektow ubocznych przy powtorzeniu).
-
-- Blad: brak blokad wspolbieznosci powodowal nadpisywanie build/deploy.
-  - Wymaganie: build/deploy/clean uzywa lockfile, z czytelnym komunikatem przy kolizji.
-
-- Blad: niejawne uzycie sudo/roota.
-  - Wymaganie: brak sudo domyslnie; eskalacja tylko jawnie (flaga/konfig).
-  - Wymaganie: waliduj owner/perms/umask w miejscach krytycznych.
-
-- Blad: build uruchomiony na innej wersji toolchaina/OS powodowal trudne do diagnozy problemy.
-  - Wymaganie: preflight waliduje OS/arch i wersje narzedzi; fail-fast przy rozjezdzie.
-
-- Blad: brak timeoutow na operacjach zewnetrznych (ssh/scp/rsync/http) blokowal deploy.
-  - Wymaganie: kazda operacja zewnetrzna ma timeout + jasny komunikat "co dalej".
-
-- Blad: brak walidacji argumentow/parametrow powodowal niejasne bledy runtime.
-  - Wymaganie: wszystkie wejscia (CLI/config) maja walidacje typow/zakresow; bledne = fail-fast.
-
-- Blad: buildy byly niedeterministyczne (rozne toolchainy/wersje).
-  - Wymaganie: zapisuj wersje narzedzi i zaleznosci; unikaj auto‑pobieran w buildzie.
-
-- Blad: ryzykowne opcje byly wlaczone domyslnie.
-  - Wymaganie: ryzykowne opcje OFF domyslnie; wymagaja jawnego wlaczenia.
-
-- Blad: niespojne nazwy/semantyka komend (np. stop/disable).
-  - Wymaganie: ta sama nazwa = ta sama semantyka w CLI i docs.
-
-- Blad: operacje destrukcyjne bez trybu podgladu.
-  - Wymaganie: akcje czyszczace/usuwajace maja `--dry-run`.
-
-- Blad: brak sprzatania po SIGINT/SIGTERM.
-  - Wymaganie: przerwania sprzataja procesy i pliki tymczasowe.
-
-- Blad: preflight testowal cos innego niz realne uruchomienie.
-  - Wymaganie: preflight uzywa tych samych argumentow i srodowiska co runtime.
-
-- Blad: runtime polegal na toolchainie z builda (np. node w PATH).
-  - Wymaganie: release nie moze zalezec od narzedzi builda na serwerze.
-
-- Blad: nadmierne logowanie danych diagnostycznych.
-  - Wymaganie: logi minimalne, bez nadmiaru danych i bez payloadow.
-
 ## Runtime config
 
 - Blad: `config.runtime.json5` brakowal lub byl parsowany przez `JSON.parse`.
@@ -292,16 +260,17 @@
 
 - Blad: logowanie pelnych payloadow/odpowiedzi (duze logi, ryzyko sekretow).
   - Wymaganie: loguj tylko metadane i krotkie preview (limit znakow), bez pelnych body.
+  - Wymaganie: logi minimalne, tylko dane potrzebne do diagnozy.
 
 ## UI availability / aktualizacje
 
 - Blad: UI odswiezal sie po bledzie backendu i pokazywal strone z bledem.
   - Wymaganie: UI nie robi reloadu na bledzie backendu.
-  - Backend wystawia `/api/status` z `buildId`.
-  - UI pokazuje overlay po ok. 2s braku polaczenia.
-- UI robi reload **tylko** po zmianie `buildId` i po odzyskaniu polaczenia.
-  - Polling do `/api/status` ma timeout (AbortController), aby zawieszone requesty nie blokowaly kolejnych prob.
-  - `?debug=1` moze pokazywac badge `buildId` i toast przed reloadem.
+  - Wymaganie: backend wystawia `/api/status` z `buildId`.
+  - Wymaganie: UI pokazuje overlay po ok. 2s braku polaczenia.
+  - Wymaganie: UI robi reload **tylko** po zmianie `buildId` i po odzyskaniu polaczenia.
+  - Wymaganie: polling do `/api/status` ma timeout (AbortController), aby zawieszone requesty nie blokowaly kolejnych prob.
+  - Wymaganie: `?debug=1` moze pokazywac badge `buildId` i toast przed reloadem.
 
 - Blad: UI używal service worker/cache i pokazywal stary build po deployu.
   - Wymaganie: wylacz service worker albo wersjonuj cache i wymusz reload po zmianie `buildId`.
