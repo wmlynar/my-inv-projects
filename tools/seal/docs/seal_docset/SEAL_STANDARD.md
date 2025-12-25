@@ -257,6 +257,12 @@ Każda zależność to obiekt o polach:
   - sprawdzić systemd,
   - wykonać requesty do `/healthz` i `/status`.
 
+### 6.3. Retencja i limity zasobów
+- OPS-020 (MUST): każdy mechanizm zapisujący dane na dysku (cache, artefakty, logi, tmp, release retention) ma **limit** (liczba/rozmiar/TTL) i automatyczne czyszczenie.
+- OPS-021 (MUST): nie wolno wprowadzać niczego, co może rosnąć bez końca (dysk/pamięć). Jeśli zachowanie jest niejednoznaczne, dodaj opcję i ustaw bezpieczny limit domyślny.
+- OPS-022 (SHOULD): loguj pruning (ile elementów usunięto i dlaczego), aby dało się diagnozować czyszczenie.
+- OPS-023 (SHOULD): build/test używa katalogów tymczasowych i **zawsze** je sprząta (brak stale rosnących katalogów).
+
 ---
 
 ## 7. Moduł `ui_resilience` (WARUNKOWY, MUST jeśli UI istnieje)

@@ -60,6 +60,10 @@
 - Wymaganie: `seal-thin/` jest ignorowany w VCS.
   - Wymaganie: brak `codec_state` = rebootstrap.
 
+- Blad: cache `seal-thin` rosl bez limitu i zapychal dysk.
+  - Wymaganie: cache ma limit (np. liczba wpisow/rozmiar/TTL) i auto-pruning.
+  - Wymaganie: limit musi byc konfigurowalny (0 = wylacza cache), a pruning logowany.
+
 - Blad: payload-only (BOOTSTRAP) nie sprawdzal zgodnosci kodeka z runtime na target.
   - Wymaganie: `release/r/c` musi istniec i byc porownany z `<installDir>/r/c`.
   - Wymaganie: mismatch lub brak `c` = **fallback do pelnego bootstrap**.
@@ -270,3 +274,4 @@
 - FAST: `seal ship --fast` ostrzega, nie tworzy `.tgz`, zapisuje do `*-fast`, a cleanup usuwa stare fast releasy.
 - CLI: `appctl` i `seal remote` maja te same komendy/semantyke; `seal ship` dziala jako 1 krok.
 - CLI: `seal` jest dostepny globalnie (link lub `npx --prefix`) i `config diff` uzywa nazwy targetu.
+- Cache/retention: brak niczego, co rosnie bez limitu (cache, tmp, logi, releasy).
