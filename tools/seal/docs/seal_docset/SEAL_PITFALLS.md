@@ -244,6 +244,33 @@
 - Blad: brak timeoutow na operacjach zewnetrznych (ssh/scp/rsync/http) blokowal deploy.
   - Wymaganie: kazda operacja zewnetrzna ma timeout + jasny komunikat "co dalej".
 
+- Blad: brak walidacji argumentow/parametrow powodowal niejasne bledy runtime.
+  - Wymaganie: wszystkie wejscia (CLI/config) maja walidacje typow/zakresow; bledne = fail-fast.
+
+- Blad: buildy byly niedeterministyczne (rozne toolchainy/wersje).
+  - Wymaganie: zapisuj wersje narzedzi i zaleznosci; unikaj auto‑pobieran w buildzie.
+
+- Blad: ryzykowne opcje byly wlaczone domyslnie.
+  - Wymaganie: ryzykowne opcje OFF domyslnie; wymagaja jawnego wlaczenia.
+
+- Blad: niespojne nazwy/semantyka komend (np. stop/disable).
+  - Wymaganie: ta sama nazwa = ta sama semantyka w CLI i docs.
+
+- Blad: operacje destrukcyjne bez trybu podgladu.
+  - Wymaganie: akcje czyszczace/usuwajace maja `--dry-run`.
+
+- Blad: brak sprzatania po SIGINT/SIGTERM.
+  - Wymaganie: przerwania sprzataja procesy i pliki tymczasowe.
+
+- Blad: preflight testowal cos innego niz realne uruchomienie.
+  - Wymaganie: preflight uzywa tych samych argumentow i srodowiska co runtime.
+
+- Blad: runtime polegal na toolchainie z builda (np. node w PATH).
+  - Wymaganie: release nie moze zalezec od narzedzi builda na serwerze.
+
+- Blad: nadmierne logowanie danych diagnostycznych.
+  - Wymaganie: logi minimalne, bez nadmiaru danych i bez payloadow.
+
 ## Runtime config
 
 - Blad: `config.runtime.json5` brakowal lub byl parsowany przez `JSON.parse`.

@@ -91,6 +91,15 @@ Przykład:
 - STD-031 (SHOULD): brak sudo domyslnie; eskalacja tylko jawnie. Waliduj owner/perms/umask w punktach krytycznych.
 - STD-032 (SHOULD): preflight sprawdza OS/arch i wersje toolchaina; mismatch = fail-fast.
 - STD-033 (SHOULD): operacje zewnetrzne (ssh/scp/rsync/http) maja timeout i komunikat "co dalej".
+- STD-034 (SHOULD): wejscia z CLI/config sa walidowane typami/zakresami; bledne = fail-fast.
+- STD-035 (SHOULD): build zapisuje wersje narzedzi/zaleznosci; build nie pobiera rzeczy z internetu.
+- STD-036 (SHOULD): ryzykowne opcje sa OFF domyslnie i wymagaja jawnego wlaczenia.
+- STD-037 (SHOULD): nazwy komend i semantyka sa spójne w CLI i dokumentacji.
+- STD-038 (SHOULD): operacje destrukcyjne oferuja `--dry-run`.
+- STD-039 (SHOULD): SIGINT/SIGTERM sprzataja procesy i pliki tymczasowe.
+- STD-040 (SHOULD): preflight uzywa tych samych argumentow i srodowiska co runtime.
+- STD-041 (SHOULD): release nie moze polegac na toolchainie builda na serwerze.
+- STD-042 (SHOULD): logi sa minimalne i bez payloadow; tylko dane potrzebne do diagnozy.
 
 ---
 
