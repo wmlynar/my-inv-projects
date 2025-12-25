@@ -891,7 +891,7 @@ echo "TPM=$TPM"
   }
 
   let base = null;
-  if (sentinelCfg && sentinelCfg.enabled) {
+  if (sentinelCfg && sentinelCfg.storage && sentinelCfg.storage.baseDir) {
     base = probeBaseDirSsh(targetCfg, sentinelCfg);
   }
 
