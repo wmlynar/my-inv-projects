@@ -112,7 +112,14 @@ async function cmdCheck(cwd, targetArg, opts) {
   const configFile = getConfigFile(projectRoot, configName);
   if (!fileExists(configFile)) warnings.push(`Missing runtime config: seal-config/configs/${configName}.json5`);
 
-  if (!fileExists(paths.runtimeConfigPath)) warnings.push(`Missing config.runtime.json5 (dev convenience). Tip: copy seal-config/configs/${configName}.json5 -> config.runtime.json5`);
+  if (!fileExists(paths.runtimeConfigPath) && fileExists(configFile)) {
+    try {
+      fs.copyFileSync(configFile, paths.runtimeConfigPath);
+      ok(`Created config.runtime.json5 (from seal-config/configs/${configName}.json5)`);
+    } catch (e) {
+      warnings.push(`Missing config.runtime.json5 (dev convenience). Failed to create: ${e.message || e}`);
+    }
+  }
 
   if (proj) {
     const entryAbs = path.join(projectRoot, proj.entry);

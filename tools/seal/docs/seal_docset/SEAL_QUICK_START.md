@@ -66,6 +66,8 @@ npm run dev
 
 W logach aplikacji powinieneś widzieć, że czyta `config.runtime.json5`.
 
+> **Tip:** jeśli `config.runtime.json5` nie istnieje, `seal check` i `seal run-local` utworzą go automatycznie z `seal-config/configs/<config>.json5`.
+
 ---
 
 ## 4) Lokalny test zabezpieczenia (najczęstszy loop)
