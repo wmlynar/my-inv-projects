@@ -7,6 +7,7 @@ const { cmdInit } = require("./commands/init");
 const { cmdCheck } = require("./commands/check");
 const { cmdBatch } = require("./commands/batch");
 const { cmdClean } = require("./commands/clean");
+const { cmdCompletion } = require("./commands/completion");
 const { cmdRelease } = require("./commands/release");
 const { cmdVerify } = require("./commands/verify");
 const { cmdRunLocal } = require("./commands/runLocal");
@@ -79,6 +80,12 @@ async function main(argv) {
     .action(async () => {
       await wizard(process.cwd());
     });
+
+  program
+    .command("completion")
+    .description("Print shell completion script (bash)")
+    .argument("[shell]", "Shell name (default: bash)", "bash")
+    .action((shell) => cmdCompletion(shell));
 
   program
     .command("check")

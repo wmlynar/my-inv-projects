@@ -124,6 +124,31 @@ seal --help
 
 ---
 
+## Bash completion (podpowiedzi TAB)
+
+Jeśli używasz `seal` jako komendy systemowej, możesz włączyć podpowiedzi:
+
+Jednorazowo w sesji:
+
+```bash
+source <(seal completion bash)
+```
+
+Na stałe (dla użytkownika):
+
+```bash
+mkdir -p ~/.local/share/bash-completion/completions
+seal completion bash > ~/.local/share/bash-completion/completions/seal
+```
+
+Alternatywnie, systemowo (wymaga sudo):
+
+```bash
+sudo seal completion bash > /etc/bash_completion.d/seal
+```
+
+---
+
 ## Struktura konfiguracji i artefaktów
 
 - `seal.json5` – konfiguracja projektu + polityka (commitowane w repo).
