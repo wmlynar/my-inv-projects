@@ -145,7 +145,12 @@ function resolveProtectionConfig(projectCfg) {
     packSeaMainChunkSize: cfg.packSeaMainChunkSize ?? cfg.seaMainPackingChunkSize ?? 8000,
     packBundle: cfg.packBundle ?? cfg.bundlePacking ?? true,
     stripSymbols: cfg.stripSymbols ?? cfg.strip ?? false,
+    stripTool: cfg.stripTool ?? cfg.stripCmd ?? "strip",
+    stripArgs: cfg.stripArgs ?? null,
     upxPack: cfg.upxPack ?? cfg.upx ?? false,
+    elfPacker: cfg.elfPacker ?? cfg.elfPack ?? null,
+    elfPackerCmd: cfg.elfPackerCmd ?? cfg.elfPackerBin ?? null,
+    elfPackerArgs: cfg.elfPackerArgs ?? cfg.elfPackerFlags ?? null,
     raw,
   };
 }

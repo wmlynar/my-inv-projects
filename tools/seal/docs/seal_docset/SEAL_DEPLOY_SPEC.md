@@ -1749,7 +1749,21 @@ Przykład (aktualny dla v0.5):
     // Protection (anti-peek) – domyślnie włączone
     // - SEA: packSeaMain (Brotli/Gzip loader); upx/strip opcjonalne (OFF by default)
     // - bundle: gzip-pack backend bundle + loader
-    protection: { enabled: true, packSeaMain: true, packSeaMainMethod: "brotli", packSeaMainChunkSize: 8000, packBundle: true, stripSymbols: false, upxPack: false },
+    protection: {
+      enabled: true,
+      packSeaMain: true,
+      packSeaMainMethod: "brotli",
+      packSeaMainChunkSize: 8000,
+      packBundle: true,
+      stripSymbols: false,
+      stripTool: "strip", // strip | llvm-strip | eu-strip | sstrip
+      stripArgs: ["--strip-all"],
+      upxPack: false,
+      // ELF packers/protectors (opcjonalne, wysokie ryzyko operacyjne):
+      // elfPacker: "kiteshield" | "midgetpack" | "upx",
+      // elfPackerCmd: "kiteshield",
+      // elfPackerArgs: ["--in", "{in}", "--out", "{out}"],
+    },
 
     // Katalogi kopiowane 1:1 do release (np. static assets, dane)
     includeDirs: ["public", "data"],
@@ -1768,7 +1782,12 @@ Przykład (aktualny dla v0.5):
 - `build.bundleFallback`: `false`.
 - `build.frontendObfuscation`: domyślnie `{ enabled: true, profile: build.obfuscationProfile }`.
 - `build.frontendMinify`: domyślnie `{ enabled: true, level: "safe", html: true, css: true }`.
-- `build.protection`: domyślnie `{ enabled: true, packSeaMain: true, packSeaMainMethod: "brotli", packSeaMainChunkSize: 8000, packBundle: true, stripSymbols: false, upxPack: false }`.
+- `build.protection`: domyślnie `{ enabled: true, packSeaMain: true, packSeaMainMethod: "brotli", packSeaMainChunkSize: 8000, packBundle: true, stripSymbols: false, stripTool: "strip", stripArgs: ["--strip-all"], upxPack: false }`.
+- `build.protection.stripTool`: `strip` | `llvm-strip` | `eu-strip` | `sstrip` (domyślnie `strip`).
+- `build.protection.stripArgs`: opcjonalne argumenty dla strip (placeholder `{in}` podstawia ścieżkę binarki); jeśli nie podasz — używane jest `--strip-all`.
+- `build.protection.elfPacker`: opcjonalny packer/protector ELF: `kiteshield` | `midgetpack` | `upx`.
+- `build.protection.elfPackerCmd`: nadpisuje nazwę komendy (np. pełna ścieżka).
+- `build.protection.elfPackerArgs`: **wymagane** dla `kiteshield`/`midgetpack`; użyj `{in}` i `{out}` jako placeholderów. Brak args = błąd.
 
 ### 29.4. Polityka (`seal.json5#policy`)
 

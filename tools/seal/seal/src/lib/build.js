@@ -446,12 +446,22 @@ function hasCommand(cmd) {
   return !!r.ok;
 }
 
-function tryStripBinary(binPath) {
-  if (!hasCommand('strip')) {
-    return { ok: false, skipped: true, reason: 'strip_not_installed' };
+function resolveStripArgs(args, binPath) {
+  const raw = Array.isArray(args) ? args.slice() : [];
+  const hasIn = raw.some((arg) => String(arg).includes("{in}"));
+  const out = raw.map((arg) => String(arg).replaceAll("{in}", binPath));
+  if (!hasIn) out.push(binPath);
+  return out;
+}
+
+function tryStripBinary(binPath, opts = {}) {
+  const cmd = opts.cmd || "strip";
+  const args = Array.isArray(opts.args) ? opts.args : ["--strip-all"];
+  if (!hasCommand(cmd)) {
+    return { ok: false, skipped: true, reason: "strip_not_installed", tool: cmd };
   }
-  const r = spawnSyncSafe('strip', ['--strip-all', binPath], { stdio: 'pipe' });
-  return { ok: r.ok, skipped: false, reason: r.ok ? 'ok' : (r.stderr || r.error || 'strip_failed') };
+  const r = spawnSyncSafe(cmd, resolveStripArgs(args, binPath), { stdio: "pipe" });
+  return { ok: r.ok, skipped: false, reason: r.ok ? "ok" : (r.stderr || r.error || "strip_failed"), tool: cmd };
 }
 
 function tryUpxPack(binPath) {
@@ -461,6 +471,45 @@ function tryUpxPack(binPath) {
   // --best is a good default; --lzma increases compression but may be slower.
   const r = spawnSyncSafe('upx', ['--best', '--lzma', binPath], { stdio: 'pipe' });
   return { ok: r.ok, skipped: false, reason: r.ok ? 'ok' : (r.stderr || r.error || 'upx_failed') };
+}
+
+function tryElfPacker(binPath, cfg) {
+  const tool = (cfg && cfg.elfPacker) ? String(cfg.elfPacker) : "";
+  if (!tool) return { ok: false, skipped: true, reason: "disabled_by_default" };
+  if (tool === "upx") {
+    return { ...tryUpxPack(binPath), tool: "upx" };
+  }
+
+  const cmd = (cfg && cfg.elfPackerCmd) ? String(cfg.elfPackerCmd) : tool;
+  if (!cmd) return { ok: false, skipped: false, reason: "missing_cmd" };
+  if (!hasCommand(cmd)) {
+    return { ok: false, skipped: false, reason: "packer_not_installed", tool: cmd };
+  }
+
+  const argsCfg = Array.isArray(cfg.elfPackerArgs) ? cfg.elfPackerArgs : [];
+  if (!argsCfg.length) {
+    return { ok: false, skipped: false, reason: "missing_args", tool: cmd };
+  }
+
+  const outPath = `${binPath}.packed`;
+  const usesOut = argsCfg.some((arg) => String(arg).includes("{out}"));
+  const usesIn = argsCfg.some((arg) => String(arg).includes("{in}"));
+  const args = argsCfg.map((arg) => String(arg).replaceAll("{in}", binPath).replaceAll("{out}", outPath));
+  if (!usesIn) args.push(binPath);
+
+  const r = spawnSyncSafe(cmd, args, { stdio: "pipe" });
+  if (!r.ok) {
+    return { ok: false, skipped: false, reason: r.stderr || r.error || "packer_failed", tool: cmd };
+  }
+
+  if (usesOut) {
+    if (!fileExists(outPath)) {
+      return { ok: false, skipped: false, reason: "packer_output_missing", tool: cmd };
+    }
+    fs.renameSync(outPath, binPath);
+  }
+
+  return { ok: true, skipped: false, reason: "ok", tool: cmd };
 }
 
 
@@ -598,13 +647,18 @@ function applyHardeningPost(releaseDir, appName, packagerUsed, hardCfg) {
   const isThin = typeof packagerUsed === "string" && packagerUsed.startsWith("thin");
 
   const stripEnabled = cfg.stripSymbols === true; // default false
+  const stripTool = cfg.stripTool || "strip";
+  const stripArgs = cfg.stripArgs || null;
   if (!isScript && stripEnabled) {
-    steps.push({ step: 'strip', ...tryStripBinary(exePath) });
+    steps.push({ step: "strip", ...tryStripBinary(exePath, { cmd: stripTool, args: stripArgs }) });
   } else if (!isScript && !isThin) {
     steps.push({ step: 'strip', ok: false, skipped: true, reason: stripEnabled ? 'strip_failed' : 'disabled_by_default' });
   }
 
   const upxEnabled = cfg.upxPack === true; // default false
+  if (upxEnabled && cfg.elfPacker) {
+    throw new Error("ELF packer and upxPack cannot be enabled together");
+  }
   if (!isScript && upxEnabled) {
     const r = tryUpxPack(exePath);
     if (!r.ok) {
@@ -614,6 +668,18 @@ function applyHardeningPost(releaseDir, appName, packagerUsed, hardCfg) {
     steps.push({ step: 'upx', ...r });
   } else if (!isScript && !isThin) {
     steps.push({ step: 'upx', ok: false, skipped: true, reason: 'disabled_by_default' });
+  }
+
+  const packerEnabled = !!cfg.elfPacker;
+  if (packerEnabled && isScript) {
+    steps.push({ step: "elf_packer", ok: false, skipped: true, reason: "script_not_supported" });
+  } else if (packerEnabled) {
+    const r = tryElfPacker(exePath, cfg);
+    if (!r.ok) {
+      const reason = r.reason || "elf_packer_failed";
+      throw new Error(`ELF packer failed: ${reason}`);
+    }
+    steps.push({ step: "elf_packer", ...r });
   }
 
   return { enabled: true, steps };
