@@ -343,12 +343,16 @@ function installSentinelSsh({ targetCfg, sentinelCfg, force, insecure }) {
   if (level >= 2 && !hostInfo.rid) throw new Error("sentinel install failed: missing rid");
 
   let flags = 0;
-  const cpuid = resolveCpuIdSsh({
-    targetCfg,
-    cpuIdSource: sentinelCfg.cpuIdSource,
-    hostInfo,
-    require: sentinelCfg.cpuIdSource !== "off",
-  });
+  let cpuid = "";
+  const wantCpuId = level >= 1 && sentinelCfg.cpuIdSource !== "off";
+  if (wantCpuId) {
+    cpuid = resolveCpuIdSsh({
+      targetCfg,
+      cpuIdSource: sentinelCfg.cpuIdSource,
+      hostInfo,
+      require: true,
+    });
+  }
   hostInfo.cpuid = cpuid;
   const includeCpuId = level >= 1 && !!hostInfo.cpuid;
   if (includeCpuId) flags |= FLAG_INCLUDE_CPUID;

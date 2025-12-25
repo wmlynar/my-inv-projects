@@ -344,6 +344,8 @@ Wirtualizacja może go ukryć/zmienić (np. VirtualBox `--cpuidremoveall "1"`), 
 
 Jeśli `cpuIdSource` wymaga `asm`, deployer **musi** mieć możliwość pobrania CPUID z hosta (np. przez `cc` podczas instalacji). Brak wsparcia architektury lub brak narzędzi = błąd (bez fallbacku).
 
+CPUID jest używane tylko dla leveli **L1+** (dla L0 nie ma `cpuid` w fingerprint).
+
 ### 8.2 Czego absolutnie nie robić (MUST)
 Nie opierać fingerprintu o:
 - hash `/usr`, `/lib`, `/bin`,
