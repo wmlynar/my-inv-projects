@@ -45,6 +45,7 @@ async function main(argv) {
     .description("Preflight checks: config, entrypoint, toolchain, SEA availability")
     .argument("[target]", "Target name (optional; enables SSH preflight)")
     .option("--strict", "Treat warnings as errors", false)
+    .option("--verbose", "Show tool output (diagnostics for slow/hanging checks)", false)
     .action(async (target, opts) => cmdCheck(process.cwd(), target, opts));
 
   program

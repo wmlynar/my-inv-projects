@@ -2,6 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 
 const { findProjectRoot } = require("../lib/paths");
 const { getSealPaths, loadProjectConfig, loadTargetConfig, resolveTargetName, resolveConfigName, getConfigFile } = require("../lib/project");
@@ -198,6 +199,7 @@ async function cmdCheck(cwd, targetArg, opts) {
   const packagerRequested = String(targetCfg?.packager || proj?.build?.packager || "auto").toLowerCase();
   const seaNeeded = packagerRequested === "sea" || packagerRequested === "auto";
   const thinNeeded = packagerRequested === "thin";
+  const verbose = !!opts.verbose || process.env.SEAL_CHECK_VERBOSE === "1";
   let thinToolchainIssue = false;
   const major = nodeMajor();
   if (major < 18) errors.push(`Node too old: ${process.version} (need >= 18; SEA needs >= 20)`);
@@ -273,20 +275,27 @@ async function cmdCheck(cwd, targetArg, opts) {
       } else {
         const out = `${zstdPc.stdout} ${zstdPc.stderr}`.trim();
         if (out) zstdFlags = out.split(/\s+/).filter(Boolean);
+        if (verbose && out) info(`Thin: pkg-config flags: ${out}`);
       }
     }
 
     if (cc) {
       const testSrc = "#include <zstd.h>\nint main(void){return 0;}\n";
-      const args = ["-x", "c", "-", "-o", "/dev/null"];
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-check-"));
+      const srcPath = path.join(tmpDir, "zstd-check.c");
+      fs.writeFileSync(srcPath, testSrc, "utf-8");
+      const args = ["-x", "c", srcPath, "-o", "/dev/null"];
       const hasLzstd = zstdFlags.includes("-lzstd");
       const compileArgs = hasLzstd ? [...args, ...zstdFlags] : [...args, ...zstdFlags, "-lzstd"];
       info(`Thin: compiling libzstd test (${cc})...`);
+      if (verbose) info(`Thin: cc command: ${cc} ${compileArgs.join(" ")}`);
+      const compileStdio = verbose ? "inherit" : "pipe";
       const compile = spawnSyncSafe(
         cc,
         compileArgs,
-        { stdio: "pipe", input: testSrc, timeoutMs: compileTimeoutMs }
+        { stdio: compileStdio, timeoutMs: compileTimeoutMs }
       );
+      try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
       if (compile.timedOut) {
         errors.push("libzstd-dev compile test timed out (cc). Check toolchain or increase timeout.");
         thinToolchainIssue = true;
