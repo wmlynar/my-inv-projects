@@ -135,7 +135,7 @@ async function cmdCheck(cwd, targetArg, opts) {
   }
 
   // Optional remote preflight (only when explicit target is provided)
-  if (targetArg && t && (targetCfg.kind || "local").toLowerCase() === "ssh") {
+  if (!opts.skipRemote && targetArg && t && (targetCfg.kind || "local").toLowerCase() === "ssh") {
     if (!hasCommand("ssh")) {
       warnings.push("ssh not found – skipping remote preflight");
     } else if (!targetCfg.host) {
@@ -203,7 +203,7 @@ async function cmdCheck(cwd, targetArg, opts) {
 
   // Toolchain checks
   const allowFallback = !!(targetCfg?.allowFallback ?? proj?.build?.allowFallback ?? false);
-  const packagerRequested = String(targetCfg?.packager || proj?.build?.packager || "auto").toLowerCase();
+  const packagerRequested = String(opts.packager || targetCfg?.packager || proj?.build?.packager || "auto").toLowerCase();
   const seaNeeded = packagerRequested === "sea" || packagerRequested === "auto";
   const thinNeeded = packagerRequested === "thin";
   const verbose = !!opts.verbose || process.env.SEAL_CHECK_VERBOSE === "1";

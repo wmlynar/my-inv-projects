@@ -81,6 +81,8 @@ async function main(argv) {
     .argument("[target]", "Target name (defaults: project defaultTarget or 'local')")
     .option("--config <config>", "Override config variant (rare)", null)
     .option("--skip-check", "Skip preflight checks", false)
+    .option("--check-verbose", "Show tool output during preflight checks", false)
+    .option("--check-cc <compiler>", "C compiler for preflight checks (e.g. gcc/clang)", null)
     .option("--packager <packager>", "Override packager: auto|sea|fallback|thin", null)
     .action(async (target, opts) => cmdRelease(process.cwd(), target, opts));
 
@@ -117,6 +119,8 @@ async function main(argv) {
     .option("--bootstrap", "Install prerequisites on the target (first time)", false)
     .option("--push-config", "Overwrite server runtime config with repo config (explicit)", false)
     .option("--skip-check", "Skip preflight checks", false)
+    .option("--check-verbose", "Show tool output during preflight checks", false)
+    .option("--check-cc <compiler>", "C compiler for preflight checks (e.g. gcc/clang)", null)
     .option("--packager <packager>", "Override packager: auto|sea|fallback|thin", null)
     .option("--fast", "Fast ship from sources (unsafe)", false)
     .option("--fast-no-node-modules", "Exclude node_modules in fast mode", false)

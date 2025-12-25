@@ -28,7 +28,13 @@ async function cmdRelease(cwd, targetArg, opts) {
   }
 
   if (!opts.skipCheck) {
-    await cmdCheck(projectRoot, null, { strict: false });
+    await cmdCheck(projectRoot, targetName, {
+      strict: false,
+      verbose: !!opts.checkVerbose,
+      cc: opts.checkCc || null,
+      packager: opts.packager || null,
+      skipRemote: true,
+    });
   }
 
   const result = await buildRelease({

@@ -265,6 +265,7 @@ Każda zależność to obiekt o polach:
 - OPS-024 (MUST): wszystkie zewnętrzne komendy w preflight/build (toolchain, pkg-config, kompilacja testowa) mają **timeout** i widoczny postęp.
 - OPS-025 (SHOULD): dodaj tryb `--verbose` (lub env) pokazujący dokładne komendy i stdout/stderr narzędzi, żeby diagnozować „zawieszenia”.
 - OPS-026 (SHOULD): jeśli preflight używa toolchaina systemowego (np. `cc`), zapewnij opcję override (np. `--cc gcc`) dla środowisk z wrapperami.
+- OPS-027 (SHOULD): preflight musi używać **tego samego targetu i packagera** co właściwy build/deploy (brak „fałszywych OK”).
 
 ---
 

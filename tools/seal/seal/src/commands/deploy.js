@@ -151,6 +151,8 @@ async function cmdShip(cwd, targetArg, opts) {
   const releaseOpts = {
     config: null,
     skipCheck: !!opts.skipCheck,
+    checkVerbose: !!opts.checkVerbose,
+    checkCc: opts.checkCc || null,
     packager: opts.packager || null,
   };
   const releaseRes = await cmdRelease(cwd, targetArg, releaseOpts);

@@ -33,6 +33,10 @@
   - Wymaganie: preflight uzywa plikow tymczasowych (nie stdin), zeby narzedzia nie blokowaly sie na wejsciu.
   - Wymaganie: opcja override toolchaina (np. `--cc gcc`) dla srodowisk z wrapperami `cc`.
 
+- Blad: `seal release` uruchamial preflight bez targetu i bez uwzglednienia `--packager`, przez co check potwierdzal zly zestaw narzedzi.
+  - Wymaganie: preflight uzywa tego samego targetu i packagera co build.
+  - Wymaganie: release/ship przekazuja opcje preflight (`--check-verbose`, `--check-cc`), gdy uzytkownik ich potrzebuje.
+
 - Blad: `thin` dopuszczal niespojne offsety/rozmiary kontenera (latwo o bledy przy uszkodzonych artefaktach).
   - Wymaganie: `index_len == chunk_count * THIN_INDEX_ENTRY_LEN`.
   - Wymaganie: `comp_len > 0` i `raw_len > 0`.
