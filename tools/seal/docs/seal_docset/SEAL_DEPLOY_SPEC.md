@@ -1732,6 +1732,7 @@ Przykład (aktualny dla v0.5):
 
   build: {
     // packager (kolejnosc rekomendowana): thin-split, thin-single, sea, bundle, none (auto = thin-split)
+    // none = raw bundle + wrapper (bez protection/packBundle; tylko do diagnostyki)
     packager: "auto",
     bundleFallback: false,
 

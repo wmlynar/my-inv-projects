@@ -253,7 +253,7 @@ build: {
 2) `thin-single` – AIO (jeden artefakt).
 3) `sea` – klasyczny SEA (single executable).
 4) `bundle` – obfuskowany bundle JS (fallback bez SEA).
-5) `none` – bez pakowania (najmniejsza ochrona, tylko do diagnostyki).
+5) `none` – raw bundle + wrapper (bez protection/packBundle; tylko do diagnostyki).
 
 `auto` oznacza obecnie `thin-split` i jest polecany, jeśli chcesz automatycznie przechodzić na lepszy packager w przyszłości.
 

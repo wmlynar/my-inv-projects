@@ -773,12 +773,12 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
     packagerUsed = "bundle";
     ok("Packager bundle OK (node + obfuscated bundle)");
   } else if (packagerRequested === "none") {
-    info("Packaging (none)...");
+    info("Packaging (none: raw bundle + wrapper, no protection)...");
     const res = packFallback({ stageDir, releaseDir, appName, obfPath });
     if (!res.ok) throw new Error(`None packager failed: ${res.errorShort}`);
     packOk = true;
     packagerUsed = "none";
-    ok("Packager none OK (node + obfuscated bundle)");
+    ok("Packager none OK (raw bundle + wrapper; protection disabled)");
   } else if (packagerRequested === "sea") {
     info("Packaging (SEA)...");
     const res = packSea({ stageDir, releaseDir, appName, mainRel: seaMainRel });

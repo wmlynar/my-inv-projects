@@ -227,6 +227,9 @@ async function cmdCheck(cwd, targetArg, opts) {
   const thinCfg = resolveThinConfig(targetCfg, proj);
   const packagerSpec = normalizePackager(opts.packager || targetCfg?.packager || proj?.build?.packager || "auto", thinCfg.mode);
   const allowBundleFallback = resolveBundleFallback(targetCfg, proj);
+  if (packagerSpec.kind === "unknown") {
+    errors.push(`Unknown packager: ${packagerSpec.label}. Allowed: thin-split, thin-single, thin (legacy), sea, bundle, none, auto.`);
+  }
   const seaNeeded = packagerSpec.kind === "sea";
   const thinNeeded = packagerSpec.kind === "thin";
   const verbose = !!opts.verbose || process.env.SEAL_CHECK_VERBOSE === "1";
@@ -260,9 +263,19 @@ async function cmdCheck(cwd, targetArg, opts) {
     } else {
       try {
         require("postject");
-        warnings.push(`postject module installed but CLI not found in node_modules/.bin or PATH – SEA may fail. ${allowBundleFallback ? "Bundle fallback is enabled." : "Build will fail unless bundle fallback is explicitly enabled (build.bundleFallback=true or packager=bundle)."}`);
+        const msg = "postject module installed but CLI not found in node_modules/.bin or PATH – SEA may fail.";
+        if (allowBundleFallback) {
+          warnings.push(`${msg} Bundle fallback is enabled.`);
+        } else {
+          errors.push(`${msg} Build will fail unless bundle fallback is explicitly enabled (build.bundleFallback=true or packager=bundle).`);
+        }
       } catch {
-        warnings.push(`postject not installed – SEA may fail. ${allowBundleFallback ? "Bundle fallback is enabled." : "Build will fail unless bundle fallback is explicitly enabled (build.bundleFallback=true or packager=bundle)."}`);
+        const msg = "postject not installed – SEA may fail.";
+        if (allowBundleFallback) {
+          warnings.push(`${msg} Bundle fallback is enabled.`);
+        } else {
+          errors.push(`${msg} Build will fail unless bundle fallback is explicitly enabled (build.bundleFallback=true or packager=bundle).`);
+        }
       }
     }
   }

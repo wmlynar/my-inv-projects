@@ -92,7 +92,7 @@ Domyślnie `seal release`:
 - rozpakowuje build do `seal-out/release/` (zawsze tylko ostatni release).
 - czyści `seal-out/` przed buildem (jak `target/`), z wyjątkiem `seal-out/cache/` (thin cache), więc zawsze zostaje tylko ostatni build.
 
-**Packagery (kolejność rekomendowana):** `thin-split`, `thin-single`, `sea`, `bundle`, `none` (`auto` = `thin-split`).
+**Packagery (kolejność rekomendowana):** `thin-split`, `thin-single`, `sea`, `bundle`, `none` (raw bundle + wrapper; bez protection) (`auto` = `thin-split`).
 
 Bundle fallback jest wyłączony domyślnie; włącz go jawnie przez `build.bundleFallback=true` albo `--packager bundle`.
 
