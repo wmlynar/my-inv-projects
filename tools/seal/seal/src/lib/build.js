@@ -765,6 +765,7 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
       chunkSizeBytes: thinChunkSize,
       zstdLevelOverride: thinZstdLevel,
       zstdTimeoutMs: thinZstdTimeoutMs,
+      envMode: thinCfg.envMode,
       projectRoot,
       targetName: targetCfg.target || targetCfg.config || "default",
       sentinel: sentinelCfg,

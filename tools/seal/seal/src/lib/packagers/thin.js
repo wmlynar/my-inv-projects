@@ -1061,7 +1061,7 @@ static int sentinel_check(void) {
 `;
 }
 
-function renderLauncherSource(codecState, limits, allowBootstrap, sentinelCfg) {
+function renderLauncherSource(codecState, limits, allowBootstrap, sentinelCfg, envMode) {
   const bootstrapJs = `"use strict";
 const fs = require("fs");
 const path = require("path");
@@ -1087,6 +1087,8 @@ m._compile(code, entry);
 
   const sentinelDefs = renderSentinelDefs(sentinelCfg);
   const sentinelCode = renderSentinelCode();
+
+  const envStrictDefault = envMode === "allowlist" ? 1 : 0;
 
   return `#include <errno.h>
 #include <ctype.h>
@@ -1134,6 +1136,7 @@ extern char **environ;
 #define THIN_FOOTER_NONCE ${codecState.footerNonce}u
 #define THIN_AIO_FOOTER_NONCE ${codecState.aioFooterNonce}u
 #define THIN_BOOTSTRAP_ALLOWED ${allowBootstrap ? 1 : 0}
+#define THIN_ENV_STRICT_DEFAULT ${envStrictDefault}
 
 #define MAX_CHUNKS ${limits.maxChunks}u
 #define MAX_CHUNK_RAW ${limits.maxChunkRaw}u
@@ -1592,8 +1595,15 @@ static int anti_debug_checks(void) {
 }
 
 static void harden_env(void) {
+  int strict_mode = THIN_ENV_STRICT_DEFAULT;
   const char *strict = getenv("SEAL_THIN_ENV_STRICT");
-  int strict_mode = (strict && strcmp(strict, "1") == 0);
+  if (strict) {
+    if (strcmp(strict, "1") == 0) {
+      strict_mode = 1;
+    } else if (strcmp(strict, "0") == 0) {
+      strict_mode = 0;
+    }
+  }
 
   const char *existing_path = getenv("PATH");
 
@@ -1858,7 +1868,7 @@ int main(int argc, char **argv) {
 `;
 }
 
-function buildLauncher(stageDir, codecState, allowBootstrap, sentinelCfg) {
+function buildLauncher(stageDir, codecState, allowBootstrap, sentinelCfg, envMode) {
   const limits = DEFAULT_LIMITS;
   const cc = resolveCc();
   if (!cc) {
@@ -1867,7 +1877,7 @@ function buildLauncher(stageDir, codecState, allowBootstrap, sentinelCfg) {
 
   const cPath = path.join(stageDir, "thin-launcher.c");
   const outPath = path.join(stageDir, "thin-launcher");
-  fs.writeFileSync(cPath, renderLauncherSource(codecState, limits, allowBootstrap, sentinelCfg), "utf-8");
+  fs.writeFileSync(cPath, renderLauncherSource(codecState, limits, allowBootstrap, sentinelCfg, envMode), "utf-8");
 
   const zstdFlags = getZstdFlags();
   const args = [
@@ -1876,9 +1886,13 @@ function buildLauncher(stageDir, codecState, allowBootstrap, sentinelCfg) {
     "-D_GNU_SOURCE",
     "-D_FORTIFY_SOURCE=2",
     "-fPIE",
+    "-fno-ident",
+    "-fno-asynchronous-unwind-tables",
+    "-fno-unwind-tables",
     "-fstack-protector-strong",
     "-Wl,-z,relro,-z,now",
     "-Wl,-z,noexecstack",
+    "-Wl,--build-id=none",
     "-pie",
     "-o", outPath,
     cPath,
@@ -1897,7 +1911,7 @@ function buildLauncher(stageDir, codecState, allowBootstrap, sentinelCfg) {
   return { ok: true, path: outPath };
 }
 
-async function packThin({ stageDir, releaseDir, appName, obfPath, mode, level, chunkSizeBytes, zstdLevelOverride, zstdTimeoutMs, projectRoot, targetName, sentinel }) {
+async function packThin({ stageDir, releaseDir, appName, obfPath, mode, level, chunkSizeBytes, zstdLevelOverride, zstdTimeoutMs, envMode, projectRoot, targetName, sentinel }) {
   try {
     if (!hasCommand("zstd")) {
       return { ok: false, errorShort: "zstd not found in PATH", error: "missing_zstd" };
@@ -1953,7 +1967,7 @@ async function packThin({ stageDir, releaseDir, appName, obfPath, mode, level, c
 
     const allowBootstrap = thinMode === "bootstrap";
     info("Thin: building launcher (cc + libzstd)...");
-    const launcherRes = buildLauncher(stageDir, codecState, allowBootstrap, sentinel);
+    const launcherRes = buildLauncher(stageDir, codecState, allowBootstrap, sentinel, envMode);
     if (!launcherRes.ok) return launcherRes;
 
     const outBin = path.join(releaseDir, appName);

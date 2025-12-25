@@ -8,6 +8,14 @@ function normalizeThinMode(raw) {
   return null;
 }
 
+function normalizeThinEnvMode(raw) {
+  if (!raw) return null;
+  const v = String(raw).toLowerCase();
+  if (v === "allow" || v === "allowlist" || v === "strict") return "allowlist";
+  if (v === "deny" || v === "denylist" || v === "default") return "denylist";
+  return null;
+}
+
 function resolveThinConfig(targetCfg, projectCfg) {
   const tThin = targetCfg && typeof targetCfg.thin === "object" ? targetCfg.thin : {};
   const pThin = projectCfg?.build && typeof projectCfg.build.thin === "object" ? projectCfg.build.thin : {};
@@ -53,7 +61,15 @@ function resolveThinConfig(targetCfg, projectCfg) {
     pThin.zstdTimeoutMs ??
     null;
 
-  return { mode, level, chunkSizeBytes, zstdLevel, zstdTimeoutMs };
+  const envModeRaw =
+    targetCfg?.thinEnvMode ??
+    tThin.envMode ??
+    projectCfg?.build?.thinEnvMode ??
+    pThin.envMode ??
+    null;
+  const envMode = normalizeThinEnvMode(envModeRaw);
+
+  return { mode, level, chunkSizeBytes, zstdLevel, zstdTimeoutMs, envMode };
 }
 
 function normalizePackager(rawPackager, thinMode) {
@@ -120,6 +136,7 @@ function resolveProtectionConfig(projectCfg) {
 
 module.exports = {
   normalizeThinMode,
+  normalizeThinEnvMode,
   resolveThinConfig,
   normalizePackager,
   resolveBundleFallback,

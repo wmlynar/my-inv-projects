@@ -100,6 +100,10 @@ npx seal release prod --packager thin-single
   - `build.thin.zstdLevel` / `targets.<target>.thin.zstdLevel` (1..19).
   - `build.thin.zstdTimeoutMs` / `targets.<target>.thin.zstdTimeoutMs` (ms; `0` = bez limitu).
   - ENV: `SEAL_THIN_ZSTD_TIMEOUT_MS` (ms; nadpisuje domyślne).
+- Tryb polityki ENV (opcjonalny):
+  - `build.thin.envMode: "allowlist" | "denylist"` (domyślnie `"denylist"`),
+  - `targets.<target>.thin.envMode` może nadpisać.
+  - Runtime override: `SEAL_THIN_ENV_STRICT=1` wymusza allowlist, `SEAL_THIN_ENV_STRICT=0` wymusza denylist.
 
 ### 2.3 Idempotencja i rozpoznawanie stanu (MUST)
 `seal ship --packager thin-split`:
