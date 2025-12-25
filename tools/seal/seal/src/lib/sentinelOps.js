@@ -947,22 +947,46 @@ finally:
 PY
   fi
 elif command -v setfattr >/dev/null 2>&1 && command -v getfattr >/dev/null 2>&1; then
-  tmp="$(mktemp "$XATTR_PATH/.seal-xattr-XXXXXX")" || tmp="$(mktemp /tmp/.seal-xattr-XXXXXX)"
-  if setfattr -n user.seal_test -v 1 "$tmp" 2>/dev/null; then
-    if getfattr -n user.seal_test --only-values "$tmp" 2>/dev/null | tr -d '\\r\\n' | grep -qx "1"; then
-      XATTR_OK=1
-    else
-      XATTR_OK=0
-      XATTR_ERR="getfattr_failed"
-    fi
+  if [ "$XATTR_SUDO" = "1" ]; then
+    sudo -n sh -lc '
+set -e
+XATTR_OK=0
+XATTR_ERR=""
+tmp="$(mktemp "'"$XATTR_PATH"'/.seal-xattr-XXXXXX")" || tmp="$(mktemp /tmp/.seal-xattr-XXXXXX)"
+if setfattr -n user.seal_test -v 1 "$tmp" 2>/dev/null; then
+  if getfattr -n user.seal_test --only-values "$tmp" 2>/dev/null | tr -d "\\r\\n" | grep -qx "1"; then
+    XATTR_OK=1
   else
     XATTR_OK=0
-    XATTR_ERR="setfattr_failed"
+    XATTR_ERR="getfattr_failed"
   fi
-  rm -f "$tmp"
-  echo "XATTR_OK=$XATTR_OK"
-  echo "XATTR_PATH=$XATTR_PATH"
-  [ -n "$XATTR_ERR" ] && echo "XATTR_ERR=$XATTR_ERR"
+else
+  XATTR_OK=0
+  XATTR_ERR="setfattr_failed"
+fi
+rm -f "$tmp"
+echo "XATTR_OK=$XATTR_OK"
+echo "XATTR_PATH='"$XATTR_PATH"'"
+[ -n "$XATTR_ERR" ] && echo "XATTR_ERR=$XATTR_ERR"
+'
+  else
+    tmp="$(mktemp "$XATTR_PATH/.seal-xattr-XXXXXX")" || tmp="$(mktemp /tmp/.seal-xattr-XXXXXX)"
+    if setfattr -n user.seal_test -v 1 "$tmp" 2>/dev/null; then
+      if getfattr -n user.seal_test --only-values "$tmp" 2>/dev/null | tr -d '\\r\\n' | grep -qx "1"; then
+        XATTR_OK=1
+      else
+        XATTR_OK=0
+        XATTR_ERR="getfattr_failed"
+      fi
+    else
+      XATTR_OK=0
+      XATTR_ERR="setfattr_failed"
+    fi
+    rm -f "$tmp"
+    echo "XATTR_OK=$XATTR_OK"
+    echo "XATTR_PATH=$XATTR_PATH"
+    [ -n "$XATTR_ERR" ] && echo "XATTR_ERR=$XATTR_ERR"
+  fi
 else
   echo "XATTR_OK=0"
   echo "XATTR_PATH=$XATTR_PATH"
