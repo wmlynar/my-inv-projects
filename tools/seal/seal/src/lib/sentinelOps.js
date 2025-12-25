@@ -202,12 +202,13 @@ function installSentinelSsh({ targetCfg, sentinelCfg, force, insecure }) {
   const fpHash = buildFingerprintHash(level, hostInfo, { includePuid: false });
   const blob = packBlobV1({ level, flags, installId, fpHash }, sentinelCfg.anchor);
 
-  const tmpLocal = path.join(os.tmpdir(), `seal-sentinel-${Date.now()}.bin`);
-  fs.writeFileSync(tmpLocal, blob);
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-"));
+  const tmpLocal = path.join(tmpDir, "blob");
+  fs.writeFileSync(tmpLocal, blob, { mode: 0o600 });
 
   const tmpRemote = `/tmp/.${targetCfg.serviceName || targetCfg.appName || "app"}-s-${Date.now()}`;
   const up = scpToTarget(targetCfg, { user, host, localPath: tmpLocal, remotePath: tmpRemote });
-  fs.rmSync(tmpLocal, { force: true });
+  fs.rmSync(tmpDir, { recursive: true, force: true });
   if (!up.ok) throw new Error(`sentinel scp failed (status=${up.status})`);
 
   const baseDir = sentinelCfg.storage.baseDir;
@@ -312,11 +313,20 @@ echo "FILE_STAT=$statline"
     return { ok: false, reason: "missing" };
   }
 
-  const tmpLocal = path.join(os.tmpdir(), `seal-sentinel-${Date.now()}.bin`);
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-"));
+  const tmpLocal = path.join(tmpDir, "blob");
   const get = scpFromTarget(targetCfg, { user, host, remotePath: file, localPath: tmpLocal });
-  if (!get.ok) throw new Error(`sentinel scp failed (status=${get.status})`);
+  if (!get.ok) {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    throw new Error(`sentinel scp failed (status=${get.status})`);
+  }
+  try {
+    fs.chmodSync(tmpLocal, 0o600);
+  } catch {
+    // best-effort
+  }
   const blob = fs.readFileSync(tmpLocal);
-  fs.rmSync(tmpLocal, { force: true });
+  fs.rmSync(tmpDir, { recursive: true, force: true });
 
   const parsed = unpackBlobV1(blob, sentinelCfg.anchor);
   if (parsed.version !== 1) {

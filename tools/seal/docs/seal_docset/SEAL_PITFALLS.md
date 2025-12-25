@@ -211,6 +211,10 @@
 - Blad: w template stringach z bash/script wystapily nie‑escapowane sekwencje `${...}`, co psulo skladnie JS.
   - Wymaganie: w osadzonych skryptach shellowych zawsze escapuj `${` jako `\\${` (lub użyj helpera do here‑doc), zeby uniknac interpolacji JS.
 
+- Blad: tymczasowe pliki z danymi wrazliwymi byly tworzone w /tmp z przewidywalna nazwa i zbyt luznymi uprawnieniami.
+  - Wymaganie: tworz temp‑dir przez `mkdtemp`, pliki z `0600`, a po uzyciu zawsze sprzataj.
+  - Wymaganie: unikaj `Date.now()` jako jedynego komponentu nazwy pliku.
+
 ## CLI / UX spojnosci
 
 - Blad: niespojne nazwy/semantyka komend (np. stop/disable).

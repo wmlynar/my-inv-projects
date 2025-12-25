@@ -38,6 +38,11 @@ function writePrivateJson(filePath, data) {
   ensureDir(path.dirname(filePath));
   const json = JSON.stringify(data, null, 2) + "\n";
   fs.writeFileSync(filePath, json, { mode: 0o600 });
+  try {
+    fs.chmodSync(filePath, 0o600);
+  } catch {
+    // best-effort; file may already have stricter perms
+  }
 }
 
 function getOrCreateNamespaceId(projectRoot, targetName) {
