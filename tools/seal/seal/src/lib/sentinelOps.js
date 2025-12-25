@@ -71,6 +71,41 @@ function parseKeyValueOutput(text) {
   return out;
 }
 
+function describeSentinelInstallError(out, baseDir) {
+  if (out.includes("__SEAL_BASE_MISSING__")) {
+    return `sentinel install failed: baseDir missing (${baseDir})`;
+  }
+  if (out.includes("__SEAL_BASE_SYMLINK__")) {
+    return "sentinel install failed: baseDir is a symlink (use --insecure or fix baseDir)";
+  }
+  if (out.includes("__SEAL_BASE_INSECURE__")) {
+    return "sentinel install failed: baseDir must be root-owned and not group/other-writable (use --insecure to override)";
+  }
+  if (out.includes("__SEAL_BASE_NOEXEC__")) {
+    return "sentinel install failed: service user cannot access baseDir (missing execute permission)";
+  }
+  if (out.includes("__SEAL_LOCK_MISSING__")) {
+    return "sentinel install failed: flock not found (install util-linux)";
+  }
+  if (out.includes("__SEAL_LOCK_BUSY__")) {
+    return "sentinel install failed: lock busy (another install/uninstall in progress)";
+  }
+  if (out.includes("__SEAL_SENTINEL_MISMATCH__")) {
+    return "sentinel install failed: existing sentinel mismatch (use --force to replace)";
+  }
+  return null;
+}
+
+function describeSentinelUninstallError(out) {
+  if (out.includes("__SEAL_LOCK_MISSING__")) {
+    return "sentinel uninstall failed: flock not found (install util-linux)";
+  }
+  if (out.includes("__SEAL_LOCK_BUSY__")) {
+    return "sentinel uninstall failed: lock busy (another install/uninstall in progress)";
+  }
+  return null;
+}
+
 function getHostInfoSsh(targetCfg) {
   const { user, host } = sshUserHost(targetCfg);
   const script = `
@@ -236,6 +271,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
+if [ -f "$TMP" ]; then
+  chmod 0600 "$TMP" || true
+fi
+
 fsync_path() {
   path="$1"
   if command -v python3 >/dev/null 2>&1; then
@@ -343,6 +382,8 @@ echo "__SEAL_SENTINEL_INSTALLED__"
   const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-lc", script], stdio: "pipe" });
   if (!res.ok) {
     const out = `${res.stdout}\n${res.stderr}`.trim();
+    const hint = describeSentinelInstallError(out, baseDir);
+    if (hint) throw new Error(hint);
     throw new Error(`sentinel install failed (status=${res.status})${out ? `: ${out}` : ""}`);
   }
   return { hostInfo, level, output: res.stdout };
@@ -491,6 +532,8 @@ echo "__SEAL_SENTINEL_REMOVED__"
   const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-lc", script], stdio: "pipe" });
   if (!res.ok) {
     const out = `${res.stdout}\n${res.stderr}`.trim();
+    const hint = describeSentinelUninstallError(out);
+    if (hint) throw new Error(hint);
     throw new Error(`sentinel uninstall failed (status=${res.status})${out ? `: ${out}` : ""}`);
   }
   return { ok: true };
