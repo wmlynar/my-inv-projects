@@ -96,7 +96,7 @@ _seal_complete() {
       ;;
     sentinel)
       if (( cword == 2 )); then
-        COMPREPLY=( $(compgen -W "probe install verify uninstall" -- "$cur") )
+        COMPREPLY=( $(compgen -W "probe inspect install verify uninstall" -- "$cur") )
         return
       fi
       if (( cword == 3 )); then

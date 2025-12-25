@@ -1,10 +1,12 @@
 "use strict";
 
+const path = require("path");
+
 const { findProjectRoot } = require("../lib/paths");
 const { loadProjectConfig, loadTargetConfig, resolveTargetName } = require("../lib/project");
 const { resolveThinConfig, normalizePackager } = require("../lib/packagerConfig");
 const { resolveSentinelConfig, resolveAutoLevel } = require("../lib/sentinelConfig");
-const { probeSentinelSsh, installSentinelSsh, verifySentinelSsh, uninstallSentinelSsh } = require("../lib/sentinelOps");
+const { probeSentinelSsh, inspectSentinelSsh, installSentinelSsh, verifySentinelSsh, uninstallSentinelSsh } = require("../lib/sentinelOps");
 const { hr, info, warn, ok } = require("../lib/ui");
 
 function resolveContext(cwd, targetArg) {
@@ -33,16 +35,79 @@ function resolveContext(cwd, targetArg) {
   return { projectRoot, proj, targetName, targetCfg, sentinelCfg };
 }
 
-function ensureEnabled(ctx) {
-  if (!ctx.sentinelCfg.enabled) {
-    warn("Sentinel disabled (build.sentinel.enabled=false or auto disabled).");
-    return false;
+function resolveBaseDirLoose(proj, targetCfg) {
+  const projSentinel = (proj && proj.build && proj.build.sentinel) ? proj.build.sentinel : {};
+  const targetSentinel = targetCfg && (targetCfg.sentinel || (targetCfg.build && targetCfg.build.sentinel))
+    ? (targetCfg.sentinel || targetCfg.build.sentinel)
+    : {};
+  return (targetSentinel.storage && targetSentinel.storage.baseDir)
+    || (projSentinel.storage && projSentinel.storage.baseDir)
+    || "/var/lib";
+}
+
+function resolveInspectContext(cwd, targetArg) {
+  const projectRoot = findProjectRoot(cwd);
+  const proj = loadProjectConfig(projectRoot);
+  if (!proj) throw new Error("Brak seal.json5 (projekt). Zrób: seal init");
+
+  const targetName = resolveTargetName(projectRoot, targetArg);
+  const t = loadTargetConfig(projectRoot, targetName);
+  if (!t) throw new Error(`Brak targetu ${targetName}. Zrób: seal target add ${targetName}`);
+
+  const targetCfg = t.cfg;
+  targetCfg.appName = proj.appName;
+  targetCfg.serviceName = targetCfg.serviceName || proj.appName;
+
+  let sentinelCfg = null;
+  let sentinelCfgError = null;
+  try {
+    const thinCfg = resolveThinConfig(targetCfg, proj);
+    const packagerSpec = normalizePackager(targetCfg.packager || proj.build.packager || "auto", thinCfg.mode);
+    sentinelCfg = resolveSentinelConfig({
+      projectRoot,
+      projectCfg: proj,
+      targetCfg,
+      targetName,
+      packagerSpec,
+    });
+  } catch (err) {
+    sentinelCfgError = err;
   }
+
+  if (!sentinelCfg) {
+    const baseDir = resolveBaseDirLoose(proj, targetCfg);
+    if (path.isAbsolute(baseDir) && !/\s/.test(baseDir)) {
+      sentinelCfg = { enabled: false, storage: { baseDir } };
+    }
+  }
+
+  return { projectRoot, proj, targetName, targetCfg, sentinelCfg, sentinelCfgError };
+}
+
+function ensureSsh(ctx) {
   if ((ctx.targetCfg.kind || "local").toLowerCase() !== "ssh") {
     warn("Sentinel commands are supported only for SSH targets in MVP.");
     return false;
   }
   return true;
+}
+
+function ensureEnabled(ctx) {
+  if (!ensureSsh(ctx)) return false;
+  if (!ctx.sentinelCfg.enabled) {
+    warn("Sentinel disabled (build.sentinel.enabled=false or auto disabled).");
+    return false;
+  }
+  return true;
+}
+
+function formatList(label, items, formatter) {
+  if (!items || !items.length) {
+    console.log(`${label}: (none)`);
+    return;
+  }
+  console.log(`${label}:`);
+  items.forEach((item) => console.log(`  - ${formatter(item)}`));
 }
 
 async function cmdSentinelProbe(cwd, targetArg) {
@@ -120,8 +185,111 @@ async function cmdSentinelUninstall(cwd, targetArg) {
   ok("Sentinel removed");
 }
 
+async function cmdSentinelInspect(cwd, targetArg, opts) {
+  const ctx = resolveInspectContext(cwd, targetArg);
+  if (!ensureSsh(ctx)) return;
+
+  hr();
+  info(`Sentinel inspect -> ${ctx.targetName} (${ctx.targetCfg.kind})`);
+  if (ctx.sentinelCfgError) {
+    warn(`Sentinel config warning: ${ctx.sentinelCfgError.message || ctx.sentinelCfgError}`);
+  }
+  const res = inspectSentinelSsh({ targetCfg: ctx.targetCfg, sentinelCfg: ctx.sentinelCfg });
+
+  if (opts.json) {
+    process.stdout.write(JSON.stringify(res, null, 2) + "\n");
+    return;
+  }
+
+  const host = res.host || {};
+  const cpuId = (res.options && res.options.cpuId) || {};
+  console.log("Host:");
+  console.log(`  mid: ${host.mid || "(missing)"}`);
+  console.log(`  rid: ${host.rid || "(missing)"}`);
+  console.log(`  fstype: ${host.fstype || "(unknown)"}`);
+  console.log(`  puid: ${host.puid || "(missing)"}`);
+  console.log(`  cpuId.proc: ${cpuId.proc ? "yes" : "no"}`);
+  if (cpuId.asm) {
+    const asmMsg = cpuId.asm.available ? "yes" : (cpuId.asm.unsupported ? "unsupported" : "no");
+    console.log(`  cpuId.asm: ${asmMsg}${cpuId.asm.error ? ` (${cpuId.asm.error})` : ""}`);
+  }
+
+  if (res.base) {
+    const base = res.base;
+    console.log("Storage:");
+    console.log(`  baseDir: ${ctx.sentinelCfg.storage.baseDir}`);
+    console.log(`  exists: ${base.exists ? "yes" : "no"}`);
+    console.log(`  symlink: ${base.isSymlink ? "yes" : "no"}`);
+    console.log(`  uid: ${base.uid !== null ? base.uid : "?"}`);
+    console.log(`  gid: ${base.gid !== null ? base.gid : "?"}`);
+    console.log(`  mode: ${base.mode || "?"}`);
+    console.log(`  execOk: ${base.execOk ? "yes" : "no"}`);
+  }
+
+  const optsList = res.options || {};
+  formatList("USB devices (sysfs)", optsList.usbDevices, (d) => {
+    const bits = [`vid=${d.vid}`, `pid=${d.pid}`];
+    if (d.serial) bits.push(`serial=${d.serial}`);
+    if (d.product) bits.push(`product=${d.product}`);
+    if (d.manufacturer) bits.push(`vendor=${d.manufacturer}`);
+    if (d.usbClass) bits.push(`class=${d.usbClass}`);
+    return bits.join(" ");
+  });
+
+  formatList("USB mounts", optsList.usbMounts, (m) => {
+    const bits = [];
+    if (m.mountpoint) bits.push(m.mountpoint);
+    if (m.name) bits.push(`dev=${m.name}`);
+    if (m.tran) bits.push(`tran=${m.tran}`);
+    if (m.rm) bits.push(`rm=${m.rm}`);
+    return bits.join(" ");
+  });
+
+  formatList("Host-shared mounts", optsList.hostShares, (m) => {
+    const bits = [];
+    if (m.mountpoint) bits.push(m.mountpoint);
+    if (m.fstype) bits.push(`fstype=${m.fstype}`);
+    if (m.device) bits.push(`dev=${m.device}`);
+    return bits.join(" ");
+  });
+
+  console.log(`TPM2: ${optsList.tpm ? "present" : "not found"}`);
+
+  if (optsList.notes && optsList.notes.length) {
+    console.log("Notes:");
+    optsList.notes.forEach((n) => console.log(`  - ${n}`));
+  }
+
+  console.log("Recommendations:");
+  if (optsList.usbDevices && optsList.usbDevices.length) {
+    const d = optsList.usbDevices[0];
+    const serialLine = d.serial ? `, serial: "${d.serial}"` : "";
+    console.log("  - Use externalAnchor.usb (L4):");
+    console.log(`    externalAnchor: { type: "usb", usb: { vid: "${d.vid}", pid: "${d.pid}"${serialLine} } }`);
+  } else {
+    console.log("  - USB anchor not detected; attach USB passthrough to enable externalAnchor.usb.");
+  }
+
+  if ((optsList.usbMounts && optsList.usbMounts.length) || (optsList.hostShares && optsList.hostShares.length)) {
+    const mp = (optsList.usbMounts && optsList.usbMounts[0] && optsList.usbMounts[0].mountpoint)
+      || (optsList.hostShares && optsList.hostShares[0] && optsList.hostShares[0].mountpoint)
+      || "/mnt/anchor";
+    console.log("  - Use externalAnchor.file on a host/USB mount (L4):");
+    console.log(`    externalAnchor: { type: "file", file: { path: "${mp}/.k" } }`);
+  } else {
+    console.log("  - File anchor not detected; mount host/USB folder to use externalAnchor.file.");
+  }
+
+  if (optsList.tpm) {
+    console.log("  - TPM2 available (experimental): externalAnchor: { type: \"tpm2\" }");
+  }
+
+  ok("Inspect done.");
+}
+
 module.exports = {
   cmdSentinelProbe,
+  cmdSentinelInspect,
   cmdSentinelInstall,
   cmdSentinelVerify,
   cmdSentinelUninstall,

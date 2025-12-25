@@ -500,6 +500,7 @@ MAY:
 
 ### 10.1 Komendy (MUST)
 - `seal sentinel probe <target>`
+- `seal sentinel inspect <target> [--json]`
 - `seal sentinel install <target> [--force] [--insecure]`
 - `seal sentinel verify <target> [--json]`
 - `seal sentinel uninstall <target>`
@@ -511,6 +512,15 @@ MAY:
 - sprawdzić wsparcie xattr (jeśli mode=file+xattr),
 - sprawdzić dostępność external anchor (jeśli L4),
 - wypisać diagnozę **tylko deployerowi**.
+
+### 10.2a Inspect (SHOULD)
+`inspect` ma:
+- zebrać informacje o możliwych opcjach Level 4 (external anchor),
+- wypisać listę wykrytych USB urządzeń (vid/pid/serial),
+- wypisać mounty host‑shared (vboxsf/9p/virtiofs/vmhgfs/cifs/nfs),
+- wypisać mounty USB (jeśli możliwe) oraz dostępność TPM2,
+- wskazać rekomendowane konfiguracje `externalAnchor` (usb/file/tpm2),
+- opcjonalnie zwrócić JSON (`--json`) do automatyzacji.
 
 ### 10.3 Install (MUST)
 Install jest idempotentny:

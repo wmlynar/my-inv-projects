@@ -13,7 +13,7 @@ const { cmdVerify } = require("./commands/verify");
 const { cmdRunLocal } = require("./commands/runLocal");
 const { cmdTargetAdd } = require("./commands/targetAdd");
 const { cmdConfigAdd, cmdConfigDiff, cmdConfigPull, cmdConfigPush } = require("./commands/config");
-const { cmdSentinelProbe, cmdSentinelInstall, cmdSentinelVerify, cmdSentinelUninstall } = require("./commands/sentinel");
+const { cmdSentinelProbe, cmdSentinelInspect, cmdSentinelInstall, cmdSentinelVerify, cmdSentinelUninstall } = require("./commands/sentinel");
 const { cmdDeploy, cmdShip, cmdRollback, cmdUninstall, cmdRunRemote, cmdRemote } = require("./commands/deploy");
 const { loadSealFile, isWorkspaceConfig } = require("./lib/project");
 const { version } = require("./lib/version");
@@ -128,6 +128,11 @@ async function main(argv) {
     .command("probe [target]")
     .description("Probe host and baseDir for sentinel readiness (SSH)")
     .action(async (target) => cmdSentinelProbe(process.cwd(), target));
+  sentinelCmd
+    .command("inspect [target]")
+    .description("Inspect target for sentinel L4 options (USB/file/TPM) (SSH)")
+    .option("--json", "Print JSON output", false)
+    .action(async (target, opts) => cmdSentinelInspect(process.cwd(), target, opts));
   sentinelCmd
     .command("install [target]")
     .description("Install sentinel blob on target (SSH)")

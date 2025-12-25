@@ -72,6 +72,120 @@ function parseKeyValueOutput(text) {
   return out;
 }
 
+function decodeBase64(value) {
+  if (!value) return "";
+  try {
+    return Buffer.from(String(value), "base64").toString("utf8");
+  } catch {
+    return "";
+  }
+}
+
+function decodeMountPath(value) {
+  return String(value || "").replace(/\\([0-7]{3})/g, (_, oct) => {
+    const code = parseInt(oct, 8);
+    if (!Number.isFinite(code)) return _;
+    return String.fromCharCode(code);
+  });
+}
+
+function parseMounts(text) {
+  const mounts = [];
+  const lines = String(text || "").split(/\r?\n/);
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const parts = line.split(/\s+/);
+    if (parts.length < 3) continue;
+    const device = parts[0];
+    const mountpoint = decodeMountPath(parts[1]);
+    const fstype = parts[2];
+    const opts = parts[3] || "";
+    mounts.push({ device, mountpoint, fstype, opts });
+  }
+  return mounts;
+}
+
+function parseUsbDevices(text) {
+  const rows = [];
+  const lines = String(text || "").split(/\r?\n/);
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const parts = line.split("|");
+    const [vid, pid, serial, product, manufacturer, usbClass, path] = parts;
+    if (!vid || !pid) continue;
+    rows.push({
+      vid: String(vid || "").toLowerCase(),
+      pid: String(pid || "").toLowerCase(),
+      serial: serial || "",
+      product: product || "",
+      manufacturer: manufacturer || "",
+      usbClass: usbClass || "",
+      path: path || "",
+    });
+  }
+  return rows;
+}
+
+function flattenLsblk(node, parent) {
+  const out = [];
+  if (!node) return out;
+  const item = { ...node };
+  if (parent) {
+    item.parent = {
+      name: parent.name,
+      tran: parent.tran,
+      rm: parent.rm,
+      type: parent.type,
+    };
+  }
+  out.push(item);
+  const children = Array.isArray(node.children) ? node.children : [];
+  for (const child of children) out.push(...flattenLsblk(child, node));
+  return out;
+}
+
+function extractUsbMounts(lsblk) {
+  if (!lsblk || !Array.isArray(lsblk.blockdevices)) return [];
+  const rows = [];
+  for (const dev of lsblk.blockdevices) {
+    rows.push(...flattenLsblk(dev, null));
+  }
+  const out = [];
+  for (const row of rows) {
+    const mountpoint = row.mountpoint || row.mountpoints || "";
+    if (!mountpoint) continue;
+    const tran = (row.tran || row.parent && row.parent.tran || "").toLowerCase();
+    const rm = row.rm !== undefined ? String(row.rm) : (row.parent && row.parent.rm !== undefined ? String(row.parent.rm) : "");
+    const isUsb = tran === "usb";
+    const isRemovable = rm === "1" || rm.toLowerCase() === "true";
+    if (!isUsb && !isRemovable) continue;
+    out.push({
+      name: row.name || "",
+      mountpoint: Array.isArray(mountpoint) ? mountpoint.join(",") : mountpoint,
+      tran,
+      rm,
+      type: row.type || "",
+    });
+  }
+  return out;
+}
+
+function extractHostShares(mounts) {
+  const hostFs = new Set([
+    "vboxsf",
+    "vmhgfs",
+    "vmhgfs-fuse",
+    "fuse.vmhgfs-fuse",
+    "9p",
+    "virtiofs",
+    "cifs",
+    "smbfs",
+    "nfs",
+    "nfs4",
+  ]);
+  return mounts.filter((m) => hostFs.has((m.fstype || "").toLowerCase()));
+}
+
 function getCpuIdAsmSsh(targetCfg, opts = {}) {
   const allowUnsupported = !!opts.allowUnsupported;
   const { user, host } = sshUserHost(targetCfg);
@@ -689,12 +803,122 @@ function probeSentinelSsh({ targetCfg, sentinelCfg }) {
   return { hostInfo, base };
 }
 
+function inspectSentinelSsh({ targetCfg, sentinelCfg }) {
+  const { user, host } = sshUserHost(targetCfg);
+  const script = `
+set -euo pipefail
+BASE64_OK=0
+if command -v base64 >/dev/null 2>&1; then
+  BASE64_OK=1
+fi
+echo "BASE64=$BASE64_OK"
+
+if [ "$BASE64_OK" = "1" ]; then
+  b64() { base64 | tr -d '\\r\\n'; }
+
+  mounts="$(cat /proc/mounts 2>/dev/null || true)"
+  echo "MOUNTS_B64=$(printf '%s' "$mounts" | b64)"
+
+  if command -v lsblk >/dev/null 2>&1; then
+    lsblk_json="$(lsblk -J -o NAME,TYPE,TRAN,RM,MOUNTPOINT 2>/dev/null || true)"
+    echo "LSBLK_B64=$(printf '%s' "$lsblk_json" | b64)"
+  else
+    echo "LSBLK_B64="
+  fi
+
+  usb_list=""
+  if [ -d /sys/bus/usb/devices ]; then
+    for d in /sys/bus/usb/devices/*; do
+      [ -d "$d" ] || continue
+      vid="$(cat "$d/idVendor" 2>/dev/null || true)"
+      pid="$(cat "$d/idProduct" 2>/dev/null || true)"
+      [ -n "$vid" ] || continue
+      serial="$(cat "$d/serial" 2>/dev/null || true)"
+      product="$(cat "$d/product" 2>/dev/null || true)"
+      manufacturer="$(cat "$d/manufacturer" 2>/dev/null || true)"
+      cls="$(cat "$d/bDeviceClass" 2>/dev/null || true)"
+      usb_list="${usb_list}${vid}|${pid}|${serial}|${product}|${manufacturer}|${cls}|${d}\\n"
+    done
+  fi
+  echo "USB_B64=$(printf '%s' "$usb_list" | b64)"
+else
+  echo "MOUNTS_B64="
+  echo "LSBLK_B64="
+  echo "USB_B64="
+fi
+
+TPM=0
+if [ -e /dev/tpm0 ] || [ -d /sys/class/tpm/tpm0 ]; then
+  TPM=1
+fi
+echo "TPM=$TPM"
+`;
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-lc", script], stdio: "pipe" });
+  if (!res.ok) {
+    const out = `${res.stdout}\n${res.stderr}`.trim();
+    throw new Error(`sentinel inspect failed (status=${res.status})${out ? `: ${out}` : ""}`);
+  }
+
+  const kv = parseKeyValueOutput(res.stdout);
+  const notes = [];
+  const hasBase64 = kv.BASE64 === "1";
+  if (!hasBase64) notes.push("base64 not available on target; mount inspection limited");
+
+  const mounts = parseMounts(decodeBase64(kv.MOUNTS_B64));
+  let lsblk = null;
+  const lsblkText = decodeBase64(kv.LSBLK_B64);
+  if (lsblkText) {
+    try {
+      lsblk = JSON.parse(lsblkText);
+    } catch {
+      notes.push("lsblk JSON parse failed; usb mount detection limited");
+    }
+  } else {
+    notes.push("lsblk not available; usb mount detection limited");
+  }
+  const usbDevices = parseUsbDevices(decodeBase64(kv.USB_B64));
+  const usbMounts = extractUsbMounts(lsblk);
+  const hostShares = extractHostShares(mounts);
+  const tpm = kv.TPM === "1";
+
+  const hostInfo = getHostInfoSsh(targetCfg);
+  let cpuIdAsm = { available: false, unsupported: false };
+  try {
+    const resAsm = getCpuIdAsmSsh(targetCfg, { allowUnsupported: true });
+    cpuIdAsm = { available: !!resAsm.value, unsupported: !!resAsm.unsupported };
+  } catch (e) {
+    cpuIdAsm = { available: false, error: e.message };
+  }
+
+  let base = null;
+  if (sentinelCfg && sentinelCfg.enabled) {
+    base = probeBaseDirSsh(targetCfg, sentinelCfg);
+  }
+
+  return {
+    host: hostInfo,
+    base,
+    options: {
+      cpuId: {
+        proc: !!hostInfo.cpuidProc,
+        asm: cpuIdAsm,
+      },
+      usbDevices,
+      usbMounts,
+      hostShares,
+      tpm,
+      notes,
+    },
+  };
+}
+
 module.exports = {
   FLAG_REQUIRE_XATTR,
   FLAG_L4_INCLUDE_PUID,
   FLAG_INCLUDE_CPUID,
   getHostInfoSsh,
   probeSentinelSsh,
+  inspectSentinelSsh,
   installSentinelSsh,
   verifySentinelSsh,
   uninstallSentinelSsh,
