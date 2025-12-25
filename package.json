@@ -1,0 +1,12 @@
+{
+  "name": "monorepo",
+  "private": true,
+  "workspaces": [
+    "tools/seal/seal",
+    "tools/seal/example",
+    "klienci/nowy-styl/modbus-sync-worksites",
+    "klienci/nowy-styl/robot-ui",
+    "klienci/nowy-styl/robot-task-manager",
+    "klienci/nowy-styl/nowy-styl-ui"
+  ]
+}
