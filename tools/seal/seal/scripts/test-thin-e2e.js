@@ -215,6 +215,31 @@ async function runRelease({ releaseDir, buildId, runTimeoutMs, env }) {
   assert.strictEqual(status.http.port, port);
 }
 
+async function runReleaseExpectFailure({ releaseDir, env, runTimeoutMs, expectSubstring }) {
+  const binPath = path.join(releaseDir, "seal-example");
+  assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
+
+  const childEnv = Object.assign({}, process.env, env || {});
+  const child = spawn(binPath, [], { cwd: releaseDir, stdio: ["ignore", "pipe", "pipe"], env: childEnv });
+  const outChunks = [];
+  const errChunks = [];
+  child.stdout.on("data", (c) => outChunks.push(c));
+  child.stderr.on("data", (c) => errChunks.push(c));
+
+  const exit = await withTimeout("expectFailure", runTimeoutMs, () =>
+    new Promise((resolve) => child.on("exit", (code, signal) => resolve({ code, signal })))
+  );
+
+  const stdout = Buffer.concat(outChunks).toString("utf8");
+  const stderr = Buffer.concat(errChunks).toString("utf8");
+  if (exit.code === 0) {
+    throw new Error(`expected failure but exit code was 0 (stdout=${stdout.slice(0, 200)}, stderr=${stderr.slice(0, 200)})`);
+  }
+  if (expectSubstring && !stderr.includes(expectSubstring)) {
+    throw new Error(`expected stderr to include "${expectSubstring}" (stderr=${stderr.slice(0, 200)})`);
+  }
+}
+
 async function testThinAio(ctx) {
   log("Building thin SINGLE (AIO)...");
   const res = await buildThinRelease("aio", ctx.buildTimeoutMs);
@@ -228,20 +253,25 @@ async function testThinAio(ctx) {
   log("Running thin SINGLE binary...");
   await runRelease({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs });
 
-  const badEnv = {
-    NODE_OPTIONS: "--require /nonexistent",
-    NODE_PATH: "/nonexistent",
-    NODE_V8_COVERAGE: "/tmp/cover",
-  };
-  log("Running thin SINGLE with hardened env (default)...");
-  await runRelease({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs, env: badEnv });
-
   log("Running thin SINGLE with hardened env (strict)...");
   await runRelease({
     releaseDir,
     buildId,
     runTimeoutMs: ctx.runTimeoutMs,
-    env: { ...badEnv, SEAL_THIN_ENV_STRICT: "1", PATH: "" },
+    env: { SEAL_THIN_ENV_STRICT: "1", PATH: "" },
+  });
+
+  const badEnv = {
+    NODE_OPTIONS: "--require /nonexistent",
+    NODE_PATH: "/nonexistent",
+    NODE_V8_COVERAGE: "/tmp/cover",
+  };
+  log("Running thin SINGLE with debug env (expect failure)...");
+  await runReleaseExpectFailure({
+    releaseDir,
+    runTimeoutMs: ctx.runTimeoutMs,
+    env: badEnv,
+    expectSubstring: "[thin] runtime invalid",
   });
 
   fs.rmSync(outRoot, { recursive: true, force: true });
@@ -262,20 +292,25 @@ async function testThinBootstrap(ctx) {
   log("Running thin SPLIT wrapper...");
   await runRelease({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs });
 
-  const badEnv = {
-    NODE_OPTIONS: "--require /nonexistent",
-    NODE_PATH: "/nonexistent",
-    NODE_V8_COVERAGE: "/tmp/cover",
-  };
-  log("Running thin SPLIT with hardened env (default)...");
-  await runRelease({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs, env: badEnv });
-
   log("Running thin SPLIT with hardened env (strict)...");
   await runRelease({
     releaseDir,
     buildId,
     runTimeoutMs: ctx.runTimeoutMs,
-    env: { ...badEnv, SEAL_THIN_ENV_STRICT: "1", PATH: "" },
+    env: { SEAL_THIN_ENV_STRICT: "1", PATH: "" },
+  });
+
+  const badEnv = {
+    NODE_OPTIONS: "--require /nonexistent",
+    NODE_PATH: "/nonexistent",
+    NODE_V8_COVERAGE: "/tmp/cover",
+  };
+  log("Running thin SPLIT with debug env (expect failure)...");
+  await runReleaseExpectFailure({
+    releaseDir,
+    runTimeoutMs: ctx.runTimeoutMs,
+    env: badEnv,
+    expectSubstring: "[thin] runtime invalid",
   });
 
   fs.rmSync(outRoot, { recursive: true, force: true });

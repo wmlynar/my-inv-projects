@@ -891,7 +891,12 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
 // Protection (post-pack): make it harder to recover code by casually viewing files.
 // Default: enabled (can be disabled in seal.json5 -> build.protection.enabled=false)
 const hardPost = applyHardeningPost(releaseDir, appName, packagerUsed, protectionCfg);
-const protection = { enabled: hardEnabled, seaMainPacking, post: hardPost };
+const protection = {
+  enabled: hardEnabled,
+  seaMainPacking,
+  post: hardPost,
+  stringObfuscation: protectionCfg.stringObfuscation || null,
+};
 
 if (!hardEnabled) {
   info('Protection disabled');

@@ -246,7 +246,11 @@ seal-out/run.last_failed/
     "obfuscation": "aggressive",
     "frontendObfuscation": {"enabled": true},
     "frontendMinify": {"enabled": true, "level": "safe"},
-    "protection": {"enabled": true}
+    "protection": {
+      "enabled": true,
+      // opcjonalnie, informacyjnie:
+      "stringObfuscation": "xorstr"
+    }
   },
   "decisions": [
     {

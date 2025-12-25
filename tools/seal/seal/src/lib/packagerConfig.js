@@ -137,6 +137,12 @@ function resolveProtectionConfig(projectCfg) {
 
   const enabled = !(typeof raw === "object" && raw && raw.enabled === false);
   const cfg = (typeof raw === "object" && raw) ? raw : {};
+  const stringObfuscationRaw =
+    cfg.stringObfuscation ??
+    cfg.sourceStringObfuscation ??
+    cfg.sourceObfuscation ??
+    null;
+  const stringObfuscation = normalizeStringObfuscation(stringObfuscationRaw);
 
   return {
     enabled,
@@ -151,8 +157,19 @@ function resolveProtectionConfig(projectCfg) {
     elfPacker: cfg.elfPacker ?? cfg.elfPack ?? null,
     elfPackerCmd: cfg.elfPackerCmd ?? cfg.elfPackerBin ?? null,
     elfPackerArgs: cfg.elfPackerArgs ?? cfg.elfPackerFlags ?? null,
+    stringObfuscation,
     raw,
   };
+}
+
+function normalizeStringObfuscation(raw) {
+  if (!raw) return null;
+  const values = Array.isArray(raw) ? raw : [raw];
+  const allowed = new Set(["xorstr", "crystr", "obfuscate"]);
+  const out = values
+    .map((v) => String(v || "").trim().toLowerCase())
+    .filter((v) => allowed.has(v));
+  return out.length ? out : null;
 }
 
 module.exports = {
@@ -163,4 +180,5 @@ module.exports = {
   normalizePackager,
   resolveBundleFallback,
   resolveProtectionConfig,
+  normalizeStringObfuscation,
 };

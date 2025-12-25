@@ -1763,6 +1763,8 @@ Przykład (aktualny dla v0.5):
       // elfPacker: "kiteshield" | "midgetpack" | "upx",
       // elfPackerCmd: "kiteshield",
       // elfPackerArgs: ["--in", "{in}", "--out", "{out}"],
+      // Source-level string obfuscation libs (informacyjne, manualna integracja):
+      // stringObfuscation: "xorstr" | "crystr" | "obfuscate" | ["xorstr", "crystr"],
     },
 
     // Katalogi kopiowane 1:1 do release (np. static assets, dane)
@@ -1788,6 +1790,7 @@ Przykład (aktualny dla v0.5):
 - `build.protection.elfPacker`: opcjonalny packer/protector ELF: `kiteshield` | `midgetpack` | `upx`.
 - `build.protection.elfPackerCmd`: nadpisuje nazwę komendy (np. pełna ścieżka).
 - `build.protection.elfPackerArgs`: **wymagane** dla `kiteshield`/`midgetpack`; użyj `{in}` i `{out}` jako placeholderów. Brak args = błąd.
+- `build.protection.stringObfuscation`: **informacyjne**; lista lub string (`xorstr`, `crystr`, `obfuscate`). SEAL nie wstrzykuje tych bibliotek automatycznie – integracja jest po stronie kodu C/C++.
 
 ### 29.4. Polityka (`seal.json5#policy`)
 
