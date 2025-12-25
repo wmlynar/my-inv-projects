@@ -78,15 +78,15 @@ function getCpuIdAsmSsh(targetCfg, opts = {}) {
   const script = `
 set -euo pipefail
 umask 077
-if ! command -v cc >/dev/null 2>&1; then
-  echo "__SEAL_NO_CC__"
-  exit 3
-fi
 arch="$(uname -m 2>/dev/null || true)"
 case "$arch" in
   x86_64|amd64|i386|i486|i586|i686) ;;
   *) echo "__SEAL_NO_CPUID__"; exit 4 ;;
 esac
+if ! command -v cc >/dev/null 2>&1; then
+  echo "__SEAL_NO_CC__"
+  exit 3
+fi
 
 TMP="$(mktemp -d /tmp/.seal-cpuid-XXXXXX)"
 cleanup() { rm -rf "$TMP"; }
