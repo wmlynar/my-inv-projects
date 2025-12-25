@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 - `seal/` is the CLI implementation (CommonJS) and core logic (`seal/src/**`).
-- `example/` is a sample web app used for local “sealed” testing, with config in `example/config/` and assets in `example/public/`.
+- `example/` is a sample web app used for local “sealed” testing, with config in `example/seal-config/configs/` and assets in `example/public/`.
 - `docs/seal_docset/` contains the v0.5 docset and reference material.
 - Root `package.json` defines the workspace entry points for `seal` and `example`.
 
@@ -29,7 +29,7 @@
 - Link related issues or docs when changes affect CLI behavior or deployment flow.
 
 ## Security & Configuration Tips
-- Runtime configs live in `example/config/*.json5` and are managed via `seal config ...`.
+- Runtime configs live in `example/seal-config/configs/*.json5` and are managed via `seal config ...`.
 - Sealed build artifacts are stored in `example/seal-out/` and unpacked to `example/seal-out/release/`.
 
 ## Configuration Notes

@@ -12,7 +12,7 @@ const { configDiffSsh, configPullSsh, configPushSsh } = require("../lib/deploySs
 
 function templateConfig(name, appName) {
   // Very similar to local; user can tweak ports/log levels.
-  return `// config/${name}.json5 – runtime config
+  return `// seal-config/configs/${name}.json5 – runtime config
 {
   appName: "${appName}",
   http: {

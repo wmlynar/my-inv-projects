@@ -42,10 +42,10 @@ async function wizard(cwd) {
   const proj = loadProjectConfig(projectRoot);
   ok(`Projekt SEAL: appName=${proj.appName} entry=${proj.entry}`);
 
-  // missing config/local?
-  const localCfg = path.join(projectRoot, "config", "local.json5");
+  // missing seal-config/configs/local?
+  const localCfg = path.join(paths.configDir, "local.json5");
   if (!fileExists(localCfg)) {
-    warn("Brak config/local.json5");
+    warn("Brak seal-config/configs/local.json5");
     console.log("Następny krok:");
     console.log("  seal config add local");
     return;

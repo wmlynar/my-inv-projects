@@ -27,7 +27,7 @@ Wejdź na: `http://127.0.0.1:3000`
 
 Konfiguracja:
 
-- `config/local.json5` – wariant configu (edytuj to)
+- `seal-config/configs/local.json5` – wariant configu (edytuj to)
 - `config.runtime.json5` – aktywny runtime (ten plik czyta aplikacja przy `node src/index.js`)
 - `data/feature_flags.json` – przykładowy plik „lokalny”, czytany w runtime
 
@@ -65,7 +65,7 @@ Artefakty:
 Dodane są przykładowe pliki:
 
 - `example/seal-config/targets/server.json5` – target SSH (host `10.6.44.2`, user `admin`, installDir `/home/admin/apps/seal-example`)
-- `example/config/server.json5` – runtime config (host `0.0.0.0`, port `3333`)
+- `example/seal-config/configs/server.json5` – runtime config (host `0.0.0.0`, port `3333`)
 
 Bootstrap tworzy `/home/admin/apps/seal-example` przez `sudo` i ustawia właściciela na `admin`, a po deployu instaluje runner + unit (bez startu usługi).
 
@@ -100,7 +100,7 @@ npx seal run server
 ## Wymuszanie błędu (żeby przetestować logi)
 
 ### 1) Brak pliku feature flags (błąd na starcie)
-W `config/local.json5` ustaw np.:
+W `seal-config/configs/local.json5` ustaw np.:
 
 ```json5
 {
@@ -119,7 +119,7 @@ npx seal run-local --sealed
 W logach zobaczysz `features.read_failed` z `ENOENT`.
 
 ### 2) Błąd external call (502 + error log)
-W `config/local.json5` ustaw:
+W `seal-config/configs/local.json5` ustaw:
 
 ```json5
 {

@@ -51,7 +51,7 @@ function loadConfig() {
   const cfgPath = path.join(process.cwd(), "config.runtime.json5");
   if (!fs.existsSync(cfgPath)) {
     console.error(`[FATAL] Missing config.runtime.json5 in ${process.cwd()}.`);
-    console.error("[FATAL] Copy config/<env>.json5 to config.runtime.json5 or deploy with SEAL.");
+    console.error("[FATAL] Copy seal-config/configs/<env>.json5 to config.runtime.json5 or deploy with SEAL.");
     process.exit(2);
   }
   let raw;

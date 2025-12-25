@@ -18,7 +18,7 @@ function getSealPaths(projectRoot) {
     policyFile: path.join(sealConfigDir, "policy.json5"),
     targetsDir: path.join(sealConfigDir, "targets"),
     outDir: sealOutDir,
-    configDir: path.join(projectRoot, "config"),
+    configDir: path.join(sealConfigDir, "configs"),
     runtimeConfigPath: path.join(projectRoot, "config.runtime.json5"),
   };
 }

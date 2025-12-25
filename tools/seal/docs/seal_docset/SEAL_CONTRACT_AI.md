@@ -17,7 +17,7 @@
 
 ## 0) Zasady „samoopisujących plików” (MUST)
 
-1. Generator **MUST** tworzyć komplet plików `seal-config/*` i `config/*` w wersji „w pełni opisanej” (wszystkie opcje jawne, nawet jeśli część jest default).
+1. Generator **MUST** tworzyć komplet plików `seal-config/*` i `seal-config/configs/*` w wersji „w pełni opisanej” (wszystkie opcje jawne, nawet jeśli część jest default).
 2. Generator **MUST NOT** wprowadzać „ukrytych” zachowań zależnych od zmiennych środowiskowych, jeśli da się je opisać w pliku konfiguracyjnym.
 
 ## 1) Zasady kompatybilności z sealingiem (MUST)

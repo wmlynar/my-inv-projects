@@ -65,7 +65,7 @@ W tej filozofii:
 ### 0.6. Zmiany w v0.4 (skrót)
 
 Najważniejsze zmiany względem v0.3.1:
-- `env` → **`config`** (wariant konfiguracji runtime). Zostaje **target** (host) + **config** (plik w `config/`).
+- `env` → **`config`** (wariant konfiguracji runtime). Zostaje **target** (host) + **config** (plik w `seal-config/configs/`).
 - Jedna główna komenda: **`seal deploy <target>`** (a `seal ship` jest aliasem).
 - Bootstrap serwera jest częścią deployu: **`seal deploy <target> --bootstrap`**.
 - Jeden format konfiguracji Seala: **JSON5** (`seal-config/project.json5`, `seal-config/targets/*.json5`, `seal-config/policy.json5`).
@@ -119,7 +119,7 @@ Seal ma zdejmować z głowy temat „jak zabezpieczyć kod, żeby mnie nie okrad
 - 22. Zakres poza projektem (non-goals)
 - 23. Aneksy: przykłady plików i formatów
 - 24. Specyfikacja CLI (komendy, parametry, wyjścia, exit codes)
-- 25. Specyfikacje plików i schematy (project/targets/config/manifest)
+- 25. Specyfikacje plików i schematy (project/targets/seal-config/configs/manifest)
 - 26. Algorytmy operacyjne (release, deploy, rollback, snapshot config)
 - 27. Scenariusze end-to-end i plan testów
 - 28. Plan implementacji (milestones)
@@ -181,9 +181,9 @@ Seal ma zdejmować z głowy temat „jak zabezpieczyć kod, żeby mnie nie okrad
 
 - **Target** – definicja celu wdrożenia (host, user, ścieżki instalacji, nazwa usługi), np. `robot-01`.
 
-- **Config** – nazwa wariantu konfiguracji runtime aplikacji (plik `config/<config>.json5`).
+- **Config** – nazwa wariantu konfiguracji runtime aplikacji (plik `seal-config/configs/<config>.json5`).
 
-  Domyślna konwencja: **`config == target`** (np. `robot-01` → `config/robot-01.json5`).
+  Domyślna konwencja: **`config == target`** (np. `robot-01` → `seal-config/configs/robot-01.json5`).
 
 - **Runtime config** – konfiguracja aplikacji używana w czasie działania, w formie pliku (JSON/JSON5) zawierającego tablice/obiekty.
 
@@ -322,12 +322,12 @@ Seal może:
   - Seal nie musi tego automatycznie egzekwować (ale standard ma być jednoznaczny).
 
 ### 5.2. Konwencja „target == config”
-- `robot-01` jako target deploy ma odpowiadać konfiguracji aplikacji `config/robot-01.json5`.
+- `robot-01` jako target deploy ma odpowiadać konfiguracji aplikacji `seal-config/configs/robot-01.json5`.
 - Dzięki temu unikamy mapowania plików config w deploy (JSON5).
 
 ### 5.3. Jeden stały plik runtime config
 - Aplikacja **zawsze** czyta `config.runtime.json5` (stała nazwa).
-- W dev `config.runtime.json5` jest częścią repo (domyślnie kopia `config/local.json5`).
+- W dev `config.runtime.json5` jest częścią repo (domyślnie kopia `seal-config/configs/local.json5`).
 - Na serwerze `shared/config.json5` jest trwałym configiem, a `config.runtime.json5` w aktywnym release jest jego kopią (odświeżaną przez `appctl` przy starcie).
 
 ### 5.4. Słownik decyzji (ARCH) – „dlaczego” w 2 strony
@@ -380,10 +380,10 @@ Seal oferuje jedną ścieżkę startową:
 - `seal init` automatycznie wybiera tryb:
   - **NEW** (folder pusty / skeleton)
   - **ADOPT** (istniejący projekt)
-- `seal init` materializuje wyniki w plikach (tworzy `seal-config/*` oraz minimalne `config/*`), w tym:
+- `seal init` materializuje wyniki w plikach (tworzy `seal-config/*` oraz minimalne `seal-config/configs/*`), w tym:
   - `seal-config/project.json5`
   - `seal-config/policy.json5`
-  - `config/local.json5` (oraz przykładowe warianty `config/*`)
+  - `seal-config/configs/local.json5` (oraz przykładowe warianty `seal-config/configs/*`)
   - `config.runtime.json5`
 - W przypadku niejednoznaczności rozpoznania projektu: narzędzie **nie zgaduje w ciszy** — przenosi „niepewność” do `seal plan` (decision trace).
 
@@ -405,7 +405,7 @@ my-app/
   public/
   package.json
 
-  config/
+  seal-config/configs/
     local.json5
     robot-01.json5
 
@@ -434,7 +434,7 @@ my-app/
 ```
 
 ### 7.2. Zasady
-- `config/` zawiera tylko konfiguracje aplikacji.
+- `seal-config/configs/` zawiera tylko konfiguracje aplikacji.
 - `seal-config/targets/` zawiera tylko konfiguracje deploymentu.
 - `seal-out/` jest w pełni generowany (jak `target/` w Maven) i może być czyszczony w całości przy każdym `seal release`/`seal verify`/`seal deploy` – nie trzymaj tam nic ręcznie.
 - `seal-out/remote/` jest zarządzany automatycznie przez Seal (snapshoty configu z serwera) i jest **generowany** (gitignore).
@@ -546,13 +546,13 @@ Plik `seal-config/targets/<target>.json5` zawiera wyłącznie:
 **Wymaganie:** brak parametrów aplikacji w plikach deploy Seala.
 
 ### 10.2. Runtime config aplikacji (JSON/JSON5)
-- `config/<config>.json5` – pełny config aplikacji dla danego wariantu.
+- `seal-config/configs/<config>.json5` – pełny config aplikacji dla danego wariantu.
 - `config.runtime.json5` – aktywny config używany przez aplikację.
 
 **Wymaganie:** config ma wspierać obiekty i tablice wprost.
 
 ### 10.3. Seed configu na serwerze
-- Jeśli `/home/admin/apps/<app>/shared/config.json5` nie istnieje – tworzymy go na podstawie `config/<config>.json5`.
+- Jeśli `/home/admin/apps/<app>/shared/config.json5` nie istnieje – tworzymy go na podstawie `seal-config/configs/<config>.json5`.
 - Jeśli istnieje – nie nadpisujemy (domyślnie).
 
 ### 10.4. Edycja configu na serwerze (serwis)
@@ -566,18 +566,18 @@ Plik `seal-config/targets/<target>.json5` zawiera wyłącznie:
 - REQ-CFG-002 (MUST): aplikacja w każdym trybie (dev i production) czyta runtime config ze stałej ścieżki `config.runtime.json5`.
 - REQ-CFG-003 (MUST): `seal deploy` **nie nadpisuje** configu na serwerze, jeśli użytkownik nie użyje `--push-config`.
 - REQ-CFG-004 (MUST): jeśli na serwerze istnieje `shared/config.json5`, `seal deploy` wykonuje snapshot do `seal-out/remote/` (chyba że `--no-snapshot`).
-- REQ-CFG-005 (MUST): `seal deploy` wykrywa **drift** (różnice) pomiędzy `config/<config>.json5` w repo a `shared/config.json5` na serwerze.
+- REQ-CFG-005 (MUST): `seal deploy` wykrywa **drift** (różnice) pomiędzy `seal-config/configs/<config>.json5` w repo a `shared/config.json5` na serwerze.
   - Domyślnie drift = **błąd** (exit != 0) z jasną instrukcją „co dalej”.
 - REQ-CFG-006 (MAY): flaga `--allow-drift` zmienia drift z błędu w ostrzeżenie (dla przypadków, gdzie celowo zarządzasz configiem ręcznie na serwerze).
 
 ### 10.5. Konwencja `target == config` oraz wyjątki
 
-- Domyślnie: `config == target` (np. `robot-01` → `config/robot-01.json5`).
+- Domyślnie: `config == target` (np. `robot-01` → `seal-config/configs/robot-01.json5`).
 - Wyjątki są dopuszczalne i jawne:
   - `seal deploy <target> --config <config>` (jednorazowo),
   - albo mapowanie w `seal-config/project.json5` (np. `deploy.targets.<target>.config`).
 
-**Wymaganie:** jeśli `config/<config>.json5` nie istnieje – Seal kończy się błędem z jednoznaczną informacją co stworzyć / jak nazwać plik.
+**Wymaganie:** jeśli `seal-config/configs/<config>.json5` nie istnieje – Seal kończy się błędem z jednoznaczną informacją co stworzyć / jak nazwać plik.
 
 ### 10.6. Drift detection i synchronizacja configu (repo ↔ serwer)
 
@@ -586,10 +586,10 @@ W tej wersji dokumentu przyjmujemy zasadę:
 - **Repo jest źródłem prawdy**, ale zmiana zrobiona na serwerze może zostać *świadomie* „adoptowana” z powrotem do repo.
 
 Mechanizmy:
-- `seal diff-config <target>` – pokazuje różnice pomiędzy `config/<config>.json5` (repo) a `shared/config.json5` (serwer) lub ostatnim snapshotem.
+- `seal diff-config <target>` – pokazuje różnice pomiędzy `seal-config/configs/<config>.json5` (repo) a `shared/config.json5` (serwer) lub ostatnim snapshotem.
 - `seal pull-config <target>` – pobiera aktualny config z serwera:
   - zawsze zapisuje `seal-out/remote/<target>.current.json5` + wpis do `seal-out/remote/<target>.history/`,
-  - opcjonalnie `--apply` kopiuje ten plik jako `config/<config>.json5` (czyli „przenosi” zmianę z serwera do repo).
+  - opcjonalnie `--apply` kopiuje ten plik jako `seal-config/configs/<config>.json5` (czyli „przenosi” zmianę z serwera do repo).
 - `seal deploy --push-config` – nadpisuje `shared/config.json5` configiem z repo (świadome „przywrócenie” repo na serwerze).
 
 **Uwaga o sekretach:** w tym projekcie configi i snapshoty **mogą** zawierać sekrety i jest to akceptowane. Seal nie ma chronić przed ich wyciekiem – jego celem jest ochrona kodu/logiki.
@@ -607,10 +607,10 @@ Mechanizmy:
 
 - REQ-CFG-008 (MUST): tworzenie nowego targetu/config‑wariantu **nie wymaga ręcznego kopiowania plików**. Seal zapewnia komendy:
   - `seal target add <target>` → generuje `seal-config/targets/<target>.json5` (z pełną listą pól i placeholderami),
-  - `seal config add <config> [--from <template|existing>]` → generuje `config/<config>.json5` jako pełny template.
+  - `seal config add <config> [--from <template|existing>]` → generuje `seal-config/configs/<config>.json5` jako pełny template.
 
 - REQ-CFG-009 (MUST): Seal zapewnia `seal explain [<target>]`, które wypisuje **effective config** i przy każdej wartości podaje źródło:
-  - `seal-config/project.json5`, `seal-config/targets/<target>.json5`, wartości z `config/<config>.json5`, albo default.
+  - `seal-config/project.json5`, `seal-config/targets/<target>.json5`, wartości z `seal-config/configs/<config>.json5`, albo default.
 
 - REQ-CFG-010 (MAY): jeśli chcesz krótszych plików, Seal może mieć tryb „compact/normalize”, ale domyślnie preferujemy jawność.
 
@@ -1207,7 +1207,7 @@ Celem sample-app jest:
 }
 ```
 
-### 23.2. Przykład `config/robot-01.json5`
+### 23.2. Przykład `seal-config/configs/robot-01.json5`
 ```json5
 {
   http: { port: 8080 },
@@ -1270,7 +1270,7 @@ Celem sample-app jest:
 
 **Konwencja `config == target` (MUST):**
 - jeśli komenda przyjmuje `<config>` i nie podano `--config`, to `config = <target>`.
-- jeśli `config/<config>.json5` nie istnieje, SEAL:
+- jeśli `seal-config/configs/<config>.json5` nie istnieje, SEAL:
   - (SHOULD) proponuje utworzenie przez `seal config add <config>`.
 
 **Artefakt ostatniego builda (MUST):**
@@ -1286,7 +1286,7 @@ Celem sample-app jest:
 
 Przykładowe reguły:
 - jeśli brak `seal-config/` → sugeruj `seal init`,
-- jeśli brak `config/local.json5` → sugeruj `seal init` (naprawa),
+- jeśli brak `seal-config/configs/local.json5` → sugeruj `seal init` (naprawa),
 - jeśli brak artefaktu → sugeruj `seal release`,
 - jeśli ostatni release jest OK → sugeruj `seal run-local` i `seal verify`,
 - jeśli są targety serwerowe → sugeruj `seal deploy <target>`.
@@ -1295,7 +1295,7 @@ Alias (MAY): `seal wizard`.
 
 ### 24.4. Konwencje nazw
 - `<target>`: nazwa targetu, np. `robot-01` → `seal-config/targets/robot-01.json5`.
-- `<config>`: nazwa wariantu configu runtime, np. `robot-01` → `config/robot-01.json5`.
+- `<config>`: nazwa wariantu configu runtime, np. `robot-01` → `seal-config/configs/robot-01.json5`.
 - `<artifact>`: plik artefaktu `.tgz` w `seal-out/`.
 
 ### 24.5. Komendy
@@ -1305,7 +1305,7 @@ Alias (MAY): `seal wizard`.
 
 **MUST**
 - tworzy `seal-config/` wraz z minimalnymi plikami,
-- tworzy `config/local.json5`,
+- tworzy `seal-config/configs/local.json5`,
 - tworzy `config.runtime.json5` (dla dev-run),
 - tworzy `seal-config/targets/local.json5`,
 - ustawia `default_target=local`.
@@ -1373,7 +1373,7 @@ Alias (MAY): `seal wizard`.
 
 **MUST**
 - używa `seal-out/release/` (lub buduje, jeśli brak),
-- zapewnia `config.runtime.json5` (kopia z `config/<config>.json5`),
+- zapewnia `config.runtime.json5` (kopia z `seal-config/configs/<config>.json5`),
 - uruchamia binarkę i przekazuje stdout/stderr wprost.
 
 ---
@@ -1382,7 +1382,7 @@ Alias (MAY): `seal wizard`.
 **Cel:** dodać nowy target (szablon `seal-config/targets/<target>.json5`).
 
 #### `seal config add <config>`
-**Cel:** dodać nowy config runtime (szablon `config/<config>.json5`).
+**Cel:** dodać nowy config runtime (szablon `seal-config/configs/<config>.json5`).
 
 ---
 
@@ -1446,7 +1446,7 @@ Kompatybilność (MAY): aliasy historyczne `seal diff-config`, `seal pull-config
 
 ---
 
-## 25. Specyfikacje plików i schematy (project/targets/config/manifest)
+## 25. Specyfikacje plików i schematy (project/targets/seal-config/configs/manifest)
 
 > **Cel tej sekcji:** usunąć niejednoznaczności implementacyjne poprzez jawne “schematy” plików.
 
@@ -1468,7 +1468,7 @@ Kompatybilność (MAY): aliasy historyczne `seal diff-config`, `seal pull-config
 - `version` (number)
 - `modules` (array[string])
 
-### 25.3. `config/<config>.json5` i `config.runtime.json5`
+### 25.3. `seal-config/configs/<config>.json5` i `config.runtime.json5`
 - Format: JSON5 (lub JSON).
 - Musi być możliwe wyrażanie obiektów i tablic.
 - Zalecane pola meta: `configVersion`.
@@ -1549,12 +1549,12 @@ Minimalne pola (MUST):
 5) Jeśli config istnieje i snapshot jest włączony:
    - pobierz plik i zapisz do `seal-out/remote/<target>.current.json5` oraz do history.
 6) (SHOULD) Drift detection:
-   - porównaj `config/<config>.json5` z configiem z serwera (snapshot),
+   - porównaj `seal-config/configs/<config>.json5` z configiem z serwera (snapshot),
    - ostrzeż lub zakończ błędem (domyślnie) lub tylko ostrzeż przy `--allow-drift`.
 7) Upload paczki do serwera (np. `/tmp/<app>-<buildId>.tgz`).
 8) Rozpakuj do `releases/<buildId>` (bez zmiany `current.buildId`).
 9) Upewnij się, że `shared/config.json5` istnieje:
-   - jeśli brak → seed z `config/<config>.json5`,
+   - jeśli brak → seed z `seal-config/configs/<config>.json5`,
    - jeśli jest i `--push-config` → nadpisz.
 10) Zapisz `current.buildId` na nowy buildId (aktywacja wersji).
 11) Restart systemd (usługa uruchomi nowy release przez `appctl`).
@@ -1580,7 +1580,7 @@ Minimalne pola (MUST):
 
 **Akceptacja:**
 - `seal-config/` istnieje,
-- `config/local.json5` istnieje,
+- `seal-config/configs/local.json5` istnieje,
 - `config.runtime.json5` istnieje.
 
 ### 27.2. E2E: adopt istniejącego projektu (bez zmiany dev-run)
@@ -1620,7 +1620,7 @@ Minimalne pola (MUST):
 ### 27.6. E2E: pierwszy deploy na nowy serwer (bootstrap)
 1) `seal init`
 2) `seal target add robot-01` + uzupełnij `seal-config/targets/robot-01.json5`
-3) `seal config add robot-01` + uzupełnij `config/robot-01.json5`
+3) `seal config add robot-01` + uzupełnij `seal-config/configs/robot-01.json5`
 4) `seal deploy robot-01 --bootstrap`
 5) `seal deploy robot-01`
 6) `seal status robot-01` i `seal logs robot-01`
@@ -1641,7 +1641,7 @@ Minimalne pola (MUST):
 - snapshot configu trafia do `seal-out/remote/` (lub równoważnie).
 
 ### 27.8. E2E: świadome nadpisanie configu (push-config)
-1) Zmień `config/robot-01.json5` w repo.
+1) Zmień `seal-config/configs/robot-01.json5` w repo.
 2) `seal deploy robot-01 --push-config`
 
 **Akceptacja:**
@@ -1711,7 +1711,7 @@ Minimalne pola (MUST):
 
 ### 28.3. Milestone 3 – standard jakości i sample-app
 - sample-app spełniający SEAL_STANDARD v1.3.
-- szablony logger/status/config/UI.
+- szablony logger/status/seal-config/configs/UI.
 
 ### 28.4. Milestone 4 – frontend obfuskacja + hardening + licencja (opcjonalnie)
 - frontend obfuskacja (domyślnie włączona, z opt-out),
@@ -2049,7 +2049,7 @@ Ta sekcja zbiera tematy „do decyzji” lub „do dopięcia” – żeby nie ro
 - Dodane: **SEAL_SCENARIOS v0.5** (pełna lista scenariuszy użytkownika).
 - Doprecyzowane: „SEAL prowadzi za rękę” jako wymóg UX:
   - `seal` bez argumentów działa jak wizard,
-  - domyślności dla target/config/ostatniego builda.
+  - domyślności dla target/seal-config/configs/ostatniego builda.
 - Doprecyzowane: lokalne testowanie zabezpieczenia:
   - `seal release` buduje artefakt + rozpakowuje do `seal-out/release/`,
   - `seal run-local` uruchamia sealed lokalnie.

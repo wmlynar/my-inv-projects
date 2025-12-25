@@ -21,9 +21,9 @@ async function cmdRunLocal(cwd, opts) {
     info("DEV run (node)");
     hr();
     if (!fileExists(paths.runtimeConfigPath)) {
-      warn("Missing config.runtime.json5. Copying from config/local.json5");
+      warn("Missing config.runtime.json5. Copying from seal-config/configs/local.json5");
       const localCfg = path.join(paths.configDir, "local.json5");
-      if (!fileExists(localCfg)) throw new Error("Missing config/local.json5");
+      if (!fileExists(localCfg)) throw new Error("Missing seal-config/configs/local.json5");
       fs.copyFileSync(localCfg, paths.runtimeConfigPath);
     }
     const res = spawnSyncSafe("node", [proj.entry], { cwd: projectRoot, stdio: "inherit" });

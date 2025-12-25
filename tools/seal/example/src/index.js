@@ -26,7 +26,7 @@ function main() {
       data: {
         code: e.code || null,
         message: e.message,
-        tip: "Copy config/<variant>.json5 to ./config.runtime.json5 (CWD = release dir).",
+        tip: "Copy seal-config/configs/<variant>.json5 to ./config.runtime.json5 (CWD = release dir).",
       }
     }));
     process.exit(2);

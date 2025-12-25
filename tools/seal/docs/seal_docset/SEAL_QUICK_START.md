@@ -45,7 +45,7 @@ seal init
 
 `seal init`:
 - tworzy `seal-config/` (konfiguracja SEAL, commitowana),
-- tworzy `config/local.json5`,
+- tworzy `seal-config/configs/local.json5`,
 - tworzy `config.runtime.json5` (domyślny link/kopia do uruchomień),
 - tworzy `seal-config/targets/local.json5`,
 - zapisuje `default_target=local`.
@@ -127,7 +127,7 @@ seal run-local
 
 Jeśli wolisz ręcznie (bez magii):
 ```bash
-cp config/local.json5 seal-out/release/config.runtime.json5
+cp seal-config/configs/local.json5 seal-out/release/config.runtime.json5
 ./seal-out/release/<app>
 ```
 
@@ -199,7 +199,7 @@ seal config add robot-01
 
 Uzupełnij:
 - `seal-config/targets/robot-01.json5` (SSH, ścieżki, serviceName)
-- `config/robot-01.json5` (runtime config aplikacji)
+- `seal-config/configs/robot-01.json5` (runtime config aplikacji)
 
 ### Krok B: bootstrap (pierwszy raz)
 

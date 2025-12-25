@@ -193,7 +193,7 @@ case "$cmd" in
   run)
     if [ ! -f "$DIR/config.runtime.json5" ]; then
       echo "[appctl] Missing config.runtime.json5 in $DIR" 1>&2
-      echo "[appctl] Tip: copy config/<config>.json5 here as config.runtime.json5" 1>&2
+      echo "[appctl] Tip: copy seal-config/configs/<config>.json5 here as config.runtime.json5" 1>&2
       exit 2
     fi
     if [ -n "$APP_ENTRY" ]; then

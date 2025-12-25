@@ -3,7 +3,7 @@
 To repo jest „piaskownicą” do testowania SEAL end‑to‑end:
 
 - `seal/` – implementacja CLI (budowanie artefaktu, obfuskacja, SEA/fallback, verify, run-local, minimalny deploy baseline)
-- `example/` – reprezentatywna aplikacja webowa do testów „sealed” (config, pliki lokalne, UI, external calls, logowanie)
+- `example/` – reprezentatywna aplikacja webowa do testów „sealed” (runtime config w `seal-config/configs/`, pliki lokalne, UI, external calls, logowanie)
 - `docs/seal_docset/` – docset v0.5 (specyfikacja + scenariusze)
 
 ---

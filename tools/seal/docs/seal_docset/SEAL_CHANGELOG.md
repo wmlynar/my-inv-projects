@@ -5,6 +5,7 @@
 ### Build / struktura (P0)
 - **Rozdzielone foldery:** `seal-config/` (w repo) vs `seal-out/` (artefakty, gitignore).
 - **Tylko ostatni release:** `seal-out/` jest czyszczony na każdym buildzie (brak historii i symlinków).
+- **Runtime configs w jednym miejscu:** `seal-config/configs/` zamiast osobnego `config/` w root.
 
 ### Deploy / serwer (P0)
 - **Bootstrap SSH uproszczony:** tworzy katalogi i nadaje uprawnienia; service instalowany po deployu (bez auto‑startu).

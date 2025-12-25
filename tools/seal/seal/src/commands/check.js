@@ -110,9 +110,9 @@ async function cmdCheck(cwd, targetArg, opts) {
 
   const configName = resolveConfigName(targetCfg, null);
   const configFile = getConfigFile(projectRoot, configName);
-  if (!fileExists(configFile)) warnings.push(`Missing runtime config: config/${configName}.json5`);
+  if (!fileExists(configFile)) warnings.push(`Missing runtime config: seal-config/configs/${configName}.json5`);
 
-  if (!fileExists(paths.runtimeConfigPath)) warnings.push(`Missing config.runtime.json5 (dev convenience). Tip: copy config/${configName}.json5 -> config.runtime.json5`);
+  if (!fileExists(paths.runtimeConfigPath)) warnings.push(`Missing config.runtime.json5 (dev convenience). Tip: copy seal-config/configs/${configName}.json5 -> config.runtime.json5`);
 
   if (proj) {
     const entryAbs = path.join(projectRoot, proj.entry);

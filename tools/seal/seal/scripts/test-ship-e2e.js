@@ -79,7 +79,7 @@ function shellQuote(str) {
 }
 
 function readHttpPort(configName) {
-  const cfgPath = path.join(EXAMPLE_ROOT, "config", `${configName}.json5`);
+  const cfgPath = path.join(EXAMPLE_ROOT, "seal-config", "configs", `${configName}.json5`);
   if (!fs.existsSync(cfgPath)) return null;
   try {
     const cfg = readJson5(cfgPath) || {};
@@ -312,7 +312,7 @@ async function testShipThinBootstrapSsh() {
       ? Number(process.env.SEAL_SHIP_SSH_HTTP_PORT)
       : readHttpPort("server");
     if (!httpPort || !Number.isFinite(httpPort)) {
-      throw new Error("Missing HTTP port for SSH E2E (set SEAL_SHIP_SSH_HTTP_PORT or config/server.json5)");
+      throw new Error("Missing HTTP port for SSH E2E (set SEAL_SHIP_SSH_HTTP_PORT or seal-config/configs/server.json5)");
     }
     await waitForRemoteHealth({ user, host, sshPort, port: Math.trunc(httpPort) });
     log(`OK: remote HTTP /healthz on port ${httpPort}`);

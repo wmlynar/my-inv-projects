@@ -153,7 +153,7 @@ async function buildThinRelease(mode, buildTimeoutMs) {
 }
 
 function writeRuntimeConfig(releaseDir, port) {
-  const cfgPath = path.join(EXAMPLE_ROOT, "config", "local.json5");
+  const cfgPath = path.join(EXAMPLE_ROOT, "seal-config", "configs", "local.json5");
   const cfg = readJson5(cfgPath);
   cfg.http = cfg.http || {};
   cfg.http.host = "127.0.0.1";

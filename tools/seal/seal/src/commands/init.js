@@ -52,7 +52,7 @@ function templateTargetLocal(appName) {
 }
 
 function templateConfigLocal(appName) {
-  return `// config/local.json5 – runtime config (dev & local sealed run)
+  return `// seal-config/configs/local.json5 – runtime config (dev & local sealed run)
 {
   appName: "${appName}",
   http: {
@@ -138,11 +138,11 @@ async function cmdInit(cwd, opts) {
     ok("Keeping existing seal-config/targets/local.json5");
   }
 
-  // config/local.json5
+  // seal-config/configs/local.json5
   const localCfgPath = path.join(paths.configDir, "local.json5");
   const wrote = safeWriteFile(localCfgPath, templateConfigLocal(appName), { force });
-  if (wrote) ok("Created config/local.json5");
-  else ok("Keeping existing config/local.json5");
+  if (wrote) ok("Created seal-config/configs/local.json5");
+  else ok("Keeping existing seal-config/configs/local.json5");
 
   // config.runtime.json5 (dev convenience)
   if (!fileExists(paths.runtimeConfigPath) || force) {

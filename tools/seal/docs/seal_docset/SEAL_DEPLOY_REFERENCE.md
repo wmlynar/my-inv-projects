@@ -153,7 +153,7 @@ robot-01.json5:
 
 runtime (repo):
   config = robot-01
-  configPath = config/robot-01.json5
+  configPath = seal-config/configs/robot-01.json5
 
 healthcheck:
   url = http://127.0.0.1:8080/healthz  (from config.http.port)
@@ -187,7 +187,7 @@ NOTES:
 ### 3.3. `seal config add` – przykładowo generowany plik
 
 ```json5
-// config/robot-01.json5 (generated template)
+// seal-config/configs/robot-01.json5 (generated template)
 {
   http: {
     port: 8080,
@@ -317,7 +317,7 @@ Ta sekcja jest stricte „jak to zaimplementować”, żeby SEAL był używalny 
 Proponowana implementacja:
 1) wykryj root projektu (`seal-config/standard.lock.json`); jeśli brak – komunikat „to nie jest projekt SEAL” + sugestia `seal init`.
 2) wykryj stan:
-   - brak `seal-config/` / brak `config/local.json5` → `seal init`,
+   - brak `seal-config/` / brak `seal-config/configs/local.json5` → `seal init`,
    - brak targetów → `seal target add local`,
    - brak artefaktu → `seal release`,
    - jest artefakt → `seal verify` i `seal run-local`,
@@ -350,7 +350,7 @@ Struktura:
 Implementacja:
 - znajdź `seal-out/release/` (jeśli nie istnieje – zasugeruj `seal release` albo wykonaj `seal release` automatycznie),
 - wybierz config (domyślnie `local`, override `--config`),
-- skopiuj `config/<config>.json5` → `seal-out/release/config.runtime.json5`,
+- skopiuj `seal-config/configs/<config>.json5` → `seal-out/release/config.runtime.json5`,
 - uruchom binarkę w foreground (CWD = `seal-out/release/`),
 - przekaż stdout/stderr 1:1.
 

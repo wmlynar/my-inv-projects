@@ -22,7 +22,7 @@ async function cmdRelease(cwd, targetArg, opts) {
   const configName = resolveConfigName(targetCfg, opts.config);
   const configFile = getConfigFile(projectRoot, configName);
   if (!fileExists(configFile)) {
-    warn(`Missing config/${configName}.json5. Creating template...`);
+    warn(`Missing seal-config/configs/${configName}.json5. Creating template...`);
     // Suggest user to create
     console.log(`Tip: seal config add ${configName}`);
   }

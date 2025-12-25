@@ -81,7 +81,7 @@ seal run-local
 
 Fallback (ręczny):
 ```bash
-cp config/local.json5 seal-out/release/config.runtime.json5
+cp seal-config/configs/local.json5 seal-out/release/config.runtime.json5
 ./seal-out/release/<app>
 ```
 
