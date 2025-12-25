@@ -805,6 +805,11 @@ function probeSentinelSsh({ targetCfg, sentinelCfg }) {
 
 function inspectSentinelSsh({ targetCfg, sentinelCfg }) {
   const { user, host } = sshUserHost(targetCfg);
+  const extCfg = (sentinelCfg && sentinelCfg.externalAnchor) ? sentinelCfg.externalAnchor : {};
+  const extType = String(extCfg.type || "none").toLowerCase();
+  const extFilePath = extType === "file" && extCfg.file && extCfg.file.path ? String(extCfg.file.path) : "";
+  const extLeaseUrl = extType === "lease" && extCfg.lease && extCfg.lease.url ? String(extCfg.lease.url) : "";
+  const extLeaseTimeoutMs = extType === "lease" && extCfg.lease && extCfg.lease.timeoutMs ? Number(extCfg.lease.timeoutMs) : 1500;
   const script = `
 set -euo pipefail
 BASE64_OK=0
@@ -812,6 +817,11 @@ if command -v base64 >/dev/null 2>&1; then
   BASE64_OK=1
 fi
 echo "BASE64=$BASE64_OK"
+
+EXT_TYPE=${shQuote(extType)}
+EXT_FILE_PATH=${shQuote(extFilePath)}
+EXT_LEASE_URL=${shQuote(extLeaseUrl)}
+EXT_LEASE_TIMEOUT_MS=${shQuote(Number.isFinite(extLeaseTimeoutMs) ? String(extLeaseTimeoutMs) : "1500")}
 
 if [ "$BASE64_OK" = "1" ]; then
   b64() { base64 | tr -d '\\r\\n'; }
@@ -847,11 +857,122 @@ else
   echo "USB_B64="
 fi
 
+XATTR_OK=0
+XATTR_ERR=""
+if command -v python3 >/dev/null 2>&1; then
+  python3 - <<'PY'
+import os, tempfile
+fd, path = tempfile.mkstemp(prefix=".seal-xattr-")
+os.close(fd)
+try:
+    os.setxattr(path, b"user.seal_test", b"1")
+    val = os.getxattr(path, b"user.seal_test")
+    ok = (val == b"1")
+    print("XATTR_OK=1" if ok else "XATTR_OK=0")
+except Exception as e:
+    print("XATTR_OK=0")
+    print("XATTR_ERR=%s" % (e.__class__.__name__,))
+finally:
+    try:
+        os.unlink(path)
+    except Exception:
+        pass
+PY
+elif command -v setfattr >/dev/null 2>&1 && command -v getfattr >/dev/null 2>&1; then
+  tmp="$(mktemp /tmp/.seal-xattr-XXXXXX)"
+  if setfattr -n user.seal_test -v 1 "$tmp" 2>/dev/null; then
+    if getfattr -n user.seal_test --only-values "$tmp" 2>/dev/null | tr -d '\\r\\n' | grep -qx "1"; then
+      XATTR_OK=1
+    else
+      XATTR_OK=0
+      XATTR_ERR="getfattr_failed"
+    fi
+  else
+    XATTR_OK=0
+    XATTR_ERR="setfattr_failed"
+  fi
+  rm -f "$tmp"
+  echo "XATTR_OK=$XATTR_OK"
+  [ -n "$XATTR_ERR" ] && echo "XATTR_ERR=$XATTR_ERR"
+else
+  echo "XATTR_OK=0"
+  echo "XATTR_ERR=no_xattr_tool"
+fi
+
+EXT_FILE_EXISTS=0
+EXT_FILE_READ=0
+EXT_FILE_READ_SUDO=0
+EXT_FILE_STAT=""
+if [ -n "$EXT_FILE_PATH" ]; then
+  if [ -e "$EXT_FILE_PATH" ]; then
+    EXT_FILE_EXISTS=1
+  fi
+  if [ -r "$EXT_FILE_PATH" ]; then
+    EXT_FILE_READ=1
+  else
+    if [ "$(id -u)" != "0" ]; then
+      if command -v sudo >/dev/null 2>&1; then
+        if sudo -n test -r "$EXT_FILE_PATH" >/dev/null 2>&1; then
+          EXT_FILE_READ=1
+          EXT_FILE_READ_SUDO=1
+        fi
+      fi
+    fi
+  fi
+  EXT_FILE_STAT="$(stat -Lc '%u %g %a %s' "$EXT_FILE_PATH" 2>/dev/null || true)"
+fi
+echo "EXT_FILE_EXISTS=$EXT_FILE_EXISTS"
+echo "EXT_FILE_READ=$EXT_FILE_READ"
+echo "EXT_FILE_READ_SUDO=$EXT_FILE_READ_SUDO"
+echo "EXT_FILE_STAT=$EXT_FILE_STAT"
+
+LEASE_OK=0
+LEASE_STATUS=""
+LEASE_TOOL=""
+LEASE_ERR=""
+if [ -n "$EXT_LEASE_URL" ]; then
+  tm_ms="$EXT_LEASE_TIMEOUT_MS"
+  if [ -z "$tm_ms" ] || [ "$tm_ms" -le 0 ] 2>/dev/null; then
+    tm_ms=1500
+  fi
+  tm_s=$(( (tm_ms + 999) / 1000 ))
+  if command -v curl >/dev/null 2>&1; then
+    LEASE_TOOL="curl"
+    code="$(curl -fsS -o /dev/null -w "%{http_code}" --max-time "$tm_s" "$EXT_LEASE_URL" 2>/dev/null || true)"
+    if [ -n "$code" ]; then
+      LEASE_OK=1
+      LEASE_STATUS="$code"
+    else
+      LEASE_ERR="curl_failed"
+    fi
+  elif command -v wget >/dev/null 2>&1; then
+    LEASE_TOOL="wget"
+    if wget -q --spider --timeout="$tm_s" "$EXT_LEASE_URL" 2>/dev/null; then
+      LEASE_OK=1
+      LEASE_STATUS="ok"
+    else
+      LEASE_ERR="wget_failed"
+    fi
+  else
+    LEASE_TOOL="missing"
+    LEASE_ERR="no_http_tool"
+  fi
+fi
+echo "LEASE_OK=$LEASE_OK"
+echo "LEASE_STATUS=$LEASE_STATUS"
+echo "LEASE_TOOL=$LEASE_TOOL"
+echo "LEASE_ERR=$LEASE_ERR"
+
 TPM=0
 if [ -e /dev/tpm0 ] || [ -d /sys/class/tpm/tpm0 ]; then
   TPM=1
 fi
 echo "TPM=$TPM"
+TPM_TOOL=0
+if command -v tpm2_getcap >/dev/null 2>&1 || command -v tpm2_pcrread >/dev/null 2>&1; then
+  TPM_TOOL=1
+fi
+echo "TPM_TOOL=$TPM_TOOL"
 `;
   const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-lc", script], stdio: "pipe" });
   if (!res.ok) {
@@ -879,7 +1000,8 @@ echo "TPM=$TPM"
   const usbDevices = parseUsbDevices(decodeBase64(kv.USB_B64));
   const usbMounts = extractUsbMounts(lsblk);
   const hostShares = extractHostShares(mounts);
-  const tpm = kv.TPM === "1";
+  const tpm = { present: kv.TPM === "1", tools: kv.TPM_TOOL === "1" };
+  const xattr = { ok: kv.XATTR_OK === "1", error: kv.XATTR_ERR || null };
 
   const hostInfo = getHostInfoSsh(targetCfg);
   let cpuIdAsm = { available: false, unsupported: false };
@@ -895,6 +1017,48 @@ echo "TPM=$TPM"
     base = probeBaseDirSsh(targetCfg, sentinelCfg);
   }
 
+  const externalAnchor = { type: extType, configured: extType !== "none" };
+  if (extType === "usb") {
+    const cfg = extCfg.usb || {};
+    const vid = String(cfg.vid || "").toLowerCase();
+    const pid = String(cfg.pid || "").toLowerCase();
+    const serial = String(cfg.serial || "");
+    const matches = usbDevices.filter((d) => {
+      if (!vid || !pid) return false;
+      if (d.vid !== vid || d.pid !== pid) return false;
+      if (serial && d.serial !== serial) return false;
+      return true;
+    });
+    externalAnchor.usb = {
+      vid,
+      pid,
+      serial,
+      matches: matches.map((m) => ({ vid: m.vid, pid: m.pid, serial: m.serial, product: m.product, manufacturer: m.manufacturer })),
+      ok: matches.length > 0,
+    };
+  } else if (extType === "file") {
+    const stat = kv.EXT_FILE_STAT || "";
+    const parts = stat.split(/\s+/);
+    externalAnchor.file = {
+      path: extFilePath,
+      exists: kv.EXT_FILE_EXISTS === "1",
+      readable: kv.EXT_FILE_READ === "1",
+      readableViaSudo: kv.EXT_FILE_READ_SUDO === "1",
+      stat: stat ? { uid: parts[0] || null, gid: parts[1] || null, mode: parts[2] || null, size: parts[3] || null } : null,
+    };
+  } else if (extType === "lease") {
+    externalAnchor.lease = {
+      url: extLeaseUrl,
+      timeoutMs: Number.isFinite(extLeaseTimeoutMs) ? extLeaseTimeoutMs : null,
+      ok: kv.LEASE_OK === "1",
+      status: kv.LEASE_STATUS || null,
+      tool: kv.LEASE_TOOL || null,
+      error: kv.LEASE_ERR || null,
+    };
+  } else if (extType === "tpm2") {
+    externalAnchor.tpm2 = { present: tpm.present, tools: tpm.tools };
+  }
+
   return {
     host: hostInfo,
     base,
@@ -907,6 +1071,8 @@ echo "TPM=$TPM"
       usbMounts,
       hostShares,
       tpm,
+      xattr,
+      externalAnchor,
       notes,
     },
   };

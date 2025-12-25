@@ -263,7 +263,36 @@ async function cmdSentinelInspect(cwd, targetArg, opts) {
     return bits.join(" ");
   });
 
-  console.log(`TPM2: ${optsList.tpm ? "present" : "not found"}`);
+  const tpmInfo = optsList.tpm || {};
+  const tpmLabel = tpmInfo.present ? (tpmInfo.tools ? "present" : "present (tools missing)") : "not found";
+  console.log(`TPM2: ${tpmLabel}`);
+
+  if (optsList.xattr) {
+    const xattrLabel = optsList.xattr.ok ? "ok" : "not supported";
+    const xattrErr = optsList.xattr.error ? ` (${optsList.xattr.error})` : "";
+    console.log(`XATTR: ${xattrLabel}${xattrErr}`);
+  }
+
+  const ext = optsList.externalAnchor || {};
+  if (ext.configured) {
+    console.log(`External anchor (configured): ${ext.type}`);
+    if (ext.type === "usb" && ext.usb) {
+      const match = ext.usb.ok ? "match" : "no match";
+      console.log(`  usb: ${match} (vid=${ext.usb.vid || "?"} pid=${ext.usb.pid || "?"}${ext.usb.serial ? ` serial=${ext.usb.serial}` : ""})`);
+    } else if (ext.type === "file" && ext.file) {
+      const file = ext.file;
+      const read = file.readable ? "readable" : "not readable";
+      const exists = file.exists ? "exists" : "missing";
+      console.log(`  file: ${exists}, ${read}${file.readableViaSudo ? " (via sudo)" : ""}`);
+    } else if (ext.type === "lease" && ext.lease) {
+      const lease = ext.lease;
+      const status = lease.ok ? (lease.status || "ok") : (lease.error || "unreachable");
+      console.log(`  lease: ${status}${lease.tool ? ` (tool=${lease.tool})` : ""}`);
+    } else if (ext.type === "tpm2" && ext.tpm2) {
+      const tpmOk = ext.tpm2.present ? (ext.tpm2.tools ? "ok" : "present (tools missing)") : "not found";
+      console.log(`  tpm2: ${tpmOk}`);
+    }
+  }
 
   if (optsList.notes && optsList.notes.length) {
     console.log("Notes:");
@@ -294,8 +323,9 @@ async function cmdSentinelInspect(cwd, targetArg, opts) {
     console.log("  - File anchor not detected; mount host/USB folder to use externalAnchor.file.");
   }
 
-  if (optsList.tpm) {
-    console.log("  - TPM2 available (experimental): externalAnchor: { type: \"tpm2\" }");
+  if (tpmInfo.present) {
+    const tpmNote = tpmInfo.tools ? "" : " (tools missing)";
+    console.log(`  - TPM2 available${tpmNote}: externalAnchor: { type: "tpm2" }`);
   }
 
   ok("Inspect done.");

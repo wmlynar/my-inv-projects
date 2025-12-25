@@ -519,6 +519,8 @@ MAY:
 - wypisać listę wykrytych USB urządzeń (vid/pid/serial),
 - wypisać mounty host‑shared (vboxsf/9p/virtiofs/vmhgfs/cifs/nfs),
 - wypisać mounty USB (jeśli możliwe) oraz dostępność TPM2,
+- sprawdzić wsparcie xattr (gdy planujesz `mode=file+xattr`),
+- jeśli externalAnchor jest skonfigurowany: zweryfikować jego dostępność (file/usb/lease/tpm2),
 - wskazać rekomendowane konfiguracje `externalAnchor` (usb/file/tpm2),
 - opcjonalnie zwrócić JSON (`--json`) do automatyzacji.
 
