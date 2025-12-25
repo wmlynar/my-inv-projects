@@ -111,6 +111,13 @@ npx seal release prod --packager thin-single
   - `memfd` wymaga wsparcia jądra; brak wsparcia = błąd uruchomienia.
   - `tmpfile` używa `mkstemp` i usuwa plik z dysku (unlink), ale nie używa memfd.
 
+**Błędy runtime (bez sentinel):**
+- brak `memfd` przy `runtimeStore=memfd` → `[thin] runtime fd failed` (27) / `[thin] payload fd failed` (29),
+- `clearenv()` niepowodzenie w trybie allowlist → `[thin] runtime invalid` (74).
+
+**Błędy runtime (z sentinel):**
+- komunikaty są zanonimizowane do `[thin] runtime invalid` (exit code blokujący).
+
 ### 2.3 Idempotencja i rozpoznawanie stanu (MUST)
 `seal ship --packager thin-split`:
 - rozpoznaje stan targetu (runtime/payload/usługa),
