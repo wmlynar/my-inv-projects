@@ -160,12 +160,15 @@ function resolveSentinelConfig({ projectRoot, projectCfg, targetCfg, targetName,
 
 function buildFingerprintHash(level, hostInfo, flags) {
   const includePuid = !!(flags && flags.includePuid);
+  const includeCpuId = !!(flags && flags.includeCpuId);
   const fpString = buildFingerprintString(level, {
     mid: hostInfo.mid,
     rid: hostInfo.rid,
     puid: hostInfo.puid,
     eah: hostInfo.eah,
+    cpuid: hostInfo.cpuid,
     includePuid,
+    includeCpuId,
   });
   return sha256(Buffer.from(fpString, "utf8"));
 }

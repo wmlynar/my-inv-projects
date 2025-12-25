@@ -13,6 +13,7 @@ const { buildFingerprintHash, resolveAutoLevel } = require("./sentinelConfig");
 
 const FLAG_REQUIRE_XATTR = 0x0001;
 const FLAG_L4_INCLUDE_PUID = 0x0002;
+const FLAG_INCLUDE_CPUID = 0x0004;
 
 function shQuote(value) {
   const str = String(value);
@@ -112,6 +113,14 @@ function getHostInfoSsh(targetCfg) {
 set -euo pipefail
 MID="$(cat /etc/machine-id 2>/dev/null || true)"
 PUID="$(cat /sys/class/dmi/id/product_uuid 2>/dev/null || true)"
+CPU_VENDOR="$(awk -F: '/^vendor_id[[:space:]]*:/ {gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2; exit}' /proc/cpuinfo 2>/dev/null || true)"
+CPU_FAMILY="$(awk -F: '/^cpu family[[:space:]]*:/ {gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2; exit}' /proc/cpuinfo 2>/dev/null || true)"
+CPU_MODEL="$(awk -F: '/^model[[:space:]]*:/ {gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2; exit}' /proc/cpuinfo 2>/dev/null || true)"
+CPU_STEP="$(awk -F: '/^stepping[[:space:]]*:/ {gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2; exit}' /proc/cpuinfo 2>/dev/null || true)"
+CPUID=""
+if [ -n "$CPU_VENDOR$CPU_FAMILY$CPU_MODEL$CPU_STEP" ]; then
+  CPUID="$(echo "${CPU_VENDOR}:${CPU_FAMILY}:${CPU_MODEL}:${CPU_STEP}" | tr 'A-Z' 'a-z')"
+fi
 LINE="$(awk '$5=="/" {print; exit}' /proc/self/mountinfo)"
 MAJMIN=""
 FSTYPE=""
@@ -155,6 +164,7 @@ echo "MID=$MID"
 echo "RID=$RID"
 echo "FSTYPE=$FSTYPE"
 echo "PUID=$PUID"
+echo "CPUID=$CPUID"
 `;
   const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-lc", script], stdio: "pipe" });
   if (!res.ok) {
@@ -167,6 +177,7 @@ echo "PUID=$PUID"
     rid: kv.RID || "",
     fstype: kv.FSTYPE || "",
     puid: kv.PUID || "",
+    cpuid: kv.CPUID || "",
   };
 }
 
@@ -232,9 +243,11 @@ function installSentinelSsh({ targetCfg, sentinelCfg, force, insecure }) {
   if (level >= 1 && !hostInfo.mid) throw new Error("sentinel install failed: missing machine-id");
   if (level >= 2 && !hostInfo.rid) throw new Error("sentinel install failed: missing rid");
 
-  const flags = 0;
+  let flags = 0;
+  const includeCpuId = level >= 1 && !!hostInfo.cpuid;
+  if (includeCpuId) flags |= FLAG_INCLUDE_CPUID;
   const installId = crypto.randomBytes(32);
-  const fpHash = buildFingerprintHash(level, hostInfo, { includePuid: false });
+  const fpHash = buildFingerprintHash(level, hostInfo, { includePuid: false, includeCpuId });
   const blob = packBlobV1({ level, flags, installId, fpHash }, sentinelCfg.anchor);
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-"));
@@ -439,7 +452,8 @@ echo "FILE_STAT=$statline"
 
   const hostInfo = getHostInfoSsh(targetCfg);
   const includePuid = !!(parsed.flags & FLAG_L4_INCLUDE_PUID);
-  const fpHash = buildFingerprintHash(parsed.level, hostInfo, { includePuid });
+  const includeCpuId = !!(parsed.flags & FLAG_INCLUDE_CPUID);
+  const fpHash = buildFingerprintHash(parsed.level, hostInfo, { includePuid, includeCpuId });
   const match = crypto.timingSafeEqual(parsed.fpHash, fpHash);
 
   const kv = parseKeyValueOutput(res.stdout);
@@ -548,6 +562,7 @@ function probeSentinelSsh({ targetCfg, sentinelCfg }) {
 module.exports = {
   FLAG_REQUIRE_XATTR,
   FLAG_L4_INCLUDE_PUID,
+  FLAG_INCLUDE_CPUID,
   getHostInfoSsh,
   probeSentinelSsh,
   installSentinelSsh,

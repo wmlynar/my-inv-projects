@@ -67,7 +67,7 @@ function deriveOpaqueFile(namespaceIdHex, appId) {
   return hash.slice(0, 12);
 }
 
-function buildFingerprintString(level, { mid, rid, puid, eah, includePuid }) {
+function buildFingerprintString(level, { mid, rid, puid, eah, cpuid, includePuid, includeCpuId }) {
   const lvl = Number(level);
   if (!Number.isFinite(lvl)) throw new Error(`Invalid level: ${level}`);
   const lines = [];
@@ -76,15 +76,31 @@ function buildFingerprintString(level, { mid, rid, puid, eah, includePuid }) {
   } else if (lvl === 1) {
     if (!mid) throw new Error("Missing machine-id for L1");
     lines.push("v1", `mid=${mid}`);
+    if (includeCpuId) {
+      if (!cpuid) throw new Error("Missing cpuid for L1+flag");
+      lines.push(`cpuid=${cpuid}`);
+    }
   } else if (lvl === 2) {
     if (!mid || !rid) throw new Error("Missing mid/rid for L2");
     lines.push("v2", `mid=${mid}`, `rid=${rid}`);
+    if (includeCpuId) {
+      if (!cpuid) throw new Error("Missing cpuid for L2+flag");
+      lines.push(`cpuid=${cpuid}`);
+    }
   } else if (lvl === 3) {
     if (!mid || !rid || !puid) throw new Error("Missing mid/rid/puid for L3");
     lines.push("v3", `mid=${mid}`, `rid=${rid}`, `puid=${puid}`);
+    if (includeCpuId) {
+      if (!cpuid) throw new Error("Missing cpuid for L3+flag");
+      lines.push(`cpuid=${cpuid}`);
+    }
   } else if (lvl === 4) {
     if (!mid || !rid || !eah) throw new Error("Missing mid/rid/eah for L4");
     lines.push("v4", `mid=${mid}`, `rid=${rid}`);
+    if (includeCpuId) {
+      if (!cpuid) throw new Error("Missing cpuid for L4+flag");
+      lines.push(`cpuid=${cpuid}`);
+    }
     if (includePuid) {
       if (!puid) throw new Error("Missing puid for L4+flag");
       lines.push(`puid=${puid}`);

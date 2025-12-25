@@ -293,6 +293,7 @@ Stała długość: **76 bajtów**
 ### 7.2 Flagi (MUST)
 - `0x0001` — `FLAG_REQUIRE_XATTR` (mode=file+xattr)
 - `0x0002` — `FLAG_L4_INCLUDE_PUID` (L4 ma uwzględniać `puid` jeśli dostępne)
+- `0x0004` — `FLAG_INCLUDE_CPUID` (uwzględnij `cpuid` w fingerprint, jeśli dostępne)
 
 ### 7.3 CRC32 — wariant (MUST)
 CRC32 = **CRC‑32/ISO‑HDLC** (jak gzip/zlib).  
@@ -320,9 +321,13 @@ Jeśli kiedyś chcecie podnieść próg “edytuję bajty + przeliczam CRC”, m
 - `mid`: `/etc/machine-id`
 - `rid`: §8.4
 - `puid`: `/sys/class/dmi/id/product_uuid` (opcjonalne)
+- `cpuid`: `/proc/cpuinfo` (opcjonalne), kanonicznie:
+  - `vendor_id`, `cpu family`, `model`, `stepping` z **pierwszego** CPU
+  - format: `vendor:family:model:stepping` (lower‑case, bez spacji)
 - `eah`: external anchor hash (Level 4, §9)
 
-**Nie używamy CPUID** jako źródła fingerprintu (odporność na VirtualBox `--cpuidremoveall "1"`).
+**CPUID jest tylko sygnałem pomocniczym**: używamy go jako dodatkowej kotwicy (gdy dostępne), ale **nigdy** jako jedynego źródła fingerprintu.  
+Wirtualizacja może go ukryć/zmienić (np. VirtualBox `--cpuidremoveall "1"`), więc **nie polegamy** na nim dla bezpieczeństwa — jest flagowany w blobie i opcjonalny.
 
 ### 8.2 Czego absolutnie nie robić (MUST)
 Nie opierać fingerprintu o:
@@ -383,12 +388,14 @@ Fingerprint string jest UTF‑8, z `\n` jako końcem linii i **zawsze kończy si
   ```
   v1
   mid=<machine-id>
+  [cpuid=<cpuid>  jeśli FLAG_INCLUDE_CPUID]
   ```
 - L2:
   ```
   v2
   mid=<machine-id>
   rid=<rid>
+  [cpuid=<cpuid>  jeśli FLAG_INCLUDE_CPUID]
   ```
 - L3 (opt‑in):
   ```
@@ -396,12 +403,14 @@ Fingerprint string jest UTF‑8, z `\n` jako końcem linii i **zawsze kończy si
   mid=<machine-id>
   rid=<rid>
   puid=<product-uuid>
+  [cpuid=<cpuid>  jeśli FLAG_INCLUDE_CPUID]
   ```
 - L4:
   ```
   v4
   mid=<machine-id>
   rid=<rid>
+  [cpuid=<cpuid>  jeśli FLAG_INCLUDE_CPUID]
   [puid=<product-uuid>  jeśli FLAG_L4_INCLUDE_PUID]
   eah=<external-anchor-sha256-hex>
   ```
@@ -708,8 +717,8 @@ Poniżej są elementy, które pojawiały się w poprzednich wersjach lub recenzj
 5) **Jawne kody błędów `E_SENTINEL_*` w runtime**  
    Wycofane: stealth. Reason‑codes istnieją tylko w narzędziach deployera (`seal sentinel verify`).
 
-6) **Oparcie fingerprintu o CPUID / cechy CPU**  
-   Wycofane: podatne na `--cpuidremoveall "1"` i niepotrzebnie kruche. L4 używa external anchor.
+6) **Oparcie fingerprintu wyłącznie o CPUID / cechy CPU**  
+   Wycofane: podatne na `--cpuidremoveall "1"` i kruche. CPUID może być **tylko dodatkiem**, nigdy jedyną kotwicą. L4 używa external anchor.
 
 7) **Fingerprint oparty o hash systemu / listę pakietów**  
    Wycofane: nie update‑safe.
