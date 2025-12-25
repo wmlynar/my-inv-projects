@@ -8,6 +8,7 @@ const { getSealPaths, loadProjectConfig, loadTargetConfig, resolveTargetName, re
 const { info, warn, err, ok, hr } = require("../lib/ui");
 const { spawnSyncSafe } = require("../lib/spawn");
 const { fileExists } = require("../lib/fsextra");
+const { resolvePostjectBin } = require("../lib/postject");
 const { sshExec } = require("../lib/ssh");
 
 function nodeMajor() {
@@ -30,15 +31,6 @@ function resolveCcOverride(opts) {
   if (!raw) return null;
   const cc = String(raw).trim();
   return cc ? cc : null;
-}
-
-function resolvePostjectBin() {
-  const localPostject = path.join(__dirname, "..", "..", "node_modules", ".bin", "postject");
-  const parentPostject = path.join(__dirname, "..", "..", "..", "node_modules", ".bin", "postject");
-  if (fileExists(localPostject)) return localPostject;
-  if (fileExists(parentPostject)) return parentPostject;
-  if (hasCommand("postject")) return "postject";
-  return null;
 }
 
 function remoteLayout(targetCfg) {
@@ -103,7 +95,7 @@ async function cmdCheck(cwd, targetArg, opts) {
 
   const proj = loadProjectConfig(projectRoot);
   if (!proj) {
-    errors.push("Missing seal.json5 (project). If this is a workspace root, use seal batch or cd into a project.");
+    errors.push("Missing seal.json5 (project). If this is a workspace root with projects, run the command from that root (it will execute for subprojects) or cd into a project.");
   }
 
   const targetName = resolveTargetName(projectRoot, targetArg || null);

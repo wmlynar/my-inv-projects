@@ -13,9 +13,47 @@ const { cmdRunLocal } = require("./commands/runLocal");
 const { cmdTargetAdd } = require("./commands/targetAdd");
 const { cmdConfigAdd, cmdConfigDiff, cmdConfigPull, cmdConfigPush } = require("./commands/config");
 const { cmdDeploy, cmdShip, cmdStatus, cmdLogs, cmdRestart, cmdDisable, cmdRollback, cmdUninstall, cmdRunRemote, cmdRemote } = require("./commands/deploy");
+const { loadSealFile, isWorkspaceConfig } = require("./lib/project");
 const { version } = require("./lib/version");
 
+const BATCH_SKIP_ENV = "SEAL_BATCH_SKIP";
+
+function isWorkspaceRoot(cwd) {
+  const cfg = loadSealFile(cwd);
+  return !!cfg && isWorkspaceConfig(cfg);
+}
+
+function hasHelpOrVersionFlag(args) {
+  if (args[0] === "help") return true;
+  return args.some((a) => a === "--help" || a === "-h" || a === "--version" || a === "-V");
+}
+
+function getAutoBatchRequest(argv, cwd) {
+  if (process.env[BATCH_SKIP_ENV] === "1") return null;
+  const args = argv.slice(2);
+  if (!args.length) return null;
+  if (hasHelpOrVersionFlag(args)) return null;
+  const cmd = args[0];
+  if (!cmd || cmd.startsWith("-")) return null;
+  if (cmd === "batch") return null;
+  if (!isWorkspaceRoot(cwd)) return null;
+  return { cmd, args: args.slice(1) };
+}
+
 async function main(argv) {
+  const cwd = process.cwd();
+  const autoBatch = getAutoBatchRequest(argv, cwd);
+  if (autoBatch) {
+    await cmdBatch(cwd, autoBatch.cmd, autoBatch.args, {
+      root: ".",
+      depth: 4,
+      filter: null,
+      dryRun: false,
+      keepGoing: false,
+    });
+    return;
+  }
+
   const program = new Command();
 
   program
@@ -100,18 +138,6 @@ async function main(argv) {
     .argument("[artifactOrTarget]", "Artifact path (.tgz) or target name (defaults to last artifact)", null)
     .option("--explain", "Print a readable checklist", false)
     .action(async (arg, opts) => cmdVerify(process.cwd(), arg, opts));
-
-  program
-    .command("batch")
-    .description("Run a seal command across multiple projects under a root folder")
-    .argument("<cmd>", "Seal command to run (e.g. release|deploy|ship|status)")
-    .argument("[args...]", "Arguments passed to the command")
-    .option("--root <dir>", "Root directory to scan (default: cwd)", ".")
-    .option("--depth <n>", "Max scan depth (default: 4)", "4")
-    .option("--filter <text>", "Only include projects whose path/appName matches", null)
-    .option("--dry-run", "Only list projects, do not run command", false)
-    .option("--keep-going", "Continue even if a project fails", false)
-    .action(async (cmd, args, opts) => cmdBatch(process.cwd(), cmd, args, opts));
 
   program
     .command("deploy")

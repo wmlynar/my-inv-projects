@@ -13,7 +13,7 @@ async function cmdRunLocal(cwd, opts) {
   const projectRoot = findProjectRoot(cwd);
   const paths = getSealPaths(projectRoot);
   const proj = loadProjectConfig(projectRoot);
-  if (!proj) throw new Error("Brak seal.json5 (projekt). Jeśli jesteś w root monorepo, użyj seal batch lub przejdź do podprojektu.");
+  if (!proj) throw new Error("Brak seal.json5 (projekt). Jeśli to root monorepo z listą projects, uruchom polecenie w root (wykona się dla podprojektów) albo przejdź do podprojektu.");
 
   if (!opts.sealed) {
     // Dev run: node entry

@@ -132,21 +132,17 @@ seal --help
 
 ---
 
-## Batch dla wielu projektów (monorepo)
+## Wiele projektów (monorepo)
 
-Jeśli masz wiele projektów z `seal.json5` pod wspólnym folderem, możesz wykonać komendę dla wszystkich:
+Jeśli w katalogu znajduje się `seal.json5` z sekcją `projects`, **każde polecenie SEAL** uruchomione w tym katalogu wykona się dla wszystkich projektów z listy:
 
 ```bash
-seal batch deploy prod --root klienci/nowy-styl
+seal deploy prod
 ```
 
-Jeśli w katalogu `--root` znajduje się `seal.json5` z sekcją `projects`, SEAL użyje jawnej listy projektów (jak w Maven).
-Wpisy mogą być stringami (`"robot-ui"`) albo obiektami `{ name, path }`. Gdy `path` jest pominięte, SEAL używa wartości `name`.
+Aby wykonać komendę tylko dla jednego projektu, przejdź do katalogu projektu i uruchom ją tam.
 
-Opcje:
-- `--filter <text>` – ogranicz listę po ścieżce/nazwie aplikacji
-- `--dry-run` – tylko wypisz listę projektów
-- `--keep-going` – kontynuuj mimo błędów
+Wpisy `projects` mogą być stringami (`"robot-ui"`) albo obiektami `{ name, path }`. Gdy `path` jest pominięte, SEAL używa wartości `name`.
 
 ---
 

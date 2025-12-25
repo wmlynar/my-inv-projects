@@ -11,7 +11,7 @@ async function cmdExplain(cwd, opts) {
 
   const proj = loadProjectConfig(projectRoot);
   if (!proj) {
-    throw new Error("Brak seal.json5 (projekt). Jeśli jesteś w root monorepo, użyj seal batch lub przejdź do podprojektu.");
+    throw new Error("Brak seal.json5 (projekt). Jeśli to root monorepo z listą projects, uruchom polecenie w root (wykona się dla podprojektów) albo przejdź do podprojektu.");
   }
 
   const targetName = resolveTargetName(projectRoot, null);

@@ -212,13 +212,9 @@ seal deploy robot-01 robot-02 robot-03
 **Cel:** jedna komenda dla wielu projektów pod wspólnym folderem.
 
 ```bash
-seal batch deploy prod --root klienci/nowy-styl
+seal deploy prod
 ```
-
-Przydatne opcje:
-- `--filter <text>` – ogranicz listę po ścieżce/nazwie aplikacji
-- `--dry-run` – tylko wypisz listę projektów
-- `--keep-going` – kontynuuj mimo błędów
+Uruchomione w katalogu z `seal.json5` zawierającym `projects` wykona polecenie dla wszystkich podprojektów.
 
 ---
 

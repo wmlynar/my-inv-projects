@@ -14,7 +14,7 @@ const { deploySsh, deploySshFast, bootstrapSsh, installServiceSsh, statusSsh, lo
 
 function resolveTarget(projectRoot, targetArg) {
   const proj = loadProjectConfig(projectRoot);
-  if (!proj) throw new Error("Brak seal.json5 (projekt). Jeśli jesteś w root monorepo, użyj seal batch lub przejdź do podprojektu.");
+  if (!proj) throw new Error("Brak seal.json5 (projekt). Jeśli to root monorepo z listą projects, uruchom polecenie w root (wykona się dla podprojektów) albo przejdź do podprojektu.");
   const targetName = resolveTargetName(projectRoot, targetArg);
   const t = loadTargetConfig(projectRoot, targetName);
   if (!t) throw new Error(`Brak targetu ${targetName}. Zrób: seal target add ${targetName}`);

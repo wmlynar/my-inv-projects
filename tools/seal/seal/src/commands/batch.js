@@ -7,6 +7,8 @@ const { spawnSyncSafe } = require("../lib/spawn");
 const { hr, info, warn, ok } = require("../lib/ui");
 const { loadProjectConfig, loadSealFile, isWorkspaceConfig } = require("../lib/project");
 
+const BATCH_SKIP_ENV = "SEAL_BATCH_SKIP";
+
 const SKIP_DIRS = new Set([
   "node_modules",
   ".git",
@@ -136,8 +138,8 @@ async function cmdBatch(cwd, cmd, args, opts) {
   }
 
   hr();
-  info(`Batch: ${projects.length} project(s) under ${rootDir}`);
-  if (filter) info(`Batch: filter="${filter}"`);
+  info(`Workspace: ${projects.length} project(s) under ${rootDir}`);
+  if (filter) info(`Workspace: filter="${filter}"`);
   if (opts.dryRun) {
     for (const p of projects) {
       console.log(`- ${p.appName}: ${p.root}`);
@@ -155,10 +157,14 @@ async function cmdBatch(cwd, cmd, args, opts) {
   for (let i = 0; i < projects.length; i++) {
     const p = projects[i];
     hr();
-    info(`Batch: [${i + 1}/${projects.length}] ${p.appName} (${p.root})`);
-    const res = spawnSyncSafe(bin, baseArgs, { cwd: p.root, stdio: "inherit" });
+    info(`Workspace: [${i + 1}/${projects.length}] ${p.appName} (${p.root})`);
+    const res = spawnSyncSafe(bin, baseArgs, {
+      cwd: p.root,
+      stdio: "inherit",
+      env: { [BATCH_SKIP_ENV]: "1" },
+    });
     if (!res.ok) {
-      const msg = `Batch: command failed for ${p.appName} (exit=${res.status ?? "?"})`;
+      const msg = `Workspace: command failed for ${p.appName} (exit=${res.status ?? "?"})`;
       warn(msg);
       failures.push({ project: p, status: res.status });
       if (!opts.keepGoing) break;
@@ -167,10 +173,10 @@ async function cmdBatch(cwd, cmd, args, opts) {
 
   if (failures.length) {
     const names = failures.map((f) => f.project.appName).join(", ");
-    throw new Error(`Batch failed for: ${names}`);
+    throw new Error(`Workspace failed for: ${names}`);
   }
 
-  ok("Batch done.");
+  ok("Workspace done.");
 }
 
 module.exports = { cmdBatch };
