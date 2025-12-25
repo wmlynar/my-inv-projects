@@ -89,7 +89,7 @@ Domyślnie `seal release`:
 - uruchamia `seal check` (fail-fast),
 - buduje artefakt do `seal-out/<app>-<buildId>.tgz`,
 - rozpakowuje build do `seal-out/release/` (zawsze tylko ostatni release).
-- czyści `seal-out/` przed buildem (jak `target/`), więc zawsze zostaje tylko ostatni build.
+- czyści `seal-out/` przed buildem (jak `target/`), z wyjątkiem `seal-out/cache/` (thin cache), więc zawsze zostaje tylko ostatni build.
 
 Fallback jest wyłączony domyślnie; włącz go jawnie przez `build.allowFallback=true` albo `--packager fallback`.
 

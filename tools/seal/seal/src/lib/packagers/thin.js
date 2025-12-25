@@ -8,6 +8,7 @@ const { spawn, spawnSync } = require("child_process");
 const { spawnSyncSafe } = require("../spawn");
 const { ensureDir, fileExists } = require("../fsextra");
 const { info, warn } = require("../ui");
+const { SEAL_OUT_DIR } = require("../paths");
 
 const THIN_VERSION = 1;
 const THIN_FOOTER_LEN = 32;
@@ -24,6 +25,7 @@ const THIN_LEVELS = {
 };
 
 const DEFAULT_CODEC_CACHE_LIMIT = 2;
+const THIN_CACHE_SUBDIR = path.join(SEAL_OUT_DIR, "cache", "thin");
 
 const DEFAULT_LIMITS = {
   maxChunks: 1_000_000,
@@ -42,7 +44,7 @@ function normalizeTargetName(name) {
 
 function getCodecCachePath(projectRoot, targetName) {
   const safe = normalizeTargetName(targetName);
-  return path.join(projectRoot, "seal-thin", "cache", safe, "codec_state.json");
+  return path.join(projectRoot, THIN_CACHE_SUBDIR, safe, "codec_state.json");
 }
 
 function getCodecCacheLimit() {
@@ -55,7 +57,7 @@ function getCodecCacheLimit() {
 function pruneCodecCache(projectRoot, keepTargetName) {
   const limit = getCodecCacheLimit();
   if (!projectRoot || limit <= 0) return;
-  const cacheRoot = path.join(projectRoot, "seal-thin", "cache");
+  const cacheRoot = path.join(projectRoot, THIN_CACHE_SUBDIR);
   if (!fileExists(cacheRoot)) return;
 
   let entries = [];
@@ -693,7 +695,7 @@ static int make_memfd(const char *name) {
   if (fd >= 0) return fd;
 #endif
   char tmp[64];
-  snprintf(tmp, sizeof(tmp), "/tmp/.seal-thin-%d-XXXXXX", getpid());
+  snprintf(tmp, sizeof(tmp), "/tmp/.seal-out-thin-%d-XXXXXX", getpid());
   fd = mkstemp(tmp);
   if (fd >= 0) {
     unlink(tmp);

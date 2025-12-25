@@ -135,7 +135,7 @@ async function buildThinRelease(mode, buildTimeoutMs) {
   targetCfg.packager = "thin";
   targetCfg.thinMode = mode;
 
-  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), `seal-thin-${mode}-`));
+  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), `seal-out-${mode}-`));
   const outDir = path.join(outRoot, "seal-out");
 
   const res = await withTimeout(`buildRelease(${mode})`, buildTimeoutMs, () =>

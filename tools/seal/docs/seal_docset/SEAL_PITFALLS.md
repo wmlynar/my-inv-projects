@@ -56,11 +56,11 @@
   - Wymaganie: kompresja nie moze wisiec na `spawnSync` z `stdin` (uzyj streamu i obslugi `error`).
 
 - Blad: `codec_state` ginal miedzy deployami (brak zgodnosci kodeka).
-- Wymaganie: `codec_state` musi byc zapisywany lokalnie i utrzymany (`seal-thin/cache/<target>/codec_state.json`).
-- Wymaganie: `seal-thin/` jest ignorowany w VCS.
+- Wymaganie: `codec_state` musi byc zapisywany lokalnie i utrzymany (`seal-out/cache/thin/<target>/codec_state.json`).
+- Wymaganie: `seal-out/` jest ignorowany w VCS.
   - Wymaganie: brak `codec_state` = rebootstrap.
 
-- Blad: cache `seal-thin` rosl bez limitu i zapychal dysk.
+- Blad: cache `seal-out/cache/thin` rosl bez limitu i zapychal dysk.
   - Wymaganie: cache ma limit (np. liczba wpisow/rozmiar/TTL) i auto-pruning.
   - Wymaganie: limit musi byc konfigurowalny (0 = wylacza cache), a pruning logowany.
 

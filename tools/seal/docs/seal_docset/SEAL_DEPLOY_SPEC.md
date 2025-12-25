@@ -436,7 +436,7 @@ my-app/
 ### 7.2. Zasady
 - `seal-config/configs/` zawiera tylko konfiguracje aplikacji.
 - `seal-config/targets/` zawiera tylko konfiguracje deploymentu.
-- `seal-out/` jest w pełni generowany (jak `target/` w Maven) i może być czyszczony w całości przy każdym `seal release`/`seal verify`/`seal deploy` – nie trzymaj tam nic ręcznie.
+- `seal-out/` jest w pełni generowany (jak `target/` w Maven) i może być czyszczony przy każdym `seal release`/`seal verify`/`seal deploy` – wyjątkiem jest `seal-out/cache/` (thin cache), który jest zachowywany; nie trzymaj tam nic ręcznie.
 - `seal-out/remote/` jest zarządzany automatycznie przez Seal (snapshoty configu z serwera) i jest **generowany** (gitignore).
   - Snapshoty mogą zawierać sekrety – to jest akceptowane (repo nie ma „zabezpieczać przed wyciekiem sekretów”, tylko przed wyciekiem kodu).
   - Jeśli użytkownik nie chce snapshotów, używa `--no-snapshot` w `seal deploy`.
@@ -444,7 +444,7 @@ my-app/
 - `seal-out/run.last_failed/` jest snapshotem ostatniego nieudanego uruchomienia (nadpisywany wyłącznie przy failu) i również powinien być w `.gitignore`.
 
 #### Wymagania normatywne (REQ-OUT)
-- REQ-OUT-001 (MUST): `seal-out/` jest katalogiem w pełni generowanym i może być czyszczony w całości przed każdym `seal release`/`seal verify`/`seal deploy`.
+- REQ-OUT-001 (MUST): `seal-out/` jest katalogiem w pełni generowanym; Seal czyści go przed każdym `seal release`/`seal verify`/`seal deploy`, z wyjątkiem `seal-out/cache/` (cache thin).
 - REQ-OUT-002 (MUST): `seal-out/release/` zawiera tylko ostatni lokalny release (zawsze nadpisywany).
 - REQ-OUT-003 (MUST): `seal-config/` zawiera wyłącznie konfiguracje; Seal nie zapisuje tam artefaktów build/deploy.
 

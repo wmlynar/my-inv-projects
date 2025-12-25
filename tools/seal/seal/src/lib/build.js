@@ -38,6 +38,15 @@ function readAppVersion(projectRoot) {
   return null;
 }
 
+function cleanOutDir(outDir, keepNames = []) {
+  if (!fileExists(outDir)) return;
+  const keep = new Set(keepNames);
+  for (const entry of fs.readdirSync(outDir)) {
+    if (keep.has(entry)) continue;
+    rmrf(path.join(outDir, entry));
+  }
+}
+
 function obfuscationOptions(profile) {
   // Keep logs readable: do NOT hide string literals.
   const base = {
@@ -660,12 +669,14 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   const appName = projectCfg.appName;
   const buildId = makeBuildId();
 
-  const baseOutDir = outDirOverride || getSealPaths(projectRoot).outDir;
+  const canonicalOutDir = getSealPaths(projectRoot).outDir;
+  const baseOutDir = outDirOverride || canonicalOutDir;
   const stageDir = path.join(baseOutDir, "stage");
   const releaseDir = path.join(baseOutDir, "release");
 
   // Always keep only the latest local release artifacts.
-  rmrf(baseOutDir);
+  const keepNames = baseOutDir === canonicalOutDir ? ["cache"] : [];
+  cleanOutDir(baseOutDir, keepNames);
   ensureDir(stageDir);
   ensureDir(releaseDir);
 

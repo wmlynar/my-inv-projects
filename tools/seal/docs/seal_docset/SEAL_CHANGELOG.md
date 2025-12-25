@@ -4,7 +4,7 @@
 
 ### Build / struktura (P0)
 - **Rozdzielone foldery:** `seal-config/` (w repo) vs `seal-out/` (artefakty, gitignore).
-- **Tylko ostatni release:** `seal-out/` jest czyszczony na każdym buildzie (brak historii i symlinków).
+- **Tylko ostatni release:** `seal-out/` jest czyszczony na każdym buildzie (brak historii i symlinków), z wyjątkiem `seal-out/cache/` (thin cache).
 - **Runtime configs w jednym miejscu:** `seal-config/configs/` zamiast osobnego `config/` w root.
 
 ### Deploy / serwer (P0)

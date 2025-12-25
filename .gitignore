@@ -20,7 +20,6 @@ tmp/
 
 # Tooling caches
 .cache/
-seal-thin/
 .parcel-cache/
 .vite/
 .turbo/

@@ -303,7 +303,7 @@ Propozycja UX (opcjonalnie, ale spójne ze źródłami):
 - `seal rollback` przywraca `r/pl.prev` → `r/pl` i restartuje usługę.
 
 Lock (opcjonalnie / SHOULD):
-- `<installDir>/seal-thin/deploy.lock` — drugi deploy czeka albo failuje.
+- `<installDir>/seal-out/thin/deploy.lock` — drugi deploy czeka albo failuje.
 
 ### 6.3 Algorytm `seal ship --packager thin` (BOOTSTRAP) — propozycja
 1) Ensure directories: `<installDir>/b`, `<installDir>/r`, `<installDir>/shared` (+ `var`/`data` jeśli używane).
@@ -593,16 +593,16 @@ W BOOTSTRAP launcher jest stały. Payloady muszą być kodowane tym samym “kod
   - parametry kodeka (seedy/tablice),
   - identyfikator runtime Node (`runtime_id`/`node_runtime_id`).
 - SEAL zapisuje stan kodeka lokalnie per target/env:
-  - `seal-thin/cache/<target>/codec_state.json`
+  - `seal-out/cache/thin/<target>/codec_state.json`
 - Na target (BOOTSTRAP) zapisuje się też metadane zgodności kodeka **w formie binarnej i nieopisowej**:
   - `<installDir>/r/c`
   - w release: `<release>/r/c`
 
 **Wymóg praktyczny:** na serwerze **nie zapisujemy** metadanych w formie czytelnej (JSON). Wszystko co trafia na target powinno być binarne/obfuskowane.
 
-**Wymóg praktyczny:** `codec_state` musi przetrwać między deployami (dodaj `seal-thin/` do `.gitignore`).
+**Wymóg praktyczny:** `codec_state` musi przetrwać między deployami (dodaj `seal-out/` do `.gitignore`).
 
-**Wymóg praktyczny:** cache nie może rosnąć bez limitu — SEAL automatycznie sprząta `seal-thin/cache/` (domyślnie zostawia ostatnie 2 wpisy).
+**Wymóg praktyczny:** cache nie może rosnąć bez limitu — SEAL automatycznie sprząta `seal-out/cache/thin/` (domyślnie zostawia ostatnie 2 wpisy).
 Uwaga praktyczna: cache jest kluczowany m.in. po **target/poziom/format/kodek**. Przy częstym przełączaniu środowisk (np. `local`/`prod`), wariantów builda lub buildera, powstają nowe wpisy i stare mogą zostać wyparte przez limit. Jeśli często skaczesz między wariantami i zależy Ci na unikaniu pełnych rebuildów, zwiększ limit przez `SEAL_THIN_CACHE_LIMIT`.
 Limit można ustawić przez `SEAL_THIN_CACHE_LIMIT` (0 = brak sprzątania).
 

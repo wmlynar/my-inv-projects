@@ -127,7 +127,7 @@ seal --help
 ## Struktura konfiguracji i artefaktów
 
 - `seal-config/` – konfiguracja Seala (commitowana w repo).
-- `seal-out/` – artefakty generowane (jak `target/`), czyszczone przy każdym `seal release`/`seal verify`/`seal deploy`; dodaj do `.gitignore`.
+- `seal-out/` – artefakty generowane (jak `target/`); przy `seal release`/`seal verify`/`seal deploy` czyszczone są katalogi robocze, ale `seal-out/cache/` (thin cache) jest zachowywany; dodaj do `.gitignore`.
 
 ---
 

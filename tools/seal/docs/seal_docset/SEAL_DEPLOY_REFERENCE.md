@@ -337,7 +337,7 @@ Minimalny algorytm (zgodny ze SPEC v0.5):
 ### 6.3. `seal-out/` – folder do inspekcji i local-run
 
 Cel: po `seal release` użytkownik ma gotowy folder „do oglądania” i „do uruchomienia”.
-`seal-out/` jest czyszczony przy każdym release (zostaje tylko ostatni build).
+`seal-out/` jest czyszczony przy każdym release (zostaje tylko ostatni build), z wyjątkiem `seal-out/cache/` (thin cache).
 To katalog w pełni generowany (jak `target/`), więc nie trzymaj w nim nic ręcznie i dodaj go do `.gitignore`.
 
 Struktura:
