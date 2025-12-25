@@ -156,29 +156,31 @@ function resolveCpuIdSsh({ targetCfg, cpuIdSource, hostInfo, require }) {
   const needProc = mode === "proc" || mode === "both";
   const needAsm = mode === "asm" || mode === "both";
   const proc = hostInfo.cpuidProc || "";
-  if (needProc && !proc) {
+  const procOk = !!proc;
+  if (mode === "proc" && !procOk) {
     if (require) throw new Error("sentinel cpuid(proc) missing");
     return "";
   }
   let asm = "";
   let asmUnsupported = false;
+  let asmOk = false;
   if (needAsm) {
-    const res = getCpuIdAsmSsh(targetCfg, { allowUnsupported: true });
+    const res = getCpuIdAsmSsh(targetCfg, { allowUnsupported: mode === "both" });
     asm = res.value || "";
     asmUnsupported = !!res.unsupported;
+    asmOk = !!asm;
   }
-  if (needAsm && !asm && !asmUnsupported) {
-    throw new Error("sentinel cpuid(asm) missing");
-  }
-  if (needProc && needAsm) {
-    if (asmUnsupported) return `proc:${proc}`;
-    return `proc:${proc}|asm:${asm}`;
-  }
-  if (needAsm) {
-    if (asmUnsupported) return "";
+  if (mode === "asm") {
+    if (!asmOk) throw new Error("sentinel cpuid(asm) missing");
     return `asm:${asm}`;
   }
-  return `proc:${proc}`;
+  if (mode === "both") {
+    if (procOk && asmOk) return `proc:${proc}|asm:${asm}`;
+    if (procOk) return `proc:${proc}`;
+    if (asmOk) return `asm:${asm}`;
+    return "";
+  }
+  return procOk ? `proc:${proc}` : "";
 }
 
 function describeSentinelInstallError(out, baseDir) {

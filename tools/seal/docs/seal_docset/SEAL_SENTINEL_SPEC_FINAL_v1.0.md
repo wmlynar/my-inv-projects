@@ -339,8 +339,11 @@ Wirtualizacja może go ukryć/zmienić (np. VirtualBox `--cpuidremoveall "1"`), 
 - `off` — CPUID nie jest używane (flaga nie jest ustawiana)
 - `proc` — CPUID z `/proc/cpuinfo` (`cpuid=proc:<...>`)
 - `asm` — CPUID z instrukcji `cpuid` (x86/x64) (`cpuid=asm:<...>`)
-- `both` — **oba** źródła są użyte niezależnie (`cpuid=proc:<...>|asm:<...>`).  
-  Zmiana któregokolwiek źródła = mismatch fingerprint.
+- `both` — **użyj obu źródeł, jeśli są dostępne**.  
+  - jeśli są oba: `cpuid=proc:<...>|asm:<...>`  
+  - jeśli jest tylko jedno: `cpuid=proc:<...>` **lub** `cpuid=asm:<...>`  
+  - jeśli nie ma żadnego: CPUID jest pomijane (flaga nie jest ustawiana)
+  Zmiana któregokolwiek źródła = mismatch fingerprint (gdy oba były dostępne).
 
 Jeśli `cpuIdSource` wymaga `asm`, deployer **musi** mieć możliwość pobrania CPUID z hosta (np. przez `cc` podczas instalacji). Brak narzędzi = błąd (bez fallbacku).
 
