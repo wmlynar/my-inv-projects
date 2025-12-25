@@ -6,6 +6,7 @@
 - **Projekt + polityka:** przeniesione do `seal.json5` (w repo); targety/configi runtime pozostają w `seal-config/`.
 - **Tylko ostatni release:** `seal-out/` jest czyszczony na każdym buildzie (brak historii i symlinków), z wyjątkiem `seal-out/cache/` (thin cache).
 - **Runtime configs w jednym miejscu:** `seal-config/configs/` zamiast osobnego `config/` w root.
+- **Nowa komenda `seal clean`:** usuwa `seal-out/` dla projektu (w monorepo działa na listę `projects`).
 
 ### Deploy / serwer (P0)
 - **Bootstrap SSH uproszczony:** tworzy katalogi i nadaje uprawnienia; service instalowany po deployu (bez auto‑startu).

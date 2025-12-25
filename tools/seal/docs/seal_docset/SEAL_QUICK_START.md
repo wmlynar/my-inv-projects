@@ -94,6 +94,8 @@ Domyślnie `seal release`:
 
 Fallback jest wyłączony domyślnie; włącz go jawnie przez `build.allowFallback=true` albo `--packager fallback`.
 
+**Cleanup:** jeśli chcesz ręcznie wyczyścić artefakty, użyj `seal clean` (w monorepo uruchom w root, zadziała dla wszystkich podprojektów).
+
 ### Krok B: sprawdź artefakt (czy „naprawdę jest sealed”)
 
 ```bash

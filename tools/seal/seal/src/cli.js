@@ -7,6 +7,7 @@ const { cmdInit } = require("./commands/init");
 const { cmdExplain } = require("./commands/explain");
 const { cmdCheck } = require("./commands/check");
 const { cmdBatch } = require("./commands/batch");
+const { cmdClean } = require("./commands/clean");
 const { cmdRelease } = require("./commands/release");
 const { cmdVerify } = require("./commands/verify");
 const { cmdRunLocal } = require("./commands/runLocal");
@@ -138,6 +139,11 @@ async function main(argv) {
     .argument("[artifactOrTarget]", "Artifact path (.tgz) or target name (defaults to last artifact)", null)
     .option("--explain", "Print a readable checklist", false)
     .action(async (arg, opts) => cmdVerify(process.cwd(), arg, opts));
+
+  program
+    .command("clean")
+    .description("Remove seal-out/ for this project (generated artifacts)")
+    .action(async () => cmdClean(process.cwd()));
 
   program
     .command("deploy")

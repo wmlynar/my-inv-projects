@@ -129,6 +129,7 @@ seal --help
 - `seal.json5` – konfiguracja projektu + polityka (commitowane w repo).
 - `seal-config/` – runtime configi (`configs/`) i targety deployu (`targets/`) (commitowane w repo).
 - `seal-out/` – artefakty generowane (jak `target/`); przy `seal release`/`seal verify`/`seal deploy` czyszczone są katalogi robocze, ale `seal-out/cache/` (thin cache) jest zachowywany; dodaj do `.gitignore`.
+- `seal clean` – usuwa `seal-out/` dla projektu (w monorepo uruchom w root, zadziała dla wszystkich podprojektów).
 
 ---
 
