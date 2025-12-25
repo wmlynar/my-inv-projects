@@ -215,6 +215,10 @@
   - Wymaganie: tworz temp‑dir przez `mkdtemp`, pliki z `0600`, a po uzyciu zawsze sprzataj.
   - Wymaganie: unikaj `Date.now()` jako jedynego komponentu nazwy pliku.
 
+- Blad: instalacja/uninstall sentinela nie miala locka i fsync (ryzyko race/partial write).
+  - Wymaganie: `flock` w `<opaque_dir>` + `umask 077` + `fsync` pliku i katalogu przed/po rename.
+  - Wymaganie: tmp na serwerze ma losowy sufiks (unikaj kolizji).
+
 ## CLI / UX spojnosci
 
 - Blad: niespojne nazwy/semantyka komend (np. stop/disable).

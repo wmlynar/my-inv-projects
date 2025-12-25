@@ -206,7 +206,9 @@ function installSentinelSsh({ targetCfg, sentinelCfg, force, insecure }) {
   const tmpLocal = path.join(tmpDir, "blob");
   fs.writeFileSync(tmpLocal, blob, { mode: 0o600 });
 
-  const tmpRemote = `/tmp/.${targetCfg.serviceName || targetCfg.appName || "app"}-s-${Date.now()}`;
+  const remoteTag = String(targetCfg.serviceName || targetCfg.appName || "app").replace(/[^a-zA-Z0-9_.-]/g, "_");
+  const tmpSuffix = crypto.randomBytes(4).toString("hex");
+  const tmpRemote = `/tmp/.${remoteTag}-s-${Date.now()}-${tmpSuffix}`;
   const up = scpToTarget(targetCfg, { user, host, localPath: tmpLocal, remotePath: tmpRemote });
   fs.rmSync(tmpDir, { recursive: true, force: true });
   if (!up.ok) throw new Error(`sentinel scp failed (status=${up.status})`);
@@ -217,8 +219,9 @@ function installSentinelSsh({ targetCfg, sentinelCfg, force, insecure }) {
   const { user: serviceUser, group: serviceGroup } = serviceUserGroup(targetCfg, user);
   const sudo = user === "root" ? "" : "sudo -n";
 
-  const script = `
+  const rootScript = `
 set -euo pipefail
+umask 077
 BASE=${shQuote(baseDir)}
 DIR=${shQuote(dir)}
 FILE=${shQuote(file)}
@@ -228,10 +231,49 @@ SVC_GROUP=${shQuote(serviceGroup)}
 INSECURE=${shQuote(insecure ? "1" : "0")}
 FORCE=${shQuote(force ? "1" : "0")}
 
-  if [ ! -d "$BASE" ]; then
-    echo "__SEAL_BASE_MISSING__"
-    exit 2
+fsync_path() {
+  path="$1"
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$path" <<'PY'
+import os, sys
+p = sys.argv[1]
+fd = os.open(p, os.O_RDONLY)
+try:
+    os.fsync(fd)
+finally:
+    os.close(fd)
+PY
+  elif command -v python >/dev/null 2>&1; then
+    python - "$path" <<'PY'
+import os, sys
+p = sys.argv[1]
+fd = os.open(p, os.O_RDONLY)
+try:
+    os.fsync(fd)
+finally:
+    os.close(fd)
+PY
+  else
+    sync
   fi
+}
+
+check_exec() {
+  user="$1"
+  base="$2"
+  if command -v runuser >/dev/null 2>&1; then
+    runuser -u "$user" -- test -x "$base"
+  elif command -v su >/dev/null 2>&1; then
+    su -s /bin/sh -c "test -x \\"$base\\"" "$user"
+  else
+    return 1
+  fi
+}
+
+if [ ! -d "$BASE" ]; then
+  echo "__SEAL_BASE_MISSING__"
+  exit 2
+fi
 if [ "$INSECURE" != "1" ]; then
   if [ -L "$BASE" ]; then
     echo "__SEAL_BASE_SYMLINK__"
@@ -252,15 +294,27 @@ if [ "$INSECURE" != "1" ]; then
     fi
   fi
   if [ "$SVC_USER" != "root" ]; then
-    if ! sudo -n -u "$SVC_USER" test -x "$BASE"; then
+    if ! check_exec "$SVC_USER" "$BASE"; then
       echo "__SEAL_BASE_NOEXEC__"
       exit 2
     fi
   fi
 fi
 
+mkdir -p "$DIR"
+chown root:"$SVC_GROUP" "$DIR"
+chmod 0710 "$DIR"
+
+LOCK="$DIR/.l"
+exec 9>"$LOCK"
+chmod 0600 "$LOCK" || true
+if ! flock -w 10 9; then
+  echo "__SEAL_LOCK_BUSY__"
+  exit 4
+fi
+
 if [ -f "$FILE" ] && [ "$FORCE" != "1" ]; then
-  if ${sudo} cmp -s "$FILE" "$TMP"; then
+  if cmp -s "$FILE" "$TMP"; then
     rm -f "$TMP"
     echo "__SEAL_SENTINEL_OK__"
     exit 0
@@ -270,16 +324,16 @@ if [ -f "$FILE" ] && [ "$FORCE" != "1" ]; then
   exit 3
 fi
 
-${sudo} mkdir -p "$DIR"
-${sudo} chown root:"$SVC_GROUP" "$DIR"
-${sudo} chmod 0710 "$DIR"
-${sudo} cp "$TMP" "$FILE.tmp"
-${sudo} chown root:"$SVC_GROUP" "$FILE.tmp"
-${sudo} chmod 0640 "$FILE.tmp"
-${sudo} mv "$FILE.tmp" "$FILE"
+cp "$TMP" "$FILE.tmp"
+chown root:"$SVC_GROUP" "$FILE.tmp"
+chmod 0640 "$FILE.tmp"
+fsync_path "$FILE.tmp"
+mv "$FILE.tmp" "$FILE"
+fsync_path "$DIR"
 rm -f "$TMP"
 echo "__SEAL_SENTINEL_INSTALLED__"
 `;
+  const script = sudo ? `${sudo} bash -lc ${shQuote(rootScript)}` : rootScript;
   const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-lc", script], stdio: "pipe" });
   if (!res.ok) {
     const out = `${res.stdout}\n${res.stderr}`.trim();
@@ -362,18 +416,67 @@ function uninstallSentinelSsh({ targetCfg, sentinelCfg }) {
   const dir = path.posix.join(baseDir, sentinelCfg.opaqueDir);
   const file = path.posix.join(dir, sentinelCfg.opaqueFile);
   const sudo = user === "root" ? "" : "sudo -n";
-  const script = `
+  const rootScript = `
 set -euo pipefail
-FILE=${shQuote(file)}
+umask 077
+BASE=${shQuote(baseDir)}
 DIR=${shQuote(dir)}
-${sudo} rm -f "$FILE" || true
+FILE=${shQuote(file)}
+
+fsync_path() {
+  path="$1"
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$path" <<'PY'
+import os, sys
+p = sys.argv[1]
+fd = os.open(p, os.O_RDONLY)
+try:
+    os.fsync(fd)
+finally:
+    os.close(fd)
+PY
+  elif command -v python >/dev/null 2>&1; then
+    python - "$path" <<'PY'
+import os, sys
+p = sys.argv[1]
+fd = os.open(p, os.O_RDONLY)
+try:
+    os.fsync(fd)
+finally:
+    os.close(fd)
+PY
+  else
+    sync
+  fi
+}
+
+if [ ! -d "$DIR" ]; then
+  echo "__SEAL_SENTINEL_REMOVED__"
+  exit 0
+fi
+
+LOCK="$DIR/.l"
+exec 9>"$LOCK"
+chmod 0600 "$LOCK" || true
+if ! flock -w 10 9; then
+  echo "__SEAL_LOCK_BUSY__"
+  exit 4
+fi
+
+rm -f "$FILE" || true
+fsync_path "$DIR"
+rm -f "$LOCK" || true
 if [ -d "$DIR" ]; then
   if [ -z "$(ls -A "$DIR" 2>/dev/null)" ]; then
-    ${sudo} rmdir "$DIR" || true
+    rmdir "$DIR" || true
   fi
+fi
+if [ -d "$BASE" ]; then
+  fsync_path "$BASE"
 fi
 echo "__SEAL_SENTINEL_REMOVED__"
 `;
+  const script = sudo ? `${sudo} bash -lc ${shQuote(rootScript)}` : rootScript;
   const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-lc", script], stdio: "pipe" });
   if (!res.ok) {
     const out = `${res.stdout}\n${res.stderr}`.trim();
