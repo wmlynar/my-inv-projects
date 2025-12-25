@@ -545,6 +545,7 @@ function renderSentinelCode() {
 #if SENTINEL_ENABLED
 #define SENTINEL_BLOB_LEN 76u
 #define SENTINEL_MASK_LEN 72u
+#define FLAG_INCLUDE_CPUID 0x0004u
 
 typedef struct {
   uint8_t data[64];
@@ -710,6 +711,12 @@ static void trim_ws(char *s) {
   if (start > 0) memmove(s, s + start, len - start + 1);
 }
 
+static void str_to_lower(char *s) {
+  for (; *s; s++) {
+    *s = (char)tolower((unsigned char)*s);
+  }
+}
+
 static int read_text(const char *path, char *out, size_t out_len) {
   int fd = open(path, O_RDONLY | O_CLOEXEC);
   if (fd < 0) return -1;
@@ -719,6 +726,46 @@ static int read_text(const char *path, char *out, size_t out_len) {
   out[r] = 0;
   trim_ws(out);
   return out[0] ? 0 : -1;
+}
+
+static int read_cpuinfo_value(const char *key, char *out, size_t out_len) {
+  FILE *fp = fopen("/proc/cpuinfo", "r");
+  if (!fp) return -1;
+  size_t klen = strlen(key);
+  char line[512];
+  while (fgets(line, sizeof(line), fp)) {
+    if (strncmp(line, key, klen) != 0) continue;
+    char *p = line + klen;
+    while (*p == ' ' || *p == '\\t') p++;
+    if (*p != ':') continue;
+    p++;
+    while (*p == ' ' || *p == '\\t') p++;
+    strncpy(out, p, out_len - 1);
+    out[out_len - 1] = 0;
+    trim_ws(out);
+    fclose(fp);
+    return out[0] ? 0 : -1;
+  }
+  fclose(fp);
+  return -1;
+}
+
+static int get_cpuid(char *out, size_t out_len) {
+  char vendor[64] = { 0 };
+  char family[32] = { 0 };
+  char model[32] = { 0 };
+  char stepping[32] = { 0 };
+  if (read_cpuinfo_value("vendor_id", vendor, sizeof(vendor)) != 0) return -1;
+  if (read_cpuinfo_value("cpu family", family, sizeof(family)) != 0) return -1;
+  if (read_cpuinfo_value("model", model, sizeof(model)) != 0) return -1;
+  if (read_cpuinfo_value("stepping", stepping, sizeof(stepping)) != 0) return -1;
+  str_to_lower(vendor);
+  str_to_lower(family);
+  str_to_lower(model);
+  str_to_lower(stepping);
+  int n = snprintf(out, out_len, "%s:%s:%s:%s", vendor, family, model, stepping);
+  if (n < 0 || (size_t)n >= out_len) return -1;
+  return 0;
 }
 
 static int get_root_device(int *out_maj, int *out_min, char *out_fs, size_t out_fs_len) {
@@ -792,20 +839,38 @@ static int get_root_rid(char *out, size_t out_len) {
   return 0;
 }
 
-static int build_fingerprint(uint8_t level, const char *mid, const char *rid, char *out, size_t out_len) {
+static int build_fingerprint(uint8_t level, const char *mid, const char *rid, const char *cpuid, int include_cpuid, char *out, size_t out_len) {
+  size_t pos = 0;
   int n = -1;
   if (level == 0) {
-    n = snprintf(out, out_len, "v0\\n");
+    n = snprintf(out + pos, out_len - pos, "v0\\n");
+    if (n < 0 || (size_t)n >= out_len - pos) return -1;
+    pos += (size_t)n;
   } else if (level == 1) {
     if (!mid || !mid[0]) return -1;
-    n = snprintf(out, out_len, "v1\\nmid=%s\\n", mid);
+    n = snprintf(out + pos, out_len - pos, "v1\\nmid=%s\\n", mid);
+    if (n < 0 || (size_t)n >= out_len - pos) return -1;
+    pos += (size_t)n;
+    if (include_cpuid) {
+      if (!cpuid || !cpuid[0]) return -1;
+      n = snprintf(out + pos, out_len - pos, "cpuid=%s\\n", cpuid);
+      if (n < 0 || (size_t)n >= out_len - pos) return -1;
+      pos += (size_t)n;
+    }
   } else if (level == 2) {
     if (!mid || !mid[0] || !rid || !rid[0]) return -1;
-    n = snprintf(out, out_len, "v2\\nmid=%s\\nrid=%s\\n", mid, rid);
+    n = snprintf(out + pos, out_len - pos, "v2\\nmid=%s\\nrid=%s\\n", mid, rid);
+    if (n < 0 || (size_t)n >= out_len - pos) return -1;
+    pos += (size_t)n;
+    if (include_cpuid) {
+      if (!cpuid || !cpuid[0]) return -1;
+      n = snprintf(out + pos, out_len - pos, "cpuid=%s\\n", cpuid);
+      if (n < 0 || (size_t)n >= out_len - pos) return -1;
+      pos += (size_t)n;
+    }
   } else {
     return -1;
   }
-  if (n < 0 || (size_t)n >= out_len) return -1;
   return 0;
 }
 
@@ -884,7 +949,9 @@ static int sentinel_check(void) {
   uint8_t version = raw[0];
   uint8_t level = raw[1];
   uint16_t flags = (uint16_t)raw[2] | ((uint16_t)raw[3] << 8);
-  if (version != 1 || level > 2 || flags != 0) return -1;
+  if (version != 1 || level > 2) return -1;
+  if ((flags & ~FLAG_INCLUDE_CPUID) != 0) return -1;
+  int include_cpuid = (flags & FLAG_INCLUDE_CPUID) ? 1 : 0;
 
   char mid[128] = { 0 };
   char rid[256] = { 0 };
@@ -895,8 +962,13 @@ static int sentinel_check(void) {
     if (get_root_rid(rid, sizeof(rid)) != 0) return -1;
   }
 
+  char cpuid[128] = { 0 };
+  if (include_cpuid) {
+    if (get_cpuid(cpuid, sizeof(cpuid)) != 0) return -1;
+  }
+
   char fp[512];
-  if (build_fingerprint(level, mid, rid, fp, sizeof(fp)) != 0) return -1;
+  if (build_fingerprint(level, mid, rid, cpuid, include_cpuid, fp, sizeof(fp)) != 0) return -1;
   uint8_t fp_now[32];
   sha256_hash((uint8_t *)fp, strlen(fp), fp_now);
 
