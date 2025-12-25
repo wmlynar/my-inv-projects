@@ -149,9 +149,10 @@ async function cmdBatch(cwd, cmd, args, opts) {
   }
 
   const cliPath = process.argv[1];
-  const useNode = path.extname(cliPath) === ".js";
-  const bin = useNode ? process.execPath : cliPath;
-  const baseArgs = useNode ? [cliPath, cmd, ...args] : [cmd, ...args];
+  const absCliPath = path.isAbsolute(cliPath) ? cliPath : path.resolve(cliPath);
+  const useNode = path.extname(absCliPath) === ".js";
+  const bin = useNode ? process.execPath : absCliPath;
+  const baseArgs = useNode ? [absCliPath, cmd, ...args] : [cmd, ...args];
 
   const failures = [];
   for (let i = 0; i < projects.length; i++) {

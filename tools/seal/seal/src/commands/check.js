@@ -98,6 +98,35 @@ async function cmdCheck(cwd, targetArg, opts) {
     errors.push("Missing seal.json5 (project). If this is a workspace root with projects, run the command from that root (it will execute for subprojects) or cd into a project.");
   }
 
+  const finalize = () => {
+    if (warnings.length) {
+      console.log("");
+      warn("Warnings:");
+      for (const w of warnings) console.log(" - " + w);
+    }
+
+    if (errors.length) {
+      console.log("");
+      err("Errors:");
+      for (const e of errors) console.log(" - " + e);
+    }
+
+    const hadNotes = warnings.length || errors.length;
+    if (!errors.length && (!opts.strict || !warnings.length)) {
+      if (hadNotes) console.log("");
+      ok("Check OK");
+    } else {
+      const e = new Error("Check failed");
+      e.sealCheck = { errors, warnings, strict: !!opts.strict };
+      throw e;
+    }
+  };
+
+  if (!proj) {
+    finalize();
+    return;
+  }
+
   const targetName = resolveTargetName(projectRoot, targetArg || null);
   const t = loadTargetConfig(projectRoot, targetName);
   if (!t) warnings.push(`Missing target '${targetName}' in seal-config/targets`);
@@ -222,13 +251,16 @@ async function cmdCheck(cwd, targetArg, opts) {
 
   // SEA tools
   if (seaNeeded) {
-    try {
-      require("postject");
-      const postjectBin = resolvePostjectBin();
-      if (postjectBin) ok("postject: OK (SEA injection)");
-      else warnings.push(`postject module installed but CLI not found in node_modules/.bin or PATH – SEA may fail. ${allowFallback ? "Fallback is enabled." : "Build will fail unless fallback is explicitly enabled (build.allowFallback=true or packager=fallback)."}`);
-    } catch {
-      warnings.push(`postject not installed – SEA may fail. ${allowFallback ? "Fallback is enabled." : "Build will fail unless fallback is explicitly enabled (build.allowFallback=true or packager=fallback)."}`);
+    const postjectBin = resolvePostjectBin();
+    if (postjectBin) {
+      ok("postject: OK (SEA injection)");
+    } else {
+      try {
+        require("postject");
+        warnings.push(`postject module installed but CLI not found in node_modules/.bin or PATH – SEA may fail. ${allowFallback ? "Fallback is enabled." : "Build will fail unless fallback is explicitly enabled (build.allowFallback=true or packager=fallback)."}`);
+      } catch {
+        warnings.push(`postject not installed – SEA may fail. ${allowFallback ? "Fallback is enabled." : "Build will fail unless fallback is explicitly enabled (build.allowFallback=true or packager=fallback)."}`);
+      }
     }
   }
 
@@ -335,27 +367,7 @@ async function cmdCheck(cwd, targetArg, opts) {
     else warnings.push('upx not installed – binaries will not be packed (optional but recommended)');
   }
 
-  if (warnings.length) {
-    console.log("");
-    warn("Warnings:");
-    for (const w of warnings) console.log(" - " + w);
-  }
-
-  if (errors.length) {
-    console.log("");
-    err("Errors:");
-    for (const e of errors) console.log(" - " + e);
-  }
-
-  const hadNotes = warnings.length || errors.length;
-  if (!errors.length && (!opts.strict || !warnings.length)) {
-    if (hadNotes) console.log("");
-    ok("Check OK");
-  } else {
-    const e = new Error("Check failed");
-    e.sealCheck = { errors, warnings, strict: !!opts.strict };
-    throw e;
-  }
+  finalize();
 }
 
 module.exports = { cmdCheck };
