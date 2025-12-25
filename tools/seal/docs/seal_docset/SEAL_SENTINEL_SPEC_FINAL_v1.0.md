@@ -346,6 +346,8 @@ Jeśli `cpuIdSource` wymaga `asm`, deployer **musi** mieć możliwość pobrania
 
 CPUID jest używane tylko dla leveli **L1+** (dla L0 nie ma `cpuid` w fingerprint).
 
+Uwaga: na architekturach bez CPUID (np. ARM) ustaw `cpuIdSource=off` (lub świadomie `proc`, jeśli masz własne mapowanie), bo `auto → both` wymaga ścieżki `asm`.
+
 ### 8.2 Czego absolutnie nie robić (MUST)
 Nie opierać fingerprintu o:
 - hash `/usr`, `/lib`, `/bin`,
