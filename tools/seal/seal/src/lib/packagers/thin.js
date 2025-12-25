@@ -509,7 +509,14 @@ function getZstdFlags() {
 }
 
 function toCString(value) {
-  return `"${String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+  const escaped = String(value)
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\r/g, "\\r")
+    .replace(/\n/g, "\\n")
+    .replace(/\t/g, "\\t")
+    .replace(/\0/g, "\\0");
+  return `"${escaped}"`;
 }
 
 function toCBytes(buf) {
@@ -1143,10 +1150,10 @@ ${sentinelDefs}
 static int fail_msg(const char *msg, int code) {
 #if SENTINEL_ENABLED
   (void)msg;
-  fprintf(stderr, "[thin] runtime invalid\n");
+  fprintf(stderr, "[thin] runtime invalid\\n");
   return THIN_FAIL(code);
 #else
-  fprintf(stderr, "%s\n", msg);
+  fprintf(stderr, "%s\\n", msg);
   return code;
 #endif
 }
@@ -1154,10 +1161,10 @@ static int fail_msg(const char *msg, int code) {
 static int fail_errno(const char *prefix, int code) {
 #if SENTINEL_ENABLED
   (void)prefix;
-  fprintf(stderr, "[thin] runtime invalid\n");
+  fprintf(stderr, "[thin] runtime invalid\\n");
   return THIN_FAIL(code);
 #else
-  fprintf(stderr, "%s: %s\n", prefix, strerror(errno));
+  fprintf(stderr, "%s: %s\\n", prefix, strerror(errno));
   return code;
 #endif
 }

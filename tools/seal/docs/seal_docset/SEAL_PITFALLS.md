@@ -10,6 +10,10 @@
 4) Subprocessy obsluguja `error` i nie wisza.
 5) Procesy w testach maja drenaz stdout/stderr.
 6) UI testy zamykaja browser/page w `finally`.
+7) Generatory C uzywaja helpera C‑escape i sa testowane w obu galeziach flag (np. sentinel ON/OFF).
+8) E2E obejmuje scenariusze negatywne i sprzata tmp/procesy deterministycznie (takze przy sudo).
+9) Toolchain ma jawnie pinowane standardy/flag (np. `-std=c11`) i log „effective config” dla ENV.
+10) Format binarny ma wersje i twardy fail na nieznana wersje.
 
 ## Zasady ogólne (cross-cutting)
 
@@ -71,6 +75,11 @@
   - Wymaganie: brak overlapu runtime/payload (`rt_off + rt_len <= pl_off`).
   - Wymaganie: encoder odrzuca 0-B runtime/payload.
 
+- Blad: generator C dla launchera `thin` wstawial `\n` do stringa bez ucieczki, co psulo kompilacje (`missing terminating " character`).
+  - Wymaganie: wszystkie literały string w generowanym C przechodza przez funkcje C‑escape (escapuje `\\`, `"`, `\n`, `\r`, `\t`, `\0`).
+  - Wymaganie: nie interpoluj „surowych” stringow do C; uzyj helpera budujacego bezpieczny literal.
+  - Wymaganie: testuj generowane C w **obu** konfiguracjach flag (np. sentinel ON/OFF), bo bledy moga byc tylko w jednej galezi.
+
 - Blad: launcher AIO probowal fallbackowac do BOOTSTRAP po uszkodzeniu stopki (cichy tryb mieszany).
   - Wymaganie: tryb AIO i BOOTSTRAP sa **jawne**.
   - Wymaganie: launcher AIO **nie** szuka `r/rt`/`r/pl`; brak stopki AIO = blad.
@@ -128,6 +137,35 @@
   - Wymaganie: subprocess musi zawsze obslugiwac zdarzenie `error` (i resolve/reject), aby nie zostawiac wiszacej obietnicy.
   - Wymaganie: testy E2E uzywaja losowych portow (bez hardcode `3000`), aby uniknac `EADDRINUSE`.
   - Wymaganie: po testach usuwaj katalogi tymczasowe (np. `/tmp/seal-*`) zeby nie zapychac dysku.
+
+- Blad: testy uruchamiane jako root zostawialy root‑owned tmp przy bledzie builda (trudne sprzatanie bez sudo).
+  - Wymaganie: E2E uruchamiane jako root tworza tmp na starcie i **zawsze** sprzataja w `finally` (nawet przy fail‑fast).
+
+- Blad: testy „expect fail” nie drenowaly stdout/stderr child procesu, co moglo blokowac proces i zafalszowac timeout.
+  - Wymaganie: drenaż stdout/stderr jest wymagany **we wszystkich** sciezkach testu (takze przy spodziewanej porazce).
+
+- Blad: zmiany w generatorach kodu byly testowane tylko lintem, bez realnego compile/smoke testu.
+  - Wymaganie: generator C/JS musi miec automatyczny compile/smoke test (przynajmniej minimalny).
+  - Wymaganie: smoke test generatora C uruchamia kompilator z `-Werror`.
+  - Wymaganie: standard kompilatora (np. `-std=c11`) jest jawnie ustawiony i spójny na wszystkich maszynach.
+
+- Blad: negatywne scenariusze nie byly objete E2E (symlink, zle prawa, brak pliku), przez co regresje wychodzily dopiero na produkcji.
+  - Wymaganie: E2E zawsze zawiera scenariusze negatywne.
+
+- Blad: sprzatanie tmp/procesow bylo „best-effort”, co zostawialo smieci po bledzie.
+  - Wymaganie: cleanup jest deterministyczny i sprawdzany w testach (brak tmp/procesow po zakonczonym tescie).
+
+- Blad: testy zalezne od roota/SSH/portow nie sygnalizowaly jawnie, ze zostaly pominiete.
+  - Wymaganie: takie testy maja domyslny SKIP i zawsze wypisuja powod.
+
+- Blad: brak asercji „brak tmp” pozwalal na ukryty wyciek plikow tymczasowych.
+  - Wymaganie: po E2E sprawdzaj, czy nie zostaly `/tmp/seal-*` (fail jeśli tak).
+
+- Blad: zachowanie zalezne od ENV bylo niejawne i rozne miedzy maszynami.
+  - Wymaganie: ENV ma jawne defaulty, a „effective config” jest logowane.
+
+- Blad: format binarny nie mial wersji, a nieznana wersja powodowala niejasne bledy.
+  - Wymaganie: formaty binarne maja wersjonowanie i twardy fail na nieznana wersje.
   - Wymaganie: testy nie zalezne od internetu; zewnetrzne call'e stubuj lokalnie.
   - Wymaganie: jesli srodowisko blokuje `listen` (EPERM), testy powinny sie jawnie oznaczyc jako SKIP.
 

@@ -157,6 +157,18 @@
    - obsługa `error` w subprocessach (brak wiszących obietnic),
    - drenaż stdout/stderr procesów uruchamianych w testach,
    - `finally` dla zamknięcia browserów/zasobów UI.
+   - scenariusze negatywne (brak plików, złe uprawnienia, symlink),
+   - deterministyczny cleanup tmp/procesów (także przy uruchamianiu jako root).
+   - testy wymagające roota/SSH/portów są domyślnie SKIP z jawnie podanym powodem.
+   - po E2E sprawdź, czy nie zostały `/tmp/seal-*` (fail jeśli tak).
+
+3. Dla ustawien zależnych od ENV **MUST**:
+   - jawny default,
+   - log „effective config”.
+
+4. Dla formatow binarnych **MUST**:
+   - wersjonowanie,
+   - twardy fail na nieznana wersje.
 
 ## 10) Checklist AI review (MUST)
 
@@ -167,6 +179,8 @@ Przed zamknięciem zadania AI **MUST** potwierdzić:
 4) Czy subprocessy mają obsługę `error` i nie mogą wisieć?
 5) Czy procesy testowe mają drenaż stdout/stderr?
 6) Czy zasoby UI (browser/page) są zamykane w `finally`?
+7) Czy E2E obejmuje scenariusze negatywne?
+8) Czy E2E sprząta tmp/procesy deterministycznie (także przy sudo)?
 
 ## 11) Wersja kontraktu
 

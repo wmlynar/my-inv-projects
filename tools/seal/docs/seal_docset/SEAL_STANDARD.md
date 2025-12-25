@@ -102,10 +102,24 @@ Przykład:
 - STD-050 (SHOULD): nazwy plikow tymczasowych (szczegolnie na zdalnych hostach) musza miec losowy komponent; nie opieraj ich wylacznie na czasie (`Date.now()`).
 - STD-051 (SHOULD): kazda operacja, ktora tworzy tmp na hoście (lokalnym lub zdalnym), musi sprzatac je w `finally`/`trap` (usun takze `*.tmp` po nieudanym zapisie).
 - STD-052 (SHOULD): narzedzia wymagane przez mechanizmy lock (`flock`) musza byc sprawdzone przed uzyciem, z czytelnym bledem i instrukcja instalacji.
+- STD-053 (SHOULD): generowany kod C (launchery, wrappery) musi uzywac helpera do C‑escape dla literałów string, aby uniknac bledow kompilacji przy `\n`, `\r`, `\t`, `\0`, `\"`, `\\`.
+- STD-055 (SHOULD): generowany kod C musi byc sprawdzony w **obu** galeziach flag/feature (np. sentinel ON/OFF), bo bledy czesto siedza w rzadziej uzywanej konfiguracji.
+- STD-057 (SHOULD): kazda zmiana w generatorach kodu (C/JS) musi miec automatyczny compile/smoke test w CI (nie tylko lint).
+- STD-058 (SHOULD): generator kodu uzywa jednego helpera do escape/quoting; zakaz „recznego” doklejania stringow.
+- STD-061 (SHOULD): smoke test generatora C uruchamia kompilator z `-Werror`, aby warningi nie maskowaly realnych bledow.
+- STD-064 (SHOULD): toolchain kompilatora ma jawnie pinowane standardy i flagi (np. `-std=c11`), zeby unikac roznic miedzy maszynami.
 
 #### Testy / CI
 - STD-018 (SHOULD): testy automatyczne nie polegają na kruchym parsowaniu stdout/stderr child procesów; preferuj JSON output, kody wyjścia lub wywołania in‑process; gdy parsujesz, zawsze usuwaj ANSI.
 - STD-027 (SHOULD): testy/subprocessy zawsze maja timeout per‑krok i drenaż stdout/stderr; brak postepu = kill + blad.
+- STD-056 (SHOULD): drenaż stdout/stderr dotyczy **wszystkich** scenariuszy testowych (takze gdy spodziewasz sie porazki procesu).
+- STD-059 (SHOULD): testy E2E musza obejmowac scenariusze negatywne (brak plikow, zle uprawnienia, symlink), bo tam najczesciej wychodza regresje.
+- STD-060 (SHOULD): testy musza deterministycznie sprzatac zasoby (tmp/porty/procesy), a brak sprzatania jest traktowany jako fail.
+- STD-062 (SHOULD): testy wymagajace roota/SSH/portow musza byc domyslnie wylaczone i raportowac **jawny SKIP z powodem**.
+- STD-063 (SHOULD): po E2E dodaj asercje „brak tmp” (np. `/tmp/seal-*`), zeby wykryc brak sprzatania.
+- STD-065 (SHOULD): kazda funkcja zalezna od ENV ma jawny default i loguje „effective config”.
+- STD-066 (SHOULD): formaty binarne musza miec wersjonowanie i twardy fail na nieznana wersje.
+- STD-054 (SHOULD): testy E2E uruchamiane jako root tworza tmp na starcie i **zawsze** sprzataja w `finally`, aby nie zostawiac root‑owned plikow w `/tmp`.
 
 #### CLI / UX
 - STD-016 (SHOULD): rekurencyjne uruchamianie CLI (workspace/monorepo) **zawsze** używa ścieżek absolutnych, aby nie zależeć od CWD.
@@ -423,6 +437,10 @@ Przed zamknięciem zadania:
 4) Subprocessy mają obsługę `error` i nie wiszą.
 5) Procesy w testach mają drenaż stdout/stderr.
 6) Zasoby UI (browser/page) zamykane w `finally`.
+7) Generator C używa helpera C‑escape i jest sprawdzony w obu konfiguracjach flag (np. sentinel ON/OFF).
+8) E2E obejmuje scenariusze negatywne i sprząta tmp/procesy deterministycznie (także przy sudo).
+9) Toolchain ma jawnie pinowane standardy/flag (np. `-std=c11`) i log „effective config” dla ENV.
+10) Format binarny ma wersję i twardy fail na nieznaną wersję.
 
 ---
 
