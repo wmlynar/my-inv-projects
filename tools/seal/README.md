@@ -246,7 +246,6 @@ Gdzie są artefakty:
 
 - `example/seal-out/<app>-<buildId>.tgz` – paczka release
 - `example/seal-out/release/` – rozpakowany release do inspekcji
-- `example/seal-out/ai.zip` – paczka diagnostyczna (zawsze generowana, także przy błędach)
 
 ---
 

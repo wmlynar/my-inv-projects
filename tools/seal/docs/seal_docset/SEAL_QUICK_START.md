@@ -254,14 +254,7 @@ seal deploy robot-01 --push-config
 seal doctor
 ```
 
-2) Jeśli błąd dotyczy release/deploy, SEAL zawsze generuje paczkę diagnostyczną:
-
-- `seal-out/ai.zip`
-
-Do paczki dołącz krótki opis:
-- „co robiłem”
-- „co się wysypało”
-- „jaki target/config”
+2) Jeśli błąd dotyczy release/deploy, sprawdź artefakty w `seal-out/run/` i logi z konsoli (ułatwia to odtworzenie problemu).
 
 ---
 

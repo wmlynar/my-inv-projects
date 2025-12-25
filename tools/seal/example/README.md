@@ -57,7 +57,6 @@ Artefakty:
 
 - `seal-out/` – `.tgz`
 - `seal-out/release/` – folder do inspekcji i uruchomienia
-- `seal-out/ai.zip` – paczka diagnostyczna (także przy błędach)
 
 ---
 
@@ -66,7 +65,7 @@ Artefakty:
 Dodane są przykładowe pliki:
 
 - `example/seal-config/targets/server.json5` – target SSH (host `10.6.44.2`, user `admin`, installDir `/home/admin/apps/seal-example`)
-- `example/config/server.json5` – runtime config (host `0.0.0.0`, port `3200`)
+- `example/config/server.json5` – runtime config (host `0.0.0.0`, port `3333`)
 
 Bootstrap tworzy `/home/admin/apps/seal-example` przez `sudo` i ustawia właściciela na `admin`, a po deployu instaluje runner + unit (bez startu usługi).
 
@@ -98,7 +97,7 @@ npx seal run server
 
 ---
 
-## Wymuszanie błędu (żeby przetestować logi i ai.zip)
+## Wymuszanie błędu (żeby przetestować logi)
 
 ### 1) Brak pliku feature flags (błąd na starcie)
 W `config/local.json5` ustaw np.:

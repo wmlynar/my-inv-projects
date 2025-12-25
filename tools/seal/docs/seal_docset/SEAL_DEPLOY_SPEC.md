@@ -242,7 +242,7 @@ Ta sekcja ma zapobiec obiecywaniu „magii”. Seal ma podnosić koszt kradzież
 - Generowanie plików i konfiguracji (`seal init`, `seal explain`, `seal print-defaults`).
 - SSH deploy (release dirs + atomowe przełączenie przez `current.buildId` + systemd + rollback).
 - `seal verify` jako checklista artefaktów (skan plików, wzorce, hashe, manifest).
-- `seal-out/run` + `seal-out/run.last_failed` + paczka `seal-out/ai.zip`.
+- `seal-out/run` + `seal-out/run.last_failed`.
 - Drift detection configu (snapshot/diff/pull).
 
 #### Co jest trudne/ryzykowne (wymaga fallbacków)
@@ -423,7 +423,6 @@ my-app/
 
   # generowane automatycznie (gitignore):
   seal-out/
-    ai.zip
     run/
     run.last_failed/
     release/
@@ -443,7 +442,6 @@ my-app/
   - Jeśli użytkownik nie chce snapshotów, używa `--no-snapshot` w `seal deploy`.
 - `seal-out/run/` jest katalogiem roboczym „ostatniego uruchomienia” (nadpisywany przy każdym `seal plan/deploy/verify`) i powinien być domyślnie w `.gitignore`.
 - `seal-out/run.last_failed/` jest snapshotem ostatniego nieudanego uruchomienia (nadpisywany wyłącznie przy failu) i również powinien być w `.gitignore`.
-- `seal-out/ai.zip` to paczka diagnostyczna (zawsze generowana) – też `.gitignore`.
 
 #### Wymagania normatywne (REQ-OUT)
 - REQ-OUT-001 (MUST): `seal-out/` jest katalogiem w pełni generowanym i może być czyszczony w całości przed każdym `seal release`/`seal verify`/`seal deploy`.
@@ -522,7 +520,6 @@ seal-deploy/
   4) ustawienie `current.buildId`,
   5) restart usługi,
   6) (opcjonalnie) health-check i rollback.
-- Po każdym `seal deploy` generowana jest paczka `seal-out/ai.zip` (sekcja 18.5).
 
 ### 9.5. Serwis
 Seal zapewnia szybkie komendy:
@@ -1353,8 +1350,7 @@ Alias (MAY): `seal wizard`.
 - buduje artefakt `seal-out/<app>-<buildId>.tgz`,
 - rozpakowuje artefakt do `seal-out/release/` (zawsze tylko ostatni release),
 - zapisuje metadane last-build (żeby `verify/run-local` działały bez argumentów),
-- generuje `seal-out/run/plan.md` + `seal-out/run/plan.json`,
-- generuje `seal-out/ai.zip`.
+- generuje `seal-out/run/plan.md` + `seal-out/run/plan.json`.
 
 **Flagi:**
 - `--config <config>`: override konwencji `config == target`.
@@ -1395,8 +1391,8 @@ Alias (MAY): `seal wizard`.
 
 **MUST**
 - wspiera wiele targetów: `seal deploy robot-01 robot-02`,
-- generuje `seal-out/run/` i `seal-out/ai.zip`,
-- ma atomowe przełączenie release + restart + health-check + rollback.
+- generuje `seal-out/run/`,
+  - ma atomowe przełączenie release + restart + health-check + rollback.
 
 **Flagi:**
 - `--bootstrap`: przygotowanie serwera (katalogi + uprawnienia; po udanym deployu instalacja runnera + unit, bez autostartu).
@@ -1429,7 +1425,6 @@ Kompatybilność (MAY): aliasy historyczne `seal diff-config`, `seal pull-config
 
 #### Diagnostyka i toolchain
 - `seal doctor` (MUST): jedna komenda sprawdzająca typowe problemy (lokalne + połączenie + prawa).
-- `seal support` (MAY): regeneruje i wskazuje `seal-out/ai.zip`.
 - `seal toolchain status|install` (MAY): prefetch/instalacja toolchainu do pracy offline.
 
 ---
@@ -1517,31 +1512,6 @@ Minimalne pola (MUST):
 - `steps[]` (lista kroków: `id/cmd/cwd/envVars/expectedArtifacts`)
 
 
-### 25.7. `seal-out/ai.zip` (paczka diagnostyczna dla AI)
-
-**Wymaganie (MUST, v0.4):** po każdym `seal deploy` SEAL generuje paczkę diagnostyczną `seal-out/ai.zip`.
-
-**Polityka v0.4 (celowo prosta):** paczka ma być **maksymalnie kompletna** – zakładamy, że środowisko użytkownika (tam gdzie paczka jest wysyłana do AI) jest zaufane, a celem jest szybka diagnoza.
-
-Paczka **MUST** zawiera:
-- `seal-out/run/` (pełny komplet: `plan.md`, `plan.json`, `run.log`, `run.json`, `verify-report.json`, `context.json`)
-- `ai_prompt.md` (prompt: cel, kontekst, oczekiwany rezultat)
-- `manifest.json` (lista artefaktów + sha256)
-
-Paczka **SHOULD** zawiera (domyślnie w v0.4):
-- `seal-config/project.json5`
-- `seal-config/policy.json5`
-- `seal-config/targets/<target>.json5`
-- `seal-config/standard.lock.json`
-- `seal-out/remote/**` (snapshoty `shared/config.json5` + historia)
-- `seal_version.json` (wersja Seala + wersje toolchainu/paczkera)
-- `server_probe.txt` (wyniki podstawowych checków z SSH: struktura katalogów, `systemctl status`, `journalctl --since`, itp.)
-
-**Wymóg porządkowy:** paczka nie ma zawierać źródeł narzędzia Seal ani całego repo aplikacji – tylko artefakty uruchomienia i pliki konfiguracyjne potrzebne do analizy.
-
-**Snapshot awarii (SHOULD):** jeśli `seal deploy` kończy się błędem, SEAL zachowuje dodatkowo:
-- `seal-out/run.last_failed/` oraz/lub `seal-out/ai.last_failed.zip`
-
 ---
 
 ## 26. Algorytmy operacyjne (release, deploy, rollback, snapshot config)
@@ -1554,7 +1524,7 @@ Paczka **SHOULD** zawiera (domyślnie w v0.4):
   - *Plan* (`seal plan`) generuje decision trace + kroki jako dane.
   - *Execute* (`seal deploy`) wykonuje kroki zgodnie z planem i zapisuje wyniki do `seal-out/run/`.
   - *Verify* (`seal verify`) jest bramką: reguły + checklista SEALED + raport naruszeń.
-  - *Report* materializuje artefakty debug (`seal-out/run/`) oraz paczkę `seal-out/ai.zip` gotową do wysłania do AI.
+  - *Report* materializuje artefakty debug (`seal-out/run/`) gotowe do analizy.
 - **Konfiguracja:** `ResolvedConfig` + jawne „sources of values” (pliki/CLI/defaulty widoczne w planie).
 - **Artefakty debug:** `seal-out/run/` + `seal-out/run.last_failed/`.
 - **Remote ops:** atomowy deploy + rollback.
@@ -1702,7 +1672,7 @@ Paczka **SHOULD** zawiera (domyślnie w v0.4):
 
 **Akceptacja:**
 - deploy działa bez dostępu do źródeł,
-- nadal generuje `seal-out/ai.zip` i plan.
+- nadal generuje `seal-out/run/` i plan.
 
 ### 27.12. E2E: deploy multi-target
 1) `seal deploy robot-01 robot-02`
@@ -1711,13 +1681,13 @@ Paczka **SHOULD** zawiera (domyślnie w v0.4):
 - dla każdego targetu logi są separowane,
 - końcowy exit code sygnalizuje czy któryś target nie wyszedł (SHOULD: raport per-target).
 
-### 27.13. E2E: support bundle po awarii
+### 27.13. E2E: diagnostyka po awarii
 1) Spowoduj błąd deploy/release.
 2) `seal doctor`
-3) Sprawdź `seal-out/ai.zip`.
+3) Sprawdź `seal-out/run/`.
 
 **Akceptacja:**
-- paczka zawiera plan, logi, snapshoty i kluczowe konfiguracje.
+- `seal-out/run/` zawiera plan, logi i kluczowe konfiguracje.
 
 ### 27.14. E2E: uninstall/cleanup
 1) `seal uninstall robot-01`
@@ -1837,21 +1807,6 @@ Przykład (minimalny, poglądowy):
       ".git/**",
       "**/*.ts",
       "**/*.map" // w profilu prod dodatkowo fail
-    ]
-  },
-
-  // Paczka diagnostyczna dla AI:
-  aiBundle: {
-    alwaysGenerate: true,
-    requiredFiles: [
-      "plan.md",
-      "plan.json",
-      "run.log",
-      "run.json",
-      "verify-report.json",
-      "context.json",
-      "manifest.json",
-      "ai_prompt.md"
     ]
   }
 }

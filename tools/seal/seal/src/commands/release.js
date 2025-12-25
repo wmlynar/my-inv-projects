@@ -3,7 +3,7 @@
 const { findProjectRoot } = require("../lib/paths");
 const { loadProjectConfig, loadTargetConfig, resolveTargetName, resolveConfigName, getConfigFile } = require("../lib/project");
 const { fileExists } = require("../lib/fsextra");
-const { info, warn, ok, hr } = require("../lib/ui");
+const { warn, ok, hr } = require("../lib/ui");
 const { cmdCheck } = require("./check");
 const { buildRelease } = require("../lib/build");
 
@@ -46,23 +46,6 @@ async function cmdRelease(cwd, targetArg, opts) {
   console.log("");
   console.log("Inspect:");
   console.log(`  ls -la ${result.releaseDir}`);
-
-  // Update support bundle (always) – useful even when the release succeeds.
-  try {
-    const { writeAiBundle } = require("../lib/aiBundle");
-    const bundle = writeAiBundle(projectRoot, null, {
-      kind: "release_success",
-      buildId: result.buildId,
-      artifactPath: result.artifactPath,
-      releaseDir: result.releaseDir,
-      target: targetName,
-      config: configName,
-      packager: result.packagerUsed,
-    });
-    if (bundle) info(`AI bundle updated: ${bundle}`);
-  } catch {
-    // ignore
-  }
 
   return result;
 }

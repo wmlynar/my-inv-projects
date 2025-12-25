@@ -208,13 +208,13 @@ seal deploy robot-01 robot-02 robot-03
 
 ---
 
-## S18) Support bundle / paczka do diagnostyki
+## S18) Diagnostyka po awarii
 **Cel:** gdy coś padło, mieć komplet materiału do analizy.
 
 ```bash
 seal doctor
-# paczka:
-ls -la seal-out/ai.zip
+# artefakty diagnostyczne:
+ls -la seal-out/run
 ```
 
 ---

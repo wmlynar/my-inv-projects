@@ -199,7 +199,7 @@ NOTES:
 
 ---
 
-## 4. Artefakty `seal-out/run/` + `seal plan` + paczka dla AI (`seal-out/ai.zip`) (REF)
+## 4. Artefakty `seal-out/run/` + `seal plan` (REF)
 
 ### 4.1. Katalog `seal-out/run/` (ostatni run, nadpisywany)
 
@@ -285,56 +285,8 @@ seal-out/run.last_failed/
     }
   ],
   "expectedArtifacts": {
-    "runDir": "seal-out/run/",
-    "aiBundle": "seal-out/ai.zip"
+    "runDir": "seal-out/run/"
   }
-}
-```
-
-### 4.3. Minimalny `ai_prompt.md` (template)
-
-> Ten plik ma sprawić, że AI od razu rozumie kontekst i wie, jaki ma „definition of done”.
-
-```md
-# SEAL AI Diagnostic Prompt
-
-## Cel
-Zdiagnozuj dlaczego `seal ship` / `seal release` / `seal verify` nie przeszło i zaproponuj minimalną poprawkę.
-
-## Kontekst
-- Narzędzie: SEAL (seal-deploy) v0.5
-- Projekt: Node.js (SEA)
-- Profil: {{profile}}
-- Target: {{target}}
-
-## Co jest w paczce
-- plan.md / plan.json (decyzje i kroki)
-- run.log / run.json (logi i wyniki kroków)
-- verify-report.json (reguły i naruszenia)
-- context.json (wersje toolchain, OS, parametry)
-
-## Oczekiwany rezultat
-1) Krótka diagnoza (1–3 hipotezy, z uzasadnieniem).
-2) Konkretne poprawki (najlepiej patch/diff lub komendy).
-3) Jeśli problem jest ograniczeniem SEA/obfuskacji – wskaż fallback i minimalny kompromis.
-```
-
-### 4.4. Minimalny `manifest.json` w `seal-out/ai.zip`
-
-```json
-{
-  "format": "seal-ai-bundle",
-  "version": 1,
-  "generatedAt": "2025-12-21T04:30:00Z",
-  "files": [
-    { "path": "plan.md", "sha256": "<sha256>", "bytes": 1234 },
-    { "path": "plan.json", "sha256": "<sha256>", "bytes": 2345 },
-    { "path": "run.log", "sha256": "<sha256>", "bytes": 3456 },
-    { "path": "run.json", "sha256": "<sha256>", "bytes": 4567 },
-    { "path": "verify-report.json", "sha256": "<sha256>", "bytes": 5678 },
-    { "path": "context.json", "sha256": "<sha256>", "bytes": 6789 },
-    { "path": "ai_prompt.md", "sha256": "<sha256>", "bytes": 7890 }
-  ]
 }
 ```
 
@@ -413,7 +365,7 @@ Implementacja:
   - weryfikuje artefakt (`seal verify`) zanim zacznie SSH,
   - uploaduje `.tgz` i rozpakowuje po stronie serwera,
   - reszta algorytmu jak normalnie (switch/restart/health/rollback),
-  - generuje `seal-out/run/` i `seal-out/ai.zip` tak samo.
+  - generuje `seal-out/run/` tak samo.
 
 ---
 
@@ -463,7 +415,7 @@ Implementacja:
 - Zaktualizowane: przykłady pod SPEC v0.5.
 
 ### v0.4
-- Dodane: `seal-out/run/` + `seal-out/ai.zip` + przykłady `plan.json` i `ai_prompt.md`.
+- Dodane: `seal-out/run/` + przykłady `plan.json`.
 - Doprecyzowane: spójność z `seal init` / profile `prod|debug`.
 
 ### v0.3

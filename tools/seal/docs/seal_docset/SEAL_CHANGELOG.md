@@ -35,7 +35,7 @@
   - **toolchain install/update** (prefetch offline),
   - **preflight** (`seal check` i auto-check w `seal release`),
   - **build-only vs deploy-only** (CI/airgap) przez `seal release --artifact-only` i `seal deploy --artifact`,
-  - **support bundle** (`seal-out/ai.zip`) jako scenariusz użytkowy,
+  - **diagnostyka** (`seal-out/run/`) jako scenariusz użytkowy,
   - **manual rollback + lista wersji** (`seal releases`, `seal rollback`),
   - **uninstall/cleanup** (`seal uninstall`),
   - **multi-target deploy** (fleet) jako wprost wspierany flow.
@@ -63,4 +63,3 @@
 - `seal deploy --bootstrap` zamiast osobnego kroku „server”.
 - JSON5 jako wspólny format dla `seal-config/*`.
 - Domyślna retencja release’ów + automatyczny cleanup.
-- Zawsze generowana paczka diagnostyczna `seal-out/ai.zip`.
