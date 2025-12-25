@@ -104,6 +104,12 @@ npx seal release prod --packager thin-single
   - `build.thin.envMode: "allowlist" | "denylist"` (domyślnie `"denylist"`),
   - `targets.<target>.thin.envMode` może nadpisać.
   - Runtime override: `SEAL_THIN_ENV_STRICT=1` wymusza allowlist, `SEAL_THIN_ENV_STRICT=0` wymusza denylist.
+  - Allowlist wymaga `clearenv()`; jeśli się nie powiedzie, launcher kończy się błędem (bez fallbacku do denylist).
+- Tryb magazynu runtime/payload (opcjonalny, bez fallbacku):
+  - `build.thin.runtimeStore: "memfd" | "tmpfile"` (domyślnie `"memfd"`).
+  - `targets.<target>.thin.runtimeStore` może nadpisać.
+  - `memfd` wymaga wsparcia jądra; brak wsparcia = błąd uruchomienia.
+  - `tmpfile` używa `mkstemp` i usuwa plik z dysku (unlink), ale nie używa memfd.
 
 ### 2.3 Idempotencja i rozpoznawanie stanu (MUST)
 `seal ship --packager thin-split`:

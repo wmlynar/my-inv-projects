@@ -16,6 +16,14 @@ function normalizeThinEnvMode(raw) {
   return null;
 }
 
+function normalizeThinRuntimeStore(raw) {
+  if (!raw) return null;
+  const v = String(raw).toLowerCase();
+  if (v === "memfd" || v === "mem" || v === "memory") return "memfd";
+  if (v === "tmpfile" || v === "tmp" || v === "file") return "tmpfile";
+  return null;
+}
+
 function resolveThinConfig(targetCfg, projectCfg) {
   const tThin = targetCfg && typeof targetCfg.thin === "object" ? targetCfg.thin : {};
   const pThin = projectCfg?.build && typeof projectCfg.build.thin === "object" ? projectCfg.build.thin : {};
@@ -69,7 +77,15 @@ function resolveThinConfig(targetCfg, projectCfg) {
     null;
   const envMode = normalizeThinEnvMode(envModeRaw);
 
-  return { mode, level, chunkSizeBytes, zstdLevel, zstdTimeoutMs, envMode };
+  const runtimeStoreRaw =
+    targetCfg?.thinRuntimeStore ??
+    tThin.runtimeStore ??
+    projectCfg?.build?.thinRuntimeStore ??
+    pThin.runtimeStore ??
+    null;
+  const runtimeStore = normalizeThinRuntimeStore(runtimeStoreRaw);
+
+  return { mode, level, chunkSizeBytes, zstdLevel, zstdTimeoutMs, envMode, runtimeStore };
 }
 
 function normalizePackager(rawPackager, thinMode) {
@@ -137,6 +153,7 @@ function resolveProtectionConfig(projectCfg) {
 module.exports = {
   normalizeThinMode,
   normalizeThinEnvMode,
+  normalizeThinRuntimeStore,
   resolveThinConfig,
   normalizePackager,
   resolveBundleFallback,

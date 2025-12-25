@@ -766,6 +766,7 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
       zstdLevelOverride: thinZstdLevel,
       zstdTimeoutMs: thinZstdTimeoutMs,
       envMode: thinCfg.envMode,
+      runtimeStore: thinCfg.runtimeStore,
       projectRoot,
       targetName: targetCfg.target || targetCfg.config || "default",
       sentinel: sentinelCfg,

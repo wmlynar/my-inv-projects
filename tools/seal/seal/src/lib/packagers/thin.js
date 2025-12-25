@@ -1061,7 +1061,7 @@ static int sentinel_check(void) {
 `;
 }
 
-function renderLauncherSource(codecState, limits, allowBootstrap, sentinelCfg, envMode) {
+function renderLauncherSource(codecState, limits, allowBootstrap, sentinelCfg, envMode, runtimeStore) {
   const bootstrapJs = `"use strict";
 const fs = require("fs");
 const path = require("path");
@@ -1089,6 +1089,7 @@ m._compile(code, entry);
   const sentinelCode = renderSentinelCode();
 
   const envStrictDefault = envMode === "allowlist" ? 1 : 0;
+  const runtimeStoreMode = runtimeStore === "tmpfile" ? 2 : 1;
 
   return `#include <errno.h>
 #include <ctype.h>
@@ -1137,6 +1138,9 @@ extern char **environ;
 #define THIN_AIO_FOOTER_NONCE ${codecState.aioFooterNonce}u
 #define THIN_BOOTSTRAP_ALLOWED ${allowBootstrap ? 1 : 0}
 #define THIN_ENV_STRICT_DEFAULT ${envStrictDefault}
+#define THIN_RUNTIME_STORE_MEMFD 1
+#define THIN_RUNTIME_STORE_TMPFILE 2
+#define THIN_RUNTIME_STORE ${runtimeStoreMode}
 
 #define MAX_CHUNKS ${limits.maxChunks}u
 #define MAX_CHUNK_RAW ${limits.maxChunkRaw}u
@@ -1282,13 +1286,19 @@ ${sentinelCode}
 
 static int make_memfd(const char *name) {
   int fd = -1;
+#if THIN_RUNTIME_STORE == THIN_RUNTIME_STORE_MEMFD
 #ifdef SYS_memfd_create
   fd = (int)syscall(SYS_memfd_create, name, MFD_CLOEXEC | MFD_ALLOW_SEALING);
   if (fd < 0 && errno == EINVAL) {
     fd = (int)syscall(SYS_memfd_create, name, MFD_CLOEXEC);
   }
-  if (fd >= 0) return fd;
+  return fd;
+#else
+  (void)name;
+  errno = ENOSYS;
+  return -1;
 #endif
+#elif THIN_RUNTIME_STORE == THIN_RUNTIME_STORE_TMPFILE
   char tmp[64];
   snprintf(tmp, sizeof(tmp), "/tmp/.seal-out-thin-%d-XXXXXX", getpid());
   fd = mkstemp(tmp);
@@ -1296,6 +1306,11 @@ static int make_memfd(const char *name) {
     unlink(tmp);
   }
   return fd;
+#else
+  (void)name;
+  errno = ENOSYS;
+  return -1;
+#endif
 }
 
 static int set_no_cloexec(int fd) {
@@ -1594,7 +1609,7 @@ static int anti_debug_checks(void) {
   return 0;
 }
 
-static void harden_env(void) {
+static int harden_env(void) {
   int strict_mode = THIN_ENV_STRICT_DEFAULT;
   const char *strict = getenv("SEAL_THIN_ENV_STRICT");
   if (strict) {
@@ -1620,21 +1635,29 @@ static void harden_env(void) {
     char *ssl_dir = dup_env_value("SSL_CERT_DIR");
 
     if (clearenv() != 0) {
-      // If clearenv fails, fall back to a denylist below.
-      strict_mode = 0;
-    } else {
-      if (lang) setenv("LANG", lang, 1);
-      if (lc_all) setenv("LC_ALL", lc_all, 1);
-      if (lc_ctype) setenv("LC_CTYPE", lc_ctype, 1);
-      if (tz) setenv("TZ", tz, 1);
-      if (term) setenv("TERM", term, 1);
-      if (home) setenv("HOME", home, 1);
-      if (user) setenv("USER", user, 1);
-      if (logname) setenv("LOGNAME", logname, 1);
-      if (ssl_file) setenv("SSL_CERT_FILE", ssl_file, 1);
-      if (ssl_dir) setenv("SSL_CERT_DIR", ssl_dir, 1);
-      setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", 1);
+      free(lang);
+      free(lc_all);
+      free(lc_ctype);
+      free(tz);
+      free(term);
+      free(home);
+      free(user);
+      free(logname);
+      free(ssl_file);
+      free(ssl_dir);
+      return fail_msg("[thin] runtime invalid", 74);
     }
+    if (lang) setenv("LANG", lang, 1);
+    if (lc_all) setenv("LC_ALL", lc_all, 1);
+    if (lc_ctype) setenv("LC_CTYPE", lc_ctype, 1);
+    if (tz) setenv("TZ", tz, 1);
+    if (term) setenv("TERM", term, 1);
+    if (home) setenv("HOME", home, 1);
+    if (user) setenv("USER", user, 1);
+    if (logname) setenv("LOGNAME", logname, 1);
+    if (ssl_file) setenv("SSL_CERT_FILE", ssl_file, 1);
+    if (ssl_dir) setenv("SSL_CERT_DIR", ssl_dir, 1);
+    setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", 1);
 
     free(lang);
     free(lc_all);
@@ -1680,6 +1703,8 @@ static void harden_env(void) {
       setenv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", 1);
     }
   }
+
+  return 0;
 }
 
 static void harden_limits(void) {
@@ -1804,11 +1829,11 @@ int main(int argc, char **argv) {
 
   int node_fd = make_memfd("seal-node");
   if (node_fd < 0) {
-    return fail_msg("[thin] memfd node failed", 27);
+    return fail_msg("[thin] runtime fd failed", 27);
   }
   node_fd = ensure_fd_min(node_fd, 10);
   if (node_fd < 0) {
-    return fail_msg("[thin] memfd node failed", 27);
+    return fail_msg("[thin] runtime fd failed", 27);
   }
   int rc = decode_container(rt_fd, rt_src_off, rt_src_len, node_fd);
   if (rc != 0) {
@@ -1820,11 +1845,11 @@ int main(int argc, char **argv) {
 
   int bundle_fd = make_memfd("seal-bundle");
   if (bundle_fd < 0) {
-    return fail_msg("[thin] memfd bundle failed", 29);
+    return fail_msg("[thin] payload fd failed", 29);
   }
   bundle_fd = ensure_fd_min(bundle_fd, 10);
   if (bundle_fd < 0) {
-    return fail_msg("[thin] memfd bundle failed", 29);
+    return fail_msg("[thin] payload fd failed", 29);
   }
   rc = decode_container(pl_fd, pl_src_off, pl_src_len, bundle_fd);
   if (rc != 0) {
@@ -1857,7 +1882,10 @@ int main(int argc, char **argv) {
 
   close_extra_fds(node_fd, 4);
 
-  harden_env();
+  int env_rc = harden_env();
+  if (env_rc != 0) {
+    return env_rc;
+  }
   set_env_paths(root);
   harden_limits();
 
@@ -1868,7 +1896,7 @@ int main(int argc, char **argv) {
 `;
 }
 
-function buildLauncher(stageDir, codecState, allowBootstrap, sentinelCfg, envMode) {
+function buildLauncher(stageDir, codecState, allowBootstrap, sentinelCfg, envMode, runtimeStore) {
   const limits = DEFAULT_LIMITS;
   const cc = resolveCc();
   if (!cc) {
@@ -1877,7 +1905,7 @@ function buildLauncher(stageDir, codecState, allowBootstrap, sentinelCfg, envMod
 
   const cPath = path.join(stageDir, "thin-launcher.c");
   const outPath = path.join(stageDir, "thin-launcher");
-  fs.writeFileSync(cPath, renderLauncherSource(codecState, limits, allowBootstrap, sentinelCfg, envMode), "utf-8");
+  fs.writeFileSync(cPath, renderLauncherSource(codecState, limits, allowBootstrap, sentinelCfg, envMode, runtimeStore), "utf-8");
 
   const zstdFlags = getZstdFlags();
   const args = [
