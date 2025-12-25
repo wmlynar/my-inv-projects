@@ -11,7 +11,7 @@ const { cmdShip } = require("../src/commands/deploy");
 const { uninstallLocal } = require("../src/lib/deploy");
 const { uninstallSsh } = require("../src/lib/deploySsh");
 const { sshExec } = require("../src/lib/ssh");
-const { writeJson5 } = require("../src/lib/json5io");
+const { writeJson5, readJson5 } = require("../src/lib/json5io");
 
 const EXAMPLE_ROOT = path.resolve(__dirname, "..", "..", "example");
 
@@ -60,13 +60,13 @@ function cleanupServiceArtifacts(targetCfg) {
   fs.rmSync(targetCfg.installDir, { recursive: true, force: true });
 }
 
-function sshOk(user, host, cmd) {
-  const res = sshExec({ user, host, args: ["bash", "-lc", cmd], stdio: "pipe" });
+function sshOk(user, host, cmd, sshPort) {
+  const res = sshExec({ user, host, args: ["bash", "-lc", cmd], stdio: "pipe", sshPort });
   return { ok: res.ok, out: `${res.stdout || ""}\n${res.stderr || ""}`.trim() };
 }
 
-function sshStat(user, host, filePath) {
-  const res = sshExec({ user, host, args: ["bash", "-lc", `stat -c '%i %Y %s' ${shellQuote(filePath)}`], stdio: "pipe" });
+function sshStat(user, host, filePath, sshPort) {
+  const res = sshExec({ user, host, args: ["bash", "-lc", `stat -c '%i %Y %s' ${shellQuote(filePath)}`], stdio: "pipe", sshPort });
   if (!res.ok) return null;
   const out = (res.stdout || "").trim();
   const parts = out.split(/\s+/).map((x) => Number(x));
@@ -76,6 +76,73 @@ function sshStat(user, host, filePath) {
 
 function shellQuote(str) {
   return "'" + String(str).replace(/'/g, "'\\''") + "'";
+}
+
+function readHttpPort(configName) {
+  const cfgPath = path.join(EXAMPLE_ROOT, "config", `${configName}.json5`);
+  if (!fs.existsSync(cfgPath)) return null;
+  try {
+    const cfg = readJson5(cfgPath) || {};
+    const port = cfg.http ? Number(cfg.http.port) : null;
+    if (Number.isFinite(port) && port > 0) return Math.trunc(port);
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function buildRemoteHttpCmd(url) {
+  const urlQ = shellQuote(url);
+  return `
+set -e
+if command -v curl >/dev/null 2>&1; then
+  curl -fsS ${urlQ}
+elif command -v wget >/dev/null 2>&1; then
+  wget -qO- ${urlQ}
+elif command -v python3 >/dev/null 2>&1; then
+  URL=${urlQ} python3 - <<'PY'
+import os, urllib.request, sys
+url = os.environ.get("URL")
+with urllib.request.urlopen(url, timeout=5) as r:
+    sys.stdout.write(r.read().decode("utf-8"))
+PY
+else
+  echo "__SEAL_NO_HTTP_CLIENT__"
+  exit 127
+fi
+`;
+}
+
+async function waitForRemoteHealth({ user, host, sshPort, port, timeoutMs = 20_000 }) {
+  const url = `http://127.0.0.1:${port}/healthz`;
+  const cmd = buildRemoteHttpCmd(url);
+  const start = Date.now();
+  let sawNoClient = false;
+  while (Date.now() - start < timeoutMs) {
+    const res = sshExec({ user, host, args: ["bash", "-lc", cmd], stdio: "pipe", sshPort });
+    const out = (res.stdout || "").trim();
+    if (!res.ok && (out.includes("__SEAL_NO_HTTP_CLIENT__") || res.code === 127)) {
+      sawNoClient = true;
+      break;
+    }
+    if (res.ok && out) {
+      try {
+        const json = JSON.parse(out);
+        if (json && json.ok === true) return json;
+      } catch {
+        // retry
+      }
+    }
+    await delay(500);
+  }
+  if (sawNoClient) {
+    throw new Error("Remote HTTP check failed: missing curl/wget/python3 on target host");
+  }
+  throw new Error(`Timeout waiting for HTTP response on ${url}`);
 }
 
 async function shipOnce(targetCfg, opts) {
@@ -102,7 +169,7 @@ async function testShipThinAio() {
     serviceName,
     packager: "thin",
     thinMode: "aio",
-    config: "prod",
+    config: "local",
   };
 
   const targetPath = path.join(EXAMPLE_ROOT, "seal-config", "targets", `${targetName}.json5`);
@@ -140,7 +207,7 @@ async function testShipThinBootstrapReuse() {
     serviceName,
     packager: "thin",
     thinMode: "bootstrap",
-    config: "prod",
+    config: "local",
   };
 
   const targetPath = path.join(EXAMPLE_ROOT, "seal-config", "targets", `${targetName}.json5`);
@@ -186,17 +253,18 @@ async function testShipThinBootstrapSsh() {
   const user = process.env.SEAL_SHIP_SSH_USER;
   const installDir = process.env.SEAL_SHIP_SSH_INSTALL_DIR;
   const serviceName = process.env.SEAL_SHIP_SSH_SERVICE_NAME;
+  const sshPort = process.env.SEAL_SHIP_SSH_PORT ? Number(process.env.SEAL_SHIP_SSH_PORT) : null;
   if (!host || !user || !installDir || !serviceName) {
     log("SKIP: missing SSH env (SEAL_SHIP_SSH_HOST/USER/INSTALL_DIR/SERVICE_NAME)");
     return;
   }
 
-  const ping = sshOk(user, host, "echo __SEAL_OK__");
+  const ping = sshOk(user, host, "echo __SEAL_OK__", sshPort);
   if (!ping.ok || !ping.out.includes("__SEAL_OK__")) {
     log(`SKIP: ssh not available (${ping.out || "no output"})`);
     return;
   }
-  const sudoCheck = sshOk(user, host, "sudo -n true");
+  const sudoCheck = sshOk(user, host, "sudo -n true", sshPort);
   if (!sudoCheck.ok) {
     log(`SKIP: passwordless sudo not available (${sudoCheck.out || "no output"})`);
     return;
@@ -212,9 +280,10 @@ async function testShipThinBootstrapSsh() {
     serviceScope: "system",
     installDir,
     serviceName,
+    sshPort: Number.isFinite(sshPort) ? sshPort : undefined,
     packager: "thin",
     thinMode: "bootstrap",
-    config: "prod",
+    config: "server",
   };
 
   const targetPath = path.join(EXAMPLE_ROOT, "seal-config", "targets", `${targetName}.json5`);
@@ -225,19 +294,28 @@ async function testShipThinBootstrapSsh() {
     await shipOnce(targetCfg, { bootstrap: true, pushConfig: true, skipCheck: true, packager: "thin" });
     const rtPath = `${installDir}/r/rt`;
     const plPath = `${installDir}/r/pl`;
-    const rtStat1 = sshStat(user, host, rtPath);
-    const plStat1 = sshStat(user, host, plPath);
+    const rtStat1 = sshStat(user, host, rtPath, sshPort);
+    const plStat1 = sshStat(user, host, plPath, sshPort);
     assert.ok(rtStat1 && plStat1, "Missing r/rt or r/pl after bootstrap ship (ssh)");
 
     await shipOnce(targetCfg, { bootstrap: false, pushConfig: false, skipCheck: true, packager: "thin" });
-    const rtStat2 = sshStat(user, host, rtPath);
-    const plStat2 = sshStat(user, host, plPath);
+    const rtStat2 = sshStat(user, host, rtPath, sshPort);
+    const plStat2 = sshStat(user, host, plPath, sshPort);
     assert.ok(rtStat2 && plStat2, "Missing r/rt or r/pl after payload ship (ssh)");
 
     assert.strictEqual(rtStat1.ino, rtStat2.ino, "SSH bootstrap should reuse runtime (inode changed)");
     if (plStat1.ino === plStat2.ino && plStat1.mtime === plStat2.mtime) {
       fail("SSH payload did not appear to change between ships; verify build pipeline.");
     }
+
+    const httpPort = process.env.SEAL_SHIP_SSH_HTTP_PORT
+      ? Number(process.env.SEAL_SHIP_SSH_HTTP_PORT)
+      : readHttpPort("server");
+    if (!httpPort || !Number.isFinite(httpPort)) {
+      throw new Error("Missing HTTP port for SSH E2E (set SEAL_SHIP_SSH_HTTP_PORT or config/server.json5)");
+    }
+    await waitForRemoteHealth({ user, host, sshPort, port: Math.trunc(httpPort) });
+    log(`OK: remote HTTP /healthz on port ${httpPort}`);
   } finally {
     if (process.env.SEAL_SHIP_SSH_KEEP !== "1") {
       try {
