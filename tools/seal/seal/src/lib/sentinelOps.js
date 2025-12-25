@@ -344,7 +344,7 @@ CPU_MODEL="$(awk -F: '/^model[[:space:]]*:/ {gsub(/^[ \t]+|[ \t]+$/, "", $2); pr
 CPU_STEP="$(awk -F: '/^stepping[[:space:]]*:/ {gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2; exit}' /proc/cpuinfo 2>/dev/null || true)"
 CPUID=""
 if [ -n "$CPU_VENDOR$CPU_FAMILY$CPU_MODEL$CPU_STEP" ]; then
-  CPUID="$(echo "${CPU_VENDOR}:${CPU_FAMILY}:${CPU_MODEL}:${CPU_STEP}" | tr 'A-Z' 'a-z')"
+  CPUID="$(echo "$CPU_VENDOR:$CPU_FAMILY:$CPU_MODEL:$CPU_STEP" | tr 'A-Z' 'a-z')"
 fi
 LINE="$(awk '$5=="/" {print; exit}' /proc/self/mountinfo)"
 MAJMIN=""
@@ -837,7 +837,7 @@ if [ "$BASE64_OK" = "1" ]; then
       product="$(cat "$d/product" 2>/dev/null || true)"
       manufacturer="$(cat "$d/manufacturer" 2>/dev/null || true)"
       cls="$(cat "$d/bDeviceClass" 2>/dev/null || true)"
-      usb_list="${usb_list}${vid}|${pid}|${serial}|${product}|${manufacturer}|${cls}|${d}\\n"
+      usb_list="$usb_list$vid|$pid|$serial|$product|$manufacturer|$cls|$d"$'\n'
     done
   fi
   echo "USB_B64=$(printf '%s' "$usb_list" | b64)"
