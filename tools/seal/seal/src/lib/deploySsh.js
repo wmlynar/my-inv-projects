@@ -314,10 +314,18 @@ function bootstrapSsh(targetCfg) {
   return layout;
 }
 
-function installServiceSsh(targetCfg) {
+function installServiceSsh(targetCfg, sentinelCfg) {
   const { user: sshUser, host } = sshUserHost(targetCfg);
   const { user: serviceUser, group: serviceGroup } = serviceUserGroup(targetCfg, sshUser);
   const layout = remoteLayout(targetCfg);
+  const useSentinel = !!(sentinelCfg && sentinelCfg.enabled);
+  const exitCodeBlock = useSentinel ? Number(sentinelCfg.exitCodeBlock || 200) : null;
+  const unitLimits = useSentinel
+    ? "StartLimitIntervalSec=60\nStartLimitBurst=3\n"
+    : "";
+  const preventRestart = useSentinel
+    ? `RestartPreventExitStatus=${exitCodeBlock}\n`
+    : "";
 
 const runnerScript = `#!/usr/bin/env bash
 set -euo pipefail
@@ -345,9 +353,10 @@ cd "$REL"
 exec "$REL/appctl" run
 `;
 
-  const unit = `[Unit]
+const unit = `[Unit]
 Description=SEAL app ${targetCfg.serviceName}
 After=network.target
+${unitLimits}
 
 [Service]
 Type=simple
@@ -357,6 +366,7 @@ WorkingDirectory=${layout.installDir}
 ExecStart=${layout.runner}
 Restart=always
 RestartSec=1
+${preventRestart}
 StandardOutput=journal
 StandardError=journal
 

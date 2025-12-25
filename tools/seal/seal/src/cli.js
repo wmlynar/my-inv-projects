@@ -13,6 +13,7 @@ const { cmdVerify } = require("./commands/verify");
 const { cmdRunLocal } = require("./commands/runLocal");
 const { cmdTargetAdd } = require("./commands/targetAdd");
 const { cmdConfigAdd, cmdConfigDiff, cmdConfigPull, cmdConfigPush } = require("./commands/config");
+const { cmdSentinelProbe, cmdSentinelInstall, cmdSentinelVerify, cmdSentinelUninstall } = require("./commands/sentinel");
 const { cmdDeploy, cmdShip, cmdRollback, cmdUninstall, cmdRunRemote, cmdRemote } = require("./commands/deploy");
 const { loadSealFile, isWorkspaceConfig } = require("./lib/project");
 const { version } = require("./lib/version");
@@ -121,6 +122,27 @@ async function main(argv) {
     .command("push [targetOrConfig]")
     .description("Push repo seal-config/configs to server shared/config.json5 (requires SSH)")
     .action(async (targetOrConfig) => cmdConfigPush(process.cwd(), targetOrConfig));
+
+  const sentinelCmd = program.command("sentinel").description("Manage sentinel (thin-only)");
+  sentinelCmd
+    .command("probe [target]")
+    .description("Probe host and baseDir for sentinel readiness (SSH)")
+    .action(async (target) => cmdSentinelProbe(process.cwd(), target));
+  sentinelCmd
+    .command("install [target]")
+    .description("Install sentinel blob on target (SSH)")
+    .option("--force", "Rebind sentinel (regenerate install_id)", false)
+    .option("--insecure", "Skip baseDir safety checks (NOT recommended)", false)
+    .action(async (target, opts) => cmdSentinelInstall(process.cwd(), target, opts));
+  sentinelCmd
+    .command("verify [target]")
+    .description("Verify sentinel blob against host fingerprint (SSH)")
+    .option("--json", "Print JSON output", false)
+    .action(async (target, opts) => cmdSentinelVerify(process.cwd(), target, opts));
+  sentinelCmd
+    .command("uninstall [target]")
+    .description("Remove sentinel blob from target (SSH)")
+    .action(async (target) => cmdSentinelUninstall(process.cwd(), target));
 
   program
     .command("release")

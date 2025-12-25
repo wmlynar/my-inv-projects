@@ -17,6 +17,7 @@ const { packSea } = require("./packagers/sea");
 const { packFallback } = require("./packagers/fallback");
 const { packThin } = require("./packagers/thin");
 const { normalizePackager, resolveBundleFallback, resolveThinConfig, resolveProtectionConfig } = require("./packagerConfig");
+const { resolveSentinelConfig } = require("./sentinelConfig");
 
 function makeBuildId() {
   const now = new Date();
@@ -688,6 +689,14 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
 
   info(`Target: ${targetCfg.target} (packager=${packagerSpec.label}) config=${configName}`);
 
+  const sentinelCfg = resolveSentinelConfig({
+    projectRoot,
+    projectCfg,
+    targetCfg,
+    targetName: targetCfg.target || targetCfg.config || "default",
+    packagerSpec,
+  });
+
   info("Bundling (esbuild)...");
   const bundlePath = await buildBundle({ projectRoot, entryRel: projectCfg.entry, stageDir, buildId, appName });
   ok("Bundle OK (esbuild)");
@@ -758,6 +767,7 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
       zstdTimeoutMs: thinZstdTimeoutMs,
       projectRoot,
       targetName: targetCfg.target || targetCfg.config || "default",
+      sentinel: sentinelCfg,
     });
     if (!res.ok) {
       throw new Error(`Thin packager failed: ${res.errorShort}`);

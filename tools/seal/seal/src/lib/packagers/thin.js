@@ -508,7 +508,410 @@ function getZstdFlags() {
   return out ? out.split(/\s+/).filter(Boolean) : [];
 }
 
-function renderLauncherSource(codecState, limits, allowBootstrap) {
+function toCString(value) {
+  return `"${String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+function toCBytes(buf) {
+  return Array.from(buf, (b) => `0x${b.toString(16).padStart(2, "0")}`).join(", ");
+}
+
+function renderSentinelDefs(sentinelCfg) {
+  if (!sentinelCfg || !sentinelCfg.enabled) {
+    return `#define SENTINEL_ENABLED 0
+#define SENTINEL_EXIT_BLOCK 200
+`;
+  }
+  if (!Buffer.isBuffer(sentinelCfg.anchor)) {
+    throw new Error("Sentinel anchor missing");
+  }
+  if (!sentinelCfg.opaqueDir || !sentinelCfg.opaqueFile) {
+    throw new Error("Sentinel path missing");
+  }
+  const baseDir = sentinelCfg.storage && sentinelCfg.storage.baseDir ? sentinelCfg.storage.baseDir : "/var/lib";
+  const exitCode = Number(sentinelCfg.exitCodeBlock || 200);
+  return `#define SENTINEL_ENABLED 1
+#define SENTINEL_EXIT_BLOCK ${exitCode}
+static const uint8_t SENTINEL_ANCHOR[] = { ${toCBytes(sentinelCfg.anchor)} };
+#define SENTINEL_ANCHOR_LEN ((size_t)sizeof(SENTINEL_ANCHOR))
+static const char SENTINEL_BASE_DIR[] = ${toCString(baseDir)};
+static const char SENTINEL_DIR[] = ${toCString(sentinelCfg.opaqueDir)};
+static const char SENTINEL_FILE[] = ${toCString(sentinelCfg.opaqueFile)};
+`;
+}
+
+function renderSentinelCode() {
+  return `
+#if SENTINEL_ENABLED
+#define SENTINEL_BLOB_LEN 76u
+#define SENTINEL_MASK_LEN 72u
+
+typedef struct {
+  uint8_t data[64];
+  uint32_t datalen;
+  uint64_t bitlen;
+  uint32_t state[8];
+} sha256_ctx;
+
+static const uint32_t sha256_k[64] = {
+  0x428a2f98u, 0x71374491u, 0xb5c0fbcfu, 0xe9b5dba5u,
+  0x3956c25bu, 0x59f111f1u, 0x923f82a4u, 0xab1c5ed5u,
+  0xd807aa98u, 0x12835b01u, 0x243185beu, 0x550c7dc3u,
+  0x72be5d74u, 0x80deb1feu, 0x9bdc06a7u, 0xc19bf174u,
+  0xe49b69c1u, 0xefbe4786u, 0x0fc19dc6u, 0x240ca1ccu,
+  0x2de92c6fu, 0x4a7484aau, 0x5cb0a9dcu, 0x76f988dau,
+  0x983e5152u, 0xa831c66du, 0xb00327c8u, 0xbf597fc7u,
+  0xc6e00bf3u, 0xd5a79147u, 0x06ca6351u, 0x14292967u,
+  0x27b70a85u, 0x2e1b2138u, 0x4d2c6dfcu, 0x53380d13u,
+  0x650a7354u, 0x766a0abbu, 0x81c2c92eu, 0x92722c85u,
+  0xa2bfe8a1u, 0xa81a664bu, 0xc24b8b70u, 0xc76c51a3u,
+  0xd192e819u, 0xd6990624u, 0xf40e3585u, 0x106aa070u,
+  0x19a4c116u, 0x1e376c08u, 0x2748774cu, 0x34b0bcb5u,
+  0x391c0cb3u, 0x4ed8aa4au, 0x5b9cca4fu, 0x682e6ff3u,
+  0x748f82eeu, 0x78a5636fu, 0x84c87814u, 0x8cc70208u,
+  0x90befffau, 0xa4506cebu, 0xbef9a3f7u, 0xc67178f2u
+};
+
+static uint32_t rotr32(uint32_t a, uint32_t b) {
+  return (a >> b) | (a << (32 - b));
+}
+
+static void sha256_transform(sha256_ctx *ctx, const uint8_t data[]) {
+  uint32_t a, b, c, d, e, f, g, h, t1, t2, m[64];
+  for (uint32_t i = 0, j = 0; i < 16; i++, j += 4) {
+    m[i] = ((uint32_t)data[j] << 24)
+      | ((uint32_t)data[j + 1] << 16)
+      | ((uint32_t)data[j + 2] << 8)
+      | ((uint32_t)data[j + 3]);
+  }
+  for (uint32_t i = 16; i < 64; i++) {
+    uint32_t s0 = rotr32(m[i - 15], 7) ^ rotr32(m[i - 15], 18) ^ (m[i - 15] >> 3);
+    uint32_t s1 = rotr32(m[i - 2], 17) ^ rotr32(m[i - 2], 19) ^ (m[i - 2] >> 10);
+    m[i] = m[i - 16] + s0 + m[i - 7] + s1;
+  }
+
+  a = ctx->state[0];
+  b = ctx->state[1];
+  c = ctx->state[2];
+  d = ctx->state[3];
+  e = ctx->state[4];
+  f = ctx->state[5];
+  g = ctx->state[6];
+  h = ctx->state[7];
+
+  for (uint32_t i = 0; i < 64; i++) {
+    uint32_t S1 = rotr32(e, 6) ^ rotr32(e, 11) ^ rotr32(e, 25);
+    uint32_t ch = (e & f) ^ (~e & g);
+    t1 = h + S1 + ch + sha256_k[i] + m[i];
+    uint32_t S0 = rotr32(a, 2) ^ rotr32(a, 13) ^ rotr32(a, 22);
+    uint32_t maj = (a & b) ^ (a & c) ^ (b & c);
+    t2 = S0 + maj;
+
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+  }
+
+  ctx->state[0] += a;
+  ctx->state[1] += b;
+  ctx->state[2] += c;
+  ctx->state[3] += d;
+  ctx->state[4] += e;
+  ctx->state[5] += f;
+  ctx->state[6] += g;
+  ctx->state[7] += h;
+}
+
+static void sha256_init(sha256_ctx *ctx) {
+  ctx->datalen = 0;
+  ctx->bitlen = 0;
+  ctx->state[0] = 0x6a09e667u;
+  ctx->state[1] = 0xbb67ae85u;
+  ctx->state[2] = 0x3c6ef372u;
+  ctx->state[3] = 0xa54ff53au;
+  ctx->state[4] = 0x510e527fu;
+  ctx->state[5] = 0x9b05688cu;
+  ctx->state[6] = 0x1f83d9abu;
+  ctx->state[7] = 0x5be0cd19u;
+}
+
+static void sha256_update(sha256_ctx *ctx, const uint8_t *data, size_t len) {
+  for (size_t i = 0; i < len; i++) {
+    ctx->data[ctx->datalen] = data[i];
+    ctx->datalen++;
+    if (ctx->datalen == 64) {
+      sha256_transform(ctx, ctx->data);
+      ctx->bitlen += 512;
+      ctx->datalen = 0;
+    }
+  }
+}
+
+static void sha256_final(sha256_ctx *ctx, uint8_t hash[]) {
+  size_t i = ctx->datalen;
+  if (ctx->datalen < 56) {
+    ctx->data[i++] = 0x80;
+    while (i < 56) ctx->data[i++] = 0x00;
+  } else {
+    ctx->data[i++] = 0x80;
+    while (i < 64) ctx->data[i++] = 0x00;
+    sha256_transform(ctx, ctx->data);
+    memset(ctx->data, 0, 56);
+  }
+
+  ctx->bitlen += (uint64_t)ctx->datalen * 8u;
+  ctx->data[63] = (uint8_t)(ctx->bitlen);
+  ctx->data[62] = (uint8_t)(ctx->bitlen >> 8);
+  ctx->data[61] = (uint8_t)(ctx->bitlen >> 16);
+  ctx->data[60] = (uint8_t)(ctx->bitlen >> 24);
+  ctx->data[59] = (uint8_t)(ctx->bitlen >> 32);
+  ctx->data[58] = (uint8_t)(ctx->bitlen >> 40);
+  ctx->data[57] = (uint8_t)(ctx->bitlen >> 48);
+  ctx->data[56] = (uint8_t)(ctx->bitlen >> 56);
+  sha256_transform(ctx, ctx->data);
+
+  for (i = 0; i < 4; i++) {
+    hash[i]      = (uint8_t)((ctx->state[0] >> (24 - i * 8)) & 0xff);
+    hash[i + 4]  = (uint8_t)((ctx->state[1] >> (24 - i * 8)) & 0xff);
+    hash[i + 8]  = (uint8_t)((ctx->state[2] >> (24 - i * 8)) & 0xff);
+    hash[i + 12] = (uint8_t)((ctx->state[3] >> (24 - i * 8)) & 0xff);
+    hash[i + 16] = (uint8_t)((ctx->state[4] >> (24 - i * 8)) & 0xff);
+    hash[i + 20] = (uint8_t)((ctx->state[5] >> (24 - i * 8)) & 0xff);
+    hash[i + 24] = (uint8_t)((ctx->state[6] >> (24 - i * 8)) & 0xff);
+    hash[i + 28] = (uint8_t)((ctx->state[7] >> (24 - i * 8)) & 0xff);
+  }
+}
+
+static void sha256_hash(const uint8_t *data, size_t len, uint8_t out[32]) {
+  sha256_ctx ctx;
+  sha256_init(&ctx);
+  sha256_update(&ctx, data, len);
+  sha256_final(&ctx, out);
+}
+
+static int ct_eq(const uint8_t *a, const uint8_t *b, size_t len) {
+  uint8_t diff = 0;
+  for (size_t i = 0; i < len; i++) diff |= (uint8_t)(a[i] ^ b[i]);
+  return diff == 0;
+}
+
+static void trim_ws(char *s) {
+  size_t len = strlen(s);
+  while (len > 0 && (s[len - 1] == '\\n' || s[len - 1] == '\\r' || s[len - 1] == ' ' || s[len - 1] == '\\t')) {
+    s[--len] = 0;
+  }
+  size_t start = 0;
+  while (s[start] == ' ' || s[start] == '\\t' || s[start] == '\\n' || s[start] == '\\r') start++;
+  if (start > 0) memmove(s, s + start, len - start + 1);
+}
+
+static int read_text(const char *path, char *out, size_t out_len) {
+  int fd = open(path, O_RDONLY | O_CLOEXEC);
+  if (fd < 0) return -1;
+  ssize_t r = read(fd, out, out_len - 1);
+  close(fd);
+  if (r <= 0) return -1;
+  out[r] = 0;
+  trim_ws(out);
+  return out[0] ? 0 : -1;
+}
+
+static int get_root_device(int *out_maj, int *out_min, char *out_fs, size_t out_fs_len) {
+  FILE *fp = fopen("/proc/self/mountinfo", "r");
+  if (!fp) return -1;
+  char line[4096];
+  while (fgets(line, sizeof(line), fp)) {
+    char *save = NULL;
+    char *tok = strtok_r(line, " ", &save);
+    int field = 0;
+    char *majmin = NULL;
+    char *mount = NULL;
+    char *fstype = NULL;
+    while (tok) {
+      field++;
+      if (field == 3) majmin = tok;
+      if (field == 5) mount = tok;
+      if (strcmp(tok, "-") == 0) {
+        fstype = strtok_r(NULL, " ", &save);
+        break;
+      }
+      tok = strtok_r(NULL, " ", &save);
+    }
+    if (!majmin || !mount) continue;
+    if (strcmp(mount, "/") != 0) continue;
+    int maj = 0;
+    int min = 0;
+    if (sscanf(majmin, "%d:%d", &maj, &min) != 2) continue;
+    if (out_fs && out_fs_len > 0 && fstype) {
+      strncpy(out_fs, fstype, out_fs_len - 1);
+      out_fs[out_fs_len - 1] = 0;
+      trim_ws(out_fs);
+    }
+    *out_maj = maj;
+    *out_min = min;
+    fclose(fp);
+    return 0;
+  }
+  fclose(fp);
+  return -1;
+}
+
+static int match_rid_dir(const char *dir, const char *prefix, int maj, int min, char *out, size_t out_len) {
+  DIR *dp = opendir(dir);
+  if (!dp) return -1;
+  struct dirent *ent;
+  char path[PATH_MAX + 1];
+  while ((ent = readdir(dp)) != NULL) {
+    if (ent->d_name[0] == '.') continue;
+    if (snprintf(path, sizeof(path), "%s/%s", dir, ent->d_name) < 0) continue;
+    struct stat st;
+    if (stat(path, &st) != 0) continue;
+    if (!S_ISBLK(st.st_mode)) continue;
+    if ((int)major(st.st_rdev) == maj && (int)minor(st.st_rdev) == min) {
+      snprintf(out, out_len, "%s:%s", prefix, ent->d_name);
+      closedir(dp);
+      return 0;
+    }
+  }
+  closedir(dp);
+  return -1;
+}
+
+static int get_root_rid(char *out, size_t out_len) {
+  int maj = 0;
+  int min = 0;
+  if (get_root_device(&maj, &min, NULL, 0) != 0) return -1;
+  if (match_rid_dir("/dev/disk/by-uuid", "uuid", maj, min, out, out_len) == 0) return 0;
+  if (match_rid_dir("/dev/disk/by-partuuid", "partuuid", maj, min, out, out_len) == 0) return 0;
+  snprintf(out, out_len, "dev:%d:%d", maj, min);
+  return 0;
+}
+
+static int build_fingerprint(uint8_t level, const char *mid, const char *rid, char *out, size_t out_len) {
+  int n = -1;
+  if (level == 0) {
+    n = snprintf(out, out_len, "v0\\n");
+  } else if (level == 1) {
+    if (!mid || !mid[0]) return -1;
+    n = snprintf(out, out_len, "v1\\nmid=%s\\n", mid);
+  } else if (level == 2) {
+    if (!mid || !mid[0] || !rid || !rid[0]) return -1;
+    n = snprintf(out, out_len, "v2\\nmid=%s\\nrid=%s\\n", mid, rid);
+  } else {
+    return -1;
+  }
+  if (n < 0 || (size_t)n >= out_len) return -1;
+  return 0;
+}
+
+static int sentinel_check(void) {
+  struct stat st;
+  if (lstat(SENTINEL_BASE_DIR, &st) != 0) return -1;
+  if (!S_ISDIR(st.st_mode) || S_ISLNK(st.st_mode)) return -1;
+  if (st.st_uid != 0) return -1;
+  if ((st.st_mode & 022) != 0) return -1;
+
+  int base_flags = O_RDONLY | O_DIRECTORY | O_CLOEXEC;
+#ifdef O_NOFOLLOW
+  base_flags |= O_NOFOLLOW;
+#endif
+  int base_fd = open(SENTINEL_BASE_DIR, base_flags);
+  if (base_fd < 0) return -1;
+  int dir_flags = O_RDONLY | O_DIRECTORY | O_CLOEXEC;
+#ifdef O_NOFOLLOW
+  dir_flags |= O_NOFOLLOW;
+#endif
+  int dir_fd = openat(base_fd, SENTINEL_DIR, dir_flags);
+  if (dir_fd < 0) {
+    close(base_fd);
+    return -1;
+  }
+  if (fstat(dir_fd, &st) != 0 || !S_ISDIR(st.st_mode) || st.st_uid != 0 || (st.st_mode & 022) != 0) {
+    close(dir_fd);
+    close(base_fd);
+    return -1;
+  }
+
+  int file_flags = O_RDONLY | O_CLOEXEC;
+#ifdef O_NOFOLLOW
+  file_flags |= O_NOFOLLOW;
+#endif
+  int file_fd = openat(dir_fd, SENTINEL_FILE, file_flags);
+  if (file_fd < 0) {
+    close(dir_fd);
+    close(base_fd);
+    return -1;
+  }
+  if (fstat(file_fd, &st) != 0 || !S_ISREG(st.st_mode) || st.st_uid != 0 || (uint64_t)st.st_size != SENTINEL_BLOB_LEN || (st.st_mode & 022) != 0) {
+    close(file_fd);
+    close(dir_fd);
+    close(base_fd);
+    return -1;
+  }
+
+  uint8_t blob[SENTINEL_BLOB_LEN];
+  if (read_exact(file_fd, blob, SENTINEL_BLOB_LEN, 0) != 0) {
+    close(file_fd);
+    close(dir_fd);
+    close(base_fd);
+    return -1;
+  }
+  close(file_fd);
+  close(dir_fd);
+  close(base_fd);
+
+  uint32_t want = read_u32_le(blob + SENTINEL_MASK_LEN);
+  uint32_t got = crc32_buf(blob, SENTINEL_MASK_LEN);
+  if (want != got) return -1;
+
+  uint8_t mask_src[2 + SENTINEL_ANCHOR_LEN];
+  mask_src[0] = 0x6d;
+  mask_src[1] = 0x00;
+  memcpy(mask_src + 2, SENTINEL_ANCHOR, SENTINEL_ANCHOR_LEN);
+  uint8_t mask_key[32];
+  sha256_hash(mask_src, sizeof(mask_src), mask_key);
+
+  uint8_t raw[SENTINEL_MASK_LEN];
+  for (size_t i = 0; i < SENTINEL_MASK_LEN; i++) {
+    raw[i] = (uint8_t)(blob[i] ^ mask_key[i % 32]);
+  }
+
+  uint8_t version = raw[0];
+  uint8_t level = raw[1];
+  uint16_t flags = (uint16_t)raw[2] | ((uint16_t)raw[3] << 8);
+  if (version != 1 || level > 2 || flags != 0) return -1;
+
+  char mid[128] = { 0 };
+  char rid[256] = { 0 };
+  if (level >= 1) {
+    if (read_text("/etc/machine-id", mid, sizeof(mid)) != 0) return -1;
+  }
+  if (level >= 2) {
+    if (get_root_rid(rid, sizeof(rid)) != 0) return -1;
+  }
+
+  char fp[512];
+  if (build_fingerprint(level, mid, rid, fp, sizeof(fp)) != 0) return -1;
+  uint8_t fp_now[32];
+  sha256_hash((uint8_t *)fp, strlen(fp), fp_now);
+
+  if (!ct_eq(raw + 40, fp_now, 32)) return -1;
+  return 0;
+}
+#else
+static int sentinel_check(void) {
+  return 0;
+}
+#endif
+`;
+}
+
+function renderLauncherSource(codecState, limits, allowBootstrap, sentinelCfg) {
   const bootstrapJs = `"use strict";
 const fs = require("fs");
 const path = require("path");
@@ -532,7 +935,11 @@ m._compile(code, entry);
     .map((line) => `"${line}\\n"`)
     .join("\n");
 
+  const sentinelDefs = renderSentinelDefs(sentinelCfg);
+  const sentinelCode = renderSentinelCode();
+
   return `#include <errno.h>
+#include <ctype.h>
 #include <dirent.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -544,6 +951,7 @@ m._compile(code, entry);
 #include <sys/prctl.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
+#include <sys/sysmacros.h>
 #include <sys/syscall.h>
 #include <unistd.h>
 #include <zstd.h>
@@ -578,6 +986,35 @@ extern char **environ;
 #define MAX_CHUNK_RAW ${limits.maxChunkRaw}u
 #define MAX_INDEX_BYTES ${limits.maxIndexBytes}u
 #define MAX_TOTAL_RAW ${limits.maxTotalRaw}ull
+
+${sentinelDefs}
+#if SENTINEL_ENABLED
+#define THIN_FAIL(code) SENTINEL_EXIT_BLOCK
+#else
+#define THIN_FAIL(code) (code)
+#endif
+
+static int fail_msg(const char *msg, int code) {
+#if SENTINEL_ENABLED
+  (void)msg;
+  fprintf(stderr, "[thin] runtime invalid\n");
+  return THIN_FAIL(code);
+#else
+  fprintf(stderr, "%s\n", msg);
+  return code;
+#endif
+}
+
+static int fail_errno(const char *prefix, int code) {
+#if SENTINEL_ENABLED
+  (void)prefix;
+  fprintf(stderr, "[thin] runtime invalid\n");
+  return THIN_FAIL(code);
+#else
+  fprintf(stderr, "%s: %s\n", prefix, strerror(errno));
+  return code;
+#endif
+}
 
 static const char *BOOTSTRAP_JS =
 ${jsLiteral}
@@ -684,6 +1121,8 @@ static int write_all(int fd, const uint8_t *buf, size_t len) {
   }
   return 0;
 }
+
+${sentinelCode}
 
 static int make_memfd(const char *name) {
   int fd = -1;
@@ -1049,16 +1488,21 @@ int main(int argc, char **argv) {
     }
   }
 
+  if (SENTINEL_ENABLED) {
+    if (sentinel_check() != 0) {
+      fprintf(stderr, "[thin] runtime invalid\\n");
+      return THIN_FAIL(24);
+    }
+  }
+
   int self_fd = open("/proc/self/exe", O_RDONLY | O_CLOEXEC);
   if (self_fd < 0) {
-    fprintf(stderr, "[thin] open self failed\\n");
-    return 20;
+    return fail_msg("[thin] open self failed", 20);
   }
 
   off_t end = lseek(self_fd, 0, SEEK_END);
   if (end < 0) {
-    fprintf(stderr, "[thin] seek failed\\n");
-    return 21;
+    return fail_msg("[thin] seek failed", 21);
   }
 
   int aio_ok = 0;
@@ -1093,8 +1537,7 @@ int main(int argc, char **argv) {
   }
 
   if (!aio_ok && !THIN_BOOTSTRAP_ALLOWED) {
-    fprintf(stderr, "[thin] missing AIO footer\\n");
-    return 23;
+    return fail_msg("[thin] missing AIO footer", 23);
   }
 
   int rt_fd = self_fd;
@@ -1114,22 +1557,22 @@ int main(int argc, char **argv) {
 
     rt_file_fd = open_regular(rt_path);
     if (rt_file_fd < 0) {
-      fprintf(stderr, "[thin] runtime missing: %s\\n", rt_path);
-      return 10;
+      char msg[PATH_MAX + 64];
+      snprintf(msg, sizeof(msg), "[thin] runtime missing: %s", rt_path);
+      return fail_msg(msg, 10);
     }
     pl_file_fd = open_regular(pl_path);
     if (pl_file_fd < 0) {
-      fprintf(stderr, "[thin] payload missing: %s\\n", pl_path);
-      return 11;
+      char msg[PATH_MAX + 64];
+      snprintf(msg, sizeof(msg), "[thin] payload missing: %s", pl_path);
+      return fail_msg(msg, 11);
     }
 
     if (get_file_size(rt_file_fd, &rt_src_len) != 0 || rt_src_len < THIN_FOOTER_LEN) {
-      fprintf(stderr, "[thin] runtime invalid\\n");
-      return 12;
+      return fail_msg("[thin] runtime invalid", 12);
     }
     if (get_file_size(pl_file_fd, &pl_src_len) != 0 || pl_src_len < THIN_FOOTER_LEN) {
-      fprintf(stderr, "[thin] payload invalid\\n");
-      return 13;
+      return fail_msg("[thin] payload invalid", 13);
     }
 
     rt_fd = rt_file_fd;
@@ -1140,37 +1583,35 @@ int main(int argc, char **argv) {
 
   int node_fd = make_memfd("seal-node");
   if (node_fd < 0) {
-    fprintf(stderr, "[thin] memfd node failed\\n");
-    return 27;
+    return fail_msg("[thin] memfd node failed", 27);
   }
   node_fd = ensure_fd_min(node_fd, 10);
   if (node_fd < 0) {
-    fprintf(stderr, "[thin] memfd node failed\\n");
-    return 27;
+    return fail_msg("[thin] memfd node failed", 27);
   }
   int rc = decode_container(rt_fd, rt_src_off, rt_src_len, node_fd);
   if (rc != 0) {
-    fprintf(stderr, "[thin] decode runtime failed (%d)\\n", rc);
-    return 28;
+    char msg[128];
+    snprintf(msg, sizeof(msg), "[thin] decode runtime failed (%d)", rc);
+    return fail_msg(msg, 28);
   }
-  if (lseek(node_fd, 0, SEEK_SET) < 0) return 26;
+  if (lseek(node_fd, 0, SEEK_SET) < 0) return THIN_FAIL(26);
 
   int bundle_fd = make_memfd("seal-bundle");
   if (bundle_fd < 0) {
-    fprintf(stderr, "[thin] memfd bundle failed\\n");
-    return 29;
+    return fail_msg("[thin] memfd bundle failed", 29);
   }
   bundle_fd = ensure_fd_min(bundle_fd, 10);
   if (bundle_fd < 0) {
-    fprintf(stderr, "[thin] memfd bundle failed\\n");
-    return 29;
+    return fail_msg("[thin] memfd bundle failed", 29);
   }
   rc = decode_container(pl_fd, pl_src_off, pl_src_len, bundle_fd);
   if (rc != 0) {
-    fprintf(stderr, "[thin] decode payload failed (%d)\\n", rc);
-    return 30;
+    char msg[128];
+    snprintf(msg, sizeof(msg), "[thin] decode payload failed (%d)", rc);
+    return fail_msg(msg, 30);
   }
-  if (lseek(bundle_fd, 0, SEEK_SET) < 0) return 29;
+  if (lseek(bundle_fd, 0, SEEK_SET) < 0) return THIN_FAIL(29);
 
   seal_memfd(node_fd);
   seal_memfd(bundle_fd);
@@ -1181,19 +1622,16 @@ int main(int argc, char **argv) {
 
   node_fd = move_fd(node_fd, 3);
   if (node_fd < 0) {
-    fprintf(stderr, "[thin] dup2 failed\\n");
-    return 33;
+    return fail_msg("[thin] dup2 failed", 33);
   }
   set_cloexec(node_fd);
 
   bundle_fd = move_fd(bundle_fd, 4);
   if (bundle_fd < 0) {
-    fprintf(stderr, "[thin] dup2 failed\\n");
-    return 33;
+    return fail_msg("[thin] dup2 failed", 33);
   }
   if (set_no_cloexec(4) < 0) {
-    fprintf(stderr, "[thin] dup2 failed\\n");
-    return 33;
+    return fail_msg("[thin] dup2 failed", 33);
   }
 
   close_extra_fds(node_fd, 4);
@@ -1204,13 +1642,12 @@ int main(int argc, char **argv) {
 
   char *exec_argv[] = { (char *)"node", (char *)"-e", (char *)BOOTSTRAP_JS, NULL };
   fexecve(node_fd, exec_argv, environ);
-  fprintf(stderr, "[thin] exec failed: %s\\n", strerror(errno));
-  return 34;
+  return fail_errno("[thin] exec failed", 34);
 }
 `;
 }
 
-function buildLauncher(stageDir, codecState, allowBootstrap) {
+function buildLauncher(stageDir, codecState, allowBootstrap, sentinelCfg) {
   const limits = DEFAULT_LIMITS;
   const cc = resolveCc();
   if (!cc) {
@@ -1219,7 +1656,7 @@ function buildLauncher(stageDir, codecState, allowBootstrap) {
 
   const cPath = path.join(stageDir, "thin-launcher.c");
   const outPath = path.join(stageDir, "thin-launcher");
-  fs.writeFileSync(cPath, renderLauncherSource(codecState, limits, allowBootstrap), "utf-8");
+  fs.writeFileSync(cPath, renderLauncherSource(codecState, limits, allowBootstrap, sentinelCfg), "utf-8");
 
   const zstdFlags = getZstdFlags();
   const args = [
@@ -1249,7 +1686,7 @@ function buildLauncher(stageDir, codecState, allowBootstrap) {
   return { ok: true, path: outPath };
 }
 
-async function packThin({ stageDir, releaseDir, appName, obfPath, mode, level, chunkSizeBytes, zstdLevelOverride, zstdTimeoutMs, projectRoot, targetName }) {
+async function packThin({ stageDir, releaseDir, appName, obfPath, mode, level, chunkSizeBytes, zstdLevelOverride, zstdTimeoutMs, projectRoot, targetName, sentinel }) {
   try {
     if (!hasCommand("zstd")) {
       return { ok: false, errorShort: "zstd not found in PATH", error: "missing_zstd" };
@@ -1305,7 +1742,7 @@ async function packThin({ stageDir, releaseDir, appName, obfPath, mode, level, c
 
     const allowBootstrap = thinMode === "bootstrap";
     info("Thin: building launcher (cc + libzstd)...");
-    const launcherRes = buildLauncher(stageDir, codecState, allowBootstrap);
+    const launcherRes = buildLauncher(stageDir, codecState, allowBootstrap, sentinel);
     if (!launcherRes.ok) return launcherRes;
 
     const outBin = path.join(releaseDir, appName);

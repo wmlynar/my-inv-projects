@@ -53,7 +53,7 @@ _seal_complete() {
     cword=$COMP_CWORD
   fi
 
-  local commands="init wizard completion check target config release run-local verify clean deploy ship rollback run uninstall remote"
+  local commands="init wizard completion check target config sentinel release run-local verify clean deploy ship rollback run uninstall remote"
   local global_opts="-h --help -V --version"
 
   if [[ "$prev" == "--packager" ]]; then
@@ -94,6 +94,18 @@ _seal_complete() {
         fi
       fi
       ;;
+    sentinel)
+      if (( cword == 2 )); then
+        COMPREPLY=( $(compgen -W "probe install verify uninstall" -- "$cur") )
+        return
+      fi
+      if (( cword == 3 )); then
+        if [[ "$cur" != -* ]]; then
+          COMPREPLY=( $(compgen -W "$(_seal_targets)" -- "$cur") )
+          return
+        fi
+      fi
+      ;;
     remote)
       if (( cword == 2 )); then
         COMPREPLY=( $(compgen -W "$(_seal_targets)" -- "$cur") )
@@ -120,6 +132,7 @@ _seal_complete() {
     release) opts="--config --skip-check --check-verbose --check-cc --packager" ;;
     run-local) opts="--sealed --config" ;;
     verify) opts="--explain" ;;
+    sentinel) opts="--force --insecure --json" ;;
     deploy) opts="--bootstrap --push-config --restart --accept-drift --allow-drift --artifact --fast --fast-no-node-modules" ;;
     ship) opts="--bootstrap --push-config --accept-drift --allow-drift --skip-check --check-verbose --check-cc --packager --fast --fast-no-node-modules" ;;
     run) opts="--kill --sudo --accept-drift --allow-drift" ;;

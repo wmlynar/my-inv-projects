@@ -5,6 +5,8 @@ const path = require("path");
 const { findProjectRoot } = require("../lib/paths");
 const { loadProjectConfig, loadTargetConfig, loadPolicy, resolveTargetName, resolveConfigName, getConfigFile, findLastArtifact } = require("../lib/project");
 const { normalizePackager, resolveThinConfig } = require("../lib/packagerConfig");
+const { resolveSentinelConfig } = require("../lib/sentinelConfig");
+const { installSentinelSsh, uninstallSentinelSsh } = require("../lib/sentinelOps");
 const { fileExists } = require("../lib/fsextra");
 const { info, warn, ok, hr } = require("../lib/ui");
 
@@ -57,7 +59,7 @@ function resolveTarget(projectRoot, targetArg) {
   t.cfg.thinChunkSize = thinCfg.chunkSizeBytes;
   t.cfg.thinZstdLevel = thinCfg.zstdLevel;
   t.cfg.thinZstdTimeoutMs = thinCfg.zstdTimeoutMs;
-  return { proj, targetName, targetCfg: t.cfg };
+  return { proj, targetName, targetCfg: t.cfg, packagerSpec };
 }
 
 async function ensureArtifact(projectRoot, proj, opts, targetName, configName) {
@@ -86,8 +88,9 @@ function ensureFastRelease(projectRoot, proj, targetCfg, configName, opts) {
 
 async function cmdDeploy(cwd, targetArg, opts) {
   const projectRoot = findProjectRoot(cwd);
-  const { proj, targetName, targetCfg } = resolveTarget(projectRoot, targetArg);
+  const { proj, targetName, targetCfg, packagerSpec } = resolveTarget(projectRoot, targetArg);
   const policy = loadPolicy(projectRoot);
+  const sentinelCfg = resolveSentinelConfig({ projectRoot, projectCfg: proj, targetCfg, targetName, packagerSpec });
 
   const configName = resolveConfigName(targetCfg, null);
   const configFile = getConfigFile(projectRoot, configName);
@@ -135,7 +138,12 @@ async function cmdDeploy(cwd, targetArg, opts) {
         buildId: opts.buildId || null,
       });
     }
-    if (opts.bootstrap) installServiceSsh(targetCfg);
+    if (opts.bootstrap) {
+      installServiceSsh(targetCfg, sentinelCfg);
+      if (sentinelCfg.enabled) {
+        installSentinelSsh({ targetCfg, sentinelCfg, force: false, insecure: false });
+      }
+    }
   } else {
     if (isFast) {
       deployLocalFast({
@@ -255,9 +263,16 @@ async function cmdRollback(cwd, targetArg, opts) {
 
 async function cmdUninstall(cwd, targetArg) {
   const projectRoot = findProjectRoot(cwd);
-  const { targetCfg } = resolveTarget(projectRoot, targetArg);
-  if ((targetCfg.kind || "local").toLowerCase() === "ssh") uninstallSsh(targetCfg);
-  else uninstallLocal(targetCfg);
+  const { proj, targetName, targetCfg, packagerSpec } = resolveTarget(projectRoot, targetArg);
+  const sentinelCfg = resolveSentinelConfig({ projectRoot, projectCfg: proj, targetCfg, targetName, packagerSpec });
+  if ((targetCfg.kind || "local").toLowerCase() === "ssh") {
+    if (sentinelCfg.enabled) {
+      uninstallSentinelSsh({ targetCfg, sentinelCfg });
+    }
+    uninstallSsh(targetCfg);
+  } else {
+    uninstallLocal(targetCfg);
+  }
 }
 
 async function cmdRunRemote(cwd, targetArg, opts) {
@@ -278,7 +293,8 @@ async function cmdRunRemote(cwd, targetArg, opts) {
 
 async function cmdRemote(cwd, targetArg, action, opts) {
   const projectRoot = findProjectRoot(cwd);
-  const { targetCfg, targetName } = resolveTarget(projectRoot, targetArg);
+  const { proj, targetCfg, targetName, packagerSpec } = resolveTarget(projectRoot, targetArg);
+  const sentinelCfg = resolveSentinelConfig({ projectRoot, projectCfg: proj, targetCfg, targetName, packagerSpec });
   const kind = (targetCfg.kind || "local").toLowerCase();
   const act = (action || "").toLowerCase();
   const allowed = ["up", "enable", "start", "restart", "stop", "disable", "down", "status", "logs"];
@@ -308,7 +324,10 @@ async function cmdRemote(cwd, targetArg, action, opts) {
       if (isSsh) {
         bootstrapSsh(targetCfg);
         ensureCurrentReleaseSsh(targetCfg);
-        installServiceSsh(targetCfg);
+        installServiceSsh(targetCfg, sentinelCfg);
+        if (sentinelCfg.enabled) {
+          installSentinelSsh({ targetCfg, sentinelCfg, force: false, insecure: false });
+        }
         enableSsh(targetCfg);
         startSsh(targetCfg);
       } else {
