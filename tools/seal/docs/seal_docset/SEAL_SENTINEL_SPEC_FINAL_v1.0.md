@@ -342,11 +342,10 @@ Wirtualizacja może go ukryć/zmienić (np. VirtualBox `--cpuidremoveall "1"`), 
 - `both` — **oba** źródła są użyte niezależnie (`cpuid=proc:<...>|asm:<...>`).  
   Zmiana któregokolwiek źródła = mismatch fingerprint.
 
-Jeśli `cpuIdSource` wymaga `asm`, deployer **musi** mieć możliwość pobrania CPUID z hosta (np. przez `cc` podczas instalacji). Brak wsparcia architektury lub brak narzędzi = błąd (bez fallbacku).
+Jeśli `cpuIdSource` wymaga `asm`, deployer **musi** mieć możliwość pobrania CPUID z hosta (np. przez `cc` podczas instalacji). Brak narzędzi = błąd (bez fallbacku).
 
+Na architekturach bez CPUID (np. ARM) komponent `asm` jest **pomijany** — przy `both` zostaje tylko `proc:<...>`.  
 CPUID jest używane tylko dla leveli **L1+** (dla L0 nie ma `cpuid` w fingerprint).
-
-Uwaga: na architekturach bez CPUID (np. ARM) ustaw `cpuIdSource=off` (lub świadomie `proc`, jeśli masz własne mapowanie), bo `auto → both` wymaga ścieżki `asm`.
 
 ### 8.2 Czego absolutnie nie robić (MUST)
 Nie opierać fingerprintu o:

@@ -72,7 +72,8 @@ function parseKeyValueOutput(text) {
   return out;
 }
 
-function getCpuIdAsmSsh(targetCfg) {
+function getCpuIdAsmSsh(targetCfg, opts = {}) {
+  const allowUnsupported = !!opts.allowUnsupported;
   const { user, host } = sshUserHost(targetCfg);
   const script = `
 set -euo pipefail
@@ -133,6 +134,7 @@ cc -O2 "$TMP/cpuid.c" -o "$TMP/cpuid" >/dev/null 2>&1
     throw new Error("sentinel cpuid asm requires cc on target (install build-essential)");
   }
   if (out.includes("__SEAL_NO_CPUID__")) {
+    if (allowUnsupported) return { value: "", unsupported: true };
     throw new Error("sentinel cpuid asm not supported on this architecture");
   }
   if (!res.ok) {
@@ -142,7 +144,7 @@ cc -O2 "$TMP/cpuid.c" -o "$TMP/cpuid" >/dev/null 2>&1
   if (!line) {
     throw new Error("sentinel cpuid asm failed: empty output");
   }
-  return line;
+  return { value: line, unsupported: false };
 }
 
 function resolveCpuIdSsh({ targetCfg, cpuIdSource, hostInfo, require }) {
@@ -159,16 +161,24 @@ function resolveCpuIdSsh({ targetCfg, cpuIdSource, hostInfo, require }) {
     return "";
   }
   let asm = "";
+  let asmUnsupported = false;
   if (needAsm) {
-    asm = getCpuIdAsmSsh(targetCfg);
+    const res = getCpuIdAsmSsh(targetCfg, { allowUnsupported: true });
+    asm = res.value || "";
+    asmUnsupported = !!res.unsupported;
   }
-  if (needAsm && !asm) {
+  if (needAsm && !asm && !asmUnsupported) {
     throw new Error("sentinel cpuid(asm) missing");
   }
   if (needProc && needAsm) {
+    if (asmUnsupported) return `proc:${proc}`;
     return `proc:${proc}|asm:${asm}`;
   }
-  return needAsm ? `asm:${asm}` : `proc:${proc}`;
+  if (needAsm) {
+    if (asmUnsupported) return "";
+    return `asm:${asm}`;
+  }
+  return `proc:${proc}`;
 }
 
 function describeSentinelInstallError(out, baseDir) {

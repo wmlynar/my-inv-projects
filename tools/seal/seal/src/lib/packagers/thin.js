@@ -806,7 +806,7 @@ static int get_cpuid_asm(char *out, size_t out_len) {
 #else
   (void)out;
   (void)out_len;
-  return -1;
+  return -2;
 #endif
 }
 
@@ -1020,9 +1020,15 @@ static int sentinel_check(void) {
       char cpuid_proc[128] = { 0 };
       char cpuid_asm[128] = { 0 };
       if (get_cpuid_proc(cpuid_proc, sizeof(cpuid_proc)) != 0) return -1;
-      if (get_cpuid_asm(cpuid_asm, sizeof(cpuid_asm)) != 0) return -1;
-      int n = snprintf(cpuid, sizeof(cpuid), "proc:%s|asm:%s", cpuid_proc, cpuid_asm);
-      if (n < 0 || (size_t)n >= sizeof(cpuid)) return -1;
+      int asm_rc = get_cpuid_asm(cpuid_asm, sizeof(cpuid_asm));
+      if (asm_rc == -2) {
+        int n = snprintf(cpuid, sizeof(cpuid), "proc:%s", cpuid_proc);
+        if (n < 0 || (size_t)n >= sizeof(cpuid)) return -1;
+      } else {
+        if (asm_rc != 0) return -1;
+        int n = snprintf(cpuid, sizeof(cpuid), "proc:%s|asm:%s", cpuid_proc, cpuid_asm);
+        if (n < 0 || (size_t)n >= sizeof(cpuid)) return -1;
+      }
     } else {
       return -1;
     }
