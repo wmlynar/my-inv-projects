@@ -15,7 +15,7 @@ function templateProjectJson5(appName, entry) {
     entry,
     defaultTarget: "local",
     build: {
-      packager: "thin-split",
+      packager: "auto",
       bundleFallback: false,
       obfuscationProfile: "balanced",
       frontendObfuscation: { enabled: true, profile: "balanced" },
@@ -56,7 +56,7 @@ function templateTargetLocal(appName) {
     serviceScope: "user",
     installDir: `~/.local/share/seal/${appName}`,
     serviceName: `${appName}-sandbox`,
-    packager: "thin-split",
+    packager: "auto",
     config: "local",
   };
 }

@@ -18,7 +18,7 @@ function templateTarget(projectRoot, appName, target) {
       serviceScope: "user",
       installDir: `~/.local/share/seal/${appName}`,
       serviceName: `${appName}-sandbox`,
-      packager: "thin-split",
+      packager: "auto",
       config: "local",
     };
   }
@@ -31,7 +31,7 @@ function templateTarget(projectRoot, appName, target) {
     serviceScope: "system",
     installDir: `/home/admin/apps/${appName}`,
     serviceName: appName,
-    packager: "thin-split",
+    packager: "auto",
     config: target,
   };
 }

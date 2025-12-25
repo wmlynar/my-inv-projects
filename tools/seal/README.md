@@ -255,7 +255,7 @@ build: {
 4) `bundle` – obfuskowany bundle JS (fallback bez SEA).
 5) `none` – bez pakowania (najmniejsza ochrona, tylko do diagnostyki).
 
-`auto` jest legacy aliasem dla trybu SEA (utrzymywany tylko dla kompatybilności).
+`auto` oznacza obecnie `thin-split` i jest polecany, jeśli chcesz automatycznie przechodzić na lepszy packager w przyszłości.
 
 ## Najkrótsza ścieżka testu „job security” (lokalnie)
 

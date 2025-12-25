@@ -716,7 +716,7 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   let seaMainPacking = { ok: false, skipped: true, reason: "not_enabled" };
 
   const seaMainPackingEnabled = hardEnabled
-    && (packagerRequested === "sea" || packagerRequested === "auto")
+    && packagerRequested === "sea"
     && (hardCfg.packSeaMain !== false);
 
   if (seaMainPackingEnabled) {
@@ -737,7 +737,7 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   let packError = null;
   let packErrorShort = null;
 
-  if (!["auto", "sea", "bundle", "none", "thin"].includes(packagerRequested)) {
+  if (!["sea", "bundle", "none", "thin"].includes(packagerRequested)) {
     throw new Error(`Unknown packager: ${packagerSpec.label}`);
   }
   if (packagerRequested === "thin" && !["aio", "bootstrap"].includes(thinMode)) {
@@ -779,7 +779,7 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
     packOk = true;
     packagerUsed = "none";
     ok("Packager none OK (node + obfuscated bundle)");
-  } else if (packagerRequested === "sea" || packagerRequested === "auto") {
+  } else if (packagerRequested === "sea") {
     info("Packaging (SEA)...");
     const res = packSea({ stageDir, releaseDir, appName, mainRel: seaMainRel });
     if (res.ok) {

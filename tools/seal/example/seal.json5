@@ -3,7 +3,7 @@
   "entry": "src/index.js",
   "defaultTarget": "local",
   "build": {
-    "packager": "thin-split",
+    "packager": "auto",
     "bundleFallback": false,
     "obfuscationProfile": "balanced",
     "frontendObfuscation": {

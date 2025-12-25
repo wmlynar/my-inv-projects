@@ -227,7 +227,7 @@ async function cmdCheck(cwd, targetArg, opts) {
   const thinCfg = resolveThinConfig(targetCfg, proj);
   const packagerSpec = normalizePackager(opts.packager || targetCfg?.packager || proj?.build?.packager || "auto", thinCfg.mode);
   const allowBundleFallback = resolveBundleFallback(targetCfg, proj);
-  const seaNeeded = packagerSpec.kind === "sea" || packagerSpec.kind === "auto";
+  const seaNeeded = packagerSpec.kind === "sea";
   const thinNeeded = packagerSpec.kind === "thin";
   const verbose = !!opts.verbose || process.env.SEAL_CHECK_VERBOSE === "1";
   let thinToolchainIssue = false;

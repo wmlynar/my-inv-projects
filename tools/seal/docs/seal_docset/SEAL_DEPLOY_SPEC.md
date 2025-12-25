@@ -333,8 +333,8 @@ Seal może:
 
 Ta sekcja jest celowo krótka: ma umożliwić szybkie zrozumienie *dlaczego* Seal wygląda tak, a nie inaczej.
 
-1) **SEA jako domyślny packager**  
-   Bo daje single executable bez `.js` na hoście. To jest największa dźwignia dla P0 (ochrona IP). Alternatywy są dopuszczalne jako plug‑in, ale kontrakt outputu ma być stały.
+1) **Auto jako domyślny packager (obecnie thin-split)**  
+   Bo daje szybkie aktualizacje i pełne „sealed” bez ręcznej zmiany konfiguracji, gdy pojawią się lepsze packagery. Alternatywy są dopuszczalne jako plug‑in, ale kontrakt outputu ma być stały.
 
 2) **Symlink `current` + katalogi `releases/`**  
    Bo to daje atomowość deployu, prosty rollback i przewidywalny layout na serwerze.
@@ -1731,8 +1731,8 @@ Przykład (aktualny dla v0.5):
   defaultTarget: "local",
 
   build: {
-    // packager (kolejnosc rekomendowana): thin-split, thin-single, sea, bundle, none (auto legacy)
-    packager: "thin-split",
+    // packager (kolejnosc rekomendowana): thin-split, thin-single, sea, bundle, none (auto = thin-split)
+    packager: "auto",
     bundleFallback: false,
 
     // minimal|balanced|aggressive
@@ -1760,7 +1760,7 @@ Przykład (aktualny dla v0.5):
 - `appName`: z `package.json:name` (fallback: nazwa katalogu).
 - `entry`: kolejno próby: `package.json:main`, `src/index.js`, `index.js`.
 - `defaultTarget`: `local`.
-- `build.packager`: `auto` (legacy, jeśli pole nie jest ustawione).
+- `build.packager`: `auto` (domyślnie `thin-split`).
 - `build.obfuscationProfile`: `balanced`.
 - `build.includeDirs`: `["public", "data"]`.
 - `build.bundleFallback`: `false`.

@@ -81,7 +81,7 @@ function normalizePackager(rawPackager, thinMode) {
   }
   if (name === "sea") return { kind: "sea", label: "sea" };
   if (name === "none") return { kind: "none", label: "none" };
-  if (name === "auto") return { kind: "auto", label: "auto" };
+  if (name === "auto") return { kind: "thin", label: "thin-split", thinMode: "bootstrap", auto: true };
 
   return { kind: "unknown", label: name };
 }
