@@ -27,6 +27,12 @@
 - Blad: `postject` byl dostepny w `seal check`, ale brakowal w `seal release` (inne PATH / sudo).
   - Wymaganie: `postject` musi byc w PATH **procesu builda**; nie polegaj na PATH roota lub innego shella.
 
+- Blad: `seal check` „wieszal sie” na kompilacji testowej (brak timeoutu i brak outputu).
+  - Wymaganie: wszystkie komendy preflight/build maja timeout i widoczny postep.
+  - Wymaganie: `seal check --verbose` pokazuje komendy i stdout/stderr narzedzi.
+  - Wymaganie: preflight uzywa plikow tymczasowych (nie stdin), zeby narzedzia nie blokowaly sie na wejsciu.
+  - Wymaganie: opcja override toolchaina (np. `--cc gcc`) dla srodowisk z wrapperami `cc`.
+
 - Blad: `thin` dopuszczal niespojne offsety/rozmiary kontenera (latwo o bledy przy uszkodzonych artefaktach).
   - Wymaganie: `index_len == chunk_count * THIN_INDEX_ENTRY_LEN`.
   - Wymaganie: `comp_len > 0` i `raw_len > 0`.

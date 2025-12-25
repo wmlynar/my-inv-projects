@@ -262,6 +262,9 @@ Każda zależność to obiekt o polach:
 - OPS-021 (MUST): nie wolno wprowadzać niczego, co może rosnąć bez końca (dysk/pamięć). Jeśli zachowanie jest niejednoznaczne, dodaj opcję i ustaw bezpieczny limit domyślny.
 - OPS-022 (SHOULD): loguj pruning (ile elementów usunięto i dlaczego), aby dało się diagnozować czyszczenie.
 - OPS-023 (SHOULD): build/test używa katalogów tymczasowych i **zawsze** je sprząta (brak stale rosnących katalogów).
+- OPS-024 (MUST): wszystkie zewnętrzne komendy w preflight/build (toolchain, pkg-config, kompilacja testowa) mają **timeout** i widoczny postęp.
+- OPS-025 (SHOULD): dodaj tryb `--verbose` (lub env) pokazujący dokładne komendy i stdout/stderr narzędzi, żeby diagnozować „zawieszenia”.
+- OPS-026 (SHOULD): jeśli preflight używa toolchaina systemowego (np. `cc`), zapewnij opcję override (np. `--cc gcc`) dla środowisk z wrapperami.
 
 ---
 
