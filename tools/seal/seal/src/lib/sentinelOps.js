@@ -186,6 +186,24 @@ function extractHostShares(mounts) {
   return mounts.filter((m) => hostFs.has((m.fstype || "").toLowerCase()));
 }
 
+function findMountForPath(mounts, targetPath) {
+  if (!targetPath || !mounts || !mounts.length) return null;
+  const pathNorm = targetPath.endsWith("/") ? targetPath.slice(0, -1) : targetPath;
+  let best = null;
+  let bestLen = -1;
+  for (const m of mounts) {
+    const mp = m.mountpoint || "";
+    if (!mp) continue;
+    if (pathNorm === mp || pathNorm.startsWith(mp.endsWith("/") ? mp : mp + "/")) {
+      if (mp.length > bestLen) {
+        best = m;
+        bestLen = mp.length;
+      }
+    }
+  }
+  return best;
+}
+
 function getCpuIdAsmSsh(targetCfg, opts = {}) {
   const allowUnsupported = !!opts.allowUnsupported;
   const { user, host } = sshUserHost(targetCfg);
@@ -810,6 +828,7 @@ function inspectSentinelSsh({ targetCfg, sentinelCfg }) {
   const extFilePath = extType === "file" && extCfg.file && extCfg.file.path ? String(extCfg.file.path) : "";
   const extLeaseUrl = extType === "lease" && extCfg.lease && extCfg.lease.url ? String(extCfg.lease.url) : "";
   const extLeaseTimeoutMs = extType === "lease" && extCfg.lease && extCfg.lease.timeoutMs ? Number(extCfg.lease.timeoutMs) : 1500;
+  const baseDir = sentinelCfg && sentinelCfg.storage && sentinelCfg.storage.baseDir ? String(sentinelCfg.storage.baseDir) : "";
   const script = `
 set -euo pipefail
 BASE64_OK=0
@@ -822,6 +841,7 @@ EXT_TYPE=${shQuote(extType)}
 EXT_FILE_PATH=${shQuote(extFilePath)}
 EXT_LEASE_URL=${shQuote(extLeaseUrl)}
 EXT_LEASE_TIMEOUT_MS=${shQuote(Number.isFinite(extLeaseTimeoutMs) ? String(extLeaseTimeoutMs) : "1500")}
+BASE_DIR=${shQuote(baseDir)}
 
 if [ "$BASE64_OK" = "1" ]; then
   b64() { base64 | tr -d '\\r\\n'; }
@@ -859,27 +879,75 @@ fi
 
 XATTR_OK=0
 XATTR_ERR=""
+XATTR_PATH=""
+XATTR_NOTE=""
+XATTR_SUDO=0
+if [ -n "$BASE_DIR" ] && [ -d "$BASE_DIR" ]; then
+  if [ -w "$BASE_DIR" ]; then
+    XATTR_PATH="$BASE_DIR"
+  else
+    if command -v sudo >/dev/null 2>&1 && sudo -n test -w "$BASE_DIR" >/dev/null 2>&1; then
+      XATTR_PATH="$BASE_DIR"
+      XATTR_SUDO=1
+    else
+      XATTR_NOTE="baseDir_not_writable"
+      XATTR_PATH="/tmp"
+    fi
+  fi
+else
+  XATTR_NOTE="baseDir_missing"
+  XATTR_PATH="/tmp"
+fi
 if command -v python3 >/dev/null 2>&1; then
-  python3 - <<'PY'
-import os, tempfile
-fd, path = tempfile.mkstemp(prefix=".seal-xattr-")
+  if [ "$XATTR_SUDO" = "1" ]; then
+    sudo -n python3 - "$XATTR_PATH" <<'PY'
+import os, tempfile, sys
+base = sys.argv[1]
+fd, path = tempfile.mkstemp(prefix=".seal-xattr-", dir=base)
 os.close(fd)
 try:
     os.setxattr(path, b"user.seal_test", b"1")
     val = os.getxattr(path, b"user.seal_test")
     ok = (val == b"1")
     print("XATTR_OK=1" if ok else "XATTR_OK=0")
+    print("XATTR_PATH=%s" % base)
+    print("XATTR_SUDO=1")
 except Exception as e:
     print("XATTR_OK=0")
     print("XATTR_ERR=%s" % (e.__class__.__name__,))
+    print("XATTR_PATH=%s" % base)
+    print("XATTR_SUDO=1")
 finally:
     try:
         os.unlink(path)
     except Exception:
         pass
 PY
+  else
+    python3 - "$XATTR_PATH" <<'PY'
+import os, tempfile, sys
+base = sys.argv[1]
+fd, path = tempfile.mkstemp(prefix=".seal-xattr-", dir=base)
+os.close(fd)
+try:
+    os.setxattr(path, b"user.seal_test", b"1")
+    val = os.getxattr(path, b"user.seal_test")
+    ok = (val == b"1")
+    print("XATTR_OK=1" if ok else "XATTR_OK=0")
+    print("XATTR_PATH=%s" % base)
+except Exception as e:
+    print("XATTR_OK=0")
+    print("XATTR_ERR=%s" % (e.__class__.__name__,))
+    print("XATTR_PATH=%s" % base)
+finally:
+    try:
+        os.unlink(path)
+    except Exception:
+        pass
+PY
+  fi
 elif command -v setfattr >/dev/null 2>&1 && command -v getfattr >/dev/null 2>&1; then
-  tmp="$(mktemp /tmp/.seal-xattr-XXXXXX)"
+  tmp="$(mktemp "$XATTR_PATH/.seal-xattr-XXXXXX")" || tmp="$(mktemp /tmp/.seal-xattr-XXXXXX)"
   if setfattr -n user.seal_test -v 1 "$tmp" 2>/dev/null; then
     if getfattr -n user.seal_test --only-values "$tmp" 2>/dev/null | tr -d '\\r\\n' | grep -qx "1"; then
       XATTR_OK=1
@@ -893,11 +961,14 @@ elif command -v setfattr >/dev/null 2>&1 && command -v getfattr >/dev/null 2>&1;
   fi
   rm -f "$tmp"
   echo "XATTR_OK=$XATTR_OK"
+  echo "XATTR_PATH=$XATTR_PATH"
   [ -n "$XATTR_ERR" ] && echo "XATTR_ERR=$XATTR_ERR"
 else
   echo "XATTR_OK=0"
+  echo "XATTR_PATH=$XATTR_PATH"
   echo "XATTR_ERR=no_xattr_tool"
 fi
+echo "XATTR_NOTE=$XATTR_NOTE"
 
 EXT_FILE_EXISTS=0
 EXT_FILE_READ=0
@@ -930,6 +1001,9 @@ LEASE_OK=0
 LEASE_STATUS=""
 LEASE_TOOL=""
 LEASE_ERR=""
+LEASE_BODY_B64=""
+LEASE_BODY_LEN=0
+LEASE_BODY_TRUNC=0
 if [ -n "$EXT_LEASE_URL" ]; then
   tm_ms="$EXT_LEASE_TIMEOUT_MS"
   if [ -z "$tm_ms" ] || [ "$tm_ms" -le 0 ] 2>/dev/null; then
@@ -938,21 +1012,55 @@ if [ -n "$EXT_LEASE_URL" ]; then
   tm_s=$(( (tm_ms + 999) / 1000 ))
   if command -v curl >/dev/null 2>&1; then
     LEASE_TOOL="curl"
-    code="$(curl -fsS -o /dev/null -w "%{http_code}" --max-time "$tm_s" "$EXT_LEASE_URL" 2>/dev/null || true)"
+    tmp="$(mktemp /tmp/.seal-lease-XXXXXX)"
+    code="$(curl -sS -o "$tmp" -w "%{http_code}" --max-time "$tm_s" "$EXT_LEASE_URL" 2>/dev/null || true)"
     if [ -n "$code" ]; then
-      LEASE_OK=1
       LEASE_STATUS="$code"
+      if [ "$code" -ge 200 ] && [ "$code" -lt 400 ]; then
+        LEASE_OK=1
+      fi
+      if [ -f "$tmp" ]; then
+        size="$(stat -Lc '%s' "$tmp" 2>/dev/null || echo 0)"
+        LEASE_BODY_LEN="$size"
+        if [ "$size" -gt 4096 ]; then
+          LEASE_BODY_TRUNC=1
+          if [ "$BASE64_OK" = "1" ]; then
+            LEASE_BODY_B64="$(head -c 4096 "$tmp" | b64)"
+          fi
+        else
+          if [ "$BASE64_OK" = "1" ]; then
+            LEASE_BODY_B64="$(cat "$tmp" | b64)"
+          fi
+        fi
+      fi
     else
       LEASE_ERR="curl_failed"
     fi
+    rm -f "$tmp"
   elif command -v wget >/dev/null 2>&1; then
     LEASE_TOOL="wget"
-    if wget -q --spider --timeout="$tm_s" "$EXT_LEASE_URL" 2>/dev/null; then
+    tmp="$(mktemp /tmp/.seal-lease-XXXXXX)"
+    if wget -q -O "$tmp" --timeout="$tm_s" "$EXT_LEASE_URL" 2>/dev/null; then
       LEASE_OK=1
       LEASE_STATUS="ok"
+      if [ -f "$tmp" ]; then
+        size="$(stat -Lc '%s' "$tmp" 2>/dev/null || echo 0)"
+        LEASE_BODY_LEN="$size"
+        if [ "$size" -gt 4096 ]; then
+          LEASE_BODY_TRUNC=1
+          if [ "$BASE64_OK" = "1" ]; then
+            LEASE_BODY_B64="$(head -c 4096 "$tmp" | b64)"
+          fi
+        else
+          if [ "$BASE64_OK" = "1" ]; then
+            LEASE_BODY_B64="$(cat "$tmp" | b64)"
+          fi
+        fi
+      fi
     else
       LEASE_ERR="wget_failed"
     fi
+    rm -f "$tmp"
   else
     LEASE_TOOL="missing"
     LEASE_ERR="no_http_tool"
@@ -962,6 +1070,9 @@ echo "LEASE_OK=$LEASE_OK"
 echo "LEASE_STATUS=$LEASE_STATUS"
 echo "LEASE_TOOL=$LEASE_TOOL"
 echo "LEASE_ERR=$LEASE_ERR"
+echo "LEASE_BODY_LEN=$LEASE_BODY_LEN"
+echo "LEASE_BODY_TRUNC=$LEASE_BODY_TRUNC"
+echo "LEASE_BODY_B64=$LEASE_BODY_B64"
 
 TPM=0
 if [ -e /dev/tpm0 ] || [ -d /sys/class/tpm/tpm0 ]; then
@@ -1001,7 +1112,13 @@ echo "TPM_TOOL=$TPM_TOOL"
   const usbMounts = extractUsbMounts(lsblk);
   const hostShares = extractHostShares(mounts);
   const tpm = { present: kv.TPM === "1", tools: kv.TPM_TOOL === "1" };
-  const xattr = { ok: kv.XATTR_OK === "1", error: kv.XATTR_ERR || null };
+  const xattr = {
+    ok: kv.XATTR_OK === "1",
+    error: kv.XATTR_ERR || null,
+    path: kv.XATTR_PATH || null,
+    sudo: kv.XATTR_SUDO === "1",
+    note: kv.XATTR_NOTE || null,
+  };
 
   const hostInfo = getHostInfoSsh(targetCfg);
   let cpuIdAsm = { available: false, unsupported: false };
@@ -1039,14 +1156,27 @@ echo "TPM_TOOL=$TPM_TOOL"
   } else if (extType === "file") {
     const stat = kv.EXT_FILE_STAT || "";
     const parts = stat.split(/\s+/);
+    const mount = extFilePath ? findMountForPath(mounts, extFilePath) : null;
+    const hostShare = !!(mount && extractHostShares([mount]).length);
+    const usbMount = !!(usbMounts && usbMounts.find((m) => m.mountpoint && mount && m.mountpoint === mount.mountpoint));
     externalAnchor.file = {
       path: extFilePath,
       exists: kv.EXT_FILE_EXISTS === "1",
       readable: kv.EXT_FILE_READ === "1",
       readableViaSudo: kv.EXT_FILE_READ_SUDO === "1",
       stat: stat ? { uid: parts[0] || null, gid: parts[1] || null, mode: parts[2] || null, size: parts[3] || null } : null,
+      mount: mount ? { mountpoint: mount.mountpoint || null, fstype: mount.fstype || null, device: mount.device || null, hostShare, usb: usbMount } : null,
     };
   } else if (extType === "lease") {
+    const bodyRaw = decodeBase64(kv.LEASE_BODY_B64);
+    let bodySha256 = null;
+    if (bodyRaw) {
+      try {
+        bodySha256 = crypto.createHash("sha256").update(bodyRaw).digest("hex");
+      } catch {
+        bodySha256 = null;
+      }
+    }
     externalAnchor.lease = {
       url: extLeaseUrl,
       timeoutMs: Number.isFinite(extLeaseTimeoutMs) ? extLeaseTimeoutMs : null,
@@ -1054,6 +1184,9 @@ echo "TPM_TOOL=$TPM_TOOL"
       status: kv.LEASE_STATUS || null,
       tool: kv.LEASE_TOOL || null,
       error: kv.LEASE_ERR || null,
+      bodyBytes: kv.LEASE_BODY_LEN ? Number(kv.LEASE_BODY_LEN) : null,
+      bodyTruncated: kv.LEASE_BODY_TRUNC === "1",
+      bodySha256,
     };
   } else if (extType === "tpm2") {
     externalAnchor.tpm2 = { present: tpm.present, tools: tpm.tools };

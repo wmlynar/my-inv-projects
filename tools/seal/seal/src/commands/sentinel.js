@@ -80,6 +80,12 @@ function resolveInspectContext(cwd, targetArg) {
       sentinelCfg = { enabled: false, storage: { baseDir } };
     }
   }
+  if (sentinelCfg && !sentinelCfg.storage) {
+    const baseDir = resolveBaseDirLoose(proj, targetCfg);
+    if (path.isAbsolute(baseDir) && !/\s/.test(baseDir)) {
+      sentinelCfg.storage = { baseDir };
+    }
+  }
 
   return { projectRoot, proj, targetName, targetCfg, sentinelCfg, sentinelCfgError };
 }
@@ -270,7 +276,10 @@ async function cmdSentinelInspect(cwd, targetArg, opts) {
   if (optsList.xattr) {
     const xattrLabel = optsList.xattr.ok ? "ok" : "not supported";
     const xattrErr = optsList.xattr.error ? ` (${optsList.xattr.error})` : "";
-    console.log(`XATTR: ${xattrLabel}${xattrErr}`);
+    const xattrPath = optsList.xattr.path ? ` on ${optsList.xattr.path}` : "";
+    const xattrNote = optsList.xattr.note ? ` (${optsList.xattr.note})` : "";
+    const xattrSudo = optsList.xattr.sudo ? " via sudo" : "";
+    console.log(`XATTR: ${xattrLabel}${xattrErr}${xattrPath}${xattrSudo}${xattrNote}`);
   }
 
   const ext = optsList.externalAnchor || {};
@@ -283,11 +292,21 @@ async function cmdSentinelInspect(cwd, targetArg, opts) {
       const file = ext.file;
       const read = file.readable ? "readable" : "not readable";
       const exists = file.exists ? "exists" : "missing";
-      console.log(`  file: ${exists}, ${read}${file.readableViaSudo ? " (via sudo)" : ""}`);
+      const mount = file.mount;
+      const mountInfo = mount && mount.mountpoint
+        ? ` mount=${mount.mountpoint}${mount.fstype ? ` fstype=${mount.fstype}` : ""}${mount.hostShare ? " hostShare" : ""}${mount.usb ? " usb" : ""}`
+        : "";
+      console.log(`  file: ${exists}, ${read}${file.readableViaSudo ? " (via sudo)" : ""}${mountInfo}`);
     } else if (ext.type === "lease" && ext.lease) {
       const lease = ext.lease;
       const status = lease.ok ? (lease.status || "ok") : (lease.error || "unreachable");
-      console.log(`  lease: ${status}${lease.tool ? ` (tool=${lease.tool})` : ""}`);
+      const body = lease.bodyBytes ? ` body=${lease.bodyBytes}${lease.bodyTruncated ? "+" : ""}` : "";
+      const hash = lease.bodySha256 ? ` sha256=${lease.bodySha256.slice(0, 12)}…` : "";
+      const scheme = lease.url && lease.url.startsWith("https://") ? "" : " (non-https)";
+      console.log(`  lease: ${status}${lease.tool ? ` (tool=${lease.tool})` : ""}${body}${hash}`);
+      if (scheme) {
+        console.log(`  lease: warning${scheme} URL`);
+      }
     } else if (ext.type === "tpm2" && ext.tpm2) {
       const tpmOk = ext.tpm2.present ? (ext.tpm2.tools ? "ok" : "present (tools missing)") : "not found";
       console.log(`  tpm2: ${tpmOk}`);
