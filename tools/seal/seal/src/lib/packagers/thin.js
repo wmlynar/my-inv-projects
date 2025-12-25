@@ -1299,6 +1299,7 @@ static int make_memfd(const char *name) {
   return -1;
 #endif
 #elif THIN_RUNTIME_STORE == THIN_RUNTIME_STORE_TMPFILE
+  umask(077);
   char tmp[64];
   snprintf(tmp, sizeof(tmp), "/tmp/.seal-out-thin-%d-XXXXXX", getpid());
   fd = mkstemp(tmp);

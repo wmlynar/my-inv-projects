@@ -109,7 +109,7 @@ npx seal release prod --packager thin-single
   - `build.thin.runtimeStore: "memfd" | "tmpfile"` (domyślnie `"memfd"`).
   - `targets.<target>.thin.runtimeStore` może nadpisać.
   - `memfd` wymaga wsparcia jądra; brak wsparcia = błąd uruchomienia.
-  - `tmpfile` używa `mkstemp` i usuwa plik z dysku (unlink), ale nie używa memfd.
+  - `tmpfile` używa `mkstemp` i usuwa plik z dysku (unlink), ale nie używa memfd; pliki tymczasowe są tworzone z `umask(077)`.
 
 **Błędy runtime (bez sentinel):**
 - brak `memfd` przy `runtimeStore=memfd` → `[thin] runtime fd failed` (27) / `[thin] payload fd failed` (29),
