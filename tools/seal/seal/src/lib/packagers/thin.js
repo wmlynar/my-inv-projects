@@ -1538,6 +1538,59 @@ static void set_env_paths(const char *root) {
   set_virtual_entry(root);
 }
 
+static int anti_debug_checks(void) {
+  FILE *f = fopen("/proc/self/status", "r");
+  if (f) {
+    char line[256];
+    while (fgets(line, sizeof(line), f)) {
+      if (strncmp(line, "TracerPid:", 10) == 0) {
+        char *p = line + 10;
+        while (*p == ' ' || *p == '\t') p++;
+        long pid = strtol(p, NULL, 10);
+        if (pid > 0) {
+          fclose(f);
+          return fail_msg("[thin] runtime invalid", 71);
+        }
+        break;
+      }
+    }
+    fclose(f);
+  }
+
+  const char *deny_env[] = {
+    "LD_PRELOAD",
+    "LD_LIBRARY_PATH",
+    "LD_AUDIT",
+    "LD_DEBUG",
+    "LD_DEBUG_OUTPUT",
+    "LD_PROFILE",
+    "LD_SHOW_AUXV",
+    "LD_USE_LOAD_BIAS",
+    "LD_ORIGIN_PATH",
+    "LD_ASSUME_KERNEL",
+    "LD_DYNAMIC_WEAK",
+    "NODE_OPTIONS",
+    "NODE_PATH",
+    "NODE_V8_COVERAGE",
+    "NODE_DEBUG",
+    "NODE_REPL_HISTORY",
+    "NODE_DISABLE_COLORS",
+    "GCONV_PATH",
+    "LOCPATH",
+    "MALLOC_TRACE",
+    "MALLOC_CHECK_",
+    NULL
+  };
+  for (int i = 0; deny_env[i]; i++) {
+    const char *val = getenv(deny_env[i]);
+    if (val && val[0]) {
+      return fail_msg("[thin] runtime invalid", 72);
+    }
+  }
+
+  return 0;
+}
+
 static void harden_env(void) {
   const char *strict = getenv("SEAL_THIN_ENV_STRICT");
   int strict_mode = (strict && strcmp(strict, "1") == 0);
@@ -1639,6 +1692,11 @@ int main(int argc, char **argv) {
     if (!getcwd(root, sizeof(root))) {
       snprintf(root, sizeof(root), ".");
     }
+  }
+
+  int ad = anti_debug_checks();
+  if (ad != 0) {
+    return ad;
   }
 
   if (SENTINEL_ENABLED) {
