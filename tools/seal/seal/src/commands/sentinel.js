@@ -110,6 +110,16 @@ function formatList(label, items, formatter) {
   items.forEach((item) => console.log(`  - ${formatter(item)}`));
 }
 
+function pickMountpoint(items) {
+  for (const item of items || []) {
+    const mp = item.mountpoint || "";
+    if (!mp) continue;
+    if (mp === "/" || mp === "/boot") continue;
+    return mp;
+  }
+  return "";
+}
+
 async function cmdSentinelProbe(cwd, targetArg) {
   const ctx = resolveContext(cwd, targetArg);
   if (!ensureEnabled(ctx)) return;
@@ -261,19 +271,23 @@ async function cmdSentinelInspect(cwd, targetArg, opts) {
   }
 
   console.log("Recommendations:");
-  if (optsList.usbDevices && optsList.usbDevices.length) {
-    const d = optsList.usbDevices[0];
+  const usbDevices = optsList.usbDevices || [];
+  if (!usbDevices.length) {
+    console.log("  - USB anchor not detected; attach USB passthrough to enable externalAnchor.usb.");
+  } else if (usbDevices.length === 1) {
+    const d = usbDevices[0];
     const serialLine = d.serial ? `, serial: "${d.serial}"` : "";
     console.log("  - Use externalAnchor.usb (L4):");
     console.log(`    externalAnchor: { type: "usb", usb: { vid: "${d.vid}", pid: "${d.pid}"${serialLine} } }`);
   } else {
-    console.log("  - USB anchor not detected; attach USB passthrough to enable externalAnchor.usb.");
+    console.log("  - Multiple USB devices detected. Pick one from the list above:");
+    console.log('    externalAnchor: { type: "usb", usb: { vid: "<vid>", pid: "<pid>", serial: "<serial>" } }');
   }
 
-  if ((optsList.usbMounts && optsList.usbMounts.length) || (optsList.hostShares && optsList.hostShares.length)) {
-    const mp = (optsList.usbMounts && optsList.usbMounts[0] && optsList.usbMounts[0].mountpoint)
-      || (optsList.hostShares && optsList.hostShares[0] && optsList.hostShares[0].mountpoint)
-      || "/mnt/anchor";
+  const usbMp = pickMountpoint(optsList.usbMounts || []);
+  const hostMp = pickMountpoint(optsList.hostShares || []);
+  if (usbMp || hostMp) {
+    const mp = usbMp || hostMp || "/mnt/anchor";
     console.log("  - Use externalAnchor.file on a host/USB mount (L4):");
     console.log(`    externalAnchor: { type: "file", file: { path: "${mp}/.k" } }`);
   } else {
