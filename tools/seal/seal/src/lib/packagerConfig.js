@@ -76,9 +76,6 @@ function normalizePackager(rawPackager, thinMode) {
   if (name === "bundle") {
     return { kind: "bundle", label: "bundle" };
   }
-  if (name === "fallback") {
-    return { kind: "bundle", label: "bundle", legacy: true };
-  }
   if (name === "sea") return { kind: "sea", label: "sea" };
   if (name === "none") return { kind: "none", label: "none" };
   if (name === "auto") return { kind: "thin", label: "thin-split", thinMode: "bootstrap", auto: true };

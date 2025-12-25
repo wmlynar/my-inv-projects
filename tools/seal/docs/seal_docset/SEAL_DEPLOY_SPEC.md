@@ -1242,7 +1242,7 @@ Celem sample-app jest:
 ### 24.1. Zasady ogólne CLI
 
 - Seal jest instalowany lokalnie na komputerze deweloperskim jako komenda `seal`.
-- Seal jest uruchamiany w katalogu projektu (lub podkatalogu). Root projektu wykrywa po obecności `seal.json5` (fallback: `seal-config/standard.lock.json`).
+- Seal jest uruchamiany w katalogu projektu (lub podkatalogu). Root projektu wykrywa po obecności `seal.json5`.
 - Seal nie wymaga istnienia Seala na serwerze.
 - Seal działa w trybie offline (nie wymaga internetu do typowego działania; toolchain może być instalowany lokalnie/prefetch).
 - **Zasada minimalnych komend (MUST):**

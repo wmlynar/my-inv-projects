@@ -40,9 +40,7 @@ function isSealProject(dir) {
       return true;
     }
   }
-  const legacyProject = path.join(dir, "seal-config", "project.json5");
-  const legacyStandard = path.join(dir, "seal-config", "standard.lock.json");
-  return fs.existsSync(legacyProject) || fs.existsSync(legacyStandard);
+  return false;
 }
 
 function loadWorkspaceProjects(rootDir) {

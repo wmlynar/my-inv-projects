@@ -64,15 +64,12 @@ function loadWorkspaceConfig(projectRoot) {
 }
 
 function loadProjectConfig(projectRoot) {
-  const { sealFile, projectFile } = getSealPaths(projectRoot);
+  const { sealFile } = getSealPaths(projectRoot);
   let cfg = null;
 
   if (fs.existsSync(sealFile)) {
     cfg = readJson5(sealFile);
     if (isWorkspaceConfig(cfg)) return null;
-  } else if (fs.existsSync(projectFile)) {
-    // Legacy fallback for older projects.
-    cfg = readJson5(projectFile);
   }
 
   if (!cfg) return null;
