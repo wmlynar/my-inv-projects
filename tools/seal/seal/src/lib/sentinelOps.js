@@ -153,9 +153,10 @@ function extractUsbMounts(lsblk) {
   const out = [];
   for (const row of rows) {
     const mountpointsRaw = row.mountpoint !== undefined ? row.mountpoint : row.mountpoints;
-    const mountpoints = Array.isArray(mountpointsRaw)
-      ? mountpointsRaw
-      : (mountpointsRaw ? [mountpointsRaw] : []);
+    const mountpoints = (Array.isArray(mountpointsRaw) ? mountpointsRaw : (mountpointsRaw ? [mountpointsRaw] : []))
+      .map((item) => (item === null || item === undefined ? "" : String(item)))
+      .map((item) => item.trim())
+      .filter(Boolean);
     if (!mountpoints.length) continue;
     const tran = (row.tran || row.parent && row.parent.tran || "").toLowerCase();
     const rm = row.rm !== undefined ? String(row.rm) : (row.parent && row.parent.rm !== undefined ? String(row.parent.rm) : "");
@@ -437,6 +438,7 @@ set -euo pipefail
 BASE=${shQuote(baseDir)}
 SVC_USER=${shQuote(serviceUser)}
 SVC_GROUP=${shQuote(serviceGroup)}
+CUR_USER="$(id -un 2>/dev/null || true)"
   if [ ! -d "$BASE" ]; then
     echo "BASE_EXISTS=0"
     exit 0
@@ -450,8 +452,18 @@ statline="$(stat -Lc '%u %g %a' "$BASE" 2>/dev/null || true)"
 echo "BASE_STAT=$statline"
 BASE_EXEC=1
 if [ "$SVC_USER" != "root" ]; then
-  if sudo -n -u "$SVC_USER" test -x "$BASE"; then
-    BASE_EXEC=1
+  if [ -n "$CUR_USER" ] && [ "$CUR_USER" = "$SVC_USER" ]; then
+    if test -x "$BASE"; then
+      BASE_EXEC=1
+    else
+      BASE_EXEC=0
+    fi
+  elif command -v sudo >/dev/null 2>&1; then
+    if sudo -n -u "$SVC_USER" test -x "$BASE"; then
+      BASE_EXEC=1
+    else
+      BASE_EXEC=0
+    fi
   else
     BASE_EXEC=0
   fi
@@ -904,6 +916,7 @@ EXT_LEASE_TIMEOUT_MS=${shQuote(Number.isFinite(extLeaseTimeoutMs) ? String(extLe
 BASE_DIR=${shQuote(baseDir)}
 SVC_USER=${shQuote(serviceUser)}
 SVC_GROUP=${shQuote(serviceGroup)}
+CUR_USER="$(id -un 2>/dev/null || true)"
 
 BASE_EXISTS=0
 BASE_SYMLINK=0
@@ -917,7 +930,13 @@ if [ -n "$BASE_DIR" ] && [ -d "$BASE_DIR" ]; then
   BASE_STAT="$(stat -Lc '%u %g %a' "$BASE_DIR" 2>/dev/null || true)"
   BASE_EXEC=1
   if [ "$SVC_USER" != "root" ]; then
-    if command -v sudo >/dev/null 2>&1; then
+    if [ -n "$CUR_USER" ] && [ "$CUR_USER" = "$SVC_USER" ]; then
+      if test -x "$BASE_DIR"; then
+        BASE_EXEC=1
+      else
+        BASE_EXEC=0
+      fi
+    elif command -v sudo >/dev/null 2>&1; then
       if sudo -n -u "$SVC_USER" test -x "$BASE_DIR"; then
         BASE_EXEC=1
       else

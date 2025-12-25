@@ -38,6 +38,14 @@
 - Blad: brak sprzatania po SIGINT/SIGTERM.
   - Wymaganie: przerwania sprzataja procesy i pliki tymczasowe.
 
+- Blad: walidacja uprawnien opierala sie wylacznie na `sudo`, przez co brak `sudo` powodowal falszywy negatyw (np. `serviceUser` = biezacy user).
+  - Wymaganie: jesli `serviceUser` == biezacy uzytkownik, sprawdzaj uprawnienia bez `sudo`.
+  - Wymaganie: brak `sudo` nie moze maskowac dostepu; fallback do lokalnego `test -x`.
+  - Wymaganie: skrypty typu probe/inspect musza dzialac bez `sudo` (zamiast fail, zwracaja wynik + note).
+
+- Blad: parsowanie danych z narzedzi systemowych (np. `lsblk`) nie normalizowalo `mountpoints` (null/array/string), co dawalo puste wpisy i bledne wnioski o mountach.
+  - Wymaganie: zawsze normalizuj output narzedzi (trim, filtruj puste, obsluguj array) przed decyzjami.
+
 ## Build / packaging
 
 - Blad: SEA bundle fallback uruchomil build bez postject (cichy spadek poziomu zabezpieczen).
