@@ -4,7 +4,6 @@ const { Command } = require("commander");
 
 const { wizard } = require("./commands/wizard");
 const { cmdInit } = require("./commands/init");
-const { cmdExplain } = require("./commands/explain");
 const { cmdCheck } = require("./commands/check");
 const { cmdBatch } = require("./commands/batch");
 const { cmdClean } = require("./commands/clean");
@@ -13,7 +12,7 @@ const { cmdVerify } = require("./commands/verify");
 const { cmdRunLocal } = require("./commands/runLocal");
 const { cmdTargetAdd } = require("./commands/targetAdd");
 const { cmdConfigAdd, cmdConfigDiff, cmdConfigPull, cmdConfigPush } = require("./commands/config");
-const { cmdDeploy, cmdShip, cmdStatus, cmdLogs, cmdRestart, cmdDisable, cmdRollback, cmdUninstall, cmdRunRemote, cmdRemote } = require("./commands/deploy");
+const { cmdDeploy, cmdShip, cmdRollback, cmdUninstall, cmdRunRemote, cmdRemote } = require("./commands/deploy");
 const { loadSealFile, isWorkspaceConfig } = require("./lib/project");
 const { version } = require("./lib/version");
 
@@ -36,7 +35,7 @@ function getAutoBatchRequest(argv, cwd) {
   if (hasHelpOrVersionFlag(args)) return null;
   const cmd = args[0];
   if (!cmd || cmd.startsWith("-")) return null;
-  if (cmd === "batch") return null;
+  if (cmd === "batch" || cmd === "wizard") return null;
   if (!isWorkspaceRoot(cwd)) return null;
   return { cmd, args: args.slice(1) };
 }
@@ -63,7 +62,7 @@ async function main(argv) {
     .version(version)
     .showHelpAfterError(true);
 
-  // Wizard: when no args, print guided hints
+  // Wizard: when no args, run interactive guide (or print hints if no TTY)
   program.action(async () => {
     await wizard(process.cwd());
   });
@@ -75,10 +74,11 @@ async function main(argv) {
     .action(async (opts) => cmdInit(process.cwd(), opts));
 
   program
-    .command("explain")
-    .description("Explain what SEAL understands about this project (derived config)")
-    .option("--json", "Print as JSON", false)
-    .action(async (opts) => cmdExplain(process.cwd(), opts));
+    .command("wizard")
+    .description("Interactive guide: choose next steps (init/check/release/deploy/remote)")
+    .action(async () => {
+      await wizard(process.cwd());
+    });
 
   program
     .command("check")
@@ -170,30 +170,6 @@ async function main(argv) {
     .option("--fast", "Fast ship from sources (unsafe)", false)
     .option("--fast-no-node-modules", "Exclude node_modules in fast mode", false)
     .action(async (target, opts) => cmdShip(process.cwd(), target, opts));
-
-  program
-    .command("status")
-    .description("Show service status on target")
-    .argument("[target]", "Target name", null)
-    .action(async (target) => cmdStatus(process.cwd(), target));
-
-  program
-    .command("logs")
-    .description("Tail service logs on target (journald)")
-    .argument("[target]", "Target name", null)
-    .action(async (target) => cmdLogs(process.cwd(), target));
-
-  program
-    .command("restart")
-    .description("Restart service on target")
-    .argument("[target]", "Target name", null)
-    .action(async (target) => cmdRestart(process.cwd(), target));
-
-  program
-    .command("stop")
-    .description("Stop and disable service on target")
-    .argument("[target]", "Target name", null)
-    .action(async (target) => cmdDisable(process.cwd(), target));
 
   program
     .command("rollback")

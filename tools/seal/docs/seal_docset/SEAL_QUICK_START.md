@@ -179,16 +179,16 @@ seal deploy local --bootstrap
 
 ```bash
 seal deploy local
-seal restart local    # (opcjonalnie) jeżeli chcesz uruchomić usługę po deployu
+seal remote local restart    # (opcjonalnie) jeżeli chcesz uruchomić usługę po deployu
 ```
 
 4) Serwis:
 
 ```bash
-seal status local
-seal logs local
-seal restart local
-seal stop local      # stop + disable autostart
+seal remote local status
+seal remote local logs
+seal remote local restart
+seal remote local disable   # stop + disable autostart
 seal rollback local
 seal releases local
 ```
@@ -218,16 +218,16 @@ seal deploy robot-01 --bootstrap
 
 ```bash
 seal deploy robot-01
-seal restart robot-01    # (opcjonalnie) jeżeli chcesz uruchomić usługę po deployu
+seal remote robot-01 restart    # (opcjonalnie) jeżeli chcesz uruchomić usługę po deployu
 ```
 
 ### Krok D: serwis
 
 ```bash
-seal status robot-01
-seal logs robot-01
-seal restart robot-01
-seal stop robot-01      # stop + disable autostart
+seal remote robot-01 status
+seal remote robot-01 logs
+seal remote robot-01 restart
+seal remote robot-01 disable   # stop + disable autostart
 seal rollback robot-01
 seal releases robot-01
 ```

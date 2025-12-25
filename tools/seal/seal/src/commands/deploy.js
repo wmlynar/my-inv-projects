@@ -133,9 +133,9 @@ async function cmdDeploy(cwd, targetArg, opts) {
   ok("Done.");
   console.log("Next:");
   console.log(`  seal deploy ${targetName} --bootstrap   # (once) install systemd service (explicit)`);
-  console.log(`  seal restart ${targetName}             # start/restart service (explicit)`);
-  console.log(`  seal status ${targetName}`);
-  console.log(`  seal logs ${targetName}`);
+  console.log(`  seal remote ${targetName} restart      # start/restart service (explicit)`);
+  console.log(`  seal remote ${targetName} status`);
+  console.log(`  seal remote ${targetName} logs`);
 }
 
 async function cmdShip(cwd, targetArg, opts) {

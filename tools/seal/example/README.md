@@ -79,8 +79,8 @@ npx seal check server
 npx seal deploy server --bootstrap --restart
 
 # 3) Status i logi
-npx seal status server
-npx seal logs server
+npx seal remote server status
+npx seal remote server logs
 ```
 
 Kolejne aktualizacje:

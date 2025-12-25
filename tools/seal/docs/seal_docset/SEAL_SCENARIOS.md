@@ -93,8 +93,8 @@ Fallback (ręczny):
 ```bash
 seal deploy local --bootstrap
 seal deploy local
-seal restart local
-seal status local
+seal remote local restart
+seal remote local status
 ```
 
 ---
@@ -104,8 +104,8 @@ seal status local
 
 ```bash
 seal deploy local
-seal restart local
-seal logs local
+seal remote local restart
+seal remote local logs
 ```
 
 ---
@@ -116,7 +116,7 @@ seal logs local
 ```bash
 seal target add robot-01
 seal config add robot-01
-seal explain robot-01
+seal check robot-01
 ```
 
 ---
@@ -146,9 +146,9 @@ seal deploy robot-01 --push-config    # repo → serwer (świadome)
 
 ```bash
 seal deploy robot-01
-seal restart robot-01
-seal status robot-01
-seal logs robot-01
+seal remote robot-01 restart
+seal remote robot-01 status
+seal remote robot-01 logs
 ```
 
 ---

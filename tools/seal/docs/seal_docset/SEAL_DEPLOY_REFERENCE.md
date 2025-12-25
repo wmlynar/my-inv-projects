@@ -134,32 +134,33 @@ Seal powinien mieć interfejs packagera, aby można było podmieniać metodę pa
 
 ## 3. Przykłady ergonomii v0.4 (REF)
 
-### 3.1. `seal explain` – przykładowy output
+### 3.1. `seal wizard` – przykładowy output
 
 ```
-$ seal explain robot-01
+$ seal wizard
 
-EFFECTIVE CONFIG (robot-01)
+SEAL wizard
+cwd: /home/user/project
+projectRoot: /home/user/project
 
-seal.json5:
-  app.name = my-app
-  seal.packager = sea
-  seal.obfuscation = aggressive
-  retention.keep_releases = 1
+Projekt SEAL: appName=my-app entry=src/index.js
+defaultTarget: local
+config: /home/user/project/seal-config/configs/local.json5
 
-seal-config/targets/robot-01.json5:
-  host = 10.0.0.23
-  user = robot
+Rekomendowane teraz: release (build)
+Wybierz następną akcję:
+ 1) check (preflight) — sprawdza toolchain i kompatybilność przed buildem
+ 2) release (build) [rekomendowane] — buduje sealed release i artefakt .tgz
+ 3) verify --explain — weryfikuje artefakt i wypisuje checklistę
+ 4) run-local --sealed — uruchamia sealed build lokalnie
+ 5) deploy (artifact) → target — wdraża artefakt na serwer (bez kontroli serwisu)
+ 6) ship (build+deploy+restart) → target — jedno polecenie: build + deploy + restart
+ 7) remote (service control) — sterowanie usługą (up/enable/start/stop/status/logs)
+ 8) rollback → target — powrót do poprzedniego release
+ 9) uninstall → target — usuwa usługę SEAL z targetu
+ 0) wyjście
 
-runtime (repo):
-  config = robot-01
-  configPath = seal-config/configs/robot-01.json5
-
-healthcheck:
-  url = http://127.0.0.1:8080/healthz  (from config.http.port)
-
-NOTES:
-  - No hidden defaults: use `seal print-defaults`.
+Opcja: 2
 ```
 
 
@@ -321,8 +322,10 @@ Proponowana implementacja:
    - brak targetów → `seal target add local`,
    - brak artefaktu → `seal release`,
    - jest artefakt → `seal verify` i `seal run-local`,
-   - są targety serwerowe → `seal deploy <target>` + `seal status <target>`.
+  - są targety serwerowe → `seal deploy <target>` + `seal remote <target> status`.
 3) wypisz propozycje jako copy/paste (bez „filozofii”).
+ 4) (TTY) pozwól wybrać numer i uruchomić komendę bez opuszczania wizards.
+ 5) pokaż krótkie wyjaśnienie każdej komendy i wskaż rekomendowaną na teraz.
 
 ### 6.2. Rozpoznanie default target/config
 

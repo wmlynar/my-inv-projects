@@ -10,7 +10,7 @@
 
 ### Deploy / serwer (P0)
 - **Bootstrap SSH uproszczony:** tworzy katalogi i nadaje uprawnienia; service instalowany po deployu (bez auto‑startu).
-- **Nowa komenda `seal stop <target>`:** stop + disable autostart (systemd).
+- **Komendy serwisowe ujednolicone:** używaj `seal remote <target> <action>` (status/logs/restart/stop/disable/up/down).
 - **Lepsze preflighty SSH:** `seal check <target>` podaje precyzyjne wskazówki (brak katalogu, sudo, bootstrap).
 
 ### Frontend hardening (P1)

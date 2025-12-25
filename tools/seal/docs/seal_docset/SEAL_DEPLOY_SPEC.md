@@ -239,7 +239,7 @@ Dla porządku rozróżniamy klasy atakującego (nie po to, żeby się oszukiwać
 Ta sekcja ma zapobiec obiecywaniu „magii”. Seal ma podnosić koszt kradzieży IP i upraszczać wdrożenia, ale nie daje absolutnych gwarancji w modelu atakującego z pełnym dostępem do hosta.
 
 #### Co jest w pełni deterministyczne (łatwe/średnie)
-- Generowanie plików i konfiguracji (`seal init`, `seal explain`, `seal print-defaults`).
+- Generowanie plików i konfiguracji (`seal init`, `seal wizard`, `seal print-defaults`).
 - SSH deploy (release dirs + atomowe przełączenie przez `current.buildId` + systemd + rollback).
 - `seal verify` jako checklista artefaktów (skan plików, wzorce, hashe, manifest).
 - `seal-out/run` + `seal-out/run.last_failed`.
@@ -274,7 +274,7 @@ Seal dostarcza:
   - weryfikacja artefaktu: `seal verify <target|artifact>`,
   - deploy: `seal deploy <target>`,
   - przygotowanie serwera (pierwszy raz): `seal deploy <target> --bootstrap`,
-  - serwis: `seal logs|status|restart|stop|run <target>`,
+  - serwis: `seal remote <target> logs|status|restart|stop|disable|down` + `seal run <target>`,
   - operacje na konfiguracji: `seal diff-config <target>`, `seal pull-config <target>`,
 - przykład (sample app) i/lub zestaw testów referencyjnych.
 
@@ -515,10 +515,10 @@ seal-deploy/
 
 ### 9.5. Serwis
 Seal zapewnia szybkie komendy:
-- `seal logs <target>` – tail logów usługi
-- `seal status <target>` – status systemd + `/status`
-- `seal restart <target>`
-- `seal stop <target>` – stop + disable autostart (systemd)
+- `seal remote <target> logs` – tail logów usługi
+- `seal remote <target> status` – status systemd + `/status`
+- `seal remote <target> restart`
+- `seal remote <target> disable` – stop + disable autostart (systemd)
 - `seal run <target>` – uruchomienie w foreground (diagnostyka)
 
 > **Zasada prostoty:** użytkownik ma pamiętać tylko jedną komendę do wdrożeń: `seal deploy <target>`. Reszta to narzędzia pomocnicze.
@@ -595,18 +595,17 @@ Mechanizmy:
 
 - REQ-CFG-007 (MUST): Seal **materializuje defaulty** do plików. Jeśli Seal ma parametr sterujący zachowaniem (retencja, timeouty, health-check, hardening, itp.), to:
   - albo parametr ma jawne pole w `seal.json5` / `seal-config/targets/<target>.json5`,
-  - albo Seal potrafi wygenerować/wyświetlić „pełny config” (patrz `seal print-defaults`) i jednoznacznie wskazać, skąd wzięła się każda wartość (patrz `seal explain`).
+  - albo Seal potrafi wygenerować/wyświetlić „pełny config” (patrz `seal print-defaults`) i jednoznacznie wskazać, skąd wzięła się każda wartość.
 
 - REQ-CFG-008 (MUST): tworzenie nowego targetu/config‑wariantu **nie wymaga ręcznego kopiowania plików**. Seal zapewnia komendy:
   - `seal target add <target>` → generuje `seal-config/targets/<target>.json5` (z pełną listą pól i placeholderami),
   - `seal config add <config> [--from <template|existing>]` → generuje `seal-config/configs/<config>.json5` jako pełny template.
 
-- REQ-CFG-009 (MUST): Seal zapewnia `seal explain [<target>]`, które wypisuje **effective config** i przy każdej wartości podaje źródło:
-  - `seal.json5`, `seal-config/targets/<target>.json5`, wartości z `seal-config/configs/<config>.json5`, albo default.
+- REQ-CFG-009 (MUST): Seal zapewnia `seal wizard`, który wykrywa stan projektu i podpowiada **następne kroki** (init/config/target/release/deploy).
 
 - REQ-CFG-010 (MAY): jeśli chcesz krótszych plików, Seal może mieć tryb „compact/normalize”, ale domyślnie preferujemy jawność.
 
-- REQ-CFG-011 (SHOULD): zachowania zależne od zmiennych środowiskowych są **niezalecane**. Jeśli istnieją (np. do diagnostyki), muszą być opisane jako override i widoczne w `seal explain`.
+- REQ-CFG-011 (SHOULD): zachowania zależne od zmiennych środowiskowych są **niezalecane**. Jeśli istnieją (np. do diagnostyki), muszą być jawnie opisane w dokumentacji projektu i sygnalizowane w output (np. `seal check`).
 
 ## 11. Serwer/robot: bootstrap środowiska (seal-server.sh)
 
@@ -1275,6 +1274,8 @@ Celem sample-app jest:
 - wykrywa stan projektu (brak `seal.json5` → brak targetów → brak configów → brak buildów),
 - wypisuje 3–5 **najbardziej sensownych następnych kroków**,
 - podaje przykładowe komendy dokładnie w formie „copy/paste”.
+- (SHOULD) w trybie TTY pyta o wybór i uruchamia wybraną komendę.
+- (SHOULD) opisuje krótko każdą komendę i wskazuje rekomendowaną na teraz.
 
 Przykładowe reguły:
 - jeśli brak `seal.json5` → sugeruj `seal init`,
@@ -1319,12 +1320,12 @@ Alias (MAY): `seal wizard`.
 
 ---
 
-#### `seal explain [<target>]`
-**Cel:** krótko i czytelnie pokazać „co SEAL rozumie” (bez wykonywania deployu).
+#### `seal wizard`
+**Cel:** interaktywnie przeprowadzić użytkownika przez „co dalej”.
 
-- bez argumentów: używa default targetu,
-- wypisuje m.in.: wykryty entrypoint, wybrany config, docelowe ścieżki, serviceName oraz link/ścieżkę do `seal-out/run/plan.md`.
-- (SHOULD) `--json` zwraca machine-readable opis.
+- w trybie TTY: pokazuje menu i uruchamia wybraną komendę,
+- bez TTY: wypisuje sugerowane następne kroki jako gotowe komendy,
+- wykrywa brakujące elementy (`seal.json5`, config, target) i podpowiada jak je utworzyć.
 
 ---
 
@@ -1396,10 +1397,10 @@ Alias (MAY): `seal ship`.
 ---
 
 #### Komendy serwisowe
-- `seal status <target...>` – status usługi + „co jest current”.
-- `seal logs <target>` – journalctl dla usługi.
-- `seal restart <target...>` – restart usługi.
-- `seal stop <target...>` – stop + disable autostart.
+- `seal remote <target> status` – status usługi + „co jest current”.
+- `seal remote <target> logs` – journalctl dla usługi.
+- `seal remote <target> restart` – restart usługi.
+- `seal remote <target> disable` – stop + disable autostart.
 - `seal releases <target>` – lista release (z oznaczeniem current + last-known-good).
 - `seal rollback <target> [--to <buildId>]` – rollback do poprzedniego lub konkretnego release.
 
@@ -1615,7 +1616,7 @@ Minimalne pola (MUST):
 3) `seal config add robot-01` + uzupełnij `seal-config/configs/robot-01.json5`
 4) `seal deploy robot-01 --bootstrap`
 5) `seal deploy robot-01`
-6) `seal status robot-01` i `seal logs robot-01`
+6) `seal remote robot-01 status` i `seal remote robot-01 logs`
 
 **Akceptacja:**
 - serwer ma strukturę katalogów,
@@ -1646,7 +1647,7 @@ Minimalne pola (MUST):
 
 **Akceptacja:**
 - current wraca do poprzedniego buildId,
-- `seal status` pokazuje rollback,
+- `seal remote <target> status` pokazuje rollback,
 - logi wskazują przyczynę i buildId.
 
 ### 27.10. E2E: manual rollback + lista release
@@ -1695,7 +1696,7 @@ Minimalne pola (MUST):
 ## 28. Plan implementacji (milestones)
 
 ### 28.1. Milestone 1 – minimalny działający deploy
-- `seal init`, `seal release`, `seal deploy --bootstrap`, `seal deploy`, `seal logs/status/restart`, `seal doctor`.
+- `seal init`, `seal release`, `seal deploy --bootstrap`, `seal deploy`, `seal remote <target> logs|status|restart`, `seal doctor`.
 - Struktura `/home/admin/apps/<app>/releases/` + `shared/` + `current.buildId`.
 
 ### 28.2. Milestone 2 – atomic deploy + rollback + manifest
