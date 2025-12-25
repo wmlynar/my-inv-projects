@@ -9,7 +9,7 @@ const { spawnSyncSafe } = require("./spawn");
 const { sshExec, scpTo, scpFrom, normalizeStrictHostKeyChecking, normalizeSshPort } = require("./ssh");
 const { ensureDir, fileExists } = require("./fsextra");
 const { packBlobV1, unpackBlobV1 } = require("./sentinelCore");
-const { buildFingerprintHash, resolveAutoLevel } = require("./sentinelConfig");
+const { buildFingerprintHash, resolveAutoLevel, normalizeCpuIdSource } = require("./sentinelConfig");
 
 const FLAG_REQUIRE_XATTR = 0x0001;
 const FLAG_L4_INCLUDE_PUID = 0x0002;
@@ -70,6 +70,105 @@ function parseKeyValueOutput(text) {
     if (key) out[key] = val;
   });
   return out;
+}
+
+function getCpuIdAsmSsh(targetCfg) {
+  const { user, host } = sshUserHost(targetCfg);
+  const script = `
+set -euo pipefail
+umask 077
+if ! command -v cc >/dev/null 2>&1; then
+  echo "__SEAL_NO_CC__"
+  exit 3
+fi
+arch="$(uname -m 2>/dev/null || true)"
+case "$arch" in
+  x86_64|amd64|i386|i486|i586|i686) ;;
+  *) echo "__SEAL_NO_CPUID__"; exit 4 ;;
+esac
+
+TMP="$(mktemp -d /tmp/.seal-cpuid-XXXXXX)"
+cleanup() { rm -rf "$TMP"; }
+trap cleanup EXIT
+
+cat > "$TMP/cpuid.c" <<'C'
+#include <stdio.h>
+#include <stdint.h>
+#include <string.h>
+#include <ctype.h>
+#if !defined(__x86_64__) && !defined(__i386__)
+int main(void) { return 2; }
+#else
+#include <cpuid.h>
+static void to_lower(char *s) { for (; *s; s++) *s = (char)tolower((unsigned char)*s); }
+int main(void) {
+  unsigned int eax = 0, ebx = 0, ecx = 0, edx = 0;
+  if (!__get_cpuid(0, &eax, &ebx, &ecx, &edx)) return 3;
+  char vendor[13];
+  memcpy(vendor + 0, &ebx, 4);
+  memcpy(vendor + 4, &edx, 4);
+  memcpy(vendor + 8, &ecx, 4);
+  vendor[12] = 0;
+  if (!__get_cpuid(1, &eax, &ebx, &ecx, &edx)) return 4;
+  unsigned int family = (eax >> 8) & 0x0f;
+  unsigned int model = (eax >> 4) & 0x0f;
+  unsigned int stepping = eax & 0x0f;
+  unsigned int ext_family = (eax >> 20) & 0xff;
+  unsigned int ext_model = (eax >> 16) & 0x0f;
+  if (family == 0x0f) family += ext_family;
+  if (family == 0x06 || family == 0x0f) model |= (ext_model << 4);
+  to_lower(vendor);
+  printf("%s:%u:%u:%u\\n", vendor, family, model, stepping);
+  return 0;
+}
+#endif
+C
+
+cc -O2 "$TMP/cpuid.c" -o "$TMP/cpuid" >/dev/null 2>&1
+"$TMP/cpuid"
+`;
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-lc", script], stdio: "pipe" });
+  const out = `${res.stdout}\n${res.stderr}`.trim();
+  if (out.includes("__SEAL_NO_CC__")) {
+    throw new Error("sentinel cpuid asm requires cc on target (install build-essential)");
+  }
+  if (out.includes("__SEAL_NO_CPUID__")) {
+    throw new Error("sentinel cpuid asm not supported on this architecture");
+  }
+  if (!res.ok) {
+    throw new Error(`sentinel cpuid asm failed (status=${res.status})${out ? `: ${out}` : ""}`);
+  }
+  const line = (out.split(/\r?\n/).find((l) => l.trim()) || "").trim();
+  if (!line) {
+    throw new Error("sentinel cpuid asm failed: empty output");
+  }
+  return line;
+}
+
+function resolveCpuIdSsh({ targetCfg, cpuIdSource, hostInfo, require }) {
+  const mode = normalizeCpuIdSource(cpuIdSource || "proc");
+  if (mode === "off") {
+    if (require) throw new Error("sentinel cpuid required but cpuIdSource=off");
+    return "";
+  }
+  const needProc = mode === "proc" || mode === "both";
+  const needAsm = mode === "asm" || mode === "both";
+  const proc = hostInfo.cpuidProc || "";
+  if (needProc && !proc) {
+    if (require) throw new Error("sentinel cpuid(proc) missing");
+    return "";
+  }
+  let asm = "";
+  if (needAsm) {
+    asm = getCpuIdAsmSsh(targetCfg);
+  }
+  if (needAsm && !asm) {
+    throw new Error("sentinel cpuid(asm) missing");
+  }
+  if (needProc && needAsm) {
+    return `proc:${proc}|asm:${asm}`;
+  }
+  return needAsm ? `asm:${asm}` : `proc:${proc}`;
 }
 
 function describeSentinelInstallError(out, baseDir) {
@@ -177,7 +276,7 @@ echo "CPUID=$CPUID"
     rid: kv.RID || "",
     fstype: kv.FSTYPE || "",
     puid: kv.PUID || "",
-    cpuid: kv.CPUID || "",
+    cpuidProc: kv.CPUID || "",
   };
 }
 
@@ -244,6 +343,13 @@ function installSentinelSsh({ targetCfg, sentinelCfg, force, insecure }) {
   if (level >= 2 && !hostInfo.rid) throw new Error("sentinel install failed: missing rid");
 
   let flags = 0;
+  const cpuid = resolveCpuIdSsh({
+    targetCfg,
+    cpuIdSource: sentinelCfg.cpuIdSource,
+    hostInfo,
+    require: sentinelCfg.cpuIdSource !== "off",
+  });
+  hostInfo.cpuid = cpuid;
   const includeCpuId = level >= 1 && !!hostInfo.cpuid;
   if (includeCpuId) flags |= FLAG_INCLUDE_CPUID;
   const installId = crypto.randomBytes(32);
@@ -453,6 +559,14 @@ echo "FILE_STAT=$statline"
   const hostInfo = getHostInfoSsh(targetCfg);
   const includePuid = !!(parsed.flags & FLAG_L4_INCLUDE_PUID);
   const includeCpuId = !!(parsed.flags & FLAG_INCLUDE_CPUID);
+  if (includeCpuId) {
+    hostInfo.cpuid = resolveCpuIdSsh({
+      targetCfg,
+      cpuIdSource: sentinelCfg.cpuIdSource,
+      hostInfo,
+      require: true,
+    });
+  }
   const fpHash = buildFingerprintHash(parsed.level, hostInfo, { includePuid, includeCpuId });
   const match = crypto.timingSafeEqual(parsed.fpHash, fpHash);
 

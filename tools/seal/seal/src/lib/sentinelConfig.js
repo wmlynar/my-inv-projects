@@ -13,6 +13,7 @@ const DEFAULT_SENTINEL = {
   level: "auto",
   appId: "auto",
   namespaceId: "auto",
+  cpuIdSource: "auto",
   storage: { baseDir: "/var/lib", mode: "file" },
   exitCodeBlock: 200,
   externalAnchor: { type: "none" },
@@ -80,6 +81,15 @@ function normalizeLevel(value) {
   return Math.trunc(n);
 }
 
+function normalizeCpuIdSource(value) {
+  if (value === undefined || value === null || value === "" || value === "auto") return "both";
+  const v = String(value).trim().toLowerCase();
+  if (["off", "none", "proc", "asm", "both"].includes(v)) {
+    return v === "none" ? "off" : v;
+  }
+  throw new Error(`Invalid sentinel cpuIdSource: ${value}`);
+}
+
 function isRidStable(rid, fstype) {
   if (!rid) return false;
   if (fstype === "overlay" || fstype === "tmpfs" || fstype === "ramfs") return false;
@@ -136,6 +146,7 @@ function resolveSentinelConfig({ projectRoot, projectCfg, targetCfg, targetName,
   }
 
   const level = normalizeLevel(cfg.level);
+  const cpuIdSource = normalizeCpuIdSource(cfg.cpuIdSource);
   const exitCodeBlock = normalizeExitCode(cfg.exitCodeBlock ?? DEFAULT_SENTINEL.exitCodeBlock);
 
   const anchor = buildAnchor(nsHex, appId);
@@ -149,6 +160,7 @@ function resolveSentinelConfig({ projectRoot, projectCfg, targetCfg, targetName,
     namespaceId: nsHex,
     storage: { baseDir, mode },
     level,
+    cpuIdSource,
     exitCodeBlock,
     externalAnchor: { type: anchorType },
     anchor,
@@ -182,5 +194,6 @@ module.exports = {
   getOrCreateNamespaceId,
   normalizeExitCode,
   normalizeLevel,
+  normalizeCpuIdSource,
   buildFingerprintHash,
 };

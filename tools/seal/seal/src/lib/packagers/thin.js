@@ -516,10 +516,20 @@ function toCBytes(buf) {
   return Array.from(buf, (b) => `0x${b.toString(16).padStart(2, "0")}`).join(", ");
 }
 
+function cpuIdModeFromSource(source) {
+  const v = String(source || "proc").trim().toLowerCase();
+  if (v === "off" || v === "none") return 0;
+  if (v === "proc") return 1;
+  if (v === "asm") return 2;
+  if (v === "both") return 3;
+  return 1;
+}
+
 function renderSentinelDefs(sentinelCfg) {
   if (!sentinelCfg || !sentinelCfg.enabled) {
     return `#define SENTINEL_ENABLED 0
 #define SENTINEL_EXIT_BLOCK 200
+#define SENTINEL_CPUID_MODE 0
 `;
   }
   if (!Buffer.isBuffer(sentinelCfg.anchor)) {
@@ -530,8 +540,10 @@ function renderSentinelDefs(sentinelCfg) {
   }
   const baseDir = sentinelCfg.storage && sentinelCfg.storage.baseDir ? sentinelCfg.storage.baseDir : "/var/lib";
   const exitCode = Number(sentinelCfg.exitCodeBlock || 200);
+  const cpuIdMode = cpuIdModeFromSource(sentinelCfg.cpuIdSource);
   return `#define SENTINEL_ENABLED 1
 #define SENTINEL_EXIT_BLOCK ${exitCode}
+#define SENTINEL_CPUID_MODE ${cpuIdMode}
 static const uint8_t SENTINEL_ANCHOR[] = { ${toCBytes(sentinelCfg.anchor)} };
 #define SENTINEL_ANCHOR_LEN ((size_t)sizeof(SENTINEL_ANCHOR))
 static const char SENTINEL_BASE_DIR[] = ${toCString(baseDir)};
@@ -750,7 +762,7 @@ static int read_cpuinfo_value(const char *key, char *out, size_t out_len) {
   return -1;
 }
 
-static int get_cpuid(char *out, size_t out_len) {
+static int get_cpuid_proc(char *out, size_t out_len) {
   char vendor[64] = { 0 };
   char family[32] = { 0 };
   char model[32] = { 0 };
@@ -766,6 +778,36 @@ static int get_cpuid(char *out, size_t out_len) {
   int n = snprintf(out, out_len, "%s:%s:%s:%s", vendor, family, model, stepping);
   if (n < 0 || (size_t)n >= out_len) return -1;
   return 0;
+}
+
+static int get_cpuid_asm(char *out, size_t out_len) {
+#if defined(__x86_64__) || defined(__i386__)
+  unsigned int eax = 0, ebx = 0, ecx = 0, edx = 0;
+  if (!__get_cpuid(0, &eax, &ebx, &ecx, &edx)) return -1;
+  char vendor[13];
+  memcpy(vendor + 0, &ebx, 4);
+  memcpy(vendor + 4, &edx, 4);
+  memcpy(vendor + 8, &ecx, 4);
+  vendor[12] = 0;
+
+  if (!__get_cpuid(1, &eax, &ebx, &ecx, &edx)) return -1;
+  unsigned int family = (eax >> 8) & 0x0f;
+  unsigned int model = (eax >> 4) & 0x0f;
+  unsigned int stepping = eax & 0x0f;
+  unsigned int ext_family = (eax >> 20) & 0xff;
+  unsigned int ext_model = (eax >> 16) & 0x0f;
+  if (family == 0x0f) family += ext_family;
+  if (family == 0x06 || family == 0x0f) model |= (ext_model << 4);
+
+  str_to_lower(vendor);
+  int n = snprintf(out, out_len, "%s:%u:%u:%u", vendor, family, model, stepping);
+  if (n < 0 || (size_t)n >= out_len) return -1;
+  return 0;
+#else
+  (void)out;
+  (void)out_len;
+  return -1;
+#endif
 }
 
 static int get_root_device(int *out_maj, int *out_min, char *out_fs, size_t out_fs_len) {
@@ -964,7 +1006,23 @@ static int sentinel_check(void) {
 
   char cpuid[128] = { 0 };
   if (include_cpuid) {
-    if (get_cpuid(cpuid, sizeof(cpuid)) != 0) return -1;
+    if (SENTINEL_CPUID_MODE == 1) {
+      char cpuid_proc[128] = { 0 };
+      if (get_cpuid_proc(cpuid_proc, sizeof(cpuid_proc)) != 0) return -1;
+      if (snprintf(cpuid, sizeof(cpuid), "proc:%s", cpuid_proc) < 0) return -1;
+    } else if (SENTINEL_CPUID_MODE == 2) {
+      char cpuid_asm[128] = { 0 };
+      if (get_cpuid_asm(cpuid_asm, sizeof(cpuid_asm)) != 0) return -1;
+      if (snprintf(cpuid, sizeof(cpuid), "asm:%s", cpuid_asm) < 0) return -1;
+    } else if (SENTINEL_CPUID_MODE == 3) {
+      char cpuid_proc[128] = { 0 };
+      char cpuid_asm[128] = { 0 };
+      if (get_cpuid_proc(cpuid_proc, sizeof(cpuid_proc)) != 0) return -1;
+      if (get_cpuid_asm(cpuid_asm, sizeof(cpuid_asm)) != 0) return -1;
+      if (snprintf(cpuid, sizeof(cpuid), "proc:%s|asm:%s", cpuid_proc, cpuid_asm) < 0) return -1;
+    } else {
+      return -1;
+    }
   }
 
   char fp[512];
@@ -1012,6 +1070,9 @@ m._compile(code, entry);
 
   return `#include <errno.h>
 #include <ctype.h>
+#if defined(__x86_64__) || defined(__i386__)
+#include <cpuid.h>
+#endif
 #include <dirent.h>
 #include <fcntl.h>
 #include <limits.h>

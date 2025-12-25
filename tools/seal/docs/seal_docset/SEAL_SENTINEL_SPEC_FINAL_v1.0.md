@@ -112,6 +112,9 @@ Na serwerze istnieje tylko:
       // sekret 16B (hex32)
       namespaceId: "auto",
 
+      // CPU ID source (opcjonalne)
+      cpuIdSource: "auto",       // auto | off | proc | asm | both
+
       // storage
       storage: {
         baseDir: "/var/lib",     // default
@@ -140,6 +143,7 @@ Efektywna konfiguracja:
    - `appId:auto` → `serviceName` targetu (po normalizacji)
    - `namespaceId:auto` → patrz §4.5
    - `level:auto` → patrz §8.3
+   - `cpuIdSource:auto` → `both`
 4) waliduj i normalizuj `appId` (§4.4)
 
 ### 4.4 Normalizacja `appId` (MUST)
@@ -171,6 +175,7 @@ Thin launcher **musi** znać (w runtime):
 - `namespaceId` (16B),
 - `appId` (znormalizowane),
 - `storage.baseDir`,
+- `cpuIdSource` (off/proc/asm/both),
 - `exitCodeBlock`,
 - jeśli Level 4: konfigurację externalAnchor.
 
@@ -328,6 +333,16 @@ Jeśli kiedyś chcecie podnieść próg “edytuję bajty + przeliczam CRC”, m
 
 **CPUID jest tylko sygnałem pomocniczym**: używamy go jako dodatkowej kotwicy (gdy dostępne), ale **nigdy** jako jedynego źródła fingerprintu.  
 Wirtualizacja może go ukryć/zmienić (np. VirtualBox `--cpuidremoveall "1"`), więc **nie polegamy** na nim dla bezpieczeństwa — jest flagowany w blobie i opcjonalny.
+
+`cpuIdSource` (config):
+- `auto` — **domyślnie** `both`
+- `off` — CPUID nie jest używane (flaga nie jest ustawiana)
+- `proc` — CPUID z `/proc/cpuinfo` (`cpuid=proc:<...>`)
+- `asm` — CPUID z instrukcji `cpuid` (x86/x64) (`cpuid=asm:<...>`)
+- `both` — **oba** źródła są użyte niezależnie (`cpuid=proc:<...>|asm:<...>`).  
+  Zmiana któregokolwiek źródła = mismatch fingerprint.
+
+Jeśli `cpuIdSource` wymaga `asm`, deployer **musi** mieć możliwość pobrania CPUID z hosta (np. przez `cc` podczas instalacji). Brak wsparcia architektury lub brak narzędzi = błąd (bez fallbacku).
 
 ### 8.2 Czego absolutnie nie robić (MUST)
 Nie opierać fingerprintu o:
