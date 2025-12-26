@@ -14,6 +14,7 @@
 - [SEAL_CONTRACT_AI.md](SEAL_CONTRACT_AI.md)
 - [SEAL_PITFALLS.md](SEAL_PITFALLS.md)
 - [SEAL_PACKAGER_THIN_SPEC_SCALONA.md](SEAL_PACKAGER_THIN_SPEC_SCALONA.md)
+- [SEAL_ANTI_REVERSE_ENGINEERING.md](SEAL_ANTI_REVERSE_ENGINEERING.md)
 - [SEAL_CHANGELOG.md](SEAL_CHANGELOG.md)
 
 **TL;DR review checklist:** zob. poczatek `SEAL_PITFALLS.md` + `SEAL_STANDARD.md` (sekcja “TL;DR dla review”).
@@ -30,6 +31,7 @@ Docset v0.5 składa się z:
 - **SEAL_CONTRACT_AI v1.3** – krótki kontrakt „promptable” dla generatorów kodu.
 - **SEAL_PITFALLS v0.5** – lista realnych błędów do uniknięcia + wymagania zapobiegawcze.
 - **SEAL_PACKAGER_THIN_SPEC_SCALONA** – specyfikacja packagera `thin-split` (BOOTSTRAP).
+- **SEAL_ANTI_REVERSE_ENGINEERING** – scalony opis anti‑debug/anti‑RE + status implementacji i braki.
 - **SEAL_CHANGELOG v0.5** – changelog całego docsetu.
 
 ## Zasady wersjonowania

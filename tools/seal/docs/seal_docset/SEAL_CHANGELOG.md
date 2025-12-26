@@ -18,6 +18,7 @@
 
 ### Docs (P1)
 - **SEAL_PITFALLS v0.5:** zebrane realne błędy i wymagania, aby ich nie powtarzać.
+- **SEAL_ANTI_REVERSE_ENGINEERING:** scalenie specyfikacji anti‑RE + tracerpid w jeden dokument z aktualnym statusem wdrożenia, decyzjami i brakami.
 
 ## Docset v0.5 (względem v0.4)
 
