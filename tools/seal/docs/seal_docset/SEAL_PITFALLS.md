@@ -20,6 +20,18 @@
 - Blad: brak walidacji argumentow/parametrow powodowal niejasne bledy runtime.
   - Wymaganie: wszystkie wejscia (CLI/config) maja walidacje typow/zakresow; bledne = fail-fast.
 
+- Blad: komendy shellowe byly skladane przez konkatenacje stringow (sciezki z bialymi znakami, wstrzykniecia).
+  - Wymaganie: uzywaj `spawn`/`execFile` z args array i `shell: false`.
+  - Wymaganie: gdy shell jest konieczny (ssh/rsync), stosuj `--` i bezpieczne quoting; sanitizuj wszystkie fragmenty pochodzace z configu.
+
+- Blad: operacje na sciezkach (rm/rsync/copy) podazaly za symlinkami i mogly wyjsc poza root.
+  - Wymaganie: przed operacjami destrukcyjnymi sprawdz `realpath` i czy jest w dozwolonym root.
+  - Wymaganie: nie podazaj za symlinkami (`lstat` + blokada) i odrzucaj `..` w identyfikatorach.
+
+- Blad: operacje workspace wykonywaly sie na wielu projektach bez potwierdzenia i jasnego zakresu.
+  - Wymaganie: przy >1 projekcie pokaz liste i wymagaj jawnego `--yes/--workspace`.
+  - Wymaganie: semantyka bledow (fail-fast vs continue) jest jawna, z opcja `--continue-on-error`.
+
 - Blad: ryzykowne opcje/fallbacki byly wlaczone domyslnie.
   - Wymaganie: ryzykowne opcje OFF domyslnie; wymagaja jawnego wlaczenia i WARN.
 
@@ -83,6 +95,14 @@
   - Wymaganie: preflight uzywa plikow tymczasowych (nie stdin), zeby narzedzia nie blokowaly sie na wejsciu.
   - Wymaganie: opcja override toolchaina (np. `--cc gcc`) dla srodowisk z wrapperami `cc`.
 
+- Blad: `seal release --skip-check` maskowal braki toolchaina i zwracal niejasne bledy.
+  - Wymaganie: `--skip-check` zawsze wypisuje wyrazne ostrzezenie i jest tylko dla zaawansowanych.
+  - Wymaganie: jesli brakuje krytycznych narzedzi, build powinien fail‑fast nawet przy `--skip-check` (lub przynajmniej podac konkretne "co dalej").
+
+- Blad: `postject` byl zainstalowany jako modul, ale brakowalo CLI w PATH (check ostrzegal, a build i tak failowal).
+  - Wymaganie: `seal check` weryfikuje **CLI** (`node_modules/.bin/postject` lub PATH), nie sam modul.
+  - Wymaganie: brak CLI = twardy blad z instrukcja instalacji.
+
 - Blad: thin build failowal dopiero w trakcie kompilacji launchera (brak `libzstd-dev`), bez jasnej instrukcji instalacji.
   - Wymaganie: `seal check` wykrywa brakujace pakiety (np. `libzstd-dev`) i podaje **konkretne** `apt-get install ...`.
   - Wymaganie: `seal release` (thin) fail‑fast z czytelnym komunikatem, gdy toolchain jest niekompletny.
@@ -109,6 +129,9 @@
   - Wymaganie: makra typu `_GNU_SOURCE` zawsze owijaj w `#ifndef`/`#define` (brak duplikatow).
   - Wymaganie: identyfikatory w kodzie generowanym maja unikalny prefix i nie koliduja miedzy galeziami warunkowymi.
   - Wymaganie: generator C przechodzi compile‑test z `-Werror`, aby ostrzezenia nie przechodzily do produkcji.
+
+- Blad: brak `chmod +x` na generowanych binarkach/skryptach (np. launcher, run-current) powodowal `Permission denied` lub `Exec format error`.
+  - Wymaganie: kazdy generowany plik wykonywalny ma jawny `chmod 755` (i jest sprawdzony w testach).
 
 - Blad: launcher AIO probowal fallbackowac do BOOTSTRAP po uszkodzeniu stopki (cichy tryb mieszany).
   - Wymaganie: tryb AIO i BOOTSTRAP sa **jawne**.
@@ -179,6 +202,12 @@
 - Blad: testy „expect fail” nie drenowaly stdout/stderr child procesu, co moglo blokowac proces i zafalszowac timeout.
   - Wymaganie: drenaż stdout/stderr jest wymagany **we wszystkich** sciezkach testu (takze przy spodziewanej porazce).
 
+- Blad: testy zalezne od narzedzi (postject/strip/packery) failowaly zamiast graczejnego SKIP, gdy narzedzia nie byly zainstalowane.
+  - Wymaganie: testy tool‑dependent sprawdzaja dostepnosc narzedzi i robia SKIP z powodem (chyba ze env wymusza fail).
+
+- Blad: testy E2E nie wypisywaly wystarczajacego kontekstu przy porazce (brak stdout/stderr/command/config).
+  - Wymaganie: przy failu test wypisuje command line, fragment stdout/stderr (z limitem) i effective config.
+
 - Blad: testy modyfikowaly `config.runtime.json5` lub inne pliki projektu i nie przywracaly ich (efekt uboczny w repo).
   - Wymaganie: testy pracuja na kopii projektu albo uzywaja `outDirOverride` + temp config w katalogu release.
   - Wymaganie: kazda modyfikacja plikow w repo musi byc przywrocona w `finally`.
@@ -190,8 +219,30 @@
 - Blad: testy modyfikowaly zmienne `SEAL_*` i nie przywracaly ich, co psulo kolejne testy.
   - Wymaganie: snapshot i restore `process.env` (albo kluczowych `SEAL_*`) w `finally`.
 
+- Blad: testy zmienialy `process.cwd()` i nie przywracaly go, co psulo kolejne kroki.
+  - Wymaganie: snapshot i restore `process.cwd()` w `finally`.
+
 - Blad: testy tworzyly artefakty w katalogu projektu (`seal-out/`) i zostawialy je po porazce.
   - Wymaganie: E2E uzywa `outDirOverride` w temp dir; sprzatanie po tescie jest obowiazkowe.
+
+- Blad: E2E budowaly ciezkie warianty (np. wysoki poziom `thin`) przez co testy byly zbyt wolne.
+  - Wymaganie: testy E2E wymuszaja szybkie ustawienia (`thin.level=low` lub mniejsze chunkSize) i minimalne payloady.
+
+- Blad: testy/skripty zakladaly, ze `/tmp` jest wykonywalny i bezpieczny, ale na niektorych systemach jest `noexec`.
+  - Wymaganie: respektuj `TMPDIR` i unikaj uruchamiania binarek z `/tmp` bez sprawdzenia.
+
+- Blad: testy E2E uruchamialy operacje systemowe (systemd/`installDir` w realnych sciezkach) i psuly srodowisko.
+  - Wymaganie: testy uzywaja sandbox `installDir` w temp i unikalnych nazw uslug.
+  - Wymaganie: operacje systemowe sa gated env‑flaga i domyslnie SKIP.
+
+- Blad: testy polegaly na `localhost`, co w niektorych systemach rozwiązywalo sie do IPv6 i powodowalo fail.
+  - Wymaganie: testy jawnie binduja do `127.0.0.1` i uzywaja adresu IPv4.
+
+- Blad: testy dzielily cache (np. `seal-out/cache`) i wyniki byly zalezne od poprzednich uruchomien.
+  - Wymaganie: testy izolują cache (osobny temp project root lub `SEAL_THIN_CACHE_LIMIT=0`).
+
+- Blad: testy zapisywaly do `HOME`/`XDG_*`, zostawiajac smieci w profilu uzytkownika.
+  - Wymaganie: ustaw `HOME`/`XDG_*` na temp w testach E2E.
 
 - Blad: testy uruchamialy komendy, ktore prosily o interaktywny input (git/ssh), przez co CI wisial.
   - Wymaganie: testy maja ustawione `GIT_TERMINAL_PROMPT=0` i nie wywolują interaktywnych narzedzi bez jawnego flag/sekretow.
@@ -240,6 +291,9 @@
 - Blad: podwojne uploadowanie artefaktu przy pierwszym deployu (brak configu na serwerze).
   - Wymaganie: sprawdzaj `shared/config.json5` przed uploadem; artefakt wysylany **tylko raz**.
 
+- Blad: brak wczesnej walidacji wolnego miejsca na serwerze powodowal `tar: Cannot mkdir: No space left on device`.
+  - Wymaganie: preflight sprawdza wolne miejsce w `installDir` oraz `/tmp` i failuje z instrukcja, jesli za malo miejsca.
+
 - Blad: uruchamianie aplikacji jako root (np. przez sudo) bez potrzeby.
   - Wymaganie: domyslnie uruchamiamy jako uzytkownik uslugi; `--sudo` tylko jawnie.
   - Wymaganie: waliduj owner/perms/umask w miejscach krytycznych.
@@ -263,6 +317,10 @@
 - Blad: `sshPort` w target config byl ignorowany (SSH/SCP/rsync uzywaly domyslnego portu).
   - Wymaganie: `sshPort` musi byc uwzgledniany we wszystkich polaczeniach (ssh/scp/rsync).
 
+- Blad: ssh/scp/rsync w trybie nieinteraktywnym potrafily wisiec na prompt (host key / haslo).
+  - Wymaganie: ustawiaj `BatchMode=yes` i fail-fast z jasnym komunikatem, gdy wymagany jest input.
+  - Wymaganie: respektuj `StrictHostKeyChecking` z configu (brak ukrytych promptow).
+
 - Blad: polityka SSH byla twardo ustawiona (sporne zachowanie bez opcji).
   - Wymaganie: parametry sporne/ryzykowne (np. `StrictHostKeyChecking`) musza byc konfigurowalne per‑target.
 
@@ -278,6 +336,9 @@
 
 - Blad: `seal run` uruchamial bezposrednio `appctl` z release, ignorujac `run-current.sh`.
   - Wymaganie: `seal run` uruchamia `run-current.sh` (jezeli istnieje), zeby zachowac zgodnosc z usluga i BOOTSTRAP.
+
+- Blad: `seal run` nie sprawdzal czy port jest wolny, a `EADDRINUSE` byl niejasny dla operatora.
+  - Wymaganie: przed uruchomieniem sprawdz czy port jest zajety i wypisz PID/komende procesu lub jasne “co dalej”.
 
 - Blad: rollback wybieral release `*-fast-*` albo release innej aplikacji.
   - Wymaganie: rollback filtruje releasy po `appName` i **pomija** `*-fast-*`.
@@ -301,6 +362,9 @@
 
 - Blad: tryb security/stealth w launcherze nadal wypisywal szczegolowe bledy (rozroznialne failure paths).
   - Wymaganie: przy aktywnych zabezpieczeniach komunikaty i exit code musza byc zunifikowane (opaque failure).
+
+- Blad: `cpuIdSource` wymagal recznego `off` na architekturach bez CPUID (np. ARM).
+  - Wymaganie: na architekturach bez CPUID launcher uzywa pustego/neutralnego ID i **nie** wymaga zmiany konfiguracji.
 
 - Blad: w template stringach z bash/script wystapily nie‑escapowane sekwencje `${...}`, co psulo skladnie JS.
   - Wymaganie: w osadzonych skryptach shellowych zawsze escapuj `${` jako `\\${` (lub użyj helpera do here‑doc), zeby uniknac interpolacji JS.

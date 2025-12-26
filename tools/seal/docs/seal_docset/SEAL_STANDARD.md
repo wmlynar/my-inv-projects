@@ -111,6 +111,9 @@ Przykład:
 - STD-067 (SHOULD): walidacja uprawnien nie moze zakladac dostepnosci `sudo`; jesli `serviceUser` == biezacy uzytkownik, uzyj bezposredniego `test -x`/`test -r`.
 - STD-068 (SHOULD): output narzedzi systemowych (np. `lsblk`, `/proc/mounts`) musi byc normalizowany (trim, filtruj puste, obsluguj array/null), zanim podejmiesz decyzje.
 - STD-069 (SHOULD): probe/inspect nie moga hard-fail na braku `sudo`; zwracaj wynik + note i kontynuuj.
+- STD-102 (SHOULD): uruchamiaj komendy zewnetrzne przez `spawn`/`execFile` z args array i `shell: false`; gdy shell jest konieczny, stosuj `--` i bezpieczne quoting/sanitizacje.
+- STD-103 (SHOULD): operacje destrukcyjne (rm/copy/rsync) musza weryfikowac `realpath` i czy sciezka miesci sie w dozwolonym root; nie podazaj za symlinkami.
+- STD-106 (SHOULD): ssh/scp/rsync w trybie nieinteraktywnym musza byc uruchamiane z `BatchMode=yes` i fail-fast, bez wiszenia na prompt.
 
 #### Testy / CI
 - STD-018 (SHOULD): testy automatyczne nie polegają na kruchym parsowaniu stdout/stderr child procesów; preferuj JSON output, kody wyjścia lub wywołania in‑process; gdy parsujesz, zawsze usuwaj ANSI.
@@ -127,6 +130,8 @@ Przykład:
 #### CLI / UX
 - STD-016 (SHOULD): rekurencyjne uruchamianie CLI (workspace/monorepo) **zawsze** używa ścieżek absolutnych, aby nie zależeć od CWD.
 - STD-017 (SHOULD): komenda uruchomiona poza projektem ma fail‑fast i nie generuje efektów ubocznych (brak tworzenia plików/ostrzeżeń „z innego katalogu”).
+- STD-104 (SHOULD): przy wykryciu wielu projektow CLI pokazuje liste i wymaga jawnej zgody (`--yes/--workspace`), aby uniknac przypadkowych operacji masowych.
+- STD-105 (SHOULD): semantyka multi‑project jest jawna (domyslnie fail‑fast); `--continue-on-error` musi byc wyraznie wskazany.
 - STD-019 (SHOULD): shell completion nie moze maskowac opcji (gdy token zaczyna sie od `-`, podpowiada opcje). Aktualizuj completion po kazdej zmianie CLI.
 - STD-020 (SHOULD): wizard CLI powinien podawac krotkie opisy komend i rekomendowana akcje na teraz; w trybie TTY dziala krok-po-kroku (petla).
 - STD-021 (SHOULD): output CLI ma byc jednoznaczny i akcjonowalny (bledy/warningi z konkretnym "co dalej" i bez duplikatow).
@@ -149,6 +154,22 @@ Przykład:
 - STD-083 (SHOULD): testy integracyjne/remote sa gated przez jawne ENV; bez flagi zawsze SKIP z powodem.
 - STD-084 (SHOULD): testy nie uzywaja `sleep()` jako synchronizacji, tylko retry z timeoutem i jitterem/backoff.
 - STD-085 (SHOULD): testy nie wywoluja interaktywnych narzedzi (git/ssh); ustaw `GIT_TERMINAL_PROMPT=0` i fail/skip gdy brakuje dostepu.
+- STD-086 (SHOULD): testy zalezne od narzedzi (packery/strip/postject) sprawdzaja dostepnosc i robia SKIP z powodem, chyba ze env wymusza fail.
+- STD-087 (SHOULD): przy porazce testu wypisuj command line i fragment stdout/stderr oraz effective config (z limitem dlugosci).
+- STD-088 (SHOULD): testy przywracaja `process.cwd()` po zmianach (snapshot/restore).
+- STD-089 (SHOULD): testy E2E wymuszaja szybkie ustawienia (np. `thin.level=low`) i minimalne payloady, aby nie blokowac CI.
+- STD-090 (SHOULD): preflight sprawdza **narzedzia CLI** (np. `postject` w `node_modules/.bin`/PATH), nie tylko obecność modulu.
+- STD-091 (SHOULD): funkcje zalezne od architektury (np. CPUID) musza degradująco dzialac na platformach bez wsparcia (pusty/neutralny ID zamiast twardego bledu).
+- STD-092 (SHOULD): `--skip-check` jest wyraznie oznaczony jako ryzykowny i zawsze wypisuje ostrzezenie; krytyczne braki toolchaina nie powinny byc maskowane.
+- STD-093 (SHOULD): generowane binarki/skrypty maja jawny `chmod +x` i test uruchomienia, aby uniknac `Permission denied`.
+- STD-094 (SHOULD): w razie bledu narzedzi zewnetrznych (cc/rsync/ssh) wypisz komendy i stderr/stdout (z limitem) dla diagnozy.
+- STD-095 (SHOULD): szanuj `TMPDIR` oraz sytuacje `noexec` na `/tmp`; tymczasowe binarki uruchamiaj w bezpiecznym katalogu.
+- STD-096 (SHOULD): przed startem procesu sprawdzaj zajety port; wypisz PID/komende procesu lub jasny hint naprawczy (zeby uniknac niejasnego `EADDRINUSE`).
+- STD-097 (SHOULD): preflight/deploy sprawdza wolne miejsce na serwerze (`installDir` i `/tmp`) i failuje z instrukcja, jesli brak miejsca.
+- STD-098 (SHOULD): testy E2E uzywaja sandbox `installDir` i unikalnych nazw uslug; operacje systemowe sa gated env‑flaga i domyslnie SKIP.
+- STD-099 (SHOULD): testy E2E izolują cache (osobny temp project root lub `SEAL_THIN_CACHE_LIMIT=0`), aby uniknac cross‑test contamination.
+- STD-100 (SHOULD): testy E2E zawsze binduja do `127.0.0.1` (nie `localhost`), aby uniknac problemow IPv6/DNS.
+- STD-101 (SHOULD): testy E2E ustawiają `HOME`/`XDG_*` na temp, by nie brudzic profilu uzytkownika.
 
 #### Logowanie (skrót)
 - STD-042 (SHOULD): logi sa minimalne i bez payloadow; tylko dane potrzebne do diagnozy.
