@@ -23,3 +23,6 @@ Upstream sources (branch pinned where applicable):
 - bddisasm         -> https://github.com/bitdefender/bddisasm
 - obfuscator-llvm  -> https://github.com/obfuscator-llvm/obfuscator (branch: llvm-4.0)
 - hikari-llvm15    -> https://github.com/ChandHsu/Hikari-LLVM15 (branch: llvm-15.0.0rc3)
+
+Google Drive backup (2025-12-26):
+https://drive.google.com/file/d/1lwI9CY22lPhrtuvGAzFjkBnrOgBALCsh/view?usp=sharing
