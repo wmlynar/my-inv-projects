@@ -29,7 +29,7 @@
         "maxBackMs": 100
       },
       "launcherHardening": true,
-      "launcherHardeningCET": true,
+      "launcherHardeningCET": false,
       "launcherObfuscation": true,
       "antiDebug": {
         "enabled": true,
@@ -95,8 +95,13 @@
         ]
       },
       "elfPacker": {
-        "tool": "upx",
-        "cmd": "upx"
+        "tool": "kiteshield",
+        "cmd": "kiteshield",
+        "args": [
+          "-n",
+          "{in}",
+          "{out}"
+        ]
       },
       "strings": {
         "obfuscation": [
