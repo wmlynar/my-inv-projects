@@ -61,7 +61,14 @@ echo "[install-c-obfuscators] Building Obfuscator-LLVM (LLVM 4.0)..."
     git checkout -q -b llvm-4.0 origin/llvm-4.0
   fi
 
-  # GCC 13 compatibility: avoid lambda capture shadowing.
+  # Patch rationale (local, non-upstream):
+  # - Obfuscator-LLVM targets LLVM 4.0 era sources. GCC 13 tightened diagnostics
+  #   around lambda captures in CGOpenMPRuntime.cpp, causing a compile failure.
+  # - The change below removes redundant captures that trigger that error.
+  # - This keeps the build working without changing behavior of the generated
+  #   code. If you need upstream-pure sources, skip the patch or build with an
+  #   older GCC. (We patch both obfuscator-llvm and a standalone clang checkout
+  #   because both trees are used depending on build setup.)
   patch_lambda_capture() {
     local file="$1"
     [ -f "$file" ] || return 0

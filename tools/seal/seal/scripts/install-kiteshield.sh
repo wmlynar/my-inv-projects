@@ -43,6 +43,23 @@ fi
 
 cd "$ROOT"
 
+# Patch rationale (local, non-upstream):
+# - The loader uses a generated header (obfuscated_strings.h). The original
+#   Makefile can compile sources before that header exists when running in
+#   parallel, which causes implicit declaration errors for DEOBF_STR and
+#   missing string constants. We add explicit dependencies so every compile
+#   waits for the header to be generated.
+# - The loader/packer Makefiles use -Werror. Newer GCC versions (e.g. GCC 13)
+#   emit warnings for upstream patterns (dangling-pointer, array-bounds) which
+#   are safe in context but stop the build. We remove -Werror to keep the
+#   install script reliable across compiler versions.
+# - Loader tests are not required to produce the packer binary and can fail
+#   under these freestanding flags; we remove them from the default "all"
+#   target to avoid false negatives during installation.
+# - The packer depends on bddisasm, provided as a git submodule. We make sure
+#   the submodule is initialized and build its Release static lib before
+#   building kiteshield itself.
+# You can disable patching with SEAL_KITESHIELD_PATCH=0.
 PATCH_MARKER="SEAL_PATCHED_KITESHIELD"
 if [ "${SEAL_KITESHIELD_PATCH:-1}" = "1" ]; then
   echo "[install-kiteshield] Patching loader build to serialize obfuscated header generation..."
