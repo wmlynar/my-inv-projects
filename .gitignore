@@ -35,6 +35,7 @@ tmp/
 config.runtime.json5
 seal-out/
 seal-config/.private/
+backup/third-party/*.zip
 
 # OS/editor
 .DS_Store
