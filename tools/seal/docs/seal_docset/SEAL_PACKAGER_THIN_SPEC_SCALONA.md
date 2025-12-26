@@ -122,8 +122,9 @@ npx seal release prod --packager thin-split
   - `denyEnv` (domyślnie `true`) — fail‑fast, jeśli wykryje zmienne typu `LD_PRELOAD`, `LD_AUDIT`, `NODE_OPTIONS` itd.,
   - `mapsDenylist` (domyślnie `[]`) — lista substringów; jeśli pojawią się w `/proc/self/maps`, launcher kończy się błędem.
   - `ptraceGuard` (domyślnie `{ enabled: true, dumpable: true }`) — ustawia `PR_SET_DUMPABLE=0` (blokada ptrace/coredump).
-  - `seccompNoDebug` (domyślnie `{ enabled: true, mode: "errno" }`) — seccomp blokuje `ptrace` i `perf_event_open`.
+  - `seccompNoDebug` (domyślnie `{ enabled: true, mode: "errno", aggressive: false }`) — seccomp blokuje `ptrace` i `perf_event_open`.
     - `mode: "errno" | "kill"`: `errno` zwraca `EPERM`, `kill` natychmiast kończy proces.
+    - `aggressive: true` dodatkowo blokuje syscall'e często używane do dump/instrumentation (`process_vm_readv`, `process_vm_writev`, `kcmp`, `bpf`, `userfaultfd`, `pidfd_open`, `pidfd_getfd`). Może obniżyć kompatybilność na niektórych hostach.
     - brak wsparcia seccomp = **fail‑fast** (bez fallbacku).
   - `coreDump` (domyślnie `true`) — ustawia `RLIMIT_CORE=0` (brak core‑dumpów).
   - `loaderGuard` (domyślnie `true`) — weryfikuje loader z `PT_INTERP` vs `/proc/self/maps` (blokuje uruchomienie przez alternatywny `ld-linux`).

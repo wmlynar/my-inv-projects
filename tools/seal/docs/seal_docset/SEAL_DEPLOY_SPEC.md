@@ -1762,7 +1762,7 @@ Przykład (aktualny dla v0.5):
         denyEnv: true,
         mapsDenylist: [],     // np. ["frida", "gdb", "ltrace"] (gdy ustawione, fail-fast)
         ptraceGuard: { enabled: true, dumpable: true },
-        seccompNoDebug: { enabled: true, mode: "errno" }, // errno | kill
+        seccompNoDebug: { enabled: true, mode: "errno", aggressive: false }, // errno | kill
         coreDump: true,
         loaderGuard: true       // kontrola loadera (PT_INTERP vs /proc/self/maps)
       },
@@ -1821,7 +1821,7 @@ Przykład (aktualny dla v0.5):
 - `build.thin.launcherObfuscation`: domyślnie `true` (wymaga `build.protection.cObfuscator`).
 - `build.thin.snapshotGuard`: domyślnie `{ enabled: false }`.
 - `build.thin.antiDebug.ptraceGuard`: domyślnie `{ enabled: true, dumpable: true }`.
-- `build.thin.antiDebug.seccompNoDebug`: domyślnie `{ enabled: true, mode: "errno" }`.
+- `build.thin.antiDebug.seccompNoDebug`: domyślnie `{ enabled: true, mode: "errno", aggressive: false }`.
 - `build.thin.antiDebug.coreDump`: domyślnie `true`.
 - `build.thin.antiDebug.loaderGuard`: domyślnie `true`.
 - `build.frontendObfuscation`: domyślnie `{ enabled: true, profile: build.obfuscationProfile }`.
