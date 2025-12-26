@@ -259,9 +259,16 @@
   - Wymaganie: cache ma limit (np. liczba wpisow/rozmiar/TTL) i auto-pruning.
   - Wymaganie: limit musi byc konfigurowalny (0 = wylacza cache), a pruning logowany.
 
+- Blad: cache/artefakty byly wspoldzielone miedzy targetami/konfiguracjami, co powodowalo uzycie niezgodnych danych.
+  - Wymaganie: cache musi byc kluczowany po target+config+wersja/format i czyszczony przy zmianie schematu.
+
 - Blad: payload-only (BOOTSTRAP) nie sprawdzal zgodnosci kodeka z runtime na target.
   - Wymaganie: `release/r/c` musi istniec i byc porownany z `<installDir>/r/c`.
   - Wymaganie: mismatch lub brak `c` = **fallback do pelnego bootstrap**.
+
+- Blad: "szybkie sciezki" (payload-only/fast) pomijaly czesc walidacji lub plikow layoutu, co prowadzilo do niespojnego stanu na target.
+  - Wymaganie: fast paths musza miec parytet walidacji i listy plikow z pelnym deployem.
+  - Wymaganie: kazda optymalizacja ma test parytetu (full vs fast) dla plikow i walidacji.
 
 - Blad: brak app‑bindingu pozwalal uruchomic runtime/payload z innego projektu na tym samym launcherze.
   - Wymaganie: `thin.appBind` domyslnie wlaczony i weryfikowany w `footer` runtime/payload oraz stopce AIO.
@@ -272,6 +279,9 @@
 
 - Blad: hardening CET (`-fcf-protection=full`) nie dzialal na starszym clangu (np. O‑LLVM), co wywalalo build.
   - Wymaganie: CET musi miec osobny toggle + pre‑probe kompilatora, a brak wsparcia ma dawac jasny blad z instrukcja wylaczenia lub zmiany toolchaina.
+
+- Blad: narzedzia zewnetrzne (obfuscator/packer) nie wspieraly zadanych flag, ale brakowalo pre‑probe i blad byl nieczytelny.
+  - Wymaganie: dla kazdego narzedzia i zestawu flag wykonuj pre‑probe (np. kompilacja/`--help`) i fail‑fast z jasnym komunikatem.
 
 - Blad: obfuscating clang (O‑LLVM) nie widzial systemowych naglowkow (`stddef.h`) i kompilacja launchera failowala.
   - Wymaganie: przy uzyciu obfuscatora C dodaj include paths z toolchaina systemowego (np. `gcc -print-file-name=include`), albo jasno dokumentuj wymagany `--gcc-toolchain`.
@@ -395,6 +405,9 @@
 - Blad: testy polegaly na `localhost`, co w niektorych systemach rozwiązywalo sie do IPv6 i powodowalo fail.
   - Wymaganie: testy jawnie binduja do `127.0.0.1` i uzywaja adresu IPv4.
 
+- Blad: rownolegle uruchomienia E2E kolidowaly na wspolnych nazwach uslug/plikach (`current.buildId`, instalacje), co dawalo flakey wyniki.
+  - Wymaganie: testy musza byc bezpieczne dla rownoleglego uruchomienia (unikalne nazwy uslug, unikalne installDir, izolowane temp rooty).
+
 - Blad: testy dzielily cache (np. `seal-out/cache`) i wyniki byly zalezne od poprzednich uruchomien.
   - Wymaganie: testy izolują cache (osobny temp project root lub `SEAL_THIN_CACHE_LIMIT=0`).
 
@@ -404,6 +417,9 @@
 - Blad: testy uruchamialy komendy, ktore prosily o interaktywny input (git/ssh), przez co CI wisial.
   - Wymaganie: testy maja ustawione `GIT_TERMINAL_PROMPT=0` i nie wywolują interaktywnych narzedzi bez jawnego flag/sekretow.
   - Wymaganie: testy integracyjne/remote sa jawnie gated env‑flaga i bez niej zawsze SKIP.
+
+- Blad: testy E2E polegaly na sieci/DNS (npm/git/HTTP) bez jawnego gate, co powodowalo flakey wyniki lub wiszenie przy braku internetu.
+  - Wymaganie: testy nie wymagaja sieci domyslnie; operacje sieciowe sa gated env‑flaga i maja timeouty.
 
 - Blad: zmiany w generatorach kodu byly testowane tylko lintem, bez realnego compile/smoke testu.
   - Wymaganie: generator C/JS musi miec automatyczny compile/smoke test (przynajmniej minimalny).
