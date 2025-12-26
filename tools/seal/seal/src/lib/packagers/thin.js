@@ -1186,6 +1186,18 @@ function renderLauncherSource(
     ? Math.max(0, Math.floor(Number(snapshotCfg.maxBackMs || 100)))
     : 0;
 
+  const ptraceGuardCfg = antiDebug.ptraceGuard && typeof antiDebug.ptraceGuard === "object"
+    ? antiDebug.ptraceGuard
+    : { enabled: true, dumpable: true };
+  const adPtraceGuard = adEnabled && ptraceGuardCfg.enabled !== false;
+  const adPtraceDumpable = adPtraceGuard && ptraceGuardCfg.dumpable !== false;
+  const seccompCfg = antiDebug.seccompNoDebug && typeof antiDebug.seccompNoDebug === "object"
+    ? antiDebug.seccompNoDebug
+    : { enabled: true, mode: "errno" };
+  const adSeccomp = adEnabled && seccompCfg.enabled !== false;
+  const seccompMode = seccompCfg.mode === "kill" ? "kill" : "errno";
+  const adCoreDump = adEnabled && antiDebug.coreDump !== false;
+
   const bootstrapJs = `"use strict";
 const fs = require("fs");
 const path = require("path");
@@ -1328,12 +1340,17 @@ m._compile(code, entry);
 #endif
 #include <dirent.h>
 #include <fcntl.h>
+#include <linux/audit.h>
+#include <linux/filter.h>
+#include <linux/seccomp.h>
 #include <limits.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/ptrace.h>
 #include <sys/prctl.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
@@ -1352,6 +1369,25 @@ extern char **environ;
 #endif
 #ifndef F_DUPFD_CLOEXEC
 #define F_DUPFD_CLOEXEC F_DUPFD
+#endif
+
+#ifndef SECCOMP_RET_KILL_PROCESS
+#define SECCOMP_RET_KILL_PROCESS SECCOMP_RET_KILL
+#endif
+#ifndef SECCOMP_RET_DATA
+#define SECCOMP_RET_DATA 0x0000ffffU
+#endif
+
+#if defined(__x86_64__) && defined(AUDIT_ARCH_X86_64)
+#define SEAL_AUDIT_ARCH AUDIT_ARCH_X86_64
+#elif defined(__i386__) && defined(AUDIT_ARCH_I386)
+#define SEAL_AUDIT_ARCH AUDIT_ARCH_I386
+#elif defined(__aarch64__) && defined(AUDIT_ARCH_AARCH64)
+#define SEAL_AUDIT_ARCH AUDIT_ARCH_AARCH64
+#elif defined(__arm__) && defined(AUDIT_ARCH_ARM)
+#define SEAL_AUDIT_ARCH AUDIT_ARCH_ARM
+#elif defined(__riscv) && __riscv_xlen == 64 && defined(AUDIT_ARCH_RISCV64)
+#define SEAL_AUDIT_ARCH AUDIT_ARCH_RISCV64
 #endif
 
 #define THIN_VERSION ${THIN_VERSION}
@@ -1378,6 +1414,11 @@ extern char **environ;
 #define THIN_AD_TRACERPID_THREADS ${adTracerPidThreads ? 1 : 0}
 #define THIN_AD_DENY_ENV ${adDenyEnv ? 1 : 0}
 #define THIN_AD_MAPS ${adMaps ? 1 : 0}
+#define THIN_AD_PTRACE_GUARD ${adPtraceGuard ? 1 : 0}
+#define THIN_AD_PTRACE_DUMPABLE ${adPtraceDumpable ? 1 : 0}
+#define THIN_AD_SECCOMP ${adSeccomp ? 1 : 0}
+#define THIN_AD_SECCOMP_KILL ${seccompMode === "kill" ? 1 : 0}
+#define THIN_AD_CORE_DUMP ${adCoreDump ? 1 : 0}
 
 #define MAX_CHUNKS ${limits.maxChunks}u
 #define MAX_CHUNK_RAW ${limits.maxChunkRaw}u
@@ -2104,15 +2145,145 @@ static int harden_env(void) {
   return 0;
 }
 
-static void harden_limits(void) {
+static int apply_ptrace_guard(void) {
+#if THIN_AD_PTRACE_GUARD
+#ifdef PR_SET_DUMPABLE
+  if (THIN_AD_PTRACE_DUMPABLE) {
+    if (prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) != 0) {
+      return fail_msg("[thin] runtime invalid", 75);
+    }
+  }
+#else
+  return fail_msg("[thin] runtime invalid", 75);
+#endif
+  const char *e2e = getenv("SEAL_THIN_ANTI_DEBUG_E2E");
+  if (e2e && strcmp(e2e, "1") == 0) {
+    const char *force = getenv("SEAL_PTRACE_FORCE");
+    if (force && strcmp(force, "1") == 0) {
+      return fail_msg("[thin] runtime invalid", 75);
+    }
+  }
+#endif
+  return 0;
+}
+
+static int apply_core_dump_limit(void) {
+#if THIN_AD_CORE_DUMP
   struct rlimit lim;
   lim.rlim_cur = 0;
   lim.rlim_max = 0;
-  setrlimit(RLIMIT_CORE, &lim);
-  prctl(PR_SET_DUMPABLE, 0, 0, 0, 0);
-#ifdef PR_SET_NO_NEW_PRIVS
-  prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0);
+  if (setrlimit(RLIMIT_CORE, &lim) != 0) {
+    return fail_msg("[thin] runtime invalid", 76);
+  }
 #endif
+  return 0;
+}
+
+static int apply_seccomp_no_debug(void) {
+#if THIN_AD_SECCOMP
+#ifndef SEAL_AUDIT_ARCH
+  return fail_msg("[thin] runtime invalid", 77);
+#endif
+#ifdef PR_SET_NO_NEW_PRIVS
+  if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0) {
+    return fail_msg("[thin] runtime invalid", 77);
+  }
+#else
+  return fail_msg("[thin] runtime invalid", 77);
+#endif
+#ifndef SYS_seccomp
+#ifdef __NR_seccomp
+#define SYS_seccomp __NR_seccomp
+#else
+  return fail_msg("[thin] runtime invalid", 77);
+#endif
+#endif
+#if THIN_AD_SECCOMP_KILL
+#define SEAL_SECCOMP_DENY SECCOMP_RET_KILL_PROCESS
+#else
+#define SEAL_SECCOMP_DENY (SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA))
+#endif
+
+#ifndef __NR_ptrace
+  return fail_msg("[thin] runtime invalid", 77);
+#else
+  struct sock_filter filter[] = {
+    BPF_STMT(BPF_LD + BPF_W + BPF_ABS, offsetof(struct seccomp_data, arch)),
+    BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, SEAL_AUDIT_ARCH, 1, 0),
+    BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_KILL_PROCESS),
+    BPF_STMT(BPF_LD + BPF_W + BPF_ABS, offsetof(struct seccomp_data, nr)),
+    BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_ptrace, 0, 1),
+    BPF_STMT(BPF_RET + BPF_K, SEAL_SECCOMP_DENY),
+#ifdef __NR_perf_event_open
+    BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_perf_event_open, 0, 1),
+    BPF_STMT(BPF_RET + BPF_K, SEAL_SECCOMP_DENY),
+#endif
+    BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_ALLOW),
+  };
+  struct sock_fprog prog;
+  prog.len = (unsigned short)(sizeof(filter) / sizeof(filter[0]));
+  prog.filter = filter;
+
+  if (syscall(SYS_seccomp, SECCOMP_SET_MODE_FILTER, 0, &prog) != 0) {
+    return fail_msg("[thin] runtime invalid", 77);
+  }
+#endif
+#endif
+  return 0;
+}
+
+static int anti_debug_e2e_probe(void) {
+  const char *e2e = getenv("SEAL_THIN_ANTI_DEBUG_E2E");
+  if (!e2e || strcmp(e2e, "1") != 0) return 0;
+
+  const char *dumpable_probe = getenv("SEAL_DUMPABLE_PROBE");
+  if (dumpable_probe && strcmp(dumpable_probe, "1") == 0) {
+#if THIN_AD_PTRACE_GUARD && THIN_AD_PTRACE_DUMPABLE
+#ifdef PR_GET_DUMPABLE
+    int dumpable = prctl(PR_GET_DUMPABLE, 0, 0, 0, 0);
+    if (dumpable != 0) return fail_msg("[thin] runtime invalid", 78);
+#else
+    return fail_msg("[thin] runtime invalid", 78);
+#endif
+#else
+    return fail_msg("[thin] runtime invalid", 78);
+#endif
+  }
+
+  const char *core_probe = getenv("SEAL_CORE_PROBE");
+  if (core_probe && strcmp(core_probe, "1") == 0) {
+#if THIN_AD_CORE_DUMP
+    struct rlimit cur;
+    if (getrlimit(RLIMIT_CORE, &cur) != 0 || cur.rlim_cur != 0) {
+      return fail_msg("[thin] runtime invalid", 79);
+    }
+#else
+    return fail_msg("[thin] runtime invalid", 79);
+#endif
+  }
+
+  const char *seccomp_probe = getenv("SEAL_SECCOMP_PROBE");
+  if (seccomp_probe && strcmp(seccomp_probe, "1") == 0) {
+#if THIN_AD_SECCOMP
+#if THIN_AD_SECCOMP_KILL
+    return fail_msg("[thin] runtime invalid", 80);
+#else
+#ifndef __NR_ptrace
+    return fail_msg("[thin] runtime invalid", 80);
+#else
+    errno = 0;
+    long rc = syscall(__NR_ptrace, (int)PTRACE_TRACEME, 0, 0, 0);
+    if (!(rc == -1 && errno == EPERM)) {
+      return fail_msg("[thin] runtime invalid", 80);
+    }
+#endif
+#endif
+#else
+    return fail_msg("[thin] runtime invalid", 80);
+#endif
+  }
+
+  return 0;
 }
 
 int main(int argc, char **argv) {
@@ -2124,6 +2295,11 @@ int main(int argc, char **argv) {
     if (!getcwd(root, sizeof(root))) {
       snprintf(root, sizeof(root), ".");
     }
+  }
+
+  int pg = apply_ptrace_guard();
+  if (pg != 0) {
+    return pg;
   }
 
   int ad = anti_debug_checks();
@@ -2298,7 +2474,18 @@ int main(int argc, char **argv) {
     return env_rc;
   }
   set_env_paths(root);
-  harden_limits();
+  int core_rc = apply_core_dump_limit();
+  if (core_rc != 0) {
+    return core_rc;
+  }
+  int sec_rc = apply_seccomp_no_debug();
+  if (sec_rc != 0) {
+    return sec_rc;
+  }
+  int probe_rc = anti_debug_e2e_probe();
+  if (probe_rc != 0) {
+    return probe_rc;
+  }
 
   char *exec_argv[] = { (char *)"node", (char *)"-e", (char *)BOOTSTRAP_JS, NULL };
   fexecve(node_fd, exec_argv, environ);

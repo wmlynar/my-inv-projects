@@ -1759,7 +1759,10 @@ Przykład (aktualny dla v0.5):
         tracerPidIntervalMs: 10000, // 0 = wylacz okresowe sprawdzanie
         tracerPidThreads: true,     // sprawdza /proc/self/task/<tid>/status
         denyEnv: true,
-        mapsDenylist: []      // np. ["frida", "gdb", "ltrace"] (gdy ustawione, fail-fast)
+        mapsDenylist: [],     // np. ["frida", "gdb", "ltrace"] (gdy ustawione, fail-fast)
+        ptraceGuard: { enabled: true, dumpable: true },
+        seccompNoDebug: { enabled: true, mode: "errno" }, // errno | kill
+        coreDump: true
       },
       // Integrity (thin-split only): self-hash launchera b/a
       integrity: { enabled: false }
@@ -1812,6 +1815,9 @@ Przykład (aktualny dla v0.5):
 - `build.thin.launcherHardening`: domyślnie `true`.
 - `build.thin.launcherObfuscation`: domyślnie `true` (wymaga `build.protection.cObfuscator`).
 - `build.thin.snapshotGuard`: domyślnie `{ enabled: false }`.
+- `build.thin.antiDebug.ptraceGuard`: domyślnie `{ enabled: true, dumpable: true }`.
+- `build.thin.antiDebug.seccompNoDebug`: domyślnie `{ enabled: true, mode: "errno" }`.
+- `build.thin.antiDebug.coreDump`: domyślnie `true`.
 - `build.frontendObfuscation`: domyślnie `{ enabled: true, profile: build.obfuscationProfile }`.
 - `build.frontendMinify`: domyślnie `{ enabled: true, level: "safe", html: true, css: true }`.
 - `build.protection`: domyślnie `{ enabled: true, seaMain:{pack:true,method:"brotli",chunkSize:8000}, bundle:{pack:true}, strip:{enabled:false,cmd:"strip"} }`.

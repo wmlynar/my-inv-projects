@@ -95,6 +95,9 @@ function normalizeThinAntiDebug(raw) {
       tracerPid: true,
       denyEnv: true,
       mapsDenylist: [],
+      ptraceGuard: { enabled: true, dumpable: true },
+      seccompNoDebug: { enabled: true, mode: "errno" },
+      coreDump: true,
     };
   }
   if (typeof raw !== "object" || Array.isArray(raw)) {
@@ -134,12 +137,60 @@ function normalizeThinAntiDebug(raw) {
   if (mapsDenylist.length > 32) {
     throw new Error("thin.antiDebug.mapsDenylist too long (max 32)");
   }
+  let ptraceGuard = { enabled: true, dumpable: true };
+  if (raw.ptraceGuard !== undefined) {
+    if (typeof raw.ptraceGuard === "boolean") {
+      ptraceGuard = { enabled: raw.ptraceGuard, dumpable: raw.ptraceGuard };
+    } else if (typeof raw.ptraceGuard === "object" && !Array.isArray(raw.ptraceGuard)) {
+      ptraceGuard = {
+        enabled: raw.ptraceGuard.enabled !== undefined ? !!raw.ptraceGuard.enabled : true,
+        dumpable: raw.ptraceGuard.dumpable !== undefined ? !!raw.ptraceGuard.dumpable : true,
+      };
+    } else {
+      throw new Error("Invalid thin.antiDebug.ptraceGuard: expected boolean or object");
+    }
+  }
+  let seccompNoDebug = { enabled: true, mode: "errno" };
+  if (raw.seccompNoDebug !== undefined) {
+    if (typeof raw.seccompNoDebug === "boolean") {
+      seccompNoDebug = { enabled: raw.seccompNoDebug, mode: "errno" };
+    } else if (typeof raw.seccompNoDebug === "object" && !Array.isArray(raw.seccompNoDebug)) {
+      const modeRaw = raw.seccompNoDebug.mode !== undefined ? String(raw.seccompNoDebug.mode) : "errno";
+      const mode = modeRaw === "kill" ? "kill" : "errno";
+      seccompNoDebug = {
+        enabled: raw.seccompNoDebug.enabled !== undefined ? !!raw.seccompNoDebug.enabled : true,
+        mode,
+      };
+    } else {
+      throw new Error("Invalid thin.antiDebug.seccompNoDebug: expected boolean or object");
+    }
+  }
+  let coreDump = raw.coreDump;
+  if (coreDump === undefined) coreDump = true;
+  if (typeof coreDump !== "boolean") {
+    throw new Error(`Invalid thin.antiDebug.coreDump: ${raw.coreDump} (expected boolean)`);
+  }
   let tracerPidThreadsFinal = tracerPidThreads;
   if (!enabled || !tracerPid) {
     tracerPidIntervalMs = 0;
     tracerPidThreadsFinal = false;
   }
-  return { enabled, tracerPid, denyEnv, mapsDenylist, tracerPidIntervalMs, tracerPidThreads: tracerPidThreadsFinal };
+  if (!enabled) {
+    ptraceGuard = { enabled: false, dumpable: false };
+    seccompNoDebug = { enabled: false, mode: seccompNoDebug.mode };
+    coreDump = false;
+  }
+  return {
+    enabled,
+    tracerPid,
+    denyEnv,
+    mapsDenylist,
+    tracerPidIntervalMs,
+    tracerPidThreads: tracerPidThreadsFinal,
+    ptraceGuard,
+    seccompNoDebug,
+    coreDump,
+  };
 }
 
 function resolveThinConfig(targetCfg, projectCfg) {

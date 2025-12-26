@@ -422,6 +422,37 @@ async function main() {
     );
     log("OK: denyEnv triggers failure");
 
+    log("Testing ptrace/core probes (expect success)...");
+    await withTimeout("ptrace/core probes ok", testTimeoutMs, () =>
+      runReleaseOk({
+        releaseDir: resA.releaseDir,
+        runTimeoutMs,
+        env: { SEAL_DUMPABLE_PROBE: "1", SEAL_CORE_PROBE: "1" },
+      })
+    );
+    log("OK: ptrace/core probes ok");
+
+    log("Testing ptrace force (expect failure)...");
+    await withTimeout("ptrace force fail", testTimeoutMs, () =>
+      runReleaseExpectFail({
+        releaseDir: resA.releaseDir,
+        runTimeoutMs,
+        env: { SEAL_PTRACE_FORCE: "1" },
+        expectStderr: "[thin] runtime invalid",
+      })
+    );
+    log("OK: ptrace force triggers failure");
+
+    log("Testing seccomp probe (expect success)...");
+    await withTimeout("seccomp probe ok", testTimeoutMs, () =>
+      runReleaseOk({
+        releaseDir: resA.releaseDir,
+        runTimeoutMs,
+        env: { SEAL_SECCOMP_PROBE: "1" },
+      })
+    );
+    log("OK: seccomp probe ok");
+
     log("Testing integrity tamper...");
     tamperLauncher(resA.releaseDir);
     await withTimeout("integrity tamper fail", testTimeoutMs, () =>

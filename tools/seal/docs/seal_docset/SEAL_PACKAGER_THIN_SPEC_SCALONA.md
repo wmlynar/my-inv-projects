@@ -122,6 +122,11 @@ npx seal release prod --packager thin-single
   - `tracerPidThreads` (domyślnie `true`) — sprawdza `/proc/self/task/<tid>/status` dla wszystkich wątków,
   - `denyEnv` (domyślnie `true`) — fail‑fast, jeśli wykryje zmienne typu `LD_PRELOAD`, `LD_AUDIT`, `NODE_OPTIONS` itd.,
   - `mapsDenylist` (domyślnie `[]`) — lista substringów; jeśli pojawią się w `/proc/self/maps`, launcher kończy się błędem.
+  - `ptraceGuard` (domyślnie `{ enabled: true, dumpable: true }`) — ustawia `PR_SET_DUMPABLE=0` (blokada ptrace/coredump).
+  - `seccompNoDebug` (domyślnie `{ enabled: true, mode: "errno" }`) — seccomp blokuje `ptrace` i `perf_event_open`.
+    - `mode: "errno" | "kill"`: `errno` zwraca `EPERM`, `kill` natychmiast kończy proces.
+    - brak wsparcia seccomp = **fail‑fast** (bez fallbacku).
+  - `coreDump` (domyślnie `true`) — ustawia `RLIMIT_CORE=0` (brak core‑dumpów).
 
 **Uwaga (testy E2E):**
 - W testach okresowego `TracerPid` używane są tylko w trybie E2E specjalne ENV:
@@ -133,6 +138,11 @@ npx seal release prod --packager thin-single
   - `SEAL_SNAPSHOT_FORCE=1`
   - `SEAL_SNAPSHOT_FORCE_AFTER_MS=...`
   - (aktywne tylko przy `SEAL_THIN_ANTI_DEBUG_E2E=1`).
+- W testach `ptrace/core/seccomp` używane są tylko w trybie E2E specjalne ENV:
+  - `SEAL_PTRACE_FORCE=1`
+  - `SEAL_DUMPABLE_PROBE=1`
+  - `SEAL_CORE_PROBE=1`
+  - `SEAL_SECCOMP_PROBE=1`
 - `build.thin.integrity`:
   - `enabled` (domyślnie `false`) — weryfikuje self‑hash launchera (`b/a`) w `thin-split`.
   - **Tylko `thin-split`**; dla `thin-single` build kończy się błędem.

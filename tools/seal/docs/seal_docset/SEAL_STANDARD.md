@@ -166,6 +166,8 @@ Przykład:
 - STD-157 (SHOULD): `thin.appBind` jest domyślnie włączony i używa stabilnego ID projektu (nie ścieżek); w razie kolizji `appName`/`entry` ustaw jawne `appBind.value`.
 - STD-158 (SHOULD): `thin.launcherObfuscation` domyślnie włączone i **fail‑fast**, jeśli brak `protection.cObfuscator` (brak fallbacków).
 - STD-159 (SHOULD): `thin.snapshotGuard` jest opt‑in; testy muszą wymuszać trigger poprzez dedykowane ENV, a produkcja nie polega na testowych override.
+- STD-160 (SHOULD): `antiDebug.ptraceGuard` i `antiDebug.coreDump` muszą sprawdzać kody błędów (`prctl`/`setrlimit`) i fail‑fast (bez cichych skipów).
+- STD-161 (SHOULD): `antiDebug.seccompNoDebug` ma czytelny tryb działania (`errno`/`kill`), a testy używają trybu `errno` do asercji błędów.
 
 #### Testy / CI
 - STD-018 (SHOULD): testy automatyczne nie polegają na kruchym parsowaniu stdout/stderr child procesów; preferuj JSON output, kody wyjścia lub wywołania in‑process; gdy parsujesz, zawsze usuwaj ANSI.

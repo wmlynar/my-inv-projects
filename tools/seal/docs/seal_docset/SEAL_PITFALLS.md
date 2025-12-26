@@ -270,6 +270,13 @@
   - Wymaganie: `snapshotGuard` jest opt‑in, ma jasne progi (`intervalMs`, `maxJumpMs`, `maxBackMs`) i nie trzyma event‑loop (timer `unref`).
   - Wymaganie: testy wymuszaja trigger tylko przez dedykowane ENV i nie uzywaja tego w produkcji.
 
+- Blad: brak sprawdzania kodow bledu dla `PR_SET_DUMPABLE`/`setrlimit(RLIMIT_CORE)` powodowal “ciche” nieskuteczne zabezpieczenia.
+  - Wymaganie: `ptraceGuard`/`coreDump` musza fail‑fast, jesli prctl/setrlimit nie dziala (bez fallbacku).
+
+- Blad: seccomp wlaczony na kernelu bez wsparcia lub bez `no_new_privs` powodowal losowe awarie.
+  - Wymaganie: `seccompNoDebug` ma czytelny fail‑fast (brak wsparcia = blad z instrukcja).
+  - Wymaganie: testy E2E probuja `seccompNoDebug` w trybie `errno` (nie `kill`), aby mozna bylo asercyjnie sprawdzic blad.
+
 - Blad: metadane kodeka byly zapisywane jako JSON na serwerze.
   - Wymaganie: wszystko co trafia na target powinno byc binarne/obfuskowane (brak czytelnych JSON).
   - Wymaganie: nazwy plikow na target nie powinny zdradzac roli (uzywaj krotszych/nijakich nazw, np. `c` zamiast `codec.bin`).
