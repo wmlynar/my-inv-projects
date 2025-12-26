@@ -452,6 +452,9 @@
 - Blad: zbyt szeroka `mapsDenylist` (np. `libc`) powodowala falszywe alarmy i blokowala poprawne uruchomienia.
   - Wymaganie: listy deny powinny byc precyzyjne (np. `frida`, `gdb`, `ltrace`), a testy musza pokrywac scenariusz false‑positive.
 
+- Blad: sprawdzanie `TracerPid` tylko przy starcie nie wykrywalo późniejszego attach/debug.
+  - Wymaganie: jeśli `TracerPid` jest używany jako anti‑debug, check musi być okresowy lub wykonywany w punktach krytycznych.
+
 - Blad: self‑hash launchera padal przez kolizje markera (np. string `THIN_SELF_HASH:` pojawial sie w innym miejscu binarki), co dawalo falszywe `runtime invalid`.
   - Wymaganie: identyfikuj marker po **pelnym wzorcu** (marker + hex) lub waliduj hex i ignoruj nie‑hex; obsluz wiele wystapien i wymagaj spojnosc hasha.
 

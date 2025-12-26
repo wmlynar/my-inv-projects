@@ -200,6 +200,7 @@ Przykład:
 - STD-090 (SHOULD): self‑integrity hash binarki musi byc liczony **po** wszystkich operacjach post‑pack (hardening/packery); po tym kroku nie wolno juz modyfikowac pliku.
 - STD-091 (SHOULD): self‑hash marker musi byc wykrywany bez falszywych trafien (waliduj hex, ignoruj nie‑hex) i obslugiwac wiele wystapien, wymagajac spojnosc hasha.
 - STD-092 (SHOULD): marker/hash placeholder w generowanym C musi byc utrzymany w binarce (np. `volatile`/jawna referencja), aby patcher zawsze go znalazl.
+- STD-157 (SHOULD): jeśli anti‑debug opiera się o `TracerPid`, sama kontrola na starcie nie wystarcza — check powinien być wykonywany okresowo lub w punktach krytycznych (np. przed odszyfrowaniem/uruchomieniem wrażliwego kodu).
 - STD-078 (SHOULD): skrypty/testy nie zakladaja `bash` – uzywaja `/bin/sh` albo sprawdzaja dostepnosc i robia jawny SKIP.
 - STD-079 (SHOULD): jeden kanoniczny katalog wyjsciowy (`seal-out/`); cache i artefakty trafiaja do podfolderow tego katalogu, bez alternatywnych sciezek.
 - STD-080 (SHOULD): testy E2E nie modyfikuja plikow w repo; uzywaja kopii projektu lub `outDirOverride` i sprzataja wszystko w `finally`.
