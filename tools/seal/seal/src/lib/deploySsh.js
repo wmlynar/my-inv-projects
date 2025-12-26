@@ -500,6 +500,9 @@ function cleanupFastReleasesSsh({ targetCfg, current }) {
 
 function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootstrap, policy, fast, releaseDir, buildId }) {
   const thinMode = resolveThinMode(targetCfg);
+  const thinIntegrityMode = targetCfg && targetCfg._thinIntegrityMode ? targetCfg._thinIntegrityMode : null;
+  const thinIntegrityFile = targetCfg && targetCfg._thinIntegrityFile ? targetCfg._thinIntegrityFile : "ih";
+  const thinIntegritySidecar = !!(targetCfg && targetCfg._thinIntegrityEnabled && thinIntegrityMode === "sidecar");
   let reuseBootstrap = thinMode === "bootstrap" && !bootstrap;
   const { res: preflight, layout, user, host } = checkRemoteWritable(targetCfg, { requireService: !bootstrap });
   const out = `${preflight.stdout}\n${preflight.stderr}`.trim();
@@ -638,10 +641,15 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
     const rDir = `${layout.installDir}/r`;
     const bDirQ = shQuote(bDir);
     const rDirQ = shQuote(rDir);
+    const ihSrcQ = shQuote(`${rDir}/${thinIntegrityFile}`);
+    const ihDstQ = shQuote(`${relDir}/r/${thinIntegrityFile}`);
     cmdParts.push(`mkdir -p ${relDirQ}/b ${relDirQ}/r`);
     cmdParts.push(`cp ${bDirQ}/a ${relDirQ}/b/a`);
     cmdParts.push(`cp ${rDirQ}/rt ${relDirQ}/r/rt`);
     cmdParts.push(`if [ -f ${rDirQ}/c ]; then cp ${rDirQ}/c ${relDirQ}/r/c; fi`);
+    if (thinIntegritySidecar) {
+      cmdParts.push(`if [ -f ${ihSrcQ} ]; then cp ${ihSrcQ} ${ihDstQ}; fi`);
+    }
     cmdParts.push(`cp ${remoteTmpQ} ${relDirQ}/r/pl && chmod 644 ${relDirQ}/r/pl`);
     cmdParts.push(`cp ${remoteTmpQ} ${rDirQ}/pl.tmp && mv ${rDirQ}/pl.tmp ${rDirQ}/pl && chmod 644 ${rDirQ}/pl`);
     cmdParts.push(`echo ${shQuote(folderName)} > ${currentFileQ}`);
@@ -684,12 +692,15 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       const rtSrc = `${relDir}/r/rt`;
       const plSrc = `${relDir}/r/pl`;
       const codecSrc = `${relDir}/r/c`;
+      const ihSrc = `${relDir}/r/${thinIntegrityFile}`;
       const bDirQ = shQuote(bDir);
       const rDirQ = shQuote(rDir);
       const launcherSrcQ = shQuote(launcherSrc);
       const rtSrcQ = shQuote(rtSrc);
       const plSrcQ = shQuote(plSrc);
       const codecSrcQ = shQuote(codecSrc);
+      const ihSrcQ = shQuote(ihSrc);
+      const ihDstQ = shQuote(`${rDir}/${thinIntegrityFile}`);
       cmdParts.push(`test -f ${launcherSrcQ}`);
       cmdParts.push(`test -f ${rtSrcQ}`);
       cmdParts.push(`test -f ${plSrcQ}`);
@@ -702,12 +713,16 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       }
       cmdParts.push(`cp ${plSrcQ} ${rDirQ}/pl.tmp && mv ${rDirQ}/pl.tmp ${rDirQ}/pl && chmod 644 ${rDirQ}/pl`);
       cmdParts.push(`if [ -f ${codecSrcQ} ]; then cp ${codecSrcQ} ${rDirQ}/c.tmp && mv ${rDirQ}/c.tmp ${rDirQ}/c && chmod 644 ${rDirQ}/c; fi`);
+      if (thinIntegritySidecar) {
+        cmdParts.push(`if [ -f ${ihSrcQ} ]; then cp ${ihSrcQ} ${ihDstQ}.tmp && mv ${ihDstQ}.tmp ${ihDstQ} && chmod 644 ${ihDstQ}; fi`);
+      }
     } else {
       const bFileQ = shQuote(`${layout.installDir}/b/a`);
       const rtFileQ = shQuote(`${layout.installDir}/r/rt`);
       const plFileQ = shQuote(`${layout.installDir}/r/pl`);
       const codecFileQ = shQuote(`${layout.installDir}/r/c`);
-      cmdParts.push(`rm -f ${bFileQ} ${rtFileQ} ${plFileQ} ${codecFileQ}`);
+      const ihFileQ = shQuote(`${layout.installDir}/r/${thinIntegrityFile}`);
+      cmdParts.push(`rm -f ${bFileQ} ${rtFileQ} ${plFileQ} ${codecFileQ} ${ihFileQ}`);
     }
     cmdParts.push(`echo ${shQuote(folderName)} > ${currentFileQ}`);
     cmdParts.push(`rm -f ${remoteArtifactTmpQ}`);
@@ -789,6 +804,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
 
 function deploySshFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, bootstrap, buildId }) {
   const thinMode = resolveThinMode(targetCfg);
+  const thinIntegrityFile = targetCfg && targetCfg._thinIntegrityFile ? targetCfg._thinIntegrityFile : "ih";
   const { res: preflight, layout, user, host } = checkRemoteWritable(targetCfg, { requireService: !bootstrap });
   const out = `${preflight.stdout}\n${preflight.stderr}`.trim();
   if (!preflight.ok) {
@@ -880,7 +896,7 @@ function deploySshFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, boot
   }
   const cleanupCmd = [
     "bash", "-lc",
-    `rm -f ${shQuote(`${layout.installDir}/b/a`)} ${shQuote(`${layout.installDir}/r/rt`)} ${shQuote(`${layout.installDir}/r/pl`)}`
+    `rm -f ${shQuote(`${layout.installDir}/b/a`)} ${shQuote(`${layout.installDir}/r/rt`)} ${shQuote(`${layout.installDir}/r/pl`)} ${shQuote(`${layout.installDir}/r/${thinIntegrityFile}`)}`
   ];
   const cleanupRes = sshExecTarget(targetCfg, { user, host, args: cleanupCmd, stdio: "pipe" });
   if (!cleanupRes.ok) {
@@ -1106,6 +1122,7 @@ function rollbackSsh(targetCfg) {
   const { user, host } = sshUserHost(targetCfg);
   const layout = remoteLayout(targetCfg);
   const thinMode = resolveThinMode(targetCfg);
+  const thinIntegrityFile = targetCfg && targetCfg._thinIntegrityFile ? targetCfg._thinIntegrityFile : "ih";
   const cmd = ["bash","-lc", `
 set -euo pipefail
 ROOT=${shQuote(layout.installDir)}
@@ -1144,8 +1161,13 @@ if [ -z "$prev" ]; then echo "No previous release"; exit 2; fi
     else
       rm -f "$ROOT/r/c"
     fi
+    if [ -f "$PREV_DIR/r/${thinIntegrityFile}" ]; then
+      cp "$PREV_DIR/r/${thinIntegrityFile}" "$ROOT/r/${thinIntegrityFile}.tmp" && mv "$ROOT/r/${thinIntegrityFile}.tmp" "$ROOT/r/${thinIntegrityFile}" && chmod 644 "$ROOT/r/${thinIntegrityFile}"
+    else
+      rm -f "$ROOT/r/${thinIntegrityFile}"
+    fi
   else
-    rm -f "$ROOT/b/a" "$ROOT/r/rt" "$ROOT/r/pl"
+    rm -f "$ROOT/b/a" "$ROOT/r/rt" "$ROOT/r/pl" "$ROOT/r/${thinIntegrityFile}"
   fi
 echo "$prev" > ${shQuote(layout.currentFile)}
 sudo -n systemctl restart ${shQuote(`${targetCfg.serviceName}.service`)}

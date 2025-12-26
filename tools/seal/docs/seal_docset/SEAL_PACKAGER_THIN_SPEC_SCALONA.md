@@ -168,7 +168,10 @@ npx seal release prod --packager thin-single
 - `build.thin.integrity`:
   - `enabled` (domyślnie `false`) — weryfikuje self‑hash launchera (`b/a`) w `thin-split`.
   - **Tylko `thin-split`**; dla `thin-single` build kończy się błędem.
-  - Hash jest osadzany inline w launcherze **po** wszystkich operacjach post‑pack (hardening/obfuscation). Każda modyfikacja binarki po tym kroku unieważnia hash.
+  - `mode`: `inline` (marker w binarce) lub `sidecar` (hash w pliku `r/<file>`).
+  - `file`: nazwa pliku sidecar (domyślnie `ih`).
+  - Inline: hash jest osadzany w launcherze **po** wszystkich operacjach post‑pack (hardening/obfuscation). Każda modyfikacja binarki po tym kroku unieważnia hash.
+  - Sidecar: hash trzymany jest w osobnym pliku, aby można było użyć ELF packera bez modyfikacji binarki po spakowaniu.
 
 **App binding / hardening / snapshot (opcjonalne):**
 - `build.thin.appBind` (domyślnie `enabled: true`):

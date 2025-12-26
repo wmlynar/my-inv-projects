@@ -276,8 +276,16 @@
 - Blad: obfuscating clang (O‑LLVM) nie widzial systemowych naglowkow (`stddef.h`) i kompilacja launchera failowala.
   - Wymaganie: przy uzyciu obfuscatora C dodaj include paths z toolchaina systemowego (np. `gcc -print-file-name=include`), albo jasno dokumentuj wymagany `--gcc-toolchain`.
 
-- Blad: `thin.integrity` wlaczony razem z `protection.elfPacker` powodowal brak markera i fail weryfikacji.
-  - Wymaganie: `thin.integrity` i `protection.elfPacker` sa wzajemnie wykluczajace; build ma fail‑fast z jasnym komunikatem.
+- Blad: `thin.integrity` (inline) wlaczony razem z `protection.elfPacker` powodowal brak markera i fail weryfikacji.
+  - Wymaganie: `thin.integrity` w trybie `inline` jest niekompatybilny z `protection.elfPacker`; build ma fail‑fast z jasnym komunikatem.
+  - Wymaganie: gdy potrzebny `elfPacker`, uzyj `thin.integrity.mode=sidecar`.
+
+- Blad: przy `thin.integrity.mode=sidecar` plik hasha nie byl kopiowany przy payload‑only deploy lub rollback.
+  - Wymaganie: `r/<integrity.file>` musi byc kopiowany do release i do instalacji, takze przy payload‑only.
+  - Wymaganie: cleanup/rollback usuwa `r/<integrity.file>` gdy brak go w release.
+
+- Blad: deploy/rollback zakladal na sztywno nazwe `ih`, ignorujac `thin.integrity.file`.
+  - Wymaganie: nazwa sidecara pochodzi zawsze z configu (fail‑fast przy niedozwolonej nazwie).
 
 - Blad: test UI E2E uruchamial `thin-single` przy wlaczonym `strip`/`elfPacker`, co jest niewspierane i konczy sie bledem.
   - Wymaganie: testy UI używaja `thin-split` albo jawnie wylaczaja `strip`/`elfPacker` dla `thin-single`.
@@ -334,6 +342,9 @@
 
 - Blad: testy zalezne od narzedzi (postject/strip/packery) failowaly zamiast graczejnego SKIP, gdy narzedzia nie byly zainstalowane.
   - Wymaganie: testy tool‑dependent sprawdzaja dostepnosc narzedzi i robia SKIP z powodem (chyba ze env wymusza fail).
+
+- Blad: testy E2E auto‑modyfikowaly konfiguracje (np. wylaczenie ochron/packerow) bez jawnego logu, przez co maskowaly regresje.
+  - Wymaganie: kazda automatyczna zmiana configu w testach musi byc logowana i uzasadniona.
 
 - Blad: testy E2E nie wypisywaly wystarczajacego kontekstu przy porazce (brak stdout/stderr/command/config).
   - Wymaganie: przy failu test wypisuje command line, fragment stdout/stderr (z limitem) i effective config.

@@ -133,6 +133,19 @@ async function buildThinRelease(mode, buildTimeoutMs) {
   projectCfg.build.thin = Object.assign({}, projectCfg.build.thin || {}, {
     launcherObfuscation: false,
   });
+  const isSingle = mode === "aio";
+  if (isSingle) {
+    projectCfg.build.thin.integrity = { enabled: false };
+  }
+  if (isSingle) {
+    projectCfg.build.protection = Object.assign({}, projectCfg.build.protection || {}, {
+      strip: Object.assign({}, projectCfg.build.protection?.strip || {}, { enabled: false }),
+      elfPacker: Object.assign({}, projectCfg.build.protection?.elfPacker || {}, { tool: null, cmd: null, args: null }),
+    });
+  } else if (projectCfg.build.protection?.elfPacker?.tool && !hasCommand(projectCfg.build.protection.elfPacker.cmd || projectCfg.build.protection.elfPacker.tool)) {
+    log("ELF packer not available; disabling elfPacker for test");
+    projectCfg.build.protection.elfPacker = {};
+  }
   const targetCfg = loadTargetConfig(EXAMPLE_ROOT, "local").cfg;
   const configName = resolveConfigName(targetCfg, "local");
 

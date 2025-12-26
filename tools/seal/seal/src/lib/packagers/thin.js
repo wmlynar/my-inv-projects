@@ -39,8 +39,23 @@ const DEFAULT_LIMITS = {
 const SELF_HASH_MARKER = "THIN_SELF_HASH:";
 const SELF_HASH_HEX_LEN = 8;
 
-function applyLauncherSelfHash(binPath) {
+function applyLauncherSelfHash(binPath, opts = {}) {
   try {
+    const mode = opts && opts.mode ? String(opts.mode) : "inline";
+    if (mode === "sidecar") {
+      const sidecarPath = opts.sidecarPath ? String(opts.sidecarPath) : "";
+      if (!sidecarPath) {
+        return { ok: false, errorShort: "integrity sidecar path missing", error: "missing_sidecar_path" };
+      }
+      const buf = fs.readFileSync(binPath);
+      const hash = crc32(buf);
+      const out = Buffer.allocUnsafe(8);
+      out.write("SLIH", 0, "ascii");
+      out.writeUInt32LE(hash >>> 0, 4);
+      ensureDir(path.dirname(sidecarPath));
+      fs.writeFileSync(sidecarPath, out);
+      return { ok: true, mode: "sidecar", file: path.basename(sidecarPath) };
+    }
     const buf = fs.readFileSync(binPath);
     const marker = Buffer.from(SELF_HASH_MARKER + "0".repeat(SELF_HASH_HEX_LEN), "ascii");
     const positions = [];
@@ -1189,10 +1204,13 @@ function renderLauncherSource(
 
   const integrity = (integrityCfg && typeof integrityCfg === "object") ? integrityCfg : {};
   const selfHashEnabled = integrity.enabled === true;
+  const integrityMode = String(integrity.mode || "inline").toLowerCase() === "sidecar" ? "sidecar" : "inline";
+  const integrityFile = String(integrity.file || "ih").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   const selfHashMarker = "THIN_SELF_HASH:";
   const selfHashPlaceholder = "0".repeat(8);
+  const inlineDefs = `#define THIN_SELF_HASH_MARKER "${selfHashMarker}"\n#define THIN_SELF_HASH_LEN 8\nstatic const char THIN_SELF_HASH_STR[] = THIN_SELF_HASH_MARKER "${selfHashPlaceholder}";\n`;
   const selfHashDefs = selfHashEnabled
-    ? `#define THIN_SELF_HASH_ENABLED 1\n#define THIN_SELF_HASH_MARKER "${selfHashMarker}"\n#define THIN_SELF_HASH_LEN 8\nstatic const char THIN_SELF_HASH_STR[] = THIN_SELF_HASH_MARKER "${selfHashPlaceholder}";\n`
+    ? `#define THIN_SELF_HASH_ENABLED 1\n#define THIN_SELF_HASH_MODE_INLINE 1\n#define THIN_SELF_HASH_MODE_SIDECAR 2\n#define THIN_SELF_HASH_MODE ${integrityMode === "sidecar" ? "THIN_SELF_HASH_MODE_SIDECAR" : "THIN_SELF_HASH_MODE_INLINE"}\n#define THIN_SELF_HASH_FILE "${integrityFile}"\n#define THIN_SELF_HASH_MAGIC "SLIH"\n${integrityMode === "sidecar" ? "" : inlineDefs}`
     : "#define THIN_SELF_HASH_ENABLED 0\n";
 
   const snapshotCfg = (snapshotGuardCfg && typeof snapshotGuardCfg === "object") ? snapshotGuardCfg : {};
@@ -1890,7 +1908,7 @@ static int hex_to_u32(const char *hex, uint32_t *out) {
   return 0;
 }
 
-static int self_hash_check(void) {
+static int self_hash_check(const char *root) {
   int fd = open("/proc/self/exe", O_RDONLY | O_CLOEXEC);
   if (fd < 0) return fail_msg("[thin] runtime invalid", 73);
   uint64_t size = 0;
@@ -1910,6 +1928,36 @@ static int self_hash_check(void) {
   }
   close(fd);
 
+#if THIN_SELF_HASH_MODE == THIN_SELF_HASH_MODE_SIDECAR
+  uint32_t expected = 0;
+  if (!root || !*root) {
+    free(buf);
+    return fail_msg("[thin] runtime invalid", 73);
+  }
+  char ih_path[PATH_MAX + 64];
+  snprintf(ih_path, sizeof(ih_path), "%s/r/%s", root, THIN_SELF_HASH_FILE);
+  int ih_fd = open(ih_path, O_RDONLY | O_CLOEXEC);
+  if (ih_fd < 0) {
+    free(buf);
+    return fail_msg("[thin] runtime invalid", 73);
+  }
+  uint8_t ih[8];
+  if (read_exact(ih_fd, ih, sizeof(ih), 0) != 0) {
+    close(ih_fd);
+    free(buf);
+    return fail_msg("[thin] runtime invalid", 73);
+  }
+  close(ih_fd);
+  if (memcmp(ih, THIN_SELF_HASH_MAGIC, 4) != 0) {
+    free(buf);
+    return fail_msg("[thin] runtime invalid", 73);
+  }
+  expected = (uint32_t)ih[4]
+    | ((uint32_t)ih[5] << 8)
+    | ((uint32_t)ih[6] << 16)
+    | ((uint32_t)ih[7] << 24);
+#else
+  uint32_t expected = 0;
   const volatile char *needle = THIN_SELF_HASH_STR;
   if (!needle || needle[0] == '\0') {
     free(buf);
@@ -1917,7 +1965,6 @@ static int self_hash_check(void) {
   }
   const char *marker = THIN_SELF_HASH_MARKER;
   size_t marker_len = strlen(marker);
-  uint32_t expected = 0;
   int found = 0;
   for (size_t i = 0; i + marker_len + THIN_SELF_HASH_LEN <= (size_t)size; i++) {
     if (memcmp(buf + i, marker, marker_len) == 0) {
@@ -1940,6 +1987,7 @@ static int self_hash_check(void) {
     free(buf);
     return fail_msg("[thin] runtime invalid", 73);
   }
+#endif
   uint32_t got = crc32_buf(buf, (size_t)size);
   free(buf);
   if (expected != got) {
@@ -1948,7 +1996,8 @@ static int self_hash_check(void) {
   return 0;
 }
 #else
-static int self_hash_check(void) {
+static int self_hash_check(const char *root) {
+  (void)root;
   return 0;
 }
 #endif
@@ -2475,7 +2524,7 @@ int main(int argc, char **argv) {
     return ad;
   }
 
-  int ih = self_hash_check();
+  int ih = self_hash_check(root);
   if (ih != 0) {
     return ih;
   }

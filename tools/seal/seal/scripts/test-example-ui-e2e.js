@@ -148,6 +148,11 @@ async function buildThinRelease(mode, buildTimeoutMs) {
   projectCfg.build.sentinel = Object.assign({}, projectCfg.build.sentinel || {}, {
     enabled: false,
   });
+  const cObfCmd = projectCfg.build?.protection?.cObfuscator?.cmd;
+  if (projectCfg.build.thin.launcherObfuscation !== false && cObfCmd && !hasCommand(cObfCmd)) {
+    log(`C obfuscator not available (${cObfCmd}); disabling launcherObfuscation for test`);
+    projectCfg.build.thin.launcherObfuscation = false;
+  }
 
   const launcherObfuscation = projectCfg.build.thin.launcherObfuscation !== false;
   const compilerCmd = resolveCompilerCmd(projectCfg, launcherObfuscation);
@@ -168,8 +173,12 @@ async function buildThinRelease(mode, buildTimeoutMs) {
     }
   }
 
-  if (projectCfg.build.thin?.integrity?.enabled && projectCfg.build.protection?.elfPacker?.tool) {
-    log("Integrity + ELF packer is incompatible; disabling elfPacker for test");
+  const integrityCfg = projectCfg.build.thin?.integrity;
+  const integrityEnabled = integrityCfg === true || (integrityCfg && typeof integrityCfg === "object" && integrityCfg.enabled === true);
+  const integrityModeRaw = integrityCfg && typeof integrityCfg === "object" && integrityCfg.mode ? String(integrityCfg.mode).toLowerCase() : "inline";
+  const integrityMode = integrityModeRaw === "sidecar" ? "sidecar" : "inline";
+  if (integrityEnabled && integrityMode === "inline" && projectCfg.build.protection?.elfPacker?.tool) {
+    log("Integrity inline + ELF packer is incompatible; disabling elfPacker for test");
     projectCfg.build.protection.elfPacker = {};
   }
   const targetCfg = loadTargetConfig(EXAMPLE_ROOT, "local").cfg;
@@ -182,6 +191,9 @@ async function buildThinRelease(mode, buildTimeoutMs) {
     projectCfg.build.protection = Object.assign({}, projectCfg.build.protection || {}, {
       strip: Object.assign({}, projectCfg.build.protection?.strip || {}, { enabled: false }),
       elfPacker: Object.assign({}, projectCfg.build.protection?.elfPacker || {}, { tool: null, cmd: null, args: null }),
+    });
+    projectCfg.build.thin = Object.assign({}, projectCfg.build.thin || {}, {
+      integrity: { enabled: false },
     });
   }
 

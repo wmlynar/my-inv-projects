@@ -25,12 +25,29 @@ function normalizeThinRuntimeStore(raw) {
 }
 
 function normalizeThinIntegrity(raw) {
-  if (raw === undefined || raw === null) return { enabled: false };
-  if (typeof raw === "boolean") return { enabled: raw };
+  const defaults = { enabled: false, mode: "inline", file: "ih" };
+  if (raw === undefined || raw === null) return { ...defaults };
+  if (typeof raw === "boolean") return { ...defaults, enabled: raw };
   if (typeof raw !== "object" || Array.isArray(raw)) {
     throw new Error(`Invalid thin.integrity: expected object or boolean`);
   }
-  return { enabled: raw.enabled === true };
+  const enabled = raw.enabled === true;
+  const modeRaw = raw.mode !== undefined && raw.mode !== null ? String(raw.mode).toLowerCase() : "inline";
+  const mode = (modeRaw === "sidecar" || modeRaw === "inline") ? modeRaw : null;
+  if (!mode) throw new Error(`Invalid thin.integrity.mode: ${raw.mode} (expected: inline|sidecar)`);
+  let file = raw.file !== undefined && raw.file !== null ? String(raw.file) : "ih";
+  file = file.trim();
+  if (!file) throw new Error("Invalid thin.integrity.file: empty");
+  if (file.includes("/") || file.includes("\\")) {
+    throw new Error(`Invalid thin.integrity.file: ${file} (slashes not allowed)`);
+  }
+  if (/[^\x20-\x7E]/.test(file)) {
+    throw new Error(`Invalid thin.integrity.file: ${file} (non-ASCII)`);
+  }
+  if (file.length > 32) {
+    throw new Error(`Invalid thin.integrity.file: too long (${file.length} > 32)`);
+  }
+  return { enabled, mode, file };
 }
 
 function normalizeThinAppBind(raw) {

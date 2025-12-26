@@ -55,6 +55,9 @@ function resolveTarget(projectRoot, targetArg) {
   const thinCfg = resolveThinConfig(t.cfg, proj);
   const packagerSpec = normalizePackager(t.cfg.packager || proj.build.packager || "auto");
   t.cfg._thinMode = (packagerSpec.kind === "thin" && packagerSpec.thinMode) ? packagerSpec.thinMode : thinCfg.mode;
+  t.cfg._thinIntegrityEnabled = !!(thinCfg.integrity && thinCfg.integrity.enabled);
+  t.cfg._thinIntegrityMode = thinCfg.integrity && thinCfg.integrity.mode ? thinCfg.integrity.mode : null;
+  t.cfg._thinIntegrityFile = thinCfg.integrity && thinCfg.integrity.file ? thinCfg.integrity.file : null;
   return { proj, targetName, targetCfg: t.cfg, packagerSpec };
 }
 

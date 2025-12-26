@@ -915,9 +915,12 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   }
 
 
-const thinIntegrityEnabled = !!(thinCfg.integrity && thinCfg.integrity.enabled);
-if (thinIntegrityEnabled && packagerUsed === "thin-split" && protectionCfg.elfPacker) {
-  throw new Error("thin.integrity is not compatible with protection.elfPacker; disable one of them");
+const thinIntegrityCfg = thinCfg.integrity || {};
+const thinIntegrityEnabled = !!thinIntegrityCfg.enabled;
+const thinIntegrityMode = thinIntegrityCfg.mode || "inline";
+const thinIntegrityFile = thinIntegrityCfg.file || "ih";
+if (thinIntegrityEnabled && packagerUsed === "thin-split" && protectionCfg.elfPacker && thinIntegrityMode === "inline") {
+  throw new Error("thin.integrity (inline) is not compatible with protection.elfPacker; set thin.integrity.mode=sidecar or disable the packer");
 }
 
 // Protection (post-pack): make it harder to recover code by casually viewing files.
@@ -953,12 +956,15 @@ if (thinIntegrityEnabled) {
     throw new Error("thin.integrity requires packager thin-split");
   }
   const launcherPath = path.join(releaseDir, "b", "a");
-  const res = applyLauncherSelfHash(launcherPath);
+  const sidecarPath = thinIntegrityMode === "sidecar"
+    ? path.join(releaseDir, "r", thinIntegrityFile)
+    : null;
+  const res = applyLauncherSelfHash(launcherPath, sidecarPath ? { mode: "sidecar", sidecarPath } : { mode: "inline" });
   if (!res.ok) {
     throw new Error(`Thin integrity failed: ${res.errorShort}`);
   }
-  thinIntegrity = { enabled: true, ok: true, target: "launcher" };
-  ok("Thin integrity OK (launcher self-hash)");
+  thinIntegrity = { enabled: true, ok: true, target: "launcher", mode: thinIntegrityMode, file: thinIntegrityFile };
+  ok(`Thin integrity OK (${thinIntegrityMode === "sidecar" ? "sidecar" : "inline"})`);
 }
 protection.integrity = thinIntegrity;
 

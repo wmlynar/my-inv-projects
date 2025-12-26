@@ -14,7 +14,9 @@
       "envMode": "allowlist",
       "runtimeStore": "memfd",
       "integrity": {
-        "enabled": true
+        "enabled": true,
+        "mode": "sidecar",
+        "file": "ih"
       },
       "appBind": {
         "enabled": true,
@@ -92,7 +94,10 @@
           "--strip-all"
         ]
       },
-      // elfPacker: { tool: "upx", cmd: "upx" }, // incompatible with thin.integrity
+      "elfPacker": {
+        "tool": "upx",
+        "cmd": "upx"
+      },
       "strings": {
         "obfuscation": [
           "xorstr",

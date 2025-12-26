@@ -1767,7 +1767,8 @@ Przykład (aktualny dla v0.5):
         loaderGuard: true       // kontrola loadera (PT_INTERP vs /proc/self/maps)
       },
       // Integrity (thin-split only): self-hash launchera b/a
-      integrity: { enabled: false }
+      // - mode: inline (marker w binarce) lub sidecar (hash w pliku r/<file>)
+      integrity: { enabled: false, mode: "inline", file: "ih" }
     },
 
     // minimal|balanced|aggressive
@@ -1782,7 +1783,7 @@ Przykład (aktualny dla v0.5):
     // Protection (anti-peek) – domyślnie włączone
     // - SEA/thin-single: strip/elfPacker NIE są wspierane (build musi fail-fast)
     // - thin-split: strip/elfPacker możliwe (target: launcher b/a)
-    // - thin.integrity + elfPacker: NIEkompatybilne (build fail-fast; wybierz jedno)
+    // - thin.integrity (inline) + elfPacker: NIEkompatybilne (build fail-fast; użyj mode=sidecar)
     // - bundle: bundle.pack = gzip-pack backend bundle + loader
     protection: {
       enabled: true,

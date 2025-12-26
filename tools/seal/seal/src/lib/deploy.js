@@ -252,10 +252,12 @@ function extractArtifactToLocal(layout, artifactPath) {
 
 function applyThinBootstrapLocal(layout, extractedDir, opts = {}) {
   const onlyPayload = !!opts.onlyPayload;
+  const integrityFile = opts.integrityFile || "ih";
   const launcherSrc = path.join(extractedDir, "b", "a");
   const rtSrc = path.join(extractedDir, "r", "rt");
   const plSrc = path.join(extractedDir, "r", "pl");
   const codecSrc = path.join(extractedDir, "r", "c");
+  const ihSrc = path.join(extractedDir, "r", integrityFile);
 
   if (!fileExists(launcherSrc)) throw new Error(`Missing thin launcher: ${launcherSrc}`);
   if (!fileExists(rtSrc)) throw new Error(`Missing thin runtime: ${rtSrc}`);
@@ -276,13 +278,20 @@ function applyThinBootstrapLocal(layout, extractedDir, opts = {}) {
   } else if (!onlyPayload) {
     rmrf(path.join(rDir, "c"));
   }
+  if (fileExists(ihSrc)) {
+    copyAtomic(ihSrc, path.join(rDir, integrityFile), 0o644);
+  } else if (!onlyPayload) {
+    rmrf(path.join(rDir, integrityFile));
+  }
 }
 
-function cleanupThinBootstrapLocal(layout) {
+function cleanupThinBootstrapLocal(layout, opts = {}) {
+  const integrityFile = opts.integrityFile || "ih";
   rmrf(path.join(layout.installDir, "b", "a"));
   rmrf(path.join(layout.installDir, "r", "rt"));
   rmrf(path.join(layout.installDir, "r", "pl"));
   rmrf(path.join(layout.installDir, "r", "c"));
+  rmrf(path.join(layout.installDir, "r", integrityFile));
 }
 
 function pickBuildIdFromFolder(folderName) {
@@ -338,6 +347,7 @@ function cleanupFastReleasesLocal({ targetCfg, layout, current }) {
 function deployLocal({ targetCfg, artifactPath, repoConfigPath, pushConfig, policy, fast, bootstrap }) {
   const layout = localInstallLayout(targetCfg);
   const thinMode = resolveThinMode(targetCfg);
+  const integrityFile = targetCfg && targetCfg._thinIntegrityFile ? targetCfg._thinIntegrityFile : "ih";
 
   // Deploy is deploy: copy/extract files and update pointers.
   // It must NOT install or restart a systemd service implicitly.
@@ -374,9 +384,9 @@ function deployLocal({ targetCfg, artifactPath, repoConfigPath, pushConfig, poli
     } else if (!bootstrap) {
       warn("Thin bootstrap: launcher/runtime missing; copying full bootstrap.");
     }
-    applyThinBootstrapLocal(layout, extractedDir, { onlyPayload: canReuse });
+    applyThinBootstrapLocal(layout, extractedDir, { onlyPayload: canReuse, integrityFile });
   } else {
-    cleanupThinBootstrapLocal(layout);
+    cleanupThinBootstrapLocal(layout, { integrityFile });
   }
 
   // Config: do not overwrite unless explicit OR server missing
@@ -421,7 +431,7 @@ function deployLocalFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, bu
   if (thinMode === "bootstrap") {
     warn("FAST mode: removing thin bootstrap runtime so bundle release can run.");
   }
-  cleanupThinBootstrapLocal(layout);
+  cleanupThinBootstrapLocal(layout, { integrityFile: targetCfg && targetCfg._thinIntegrityFile ? targetCfg._thinIntegrityFile : "ih" });
 
   fs.writeFileSync(layout.currentFile, folderName, "utf-8");
 
@@ -579,6 +589,7 @@ function rollbackLocal(targetCfg) {
   const appName = targetCfg.appName || targetCfg.serviceName || "app";
   const fastPrefix = `${appName}-fast-`;
   const thinMode = resolveThinMode(targetCfg);
+  const integrityFile = targetCfg && targetCfg._thinIntegrityFile ? targetCfg._thinIntegrityFile : "ih";
   if (!fileExists(layout.currentFile)) throw new Error("No current.buildId – deploy first.");
 
   const current = fs.readFileSync(layout.currentFile, "utf-8").trim();
@@ -606,9 +617,9 @@ function rollbackLocal(targetCfg) {
   }
   const prevDir = path.join(layout.releasesDir, prev);
   if (thinMode === "bootstrap") {
-    applyThinBootstrapLocal(layout, prevDir);
+    applyThinBootstrapLocal(layout, prevDir, { integrityFile });
   } else {
-    cleanupThinBootstrapLocal(layout);
+    cleanupThinBootstrapLocal(layout, { integrityFile });
   }
   fs.writeFileSync(layout.currentFile, prev, "utf-8");
 

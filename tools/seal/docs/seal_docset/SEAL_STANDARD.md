@@ -206,6 +206,8 @@ Przykład:
 - STD-077 (SHOULD): dlugie kroki builda/testow loguja postep (co kilka sekund) i w trybie verbose przepuszczaja stdout/stderr narzedzi.
 - STD-077a (SHOULD): flaga hardeningu wymagajaca wsparcia kompilatora (np. `-fcf-protection=full`) musi miec jawny toggle i pre‑probe; brak wsparcia = czytelny blad z instrukcja wylaczenia lub zmiany toolchaina.
 - STD-090 (SHOULD): self‑integrity hash binarki musi byc liczony **po** wszystkich operacjach post‑pack (hardening/packery); po tym kroku nie wolno juz modyfikowac pliku.
+- STD-090a (SHOULD): gdy wlaczony jest ELF packer, self‑integrity nie moze modyfikowac binarki po spakowaniu — uzyj trybu sidecar (hash w osobnym pliku).
+- STD-090b (SHOULD): przy `thin.integrity.mode=sidecar` plik `r/<integrity.file>` musi byc przenoszony w deploy/rollback/cleanup oraz aktualizowany przy payload‑only; brak pliku = fail‑fast.
 - STD-091 (SHOULD): self‑hash marker musi byc wykrywany bez falszywych trafien (waliduj hex, ignoruj nie‑hex) i obslugiwac wiele wystapien, wymagajac spojnosc hasha.
 - STD-092 (SHOULD): marker/hash placeholder w generowanym C musi byc utrzymany w binarce (np. `volatile`/jawna referencja), aby patcher zawsze go znalazl.
 - STD-157 (SHOULD): jeśli anti‑debug opiera się o `TracerPid`, sama kontrola na starcie nie wystarcza — check powinien być wykonywany okresowo lub w punktach krytycznych (np. przed odszyfrowaniem/uruchomieniem wrażliwego kodu).
@@ -222,6 +224,7 @@ Przykład:
 - STD-085 (SHOULD): testy nie wywoluja interaktywnych narzedzi (git/ssh); ustaw `GIT_TERMINAL_PROMPT=0` i fail/skip gdy brakuje dostepu.
 - STD-086 (SHOULD): testy zalezne od narzedzi (packery/strip/postject) sprawdzaja dostepnosc i robia SKIP z powodem, chyba ze env wymusza fail.
 - STD-087 (SHOULD): przy porazce testu wypisuj command line i fragment stdout/stderr oraz effective config (z limitem dlugosci).
+- STD-087a (SHOULD): jesli testy E2E auto‑modyfikuja konfiguracje (np. wylaczaja opcje), musza to jawnie logowac wraz z powodem.
 - STD-088 (SHOULD): testy przywracaja `process.cwd()` po zmianach (snapshot/restore).
 - STD-089 (SHOULD): testy E2E wymuszaja szybkie ustawienia (np. `thin.level=low`) i minimalne payloady, aby nie blokowac CI.
 - STD-090 (SHOULD): preflight sprawdza **narzedzia CLI** (np. `postject` w `node_modules/.bin`/PATH), nie tylko obecność modulu.
