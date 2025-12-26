@@ -1259,9 +1259,10 @@ function renderLauncherSource(
   const adPtraceDumpable = adPtraceGuard && ptraceGuardCfg.dumpable !== false;
   const seccompCfg = antiDebug.seccompNoDebug && typeof antiDebug.seccompNoDebug === "object"
     ? antiDebug.seccompNoDebug
-    : { enabled: true, mode: "errno" };
+    : { enabled: true, mode: "errno", aggressive: false };
   const adSeccomp = adEnabled && seccompCfg.enabled !== false;
   const seccompMode = seccompCfg.mode === "kill" ? "kill" : "errno";
+  const seccompAggressive = adSeccomp && seccompCfg.aggressive === true;
   const adCoreDump = adEnabled && antiDebug.coreDump !== false;
   const adLoaderGuard = adEnabled && antiDebug.loaderGuard !== false;
 
@@ -1281,6 +1282,11 @@ const fs = require("fs");
 const path = require("path");
 const Module = require("module");
 const crypto = require("crypto");
+
+Error.stackTraceLimit = 0;
+if (typeof process.setSourceMapsEnabled === "function") {
+  process.setSourceMapsEnabled(false);
+}
 
 const SENTINEL_ENABLED = ${sentinelEnabled ? 1 : 0};
 const SENTINEL_EXIT_CODE = ${sentinelExitCode};
@@ -1652,13 +1658,22 @@ if (SNAPSHOT_ENABLED) {
 const fd = Number(process.env.SEAL_BUNDLE_FD || 4);
 const entry = process.env.SEAL_VIRTUAL_ENTRY || path.join(process.cwd(), "app.bundle.cjs");
 
-const code = fs.readFileSync(fd, "utf8");
+let buf = fs.readFileSync(fd);
+try { fs.closeSync(fd); } catch {}
+let code = buf.toString("utf8");
+buf.fill(0);
+buf = null;
 process.argv[1] = entry;
 
 const m = new Module(entry, module);
 m.filename = entry;
 m.paths = Module._nodeModulePaths(path.dirname(entry));
 m._compile(code, entry);
+code = null;
+if (global.gc) {
+  global.gc();
+  global.gc();
+}
 `;
 
   const jsLiteral = bootstrapJs
@@ -1762,6 +1777,7 @@ extern char **environ;
 #define THIN_AD_PTRACE_DUMPABLE ${adPtraceDumpable ? 1 : 0}
 #define THIN_AD_SECCOMP ${adSeccomp ? 1 : 0}
 #define THIN_AD_SECCOMP_KILL ${seccompMode === "kill" ? 1 : 0}
+#define THIN_AD_SECCOMP_AGGRESSIVE ${seccompAggressive ? 1 : 0}
 #define THIN_AD_CORE_DUMP ${adCoreDump ? 1 : 0}
 #define THIN_AD_LOADER_GUARD ${adLoaderGuard ? 1 : 0}
 
@@ -2818,6 +2834,36 @@ static int apply_seccomp_no_debug(void) {
     BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_perf_event_open, 0, 1),
     BPF_STMT(BPF_RET + BPF_K, SEAL_SECCOMP_DENY),
 #endif
+#if THIN_AD_SECCOMP_AGGRESSIVE
+#ifdef __NR_process_vm_readv
+    BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_process_vm_readv, 0, 1),
+    BPF_STMT(BPF_RET + BPF_K, SEAL_SECCOMP_DENY),
+#endif
+#ifdef __NR_process_vm_writev
+    BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_process_vm_writev, 0, 1),
+    BPF_STMT(BPF_RET + BPF_K, SEAL_SECCOMP_DENY),
+#endif
+#ifdef __NR_kcmp
+    BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_kcmp, 0, 1),
+    BPF_STMT(BPF_RET + BPF_K, SEAL_SECCOMP_DENY),
+#endif
+#ifdef __NR_bpf
+    BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_bpf, 0, 1),
+    BPF_STMT(BPF_RET + BPF_K, SEAL_SECCOMP_DENY),
+#endif
+#ifdef __NR_userfaultfd
+    BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_userfaultfd, 0, 1),
+    BPF_STMT(BPF_RET + BPF_K, SEAL_SECCOMP_DENY),
+#endif
+#ifdef __NR_pidfd_open
+    BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_pidfd_open, 0, 1),
+    BPF_STMT(BPF_RET + BPF_K, SEAL_SECCOMP_DENY),
+#endif
+#ifdef __NR_pidfd_getfd
+    BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, __NR_pidfd_getfd, 0, 1),
+    BPF_STMT(BPF_RET + BPF_K, SEAL_SECCOMP_DENY),
+#endif
+#endif
     BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_ALLOW),
   };
   struct sock_fprog prog;
@@ -3087,7 +3133,7 @@ int main(int argc, char **argv) {
     return probe_rc;
   }
 
-  char *exec_argv[] = { (char *)"node", (char *)"-e", (char *)BOOTSTRAP_JS, NULL };
+  char *exec_argv[] = { (char *)"node", (char *)"--expose-gc", (char *)"-e", (char *)BOOTSTRAP_JS, NULL };
   fexecve(node_fd, exec_argv, environ);
   return fail_errno("[thin] exec failed", 34);
 }

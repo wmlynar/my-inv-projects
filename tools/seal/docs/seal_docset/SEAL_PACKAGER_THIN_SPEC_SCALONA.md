@@ -494,6 +494,17 @@ Bootstrap jest krótki i stały (kilkadziesiąt linii):
 - brak zależności od dysku poza `shared/` i `var`/`data` używanymi przez aplikację,
 - brak wrażliwych stałych/magiców (poza koniecznymi).
 
+### 8.3 Minimalizacja czasu plaintextu JS w pamięci (best‑effort)
+Bootstrap dąży do tego, żeby plaintext JS żył w pamięci możliwie krótko:
+
+- bundle jest czytany z FD 4 do `Buffer`, FD jest od razu zamykany,
+- po konwersji do stringa `Buffer` jest zerowany (`fill(0)`) i dereferencjonowany,
+- po `Module._compile(...)` string z kodem jest zerowany logicznie (`code = null`),
+- bootstrap wyłącza source maps i ślady (`process.setSourceMapsEnabled(false)`, `Error.stackTraceLimit = 0`),
+- uruchomienie Node z `--expose-gc` pozwala wykonać `global.gc()` i szybciej zwolnić pamięć.
+
+Uwaga: to nie gwarantuje, że plaintext nie zostanie utrwalony (GC/JIT/cache/OS). Celem jest maksymalne skrócenie okna ekspozycji.
+
 **Ubuntu (build machine):** wymagane pakiety dla `thin` (AIO):
 
 ```bash

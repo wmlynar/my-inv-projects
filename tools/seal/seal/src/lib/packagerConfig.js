@@ -121,7 +121,7 @@ function normalizeThinAntiDebug(raw) {
       denyEnv: true,
       mapsDenylist: [],
       ptraceGuard: { enabled: true, dumpable: true },
-      seccompNoDebug: { enabled: true, mode: "errno" },
+      seccompNoDebug: { enabled: true, mode: "errno", aggressive: false },
       coreDump: true,
       loaderGuard: true,
     };
@@ -176,16 +176,21 @@ function normalizeThinAntiDebug(raw) {
       throw new Error("Invalid thin.antiDebug.ptraceGuard: expected boolean or object");
     }
   }
-  let seccompNoDebug = { enabled: true, mode: "errno" };
+  let seccompNoDebug = { enabled: true, mode: "errno", aggressive: false };
   if (raw.seccompNoDebug !== undefined) {
     if (typeof raw.seccompNoDebug === "boolean") {
-      seccompNoDebug = { enabled: raw.seccompNoDebug, mode: "errno" };
+      seccompNoDebug = { enabled: raw.seccompNoDebug, mode: "errno", aggressive: false };
     } else if (typeof raw.seccompNoDebug === "object" && !Array.isArray(raw.seccompNoDebug)) {
       const modeRaw = raw.seccompNoDebug.mode !== undefined ? String(raw.seccompNoDebug.mode) : "errno";
       const mode = modeRaw === "kill" ? "kill" : "errno";
+      if (raw.seccompNoDebug.aggressive !== undefined && typeof raw.seccompNoDebug.aggressive !== "boolean") {
+        throw new Error(`Invalid thin.antiDebug.seccompNoDebug.aggressive: ${raw.seccompNoDebug.aggressive} (expected boolean)`);
+      }
+      const aggressive = raw.seccompNoDebug.aggressive === true;
       seccompNoDebug = {
         enabled: raw.seccompNoDebug.enabled !== undefined ? !!raw.seccompNoDebug.enabled : true,
         mode,
+        aggressive,
       };
     } else {
       throw new Error("Invalid thin.antiDebug.seccompNoDebug: expected boolean or object");
@@ -208,7 +213,7 @@ function normalizeThinAntiDebug(raw) {
   }
   if (!enabled) {
     ptraceGuard = { enabled: false, dumpable: false };
-    seccompNoDebug = { enabled: false, mode: seccompNoDebug.mode };
+    seccompNoDebug = { enabled: false, mode: seccompNoDebug.mode, aggressive: false };
     coreDump = false;
     loaderGuard = false;
   }

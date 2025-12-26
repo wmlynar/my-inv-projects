@@ -662,6 +662,17 @@ W obecnej implementacji THIN (`thin-split`) typowo mamy:
 
 To daje solidny „anti‑casual extraction”: nie ma prostego pliku JS do przeczytania.
 
+#### 6.1.1 Minimalizacja czasu plaintextu JS w pamięci (best‑effort)
+Założenie: w `thin-split` plaintext JS **musi** pojawić się w pamięci na moment kompilacji przez Node. Staramy się, aby to okno było jak najkrótsze:
+
+- Bundle jest czytany z **memfd** do `Buffer`, po czym FD jest natychmiast zamykany.
+- `Buffer` jest zamieniany na string JS, a następnie **zerowany** (`fill(0)`) i dereferencjonowany.
+- Po `Module._compile(...)` string z kodem jest zerowany logicznie (`code = null`).
+- Bootstrap wyłącza mapy źródeł i skraca ślady (`process.setSourceMapsEnabled(false)`, `Error.stackTraceLimit = 0`), żeby ograniczyć utrwalanie plaintextu w trace/debug.
+- Launcher uruchamia Node z `--expose-gc`, a bootstrap wykonuje `global.gc()` (best‑effort), żeby szybciej zwolnić pamięć z plaintextem.
+
+Uwaga: to **nie jest gwarancja** braku plaintextu w pamięci (GC/JIT/cache/OS mogą go utrzymać). To tylko maksymalne skrócenie „okna” ekspozycji w typowym runtime.
+
 ### 6.2 Poziomy utrudnienia dla THIN (plan)
 - **Poziom A (MVP):** fixed codec + losowe parametry per deployment (bez codegen, bez dict, bez noise).  
 - **Poziom B:** polimorfizm (codegen dekodera/enkodera per deployment).  
