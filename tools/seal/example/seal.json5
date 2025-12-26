@@ -3,11 +3,71 @@
   "entry": "src/index.js",
   "defaultTarget": "local",
   "build": {
-    "packager": "auto",
+    "packager": "thin-split",
     "packagerFallback": false,
     "thin": {
       "mode": "split",
-      "level": "low"
+      "level": "low",
+      "chunkSizeBytes": 8388608,
+      "zstdLevel": 1,
+      "zstdTimeoutMs": 120000,
+      "envMode": "allowlist",
+      "runtimeStore": "memfd",
+      "integrity": {
+        "enabled": true
+      },
+      "appBind": {
+        "enabled": true,
+        "value": "seal-example"
+      },
+      "snapshotGuard": {
+        "enabled": true,
+        "intervalMs": 1000,
+        "maxJumpMs": 60000,
+        "maxBackMs": 100
+      },
+      "launcherHardening": true,
+      "launcherObfuscation": true,
+      "antiDebug": {
+        "enabled": true,
+        "tracerPid": true,
+        "tracerPidIntervalMs": 10000,
+        "tracerPidThreads": true,
+        "denyEnv": true,
+        "mapsDenylist": [
+          "gdb",
+          "lldb",
+          "strace",
+          "ltrace",
+          "rr",
+          "frida"
+        ],
+        "ptraceGuard": {
+          "enabled": true,
+          "dumpable": true
+        },
+        "seccompNoDebug": {
+          "enabled": true,
+          "mode": "errno"
+        },
+        "coreDump": true,
+        "loaderGuard": true
+      }
+    },
+    "sentinel": {
+      "enabled": true,
+      "level": "auto",
+      "appId": "auto",
+      "namespaceId": "auto",
+      "cpuIdSource": "auto",
+      "storage": {
+        "baseDir": "/var/lib",
+        "mode": "file"
+      },
+      "exitCodeBlock": 200,
+      "externalAnchor": {
+        "type": "none"
+      }
     },
     "obfuscationProfile": "balanced",
     "frontendObfuscation": {
@@ -25,8 +85,36 @@
         "pack": true
       },
       "strip": {
-        "enabled": false,
-        "cmd": "strip"
+        "enabled": true,
+        "cmd": "strip",
+        "args": [
+          "--strip-all"
+        ]
+      },
+      "elfPacker": {
+        "tool": "upx",
+        "cmd": "upx"
+      },
+      "strings": {
+        "obfuscation": [
+          "xorstr",
+          "crystr",
+          "obfuscate"
+        ]
+      },
+      "cObfuscator": {
+        "tool": "obfuscator-llvm",
+        "cmd": "ollvm-clang",
+        "args": [
+          "-mllvm",
+          "-fla",
+          "-mllvm",
+          "-sub",
+          "-mllvm",
+          "-bcf",
+          "-mllvm",
+          "-bcf_loop=3"
+        ]
       }
     },
     "includeDirs": [

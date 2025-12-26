@@ -61,11 +61,20 @@ patch_lambda_capture() {
   local file="$1"
   [ -f "$file" ] || return 0
   if grep -q "auto &&BeginThenGen = \\[&D, &CGF, Device" "$file"; then
-    sed -i \
-      -e 's/auto &&BeginThenGen = \\[&D, &CGF, Device,/auto &&BeginThenGen = \\[&D, Device,/' \
-      -e 's/auto &&EndThenGen = \\[&CGF, Device,/auto &&EndThenGen = \\[Device,/' \
-      -e 's/auto &&ThenGen = \\[&D, &CGF, Device/auto &&ThenGen = \\[&D, Device/' \
-      "$file"
+    python3 - "$file" <<'PY'
+import sys
+
+path = sys.argv[1]
+data = open(path, "r", encoding="utf-8").read()
+replacements = [
+  ("auto &&BeginThenGen = [&D, &CGF, Device,", "auto &&BeginThenGen = [&D, Device,"),
+  ("auto &&EndThenGen = [&CGF, Device,", "auto &&EndThenGen = [Device,"),
+  ("auto &&ThenGen = [&D, &CGF, Device", "auto &&ThenGen = [&D, Device"),
+]
+for old, new in replacements:
+  data = data.replace(old, new)
+open(path, "w", encoding="utf-8").write(data)
+PY
   fi
 }
 
@@ -73,8 +82,24 @@ patch_lambda_capture "$ROOT/tools/clang/lib/CodeGen/CGOpenMPRuntime.cpp"
 
 echo "[install-ollvm] Building O-LLVM (LLVM 4.0)..."
 mkdir -p "$BUILD_DIR"
+LLVM_PROJECTS_FLAG=()
+if [ ! -d "$ROOT/tools/clang" ]; then
+  # Newer monorepo layout (clang beside llvm)
+  LLVM_PROJECTS_FLAG=(-DLLVM_ENABLE_PROJECTS=clang)
+else
+  # Legacy LLVM 4.0 layout: clang lives under tools/clang; LLVM_ENABLE_PROJECTS is not supported.
+  LLVM_PROJECTS_FLAG=()
+fi
+
+if [ -d "$BUILD_DIR" ] && [ -f "$BUILD_DIR/CMakeCache.txt" ] && [ -d "$ROOT/tools/clang" ]; then
+  if grep -q "^LLVM_ENABLE_PROJECTS:STRING=" "$BUILD_DIR/CMakeCache.txt"; then
+    echo "[install-ollvm] Removing stale build dir (LLVM_ENABLE_PROJECTS cached in legacy layout)..."
+    rm -rf "$BUILD_DIR"
+  fi
+fi
+
 cmake -G Ninja \
-  -DLLVM_ENABLE_PROJECTS=clang \
+  "${LLVM_PROJECTS_FLAG[@]}" \
   -DLLVM_INCLUDE_TESTS=OFF \
   -DLLVM_BUILD_TESTS=OFF \
   -DLLVM_BUILD_EXAMPLES=OFF \
