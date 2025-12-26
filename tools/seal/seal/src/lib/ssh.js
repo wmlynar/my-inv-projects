@@ -28,6 +28,51 @@ function normalizeSshPort(value) {
   return port;
 }
 
+function sshNonInteractiveArgs(strict) {
+  return [
+    "-o", "BatchMode=yes",
+    "-o", "PreferredAuthentications=publickey",
+    "-o", "PasswordAuthentication=no",
+    "-o", "KbdInteractiveAuthentication=no",
+    "-o", "ChallengeResponseAuthentication=no",
+    "-o", "NumberOfPasswordPrompts=0",
+    "-o", `StrictHostKeyChecking=${strict}`,
+    "-o", "ConnectTimeout=10",
+    "-o", "ServerAliveInterval=10",
+    "-o", "ServerAliveCountMax=2",
+  ];
+}
+
+function detectSshPromptHint(res) {
+  if (!res) return "";
+  if (res.timedOut) {
+    return "timeout (possible prompt or network issue). Ensure key-based auth and check connectivity.";
+  }
+  const out = `${res.stdout || ""}\n${res.stderr || ""}`.toLowerCase();
+  if (!out.trim()) return "";
+  if (out.includes("host key verification failed") || out.includes("are you sure you want to continue connecting")) {
+    return "host key prompt blocked. Add host key or set sshStrictHostKeyChecking=accept-new.";
+  }
+  if (out.includes("password") || out.includes("passphrase") || out.includes("keyboard-interactive")) {
+    return "interactive auth blocked. Configure key-based SSH (ssh-agent/authorized_keys).";
+  }
+  if (out.includes("permission denied")) {
+    return "permission denied. Check SSH key, user, and authorized_keys on target.";
+  }
+  return "";
+}
+
+function formatSshFailure(res) {
+  if (!res) return "";
+  const out = `${res.stdout || ""}\n${res.stderr || ""}`.trim();
+  const hint = detectSshPromptHint(res);
+  if (!out && !hint) return "";
+  const parts = [];
+  if (out) parts.push(out);
+  if (hint) parts.push(`hint: ${hint}`);
+  return `: ${parts.join(" | ")}`;
+}
+
 function sshExec({ user, host, args, stdin = null, stdio = "inherit", tty = false, strictHostKeyChecking, sshPort }) {
   const target = sshTarget(user, host);
   let finalArgs = args || [];
@@ -40,13 +85,23 @@ function sshExec({ user, host, args, stdin = null, stdio = "inherit", tty = fals
   if (tty) baseArgs.push("-tt");
   const strict = normalizeStrictHostKeyChecking(strictHostKeyChecking);
   const port = normalizeSshPort(sshPort);
-  baseArgs.push("-o", "BatchMode=yes", "-o", `StrictHostKeyChecking=${strict}`);
+  baseArgs.push(...sshNonInteractiveArgs(strict));
   if (port) baseArgs.push("-p", String(port));
   baseArgs.push(target);
   const sshArgs = baseArgs.concat(finalArgs);
 
+  let spawnStdio = stdio;
+  let input = stdin !== null ? stdin : undefined;
+  if (!tty && stdin === null && stdio === "inherit") {
+    spawnStdio = ["ignore", "inherit", "inherit"];
+  }
+  if (!tty && stdin === null && stdio === "pipe") {
+    input = "";
+  }
+
   // For capturing output, use stdio=pipe
-  const res = spawnSyncSafe("ssh", sshArgs, { stdio, input: stdin !== null ? stdin : undefined });
+  const res = spawnSyncSafe("ssh", sshArgs, { stdio: spawnStdio, input });
+  res.hint = detectSshPromptHint(res);
   return res;
 }
 
@@ -54,10 +109,11 @@ function scpTo({ user, host, localPath, remotePath, strictHostKeyChecking, sshPo
   const target = sshTarget(user, host);
   const strict = normalizeStrictHostKeyChecking(strictHostKeyChecking);
   const port = normalizeSshPort(sshPort);
-  const args = ["-o", "BatchMode=yes", "-o", `StrictHostKeyChecking=${strict}`];
+  const args = sshNonInteractiveArgs(strict);
   if (port) args.push("-P", String(port));
   args.push(localPath, `${target}:${remotePath}`);
-  const res = spawnSyncSafe("scp", args, { stdio: "inherit" });
+  const res = spawnSyncSafe("scp", args, { stdio: ["ignore", "inherit", "inherit"] });
+  res.hint = detectSshPromptHint(res);
   return res;
 }
 
@@ -65,11 +121,20 @@ function scpFrom({ user, host, remotePath, localPath, strictHostKeyChecking, ssh
   const target = sshTarget(user, host);
   const strict = normalizeStrictHostKeyChecking(strictHostKeyChecking);
   const port = normalizeSshPort(sshPort);
-  const args = ["-o", "BatchMode=yes", "-o", `StrictHostKeyChecking=${strict}`];
+  const args = sshNonInteractiveArgs(strict);
   if (port) args.push("-P", String(port));
   args.push(`${target}:${remotePath}`, localPath);
-  const res = spawnSyncSafe("scp", args, { stdio: "inherit" });
+  const res = spawnSyncSafe("scp", args, { stdio: ["ignore", "inherit", "inherit"] });
+  res.hint = detectSshPromptHint(res);
   return res;
 }
 
-module.exports = { sshExec, scpTo, scpFrom, normalizeStrictHostKeyChecking, normalizeSshPort };
+module.exports = {
+  sshExec,
+  scpTo,
+  scpFrom,
+  normalizeStrictHostKeyChecking,
+  normalizeSshPort,
+  sshNonInteractiveArgs,
+  formatSshFailure,
+};

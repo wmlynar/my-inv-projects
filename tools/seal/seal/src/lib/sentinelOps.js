@@ -6,7 +6,14 @@ const path = require("path");
 const crypto = require("crypto");
 
 const { spawnSyncSafe } = require("./spawn");
-const { sshExec, scpTo, scpFrom, normalizeStrictHostKeyChecking, normalizeSshPort } = require("./ssh");
+const {
+  sshExec,
+  scpTo,
+  scpFrom,
+  normalizeStrictHostKeyChecking,
+  normalizeSshPort,
+  formatSshFailure,
+} = require("./ssh");
 const { ensureDir, fileExists } = require("./fsextra");
 const { packBlobV1, unpackBlobV1 } = require("./sentinelCore");
 const { buildFingerprintHash, resolveAutoLevel, normalizeCpuIdSource } = require("./sentinelConfig");
@@ -275,7 +282,7 @@ cc -O2 "$TMP/cpuid.c" -o "$TMP/cpuid" >/dev/null 2>&1
     throw new Error("sentinel cpuid asm not supported on this architecture");
   }
   if (!res.ok) {
-    throw new Error(`sentinel cpuid asm failed (status=${res.status})${out ? `: ${out}` : ""}`);
+    throw new Error(`sentinel cpuid asm failed (status=${res.status})${formatSshFailure(res) || (out ? `: ${out}` : "")}`);
   }
   const line = (out.split(/\r?\n/).find((l) => l.trim()) || "").trim();
   if (!line) {
@@ -417,7 +424,7 @@ echo "CPUID=$CPUID"
   const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-lc", script], stdio: "pipe" });
   if (!res.ok) {
     const out = `${res.stdout}\n${res.stderr}`.trim();
-    throw new Error(`sentinel host probe failed (status=${res.status})${out ? `: ${out}` : ""}`);
+    throw new Error(`sentinel host probe failed (status=${res.status})${formatSshFailure(res) || (out ? `: ${out}` : "")}`);
   }
   const kv = parseKeyValueOutput(res.stdout);
   return {
@@ -473,7 +480,7 @@ echo "BASE_EXEC=$BASE_EXEC"
   const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-lc", script], stdio: "pipe" });
   if (!res.ok) {
     const out = `${res.stdout}\n${res.stderr}`.trim();
-    throw new Error(`sentinel baseDir probe failed (status=${res.status})${out ? `: ${out}` : ""}`);
+    throw new Error(`sentinel baseDir probe failed (status=${res.status})${formatSshFailure(res) || (out ? `: ${out}` : "")}`);
   }
   const kv = parseKeyValueOutput(res.stdout);
   const statParts = (kv.BASE_STAT || "").split(/\s+/);
@@ -529,7 +536,7 @@ function installSentinelSsh({ targetCfg, sentinelCfg, force, insecure }) {
   const tmpRemote = `/tmp/.${remoteTag}-s-${Date.now()}-${tmpSuffix}`;
   const up = scpToTarget(targetCfg, { user, host, localPath: tmpLocal, remotePath: tmpRemote });
   fs.rmSync(tmpDir, { recursive: true, force: true });
-  if (!up.ok) throw new Error(`sentinel scp failed (status=${up.status})`);
+  if (!up.ok) throw new Error(`sentinel scp failed (status=${up.status})${formatSshFailure(up)}`);
 
   const baseDir = sentinelCfg.storage.baseDir;
   const dir = path.posix.join(baseDir, sentinelCfg.opaqueDir);
@@ -667,7 +674,7 @@ echo "__SEAL_SENTINEL_INSTALLED__"
     const out = `${res.stdout}\n${res.stderr}`.trim();
     const hint = describeSentinelInstallError(out, baseDir);
     if (hint) throw new Error(hint);
-    throw new Error(`sentinel install failed (status=${res.status})${out ? `: ${out}` : ""}`);
+    throw new Error(`sentinel install failed (status=${res.status})${formatSshFailure(res) || (out ? `: ${out}` : "")}`);
   }
   return { hostInfo, level, output: res.stdout };
 }
@@ -690,8 +697,7 @@ echo "FILE_STAT=$statline"
 `;
   const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-lc", script], stdio: "pipe" });
   if (!res.ok) {
-    const out = `${res.stdout}\n${res.stderr}`.trim();
-    throw new Error(`sentinel verify failed (status=${res.status})${out ? `: ${out}` : ""}`);
+    throw new Error(`sentinel verify failed (status=${res.status})${formatSshFailure(res)}`);
   }
   if ((res.stdout || "").includes("__SEAL_SENTINEL_MISSING__")) {
     return { ok: false, reason: "missing" };
@@ -702,7 +708,7 @@ echo "FILE_STAT=$statline"
   const get = scpFromTarget(targetCfg, { user, host, remotePath: file, localPath: tmpLocal });
   if (!get.ok) {
     fs.rmSync(tmpDir, { recursive: true, force: true });
-    throw new Error(`sentinel scp failed (status=${get.status})`);
+    throw new Error(`sentinel scp failed (status=${get.status})${formatSshFailure(get)}`);
   }
   try {
     fs.chmodSync(tmpLocal, 0o600);
@@ -826,7 +832,7 @@ echo "__SEAL_SENTINEL_REMOVED__"
     const out = `${res.stdout}\n${res.stderr}`.trim();
     const hint = describeSentinelUninstallError(out);
     if (hint) throw new Error(hint);
-    throw new Error(`sentinel uninstall failed (status=${res.status})${out ? `: ${out}` : ""}`);
+    throw new Error(`sentinel uninstall failed (status=${res.status})${formatSshFailure(res) || (out ? `: ${out}` : "")}`);
   }
   return { ok: true };
 }
@@ -1221,7 +1227,7 @@ echo "TPM_TOOL=$TPM_TOOL"
   const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-lc", script], stdio: "pipe" });
   if (!res.ok) {
     const out = `${res.stdout}\n${res.stderr}`.trim();
-    throw new Error(`sentinel inspect failed (status=${res.status})${out ? `: ${out}` : ""}`);
+    throw new Error(`sentinel inspect failed (status=${res.status})${formatSshFailure(res) || (out ? `: ${out}` : "")}`);
   }
 
   const kv = parseKeyValueOutput(res.stdout);

@@ -4,7 +4,15 @@ const path = require("path");
 const os = require("os");
 const fs = require("fs");
 
-const { sshExec, scpTo, scpFrom, normalizeStrictHostKeyChecking, normalizeSshPort } = require("./ssh");
+const {
+  sshExec,
+  scpTo,
+  scpFrom,
+  normalizeStrictHostKeyChecking,
+  normalizeSshPort,
+  sshNonInteractiveArgs,
+  formatSshFailure,
+} = require("./ssh");
 const { spawnSyncSafe } = require("./spawn");
 const { fileExists, ensureDir } = require("./fsextra");
 const { ok, info, warn } = require("./ui");
@@ -319,8 +327,7 @@ function bootstrapSsh(targetCfg) {
 
   const res = sshExecTarget(targetCfg, { user, host, args: cmd, stdio: "pipe" });
   if (!res.ok) {
-    const out = `${res.stdout}\n${res.stderr}`.trim();
-    throw new Error(`bootstrap ssh failed (status=${res.status})${out ? `: ${out}` : ""}`);
+    throw new Error(`bootstrap ssh failed (status=${res.status})${formatSshFailure(res)}`);
   }
 
   ok(`Bootstrap OK on ${host} (dirs ready; service not installed)`);
@@ -497,7 +504,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
   const { res: preflight, layout, user, host } = checkRemoteWritable(targetCfg, { requireService: !bootstrap });
   const out = `${preflight.stdout}\n${preflight.stderr}`.trim();
   if (!preflight.ok) {
-    throw new Error(`ssh preflight failed: ${out || preflight.error || "unknown"}`);
+    throw new Error(`ssh preflight failed${formatSshFailure(preflight) || (out || preflight.error ? `: ${out || preflight.error}` : "")}`);
   }
   const issues = [];
   if (out.includes("__SEAL_MISSING_DIR__")) issues.push(`Missing installDir: ${layout.installDir}`);
@@ -584,8 +591,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       stdio: "pipe",
     });
     if (!cfgCheck.ok) {
-      const cfgOut = `${cfgCheck.stdout}\n${cfgCheck.stderr}`.trim();
-      throw new Error(`ssh config check failed (status=${cfgCheck.status})${cfgOut ? `: ${cfgOut}` : ""}`);
+      throw new Error(`ssh config check failed (status=${cfgCheck.status})${formatSshFailure(cfgCheck)}`);
     }
     if ((cfgCheck.stdout || "").includes("__SEAL_CFG_MISSING__")) {
       warn("Remote config missing. Pushing repo config once (safe default for first deploy).");
@@ -613,7 +619,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
     const remoteTmpQ = shQuote(remoteTmp);
     info(`Uploading payload to ${host}:${remoteTmp}`);
     const upPl = scpToTarget(targetCfg, { user, host, localPath: payloadLocal, remotePath: remoteTmp });
-    if (!upPl.ok) throw new Error(`scp payload failed (status=${upPl.status})`);
+    if (!upPl.ok) throw new Error(`scp payload failed (status=${upPl.status})${formatSshFailure(upPl)}`);
 
     const cmdParts = [
       `mkdir -p ${releasesDirQ} ${sharedDirQ}`,
@@ -623,7 +629,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       const tmpCfgQ = shQuote(tmpCfg);
       info(`Uploading config to ${host}:${tmpCfg}`);
       const upCfg = scpToTarget(targetCfg, { user, host, localPath: repoConfigPath, remotePath: tmpCfg });
-      if (!upCfg.ok) throw new Error(`scp config failed (status=${upCfg.status})`);
+      if (!upCfg.ok) throw new Error(`scp config failed (status=${upCfg.status})${formatSshFailure(upCfg)}`);
       cmdParts.push(`cp ${tmpCfgQ} ${remoteCfgQ}`);
       cmdParts.push(`rm -f ${tmpCfgQ}`);
     }
@@ -647,7 +653,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
     // Upload artifact
     info(`Uploading artifact to ${host}:${remoteArtifactTmp}`);
     const up = scpToTarget(targetCfg, { user, host, localPath: artifactPath, remotePath: remoteArtifactTmp });
-    if (!up.ok) throw new Error(`scp failed (status=${up.status})`);
+    if (!up.ok) throw new Error(`scp failed (status=${up.status})${formatSshFailure(up)}`);
 
     // Extract and switch current
     const cmdParts = [
@@ -661,7 +667,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       const tmpCfgQ = shQuote(tmpCfg);
       info(`Uploading config to ${host}:${tmpCfg}`);
       const upCfg = scpToTarget(targetCfg, { user, host, localPath: repoConfigPath, remotePath: tmpCfg });
-      if (!upCfg.ok) throw new Error(`scp config failed (status=${upCfg.status})`);
+      if (!upCfg.ok) throw new Error(`scp config failed (status=${upCfg.status})${formatSshFailure(upCfg)}`);
       cmdParts.push(buildRemoteTarValidateCmd(remoteArtifactTmpQ, folderName));
       cmdParts.push(`tar -xzf ${remoteArtifactTmpQ} -C ${releasesDirQ}`);
       cmdParts.push(`cp ${tmpCfgQ} ${remoteCfgQ}`);
@@ -721,14 +727,14 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
     if (!tmpCheck.ok || !(tmpCheck.stdout || "").includes("__SEAL_TMP_OK__")) {
       info(`Re-uploading artifact to ${host}:${remoteArtifactTmp}`);
       const upRetry = scpToTarget(targetCfg, { user, host, localPath: artifactPath, remotePath: remoteArtifactTmp });
-      if (!upRetry.ok) throw new Error(`scp failed (status=${upRetry.status})`);
+      if (!upRetry.ok) throw new Error(`scp failed (status=${upRetry.status})${formatSshFailure(upRetry)}`);
     }
 
     const tmpCfg = `/tmp/${targetCfg.serviceName}-config.json5`;
     const tmpCfgQ = shQuote(tmpCfg);
     info(`Uploading config to ${host}:${tmpCfg}`);
     const upCfg = scpToTarget(targetCfg, { user, host, localPath: repoConfigPath, remotePath: tmpCfg });
-    if (!upCfg.ok) throw new Error(`scp config failed (status=${upCfg.status})`);
+    if (!upCfg.ok) throw new Error(`scp config failed (status=${upCfg.status})${formatSshFailure(upCfg)}`);
 
     const retryParts = [
       `mkdir -p ${releasesDirQ} ${sharedDirQ}`,
@@ -770,8 +776,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
     res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-lc", retryParts.join(" && ")], stdio: "pipe" });
   }
   if (!res.ok) {
-    const deployOut = `${res.stdout}\n${res.stderr}`.trim();
-    throw new Error(`deploy ssh failed (status=${res.status})${deployOut ? `: ${deployOut}` : ""}`);
+    throw new Error(`deploy ssh failed (status=${res.status})${formatSshFailure(res)}`);
   }
 
   ok(`Deployed on ${host}: ${folderName}`);
@@ -787,7 +792,7 @@ function deploySshFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, boot
   const { res: preflight, layout, user, host } = checkRemoteWritable(targetCfg, { requireService: !bootstrap });
   const out = `${preflight.stdout}\n${preflight.stderr}`.trim();
   if (!preflight.ok) {
-    throw new Error(`ssh preflight failed: ${out || preflight.error || "unknown"}`);
+    throw new Error(`ssh preflight failed${formatSshFailure(preflight) || (out || preflight.error ? `: ${out || preflight.error}` : "")}`);
   }
   const issues = [];
   if (out.includes("__SEAL_MISSING_DIR__")) issues.push(`Missing installDir: ${layout.installDir}`);
@@ -812,8 +817,7 @@ function deploySshFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, boot
       stdio: "pipe",
     });
     if (!cfgCheck.ok) {
-      const cfgOut = `${cfgCheck.stdout}\n${cfgCheck.stderr}`.trim();
-      throw new Error(`ssh config check failed (status=${cfgCheck.status})${cfgOut ? `: ${cfgOut}` : ""}`);
+      throw new Error(`ssh config check failed (status=${cfgCheck.status})${formatSshFailure(cfgCheck)}`);
     }
     if ((cfgCheck.stdout || "").includes("__SEAL_CFG_MISSING__")) {
       warn("Remote config missing. Pushing repo config once (safe default for first deploy).");
@@ -835,16 +839,12 @@ function deploySshFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, boot
     stdio: "pipe",
   });
   if (!mkdirRes.ok) {
-    const mkdirOut = `${mkdirRes.stdout}\n${mkdirRes.stderr}`.trim();
-    throw new Error(`ssh mkdir failed (status=${mkdirRes.status})${mkdirOut ? `: ${mkdirOut}` : ""}`);
+    throw new Error(`ssh mkdir failed (status=${mkdirRes.status})${formatSshFailure(mkdirRes)}`);
   }
 
-  const sshOptsParts = [
-    "-o BatchMode=yes",
-    `-o StrictHostKeyChecking=${sshStrictHostKeyChecking(targetCfg)}`,
-  ];
+  const sshOptsParts = sshNonInteractiveArgs(sshStrictHostKeyChecking(targetCfg));
   const port = sshPort(targetCfg);
-  if (port) sshOptsParts.push(`-p ${port}`);
+  if (port) sshOptsParts.push("-p", String(port));
   const sshOpts = sshOptsParts.join(" ");
   const baseArgs = [
     "-az",
@@ -867,12 +867,11 @@ function deploySshFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, boot
     const tmpCfgQ = shQuote(tmpCfg);
     info(`Uploading config to ${host}:${tmpCfg}`);
     const upCfg = scpToTarget(targetCfg, { user, host, localPath: repoConfigPath, remotePath: tmpCfg });
-    if (!upCfg.ok) throw new Error(`scp config failed (status=${upCfg.status})`);
+    if (!upCfg.ok) throw new Error(`scp config failed (status=${upCfg.status})${formatSshFailure(upCfg)}`);
     const cfgCmd = ["bash", "-lc", `cp ${tmpCfgQ} ${remoteCfgQ} && rm -f ${tmpCfgQ}`];
     const cfgRes = sshExecTarget(targetCfg, { user, host, args: cfgCmd, stdio: "pipe" });
     if (!cfgRes.ok) {
-      const cfgOut = `${cfgRes.stdout}\n${cfgRes.stderr}`.trim();
-      throw new Error(`config write failed (status=${cfgRes.status})${cfgOut ? `: ${cfgOut}` : ""}`);
+      throw new Error(`config write failed (status=${cfgRes.status})${formatSshFailure(cfgRes)}`);
     }
   }
 
@@ -1085,8 +1084,7 @@ echo "__SEAL_OK__"
 
   const res = sshExecTarget(targetCfg, { user, host, args: cmd, stdio: "pipe" });
   if (!res.ok) {
-    const out = `${res.stdout}\n${res.stderr}`.trim();
-    throw new Error(`ssh preflight failed (status=${res.status})${out ? `: ${out}` : ""}`);
+    throw new Error(`ssh preflight failed (status=${res.status})${formatSshFailure(res)}`);
   }
 
   const out = `${res.stdout}\n${res.stderr}`.trim();
@@ -1154,7 +1152,7 @@ sudo -n systemctl restart ${shQuote(`${targetCfg.serviceName}.service`)}
 echo "Rolled back to $prev"
 `];
   const res = sshExecTarget(targetCfg, { user, host, args: cmd, stdio: "inherit" });
-  if (!res.ok) throw new Error(`rollback ssh failed (status=${res.status})`);
+  if (!res.ok) throw new Error(`rollback ssh failed (status=${res.status})${formatSshFailure(res)}`);
 }
 
 function uninstallSsh(targetCfg) {
@@ -1170,7 +1168,7 @@ sudo -n rm -rf ${shQuote(layout.installDir)}
 echo "Uninstalled ${targetCfg.serviceName}"
 `];
   const res = sshExecTarget(targetCfg, { user, host, args: cmd, stdio: "inherit" });
-  if (!res.ok) throw new Error(`uninstall ssh failed (status=${res.status})`);
+  if (!res.ok) throw new Error(`uninstall ssh failed (status=${res.status})${formatSshFailure(res)}`);
 }
 
 function downSsh(targetCfg) {
@@ -1185,7 +1183,7 @@ sudo -n systemctl daemon-reload
 echo "Service removed ${targetCfg.serviceName}"
 `];
   const res = sshExecTarget(targetCfg, { user, host, args: cmd, stdio: "inherit" });
-  if (!res.ok) throw new Error(`down ssh failed (status=${res.status})`);
+  if (!res.ok) throw new Error(`down ssh failed (status=${res.status})${formatSshFailure(res)}`);
 }
 
 function checkConfigDriftSsh({ targetCfg, localConfigPath, showDiff = true }) {
@@ -1205,14 +1203,14 @@ function checkConfigDriftSsh({ targetCfg, localConfigPath, showDiff = true }) {
     const out = `${exists.stdout}\n${exists.stderr}`.trim();
     return {
       status: "error",
-      message: `ssh config check failed (status=${exists.status})${out ? `: ${out}` : ""}`,
+      message: `ssh config check failed (status=${exists.status})${formatSshFailure(exists) || (out ? `: ${out}` : "")}`,
     };
   }
 
   const tmpLocal = path.join(os.tmpdir(), `${targetCfg.serviceName || targetCfg.appName || "app"}-remote-config.json5`);
   ensureDir(path.dirname(tmpLocal));
   const get = scpFromTarget(targetCfg, { user, host, remotePath: remoteCfg, localPath: tmpLocal });
-  if (!get.ok) return { status: "error", message: "scp remote config failed" };
+  if (!get.ok) return { status: "error", message: `scp remote config failed${formatSshFailure(get)}` };
 
   const diffRes = spawnSyncSafe("diff", ["-u", localConfigPath, tmpLocal], {
     stdio: showDiff ? "inherit" : "pipe",
@@ -1235,7 +1233,7 @@ function configDiffSsh({ targetCfg, localConfigPath }) {
   // Download remote config (best effort)
   const remoteCfg = `${layout.sharedDir}/config.json5`;
   const get = scpFromTarget(targetCfg, { user, host, remotePath: remoteCfg, localPath: tmpLocal });
-  if (!get.ok) throw new Error("scp remote config failed");
+  if (!get.ok) throw new Error(`scp remote config failed${formatSshFailure(get)}`);
 
   // Run diff -u
   const { spawnSyncSafe } = require("./spawn");
@@ -1250,7 +1248,7 @@ function configPullSsh({ targetCfg, localConfigPath, apply }) {
   const tmpLocal = apply ? localConfigPath : path.join(os.tmpdir(), `${targetCfg.serviceName}-remote-config.json5`);
   ensureDir(path.dirname(tmpLocal));
   const get = scpFromTarget(targetCfg, { user, host, remotePath: remoteCfg, localPath: tmpLocal });
-  if (!get.ok) throw new Error("scp remote config failed");
+  if (!get.ok) throw new Error(`scp remote config failed${formatSshFailure(get)}`);
 
   ok(apply ? `Pulled and applied config -> ${localConfigPath}` : `Pulled config -> ${tmpLocal}`);
 }
@@ -1259,7 +1257,7 @@ function configPushSsh({ targetCfg, localConfigPath }) {
   const { res: preflight, layout, user, host } = checkRemoteWritable(targetCfg, { requireService: false });
   const out = `${preflight.stdout}\n${preflight.stderr}`.trim();
   if (!preflight.ok) {
-    throw new Error(`ssh preflight failed: ${out || preflight.error || "unknown"}`);
+    throw new Error(`ssh preflight failed${formatSshFailure(preflight) || (out || preflight.error ? `: ${out || preflight.error}` : "")}`);
   }
   const issues = [];
   if (out.includes("__SEAL_MISSING_DIR__")) issues.push(`Missing installDir: ${layout.installDir}`);
@@ -1273,14 +1271,14 @@ function configPushSsh({ targetCfg, localConfigPath }) {
   }
   const tmpCfg = `/tmp/${targetCfg.serviceName}-config.json5`;
   const up = scpToTarget(targetCfg, { user, host, localPath: localConfigPath, remotePath: tmpCfg });
-  if (!up.ok) throw new Error("scp config failed");
+  if (!up.ok) throw new Error(`scp config failed${formatSshFailure(up)}`);
 
   const tmpCfgQ = shQuote(tmpCfg);
   const sharedDirQ = shQuote(layout.sharedDir);
   const remoteCfgQ = shQuote(`${layout.sharedDir}/config.json5`);
   const cmd = ["bash","-lc", `mkdir -p ${sharedDirQ} && cp ${tmpCfgQ} ${remoteCfgQ} && rm -f ${tmpCfgQ}`];
   const res = sshExecTarget(targetCfg, { user, host, args: cmd, stdio: "inherit" });
-  if (!res.ok) throw new Error(`push config failed (status=${res.status})`);
+  if (!res.ok) throw new Error(`push config failed (status=${res.status})${formatSshFailure(res)}`);
 
   ok(`Config pushed to ${host}:${layout.sharedDir}/config.json5`);
 }
