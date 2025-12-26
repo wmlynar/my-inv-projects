@@ -356,7 +356,7 @@ Ta sekcja jest celowo krótka: ma umożliwić szybkie zrozumienie *dlaczego* Sea
    - **SEA**: main script jest spakowany (Brotli/Gzip loader) zanim trafi do blobu.
    - **bundle** (jawnie włączony): `app.bundle.cjs` jest zastąpione przez `.gz` + loader.
    UPX/strip są dostępne jako opcje, ale **OFF by default** (kompatybilność zależna od platformy i postject).
-   Bundle fallback wymaga jawnego włączenia: `build.bundleFallback=true` lub `packager=bundle`.
+   Bundle fallback wymaga jawnego włączenia: `build.packagerFallback=true` (alias: `build.bundleFallback`) lub `packager=bundle`.
 
 8) **Publiczne `/healthz` i `/status`**  
    Bo aplikacje w tym kontekście bywają wdrażane „normalnie”, a UI i serwis potrzebują tych endpointów na standardowym porcie.
@@ -1733,9 +1733,9 @@ Przykład (aktualny dla v0.5):
 
   build: {
     // packager (kolejnosc rekomendowana): thin-split, thin-single, sea, bundle, none (auto = thin-split)
-    // none = raw bundle + wrapper (bez protection/packBundle; tylko do diagnostyki)
+    // none = raw bundle + wrapper (bez protection/bundle.pack; tylko do diagnostyki)
     packager: "auto",
-    bundleFallback: false,
+    packagerFallback: false,
 
     // minimal|balanced|aggressive
     obfuscationProfile: "balanced",
@@ -1747,28 +1747,20 @@ Przykład (aktualny dla v0.5):
     frontendMinify: { enabled: true, level: "safe", html: true, css: true },
 
     // Protection (anti-peek) – domyślnie włączone
-    // - SEA: packSeaMain (Brotli/Gzip loader); upx/strip opcjonalne (OFF by default)
-    // - bundle: gzip-pack backend bundle + loader
+    // - SEA: seaMain.pack (Brotli/Gzip loader); upx/strip opcjonalne (OFF by default)
+    // - bundle: bundle.pack = gzip-pack backend bundle + loader
     protection: {
       enabled: true,
-      packSeaMain: true,
-      packSeaMainMethod: "brotli",
-      packSeaMainChunkSize: 8000,
-      packBundle: true,
-      stripSymbols: false,
-      stripTool: "strip", // strip | llvm-strip | eu-strip | sstrip
-      stripArgs: ["--strip-all"],
-      upxPack: false,
+      seaMain: { pack: true, method: "brotli", chunkSize: 8000 },
+      bundle: { pack: true },
+      strip: { enabled: false, cmd: "strip", args: ["--strip-all"] }, // strip | llvm-strip | eu-strip | sstrip
+      upx: { enabled: false },
       // ELF packers/protectors (opcjonalne, wysokie ryzyko operacyjne):
-      // elfPacker: "kiteshield" | "midgetpack" | "upx",
-      // elfPackerCmd: "kiteshield",
-      // elfPackerArgs: ["--in", "{in}", "--out", "{out}"],
+      // elfPacker: { tool: "kiteshield" | "midgetpack" | "upx", cmd: "kiteshield", args: ["-n", "{in}", "{out}"] },
       // Source-level string obfuscation libs (informacyjne, manualna integracja):
-      // stringObfuscation: "xorstr" | "crystr" | "obfuscate" | ["xorstr", "crystr"],
+      // strings: { obfuscation: "xorstr" | "crystr" | "obfuscate" | ["xorstr", "crystr"] },
       // C-level obfuscation (dla launchera thin; wymaga obfuscating clang):
-      // cObfuscator: "obfuscator-llvm" | "hikari",
-      // cObfuscatorCmd: "/path/to/obfuscating-clang",
-      // cObfuscatorArgs: ["-mllvm", "-fla", "-mllvm", "-sub"],
+      // cObfuscator: { tool: "obfuscator-llvm" | "hikari", cmd: "/path/to/obfuscating-clang", args: ["-mllvm", "-fla", "-mllvm", "-sub"] },
     },
 
     // Katalogi kopiowane 1:1 do release (np. static assets, dane)
@@ -1785,19 +1777,31 @@ Przykład (aktualny dla v0.5):
 - `build.packager`: `auto` (domyślnie `thin-split`).
 - `build.obfuscationProfile`: `balanced`.
 - `build.includeDirs`: `["public", "data"]`.
-- `build.bundleFallback`: `false`.
+- `build.packagerFallback`: `false` (alias: `build.bundleFallback`).
 - `build.frontendObfuscation`: domyślnie `{ enabled: true, profile: build.obfuscationProfile }`.
 - `build.frontendMinify`: domyślnie `{ enabled: true, level: "safe", html: true, css: true }`.
-- `build.protection`: domyślnie `{ enabled: true, packSeaMain: true, packSeaMainMethod: "brotli", packSeaMainChunkSize: 8000, packBundle: true, stripSymbols: false, stripTool: "strip", stripArgs: ["--strip-all"], upxPack: false }`.
-- `build.protection.stripTool`: `strip` | `llvm-strip` | `eu-strip` | `sstrip` (domyślnie `strip`).
-- `build.protection.stripArgs`: opcjonalne argumenty dla strip (placeholder `{in}` podstawia ścieżkę binarki); jeśli nie podasz — używane jest `--strip-all`.
-- `build.protection.elfPacker`: opcjonalny packer/protector ELF: `kiteshield` | `midgetpack` | `upx`.
-- `build.protection.elfPackerCmd`: nadpisuje nazwę komendy (np. pełna ścieżka).
-- `build.protection.elfPackerArgs`: **wymagane** dla `kiteshield`/`midgetpack`; użyj `{in}` i `{out}` jako placeholderów. Brak args = błąd.
-- `build.protection.stringObfuscation`: **informacyjne**; lista lub string (`xorstr`, `crystr`, `obfuscate`). SEAL nie wstrzykuje tych bibliotek automatycznie – integracja jest po stronie kodu C/C++.
-- `build.protection.cObfuscator`: obfuscator dla kodu C (launchera thin). Wartości: `obfuscator-llvm` (alias: `ollvm`) lub `hikari`.
-- `build.protection.cObfuscatorCmd`: ścieżka do obfuscating clang (wymagane, jeśli `cObfuscator` ustawione).
-- `build.protection.cObfuscatorArgs`: **wymagane**; argumenty obfuscatora (np. `-mllvm -fla -mllvm -sub`). Brak args = błąd.
+- `build.protection`: domyślnie `{ enabled: true, seaMain:{pack:true,method:"brotli",chunkSize:8000}, bundle:{pack:true}, strip:{enabled:false,cmd:"strip"}, upx:{enabled:false} }`.
+- `build.protection.strip.cmd`: `strip` | `llvm-strip` | `eu-strip` | `sstrip` (domyślnie `strip`).
+- `build.protection.strip.args`: opcjonalne argumenty dla strip (placeholder `{in}` podstawia ścieżkę binarki); jeśli nie podasz — używane jest `--strip-all`.
+- `build.protection.elfPacker.tool`: opcjonalny packer/protector ELF: `kiteshield` | `midgetpack` | `upx`.
+- `build.protection.elfPacker.cmd`: nadpisuje nazwę komendy (np. pełna ścieżka).
+- `build.protection.elfPacker.args`: **wymagane** dla `kiteshield`/`midgetpack`; użyj `{in}` i `{out}` jako placeholderów. Brak args = błąd.
+- `build.protection.strings.obfuscation`: **informacyjne**; lista lub string (`xorstr`, `crystr`, `obfuscate`). SEAL nie wstrzykuje tych bibliotek automatycznie – integracja jest po stronie kodu C/C++.
+- `build.protection.cObfuscator.tool`: obfuscator dla kodu C (launchera thin). Wartości: `obfuscator-llvm` (alias: `ollvm`) lub `hikari`.
+- `build.protection.cObfuscator.cmd`: ścieżka do obfuscating clang (wymagane, jeśli `cObfuscator` ustawione).
+- `build.protection.cObfuscator.args`: **wymagane**; argumenty obfuscatora (np. `-mllvm -fla -mllvm -sub`). Brak args = błąd.
+
+### 29.3.1. Aliasy legacy (wciąż obsługiwane, ale niezalecane)
+- `build.bundleFallback` / `build.allowFallback` → `build.packagerFallback`
+- `build.hardening` / `build.artifactProtection` → `build.protection`
+- `build.thinMode`, `build.thinVariant`, `build.thinLevel`, `build.thinChunkSize`, `build.thinZstdLevel`, `build.thinZstdTimeoutMs`, `build.thinEnvMode`, `build.thinRuntimeStore` → `build.thin.*`
+- `build.protection.packSeaMain`, `packSeaMainMethod`, `packSeaMainChunkSize` → `build.protection.seaMain.*`
+- `build.protection.packBundle` → `build.protection.bundle.pack`
+- `build.protection.stripSymbols`, `stripTool`, `stripArgs` → `build.protection.strip.*`
+- `build.protection.upxPack` → `build.protection.upx.enabled`
+- `build.protection.elfPacker`, `elfPackerCmd`, `elfPackerArgs` → `build.protection.elfPacker.*`
+- `build.protection.stringObfuscation` → `build.protection.strings.obfuscation`
+- `build.protection.cObfuscator`, `cObfuscatorCmd`, `cObfuscatorArgs` → `build.protection.cObfuscator.*`
 
 ### 29.4. Polityka (`seal.json5#policy`)
 

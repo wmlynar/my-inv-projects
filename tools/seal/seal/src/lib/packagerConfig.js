@@ -25,18 +25,27 @@ function normalizeThinRuntimeStore(raw) {
 }
 
 function resolveThinConfig(targetCfg, projectCfg) {
-  const tThin = targetCfg && typeof targetCfg.thin === "object" ? targetCfg.thin : {};
+  const tThinBuild = (targetCfg && targetCfg.build && typeof targetCfg.build.thin === "object") ? targetCfg.build.thin : {};
+  const tThinRaw = targetCfg && typeof targetCfg.thin === "object" ? targetCfg.thin : {};
+  const tThin = { ...tThinBuild, ...tThinRaw };
   const pThin = projectCfg?.build && typeof projectCfg.build.thin === "object" ? projectCfg.build.thin : {};
 
   const modeRaw =
     targetCfg?.thinMode ??
     targetCfg?.thinVariant ??
+    targetCfg?.thinPackager ??
+    targetCfg?.build?.thinMode ??
+    targetCfg?.build?.thinVariant ??
+    targetCfg?.build?.thinPackager ??
     tThin.mode ??
     tThin.variant ??
+    tThin.packager ??
     projectCfg?.build?.thinMode ??
     projectCfg?.build?.thinVariant ??
+    projectCfg?.build?.thinPackager ??
     pThin.mode ??
-    pThin.variant;
+    pThin.variant ??
+    pThin.packager;
 
   const mode = normalizeThinMode(modeRaw) || "aio";
 
@@ -50,8 +59,10 @@ function resolveThinConfig(targetCfg, projectCfg) {
 
   const chunkSizeBytes =
     targetCfg?.thinChunkSize ??
+    tThin.chunkSizeBytes ??
     tThin.chunkSize ??
     projectCfg?.build?.thinChunkSize ??
+    pThin.chunkSizeBytes ??
     pThin.chunkSize ??
     null;
 
@@ -116,13 +127,21 @@ function normalizePackager(rawPackager, thinMode) {
 }
 
 function resolveBundleFallback(targetCfg, projectCfg) {
-  return !!(
+  const raw =
+    targetCfg?.packagerFallback ??
     targetCfg?.bundleFallback ??
     targetCfg?.allowFallback ??
+    targetCfg?.build?.packagerFallback ??
+    targetCfg?.build?.bundleFallback ??
+    targetCfg?.build?.allowFallback ??
+    projectCfg?.build?.packagerFallback ??
     projectCfg?.build?.bundleFallback ??
     projectCfg?.build?.allowFallback ??
-    false
-  );
+    false;
+
+  if (raw === "bundle") return true;
+  if (raw === "none" || raw === "false") return false;
+  return !!raw;
 }
 
 function resolveProtectionConfig(projectCfg) {
@@ -138,35 +157,60 @@ function resolveProtectionConfig(projectCfg) {
   const enabled = !(typeof raw === "object" && raw && raw.enabled === false);
   const cfg = (typeof raw === "object" && raw) ? raw : {};
   const stringObfuscationRaw =
+    (cfg.strings && cfg.strings.obfuscation) ??
     cfg.stringObfuscation ??
     cfg.sourceStringObfuscation ??
     cfg.sourceObfuscation ??
     null;
   const stringObfuscation = normalizeStringObfuscation(stringObfuscationRaw);
 
+  const cObfCfg =
+    (cfg.cObfuscator && typeof cfg.cObfuscator === "object") ? cfg.cObfuscator : null;
   const cObfuscatorRaw =
+    (cObfCfg && cObfCfg.tool) ??
     cfg.cObfuscator ??
     cfg.cObfuscatorMode ??
     cfg.codeObfuscator ??
     cfg.obfuscatorC ??
     null;
   const cObfuscator = normalizeCObfuscator(cObfuscatorRaw);
-  const cObfuscatorCmd = cfg.cObfuscatorCmd ?? cfg.cObfuscatorBin ?? cfg.codeObfuscatorCmd ?? null;
-  const cObfuscatorArgs = normalizeArgList(cfg.cObfuscatorArgs ?? cfg.cObfuscatorFlags ?? null);
+  const cObfuscatorCmd =
+    (cObfCfg && cObfCfg.cmd) ??
+    cfg.cObfuscatorCmd ??
+    cfg.cObfuscatorBin ??
+    cfg.codeObfuscatorCmd ??
+    null;
+  const cObfuscatorArgs = normalizeArgList(
+    (cObfCfg && cObfCfg.args) ??
+    cfg.cObfuscatorArgs ??
+    cfg.cObfuscatorFlags ??
+    null
+  );
+
+  const seaCfg = (cfg.sea && typeof cfg.sea === "object") ? cfg.sea : {};
+  const seaMainCfg = (cfg.seaMain && typeof cfg.seaMain === "object")
+    ? cfg.seaMain
+    : (seaCfg.main && typeof seaCfg.main === "object" ? seaCfg.main : {});
+  const bundleCfg = (cfg.bundle && typeof cfg.bundle === "object") ? cfg.bundle : {};
+  const stripCfg = (cfg.strip && typeof cfg.strip === "object") ? cfg.strip : {};
+  const upxCfg = (cfg.upx && typeof cfg.upx === "object") ? cfg.upx : {};
+  const elfCfg = (cfg.elfPacker && typeof cfg.elfPacker === "object")
+    ? cfg.elfPacker
+    : (cfg.elf && typeof cfg.elf === "object" ? cfg.elf : {});
 
   return {
     enabled,
-    packSeaMain: cfg.packSeaMain ?? cfg.seaMainPacking ?? true,
-    packSeaMainMethod: cfg.packSeaMainMethod ?? cfg.seaMainPackingMethod ?? "brotli",
-    packSeaMainChunkSize: cfg.packSeaMainChunkSize ?? cfg.seaMainPackingChunkSize ?? 8000,
-    packBundle: cfg.packBundle ?? cfg.bundlePacking ?? true,
-    stripSymbols: cfg.stripSymbols ?? cfg.strip ?? false,
-    stripTool: cfg.stripTool ?? cfg.stripCmd ?? "strip",
-    stripArgs: cfg.stripArgs ?? null,
-    upxPack: cfg.upxPack ?? cfg.upx ?? false,
-    elfPacker: cfg.elfPacker ?? cfg.elfPack ?? null,
-    elfPackerCmd: cfg.elfPackerCmd ?? cfg.elfPackerBin ?? null,
-    elfPackerArgs: cfg.elfPackerArgs ?? cfg.elfPackerFlags ?? null,
+    packSeaMain: seaMainCfg.pack ?? cfg.packSeaMain ?? cfg.seaMainPacking ?? true,
+    packSeaMainMethod: seaMainCfg.method ?? cfg.packSeaMainMethod ?? cfg.seaMainPackingMethod ?? "brotli",
+    packSeaMainChunkSize: seaMainCfg.chunkSize ?? cfg.packSeaMainChunkSize ?? cfg.seaMainPackingChunkSize ?? 8000,
+    packBundle: bundleCfg.pack ?? cfg.packBundle ?? cfg.bundlePacking ?? true,
+    stripSymbols: stripCfg.enabled ?? cfg.stripSymbols ?? cfg.strip ?? false,
+    stripTool: stripCfg.cmd ?? cfg.stripTool ?? cfg.stripCmd ?? "strip",
+    stripArgs: stripCfg.args ?? cfg.stripArgs ?? null,
+    upxPack: upxCfg.enabled ?? cfg.upxPack ?? cfg.upx ?? false,
+    elfPacker: elfCfg.tool ?? cfg.elfPacker ?? cfg.elfPack ?? null,
+    elfPackerCmd: elfCfg.cmd ?? cfg.elfPackerCmd ?? cfg.elfPackerBin ?? null,
+    elfPackerArgs: normalizeArgList(elfCfg.args ?? cfg.elfPackerArgs ?? cfg.elfPackerFlags ?? null),
     cObfuscator,
     cObfuscatorCmd,
     cObfuscatorArgs,

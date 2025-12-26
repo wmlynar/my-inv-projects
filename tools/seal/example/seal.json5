@@ -4,7 +4,7 @@
   "defaultTarget": "local",
   "build": {
     "packager": "auto",
-    "bundleFallback": false,
+    "packagerFallback": false,
     "obfuscationProfile": "balanced",
     "frontendObfuscation": {
       "enabled": true,
@@ -12,12 +12,21 @@
     },
     "protection": {
       "enabled": true,
-      "packSeaMain": true,
-      "packSeaMainMethod": "brotli",
-      "packSeaMainChunkSize": 8000,
-      "packBundle": true,
-      "stripSymbols": false,
-      "upxPack": false
+      "seaMain": {
+        "pack": true,
+        "method": "brotli",
+        "chunkSize": 8000
+      },
+      "bundle": {
+        "pack": true
+      },
+      "strip": {
+        "enabled": false,
+        "cmd": "strip"
+      },
+      "upx": {
+        "enabled": false
+      }
     },
     "includeDirs": [
       "public",

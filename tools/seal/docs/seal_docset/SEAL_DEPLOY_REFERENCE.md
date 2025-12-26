@@ -101,7 +101,7 @@ Seal powinien mieć interfejs packagera, aby można było podmieniać metodę pa
 **F) Protection/pack (domyślnie włączone)**
 - Domyślnie SEAL próbuje wykonać `strip` (Linux) oraz spakować binarkę przez `upx` (jeśli dostępny).
 - Gdy SEA nie jest możliwe i **bundle fallback jest jawnie włączony**, backend bundle jest pakowany do `app.bundle.cjs.gz` i uruchamiany przez mały loader (żeby nie leżał czytelny plik JS).
-- Bundle fallback wymaga jawnego włączenia: `build.bundleFallback=true` lub `packager=bundle`.
+- Bundle fallback wymaga jawnego włączenia: `build.packagerFallback=true` (alias: `build.bundleFallback`) lub `packager=bundle`.
 - Protection można wyłączyć w `seal.json5` (`build.protection.enabled=false`).
 - (MAY w przyszłości) self-integrity / anti-tamper jako opt-in.
 
@@ -249,11 +249,13 @@ seal-out/run.last_failed/
     "protection": {
       "enabled": true,
       // opcjonalnie, informacyjnie:
-      "stringObfuscation": "xorstr",
+      "strings": {"obfuscation": "xorstr"},
       // opcjonalnie, dla launchera thin:
-      "cObfuscator": "obfuscator-llvm",
-      "cObfuscatorCmd": "/path/to/obfuscating-clang",
-      "cObfuscatorArgs": ["-mllvm", "-fla", "-mllvm", "-sub"]
+      "cObfuscator": {
+        "tool": "obfuscator-llvm",
+        "cmd": "/path/to/obfuscating-clang",
+        "args": ["-mllvm", "-fla", "-mllvm", "-sub"]
+      }
     }
   },
   "decisions": [

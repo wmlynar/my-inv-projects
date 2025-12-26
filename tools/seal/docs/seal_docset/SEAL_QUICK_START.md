@@ -96,7 +96,7 @@ Domyślnie `seal release`:
 
 **Packagery (kolejność rekomendowana):** `thin-split`, `thin-single`, `sea`, `bundle`, `none` (raw bundle + wrapper; bez protection) (`auto` = `thin-split`).
 
-Bundle fallback jest wyłączony domyślnie; włącz go jawnie przez `build.bundleFallback=true` albo `--packager bundle`.
+Bundle fallback jest wyłączony domyślnie; włącz go jawnie przez `build.packagerFallback=true` albo `--packager bundle`.
 
 **Cleanup:** jeśli chcesz ręcznie wyczyścić artefakty, użyj `seal clean` (w monorepo uruchom w root, zadziała dla wszystkich podprojektów).
 

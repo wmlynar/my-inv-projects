@@ -50,7 +50,7 @@
 
 - Blad: SEA bundle fallback uruchomil build bez postject (cichy spadek poziomu zabezpieczen).
   - Wymaganie: brak `postject` to **blad builda**.
-  - Bundle fallback do pakowania JS jest dozwolony **tylko jawnie** (`build.bundleFallback=true` lub `--packager bundle`).
+- Bundle fallback do pakowania JS jest dozwolony **tylko jawnie** (`build.packagerFallback=true` lub `--packager bundle`).
 
 - Blad: obfuskacja/minifikacja frontendu byla wylaczona.
   - Wymaganie: `build.frontendObfuscation` i `build.frontendMinify` sa **domyslnie wlaczone** dla UI.

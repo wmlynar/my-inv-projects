@@ -80,7 +80,9 @@ function loadProjectConfig(projectRoot) {
   cfg.defaultTarget = cfg.defaultTarget || "local";
   cfg.build = cfg.build || {};
   cfg.build.packager = cfg.build.packager || "auto"; // auto|sea|bundle|none|thin-split|thin-single|thin(legacy)
-  if (cfg.build.bundleFallback === undefined) cfg.build.bundleFallback = cfg.build.allowFallback ?? false;
+  if (cfg.build.packagerFallback === undefined) {
+    cfg.build.packagerFallback = cfg.build.bundleFallback ?? cfg.build.allowFallback ?? false;
+  }
   cfg.build.thin = cfg.build.thin || {};
   if (cfg.build.thin.level === undefined) cfg.build.thin.level = cfg.build.thinLevel || "low";
   cfg.build.obfuscationProfile = cfg.build.obfuscationProfile || "balanced";
@@ -104,12 +106,21 @@ function loadProjectConfig(projectRoot) {
   if (cfg.build.protection === undefined) {
     cfg.build.protection = {
       enabled: true,
-      packSeaMain: true,
-      packSeaMainMethod: "brotli",
-      packSeaMainChunkSize: 8000,
-      packBundle: true,
-      stripSymbols: false,
-      upxPack: false,
+      seaMain: {
+        pack: true,
+        method: "brotli",
+        chunkSize: 8000,
+      },
+      bundle: {
+        pack: true,
+      },
+      strip: {
+        enabled: false,
+        cmd: "strip",
+      },
+      upx: {
+        enabled: false,
+      },
     };
   }
 

@@ -354,7 +354,7 @@ Poniżej presety praktyczne. Klucz: wskazujemy, co da się zrobić **bez dodatko
 - systemd: minimal lub brak (dev)
 
 ### 8.2 P1 — Standard release (domyślny, bez nowych tooli)
-- packager: `thin-split` (`low`) lub `sea` + packSeaMain
+- packager: `thin-split` (`low`) lub `sea` + `seaMain.pack`
 - obfuscationProfile: `balanced`
 - frontend obfuscation + minify: włączone
 - systemd baseline: włączony
