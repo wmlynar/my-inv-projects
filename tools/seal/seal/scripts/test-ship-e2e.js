@@ -154,43 +154,6 @@ async function shipOnce(targetCfg, opts) {
   assert.ok(fs.existsSync(currentFile), "Missing current.buildId after ship");
 }
 
-async function testShipThinAio() {
-  log("Testing seal ship prod (thin SINGLE/AIO)...");
-  const targetName = `ship-e2e-aio-${Date.now()}-${process.pid}`;
-  const serviceName = `seal-example-ship-aio-${Date.now()}`;
-  const installDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-ship-aio-"));
-  const targetCfg = {
-    target: targetName,
-    kind: "local",
-    host: "127.0.0.1",
-    user: "local",
-    serviceScope: "user",
-    installDir,
-    serviceName,
-    packager: "thin-single",
-    config: "local",
-  };
-
-  const targetPath = path.join(EXAMPLE_ROOT, "seal-config", "targets", `${targetName}.json5`);
-  const backup = readFileMaybe(targetPath);
-  writeTargetConfig(targetName, targetCfg);
-
-  try {
-    await shipOnce(targetCfg, { bootstrap: true, pushConfig: true, skipCheck: true, packager: "thin-single" });
-    const bPath = path.join(installDir, "b", "a");
-    const rtPath = path.join(installDir, "r", "rt");
-    assert.ok(!fs.existsSync(bPath), "AIO should not keep b/a");
-    assert.ok(!fs.existsSync(rtPath), "AIO should not keep r/rt");
-  } finally {
-    try {
-      uninstallLocal(targetCfg);
-    } catch {
-      cleanupServiceArtifacts(targetCfg);
-    }
-    cleanupTargetConfig(targetName, backup);
-  }
-}
-
 async function testShipThinBootstrapReuse() {
   log("Testing seal ship prod (thin SPLIT/BOOTSTRAP reuse)...");
   const targetName = `ship-e2e-boot-${Date.now()}-${process.pid}`;
@@ -332,8 +295,6 @@ async function main() {
   }
   try {
     if (systemctlUserReady()) {
-      await testShipThinAio();
-      log("OK: testShipThinAio");
       await testShipThinBootstrapReuse();
       log("OK: testShipThinBootstrapReuse");
     }

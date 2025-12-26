@@ -22,7 +22,7 @@ SEAL działa wtedy jak „wizard”: wykrywa stan projektu i mówi **co zrobić 
 - `seal` (CLI) dostępny w PATH
 
 #### Ubuntu – wymagane pakiety (przed instalacją/uruchomieniem SEAL)
-Jeśli używasz packagera `thin-split`/`thin-single`, potrzebujesz kompilatora C i `zstd`:
+Jeśli używasz packagera `thin-split`, potrzebujesz kompilatora C i `zstd`:
 
 ```bash
 sudo apt-get update
@@ -94,11 +94,9 @@ Domyślnie `seal release`:
 - rozpakowuje build do `seal-out/release/` (zawsze tylko ostatni release).
 - czyści `seal-out/` przed buildem (jak `target/`), z wyjątkiem `seal-out/cache/` (thin cache), więc zawsze zostaje tylko ostatni build.
 
-**Packagery (kolejność rekomendowana):** `thin-split`, `thin-single`, `sea`, `bundle`, `none` (raw bundle + wrapper; bez protection) (`auto` = `thin-split`).
+**Packagery (kolejność rekomendowana):** `thin-split`, `sea`, `bundle`, `none` (raw bundle + wrapper; bez protection) (`auto` = `thin-split`).
 
-> **UWAGA (BARDZO WAŻNE):** **`thin-split` to packager produkcyjny i bazowy dla łączenia zabezpieczeń.**  
-> **`thin-single` traktuj jako tryb dev/MVP** — przy AIO payload jest w pliku wykonywalnym, więc **nie da się bezpiecznie składać części ochron (np. `strip`/ELF packer)**.  
-> Jeśli potrzebujesz warstw ochrony i stabilnego release → **używaj `thin-split`.**
+> **UWAGA (BARDZO WAŻNE):** **`thin-split` to packager produkcyjny i bazowy dla łączenia zabezpieczeń.**
 
 Bundle fallback jest wyłączony domyślnie; włącz go jawnie przez `build.packagerFallback=true` albo `--packager bundle`.
 

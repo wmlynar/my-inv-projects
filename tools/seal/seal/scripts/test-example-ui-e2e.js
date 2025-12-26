@@ -141,7 +141,7 @@ function resolveCompilerCmd(projectCfg, launcherObfuscation) {
   return null;
 }
 
-async function buildThinRelease(mode, buildTimeoutMs) {
+async function buildThinRelease(buildTimeoutMs) {
   const projectCfg = loadProjectConfig(EXAMPLE_ROOT);
   projectCfg.build = projectCfg.build || {};
   projectCfg.build.thin = Object.assign({}, projectCfg.build.thin || {});
@@ -184,23 +184,13 @@ async function buildThinRelease(mode, buildTimeoutMs) {
   const targetCfg = loadTargetConfig(EXAMPLE_ROOT, "local").cfg;
   const configName = resolveConfigName(targetCfg, "local");
 
-  const packager = mode === "single" ? "thin-single" : "thin-split";
+  const packager = "thin-split";
   targetCfg.packager = packager;
 
-  if (packager === "thin-single") {
-    projectCfg.build.protection = Object.assign({}, projectCfg.build.protection || {}, {
-      strip: Object.assign({}, projectCfg.build.protection?.strip || {}, { enabled: false }),
-      elfPacker: Object.assign({}, projectCfg.build.protection?.elfPacker || {}, { tool: null, cmd: null, args: null }),
-    });
-    projectCfg.build.thin = Object.assign({}, projectCfg.build.thin || {}, {
-      integrity: { enabled: false },
-    });
-  }
-
-  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), `seal-ui-${mode}-`));
+  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-ui-split-"));
   const outDir = path.join(outRoot, "seal-out");
 
-  const res = await withTimeout(`buildRelease(${mode})`, buildTimeoutMs, () =>
+  const res = await withTimeout("buildRelease(split)", buildTimeoutMs, () =>
     buildRelease({
       projectRoot: EXAMPLE_ROOT,
       projectCfg,
@@ -311,8 +301,8 @@ async function runUiTest({ url, buildId, headless }) {
 }
 
 async function testUi(ctx) {
-  log(`Building thin ${ctx.mode.toUpperCase()}...`);
-  const res = await buildThinRelease(ctx.mode, ctx.buildTimeoutMs);
+  log("Building thin SPLIT...");
+  const res = await buildThinRelease(ctx.buildTimeoutMs);
   const { releaseDir, buildId, outRoot } = res;
 
   log("Running sealed binary...");
@@ -374,10 +364,7 @@ async function main() {
   const testTimeoutMs = Number(process.env.SEAL_UI_E2E_TIMEOUT_MS || "240000");
   const headless = process.env.SEAL_UI_E2E_HEADLESS !== "0";
   const keepArtifacts = process.env.SEAL_UI_E2E_KEEP === "1";
-  const modeRaw = String(process.env.SEAL_UI_E2E_MODE || "split").toLowerCase();
-  const mode = modeRaw === "single" ? "single" : "split";
-
-  const ctx = { buildTimeoutMs, runTimeoutMs, uiTimeoutMs, headless, keepArtifacts, mode };
+  const ctx = { buildTimeoutMs, runTimeoutMs, uiTimeoutMs, headless, keepArtifacts };
 
   await withTimeout("testUi", testTimeoutMs, () => testUi(ctx));
   log("OK: ui-e2e");

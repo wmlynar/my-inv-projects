@@ -79,7 +79,7 @@ function loadProjectConfig(projectRoot) {
   cfg.entry = cfg.entry || detectEntry(projectRoot) || "src/index.js";
   cfg.defaultTarget = cfg.defaultTarget || "local";
   cfg.build = cfg.build || {};
-  cfg.build.packager = cfg.build.packager || "auto"; // auto|sea|bundle|none|thin-split|thin-single
+  cfg.build.packager = cfg.build.packager || "auto"; // auto|sea|bundle|none|thin-split
   if (cfg.build.packagerFallback === undefined) cfg.build.packagerFallback = false;
   cfg.build.thin = cfg.build.thin || {};
   if (cfg.build.thin.mode === undefined) cfg.build.thin.mode = "split";

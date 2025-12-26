@@ -127,35 +127,26 @@ function getFreePort() {
   });
 }
 
-async function buildThinRelease(mode, buildTimeoutMs) {
+async function buildThinRelease(buildTimeoutMs) {
   const projectCfg = loadProjectConfig(EXAMPLE_ROOT);
   projectCfg.build = projectCfg.build || {};
   projectCfg.build.thin = Object.assign({}, projectCfg.build.thin || {}, {
     launcherObfuscation: false,
   });
-  const isSingle = mode === "aio";
-  if (isSingle) {
-    projectCfg.build.thin.integrity = { enabled: false };
-  }
-  if (isSingle) {
-    projectCfg.build.protection = Object.assign({}, projectCfg.build.protection || {}, {
-      strip: Object.assign({}, projectCfg.build.protection?.strip || {}, { enabled: false }),
-      elfPacker: Object.assign({}, projectCfg.build.protection?.elfPacker || {}, { tool: null, cmd: null, args: null }),
-    });
-  } else if (projectCfg.build.protection?.elfPacker?.tool && !hasCommand(projectCfg.build.protection.elfPacker.cmd || projectCfg.build.protection.elfPacker.tool)) {
+  if (projectCfg.build.protection?.elfPacker?.tool && !hasCommand(projectCfg.build.protection.elfPacker.cmd || projectCfg.build.protection.elfPacker.tool)) {
     log("ELF packer not available; disabling elfPacker for test");
     projectCfg.build.protection.elfPacker = {};
   }
   const targetCfg = loadTargetConfig(EXAMPLE_ROOT, "local").cfg;
   const configName = resolveConfigName(targetCfg, "local");
 
-  const packager = mode === "bootstrap" ? "thin-split" : "thin-single";
-  targetCfg.packager = packager;
+  const packager = "thin-split";
+  targetCfg.packager = "thin-split";
 
-  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), `seal-out-${mode}-`));
+  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-out-split-"));
   const outDir = path.join(outRoot, "seal-out");
 
-  const res = await withTimeout(`buildRelease(${mode})`, buildTimeoutMs, () =>
+  const res = await withTimeout("buildRelease(split)", buildTimeoutMs, () =>
     buildRelease({
       projectRoot: EXAMPLE_ROOT,
       projectCfg,
@@ -257,46 +248,9 @@ async function runReleaseExpectFailure({ releaseDir, env, runTimeoutMs, expectSu
   }
 }
 
-async function testThinAio(ctx) {
-  log("Building thin SINGLE (AIO)...");
-  const res = await buildThinRelease("aio", ctx.buildTimeoutMs);
-  const { releaseDir, buildId, outRoot } = res;
-
-  const aioB = path.join(releaseDir, "b", "a");
-  const aioR = path.join(releaseDir, "r", "rt");
-  assert.ok(!fs.existsSync(aioB), "AIO release should not contain b/a");
-  assert.ok(!fs.existsSync(aioR), "AIO release should not contain r/rt");
-
-  log("Running thin SINGLE binary...");
-  await runRelease({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs });
-
-  log("Running thin SINGLE with hardened env (strict)...");
-  await runRelease({
-    releaseDir,
-    buildId,
-    runTimeoutMs: ctx.runTimeoutMs,
-    env: { SEAL_THIN_ENV_STRICT: "1", PATH: "" },
-  });
-
-  const badEnv = {
-    NODE_OPTIONS: "--require /nonexistent",
-    NODE_PATH: "/nonexistent",
-    NODE_V8_COVERAGE: "/tmp/cover",
-  };
-  log("Running thin SINGLE with debug env (expect failure)...");
-  await runReleaseExpectFailure({
-    releaseDir,
-    runTimeoutMs: ctx.runTimeoutMs,
-    env: badEnv,
-    expectSubstring: "[thin] runtime invalid",
-  });
-
-  fs.rmSync(outRoot, { recursive: true, force: true });
-}
-
-async function testThinBootstrap(ctx) {
+async function testThinSplit(ctx) {
   log("Building thin SPLIT (bootstrap)...");
-  const res = await buildThinRelease("bootstrap", ctx.buildTimeoutMs);
+  const res = await buildThinRelease(ctx.buildTimeoutMs);
   const { releaseDir, buildId, outRoot } = res;
 
   const launcher = path.join(releaseDir, "b", "a");
@@ -366,7 +320,7 @@ async function main() {
     }
   }
 
-  const tests = [testThinAio, testThinBootstrap];
+  const tests = [testThinSplit];
   let failures = 0;
   try {
     for (const t of tests) {

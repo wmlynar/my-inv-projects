@@ -29,7 +29,7 @@ Docset v0.5 składa się z:
 - **SEAL_STANDARD v1.3** – standard jakości aplikacji sealowanych.
 - **SEAL_CONTRACT_AI v1.3** – krótki kontrakt „promptable” dla generatorów kodu.
 - **SEAL_PITFALLS v0.5** – lista realnych błędów do uniknięcia + wymagania zapobiegawcze.
-- **SEAL_PACKAGER_THIN_SPEC_SCALONA** – specyfikacja packagerów `thin-split` / `thin-single` (BOOTSTRAP/AIO).
+- **SEAL_PACKAGER_THIN_SPEC_SCALONA** – specyfikacja packagera `thin-split` (BOOTSTRAP).
 - **SEAL_CHANGELOG v0.5** – changelog całego docsetu.
 
 ## Zasady wersjonowania

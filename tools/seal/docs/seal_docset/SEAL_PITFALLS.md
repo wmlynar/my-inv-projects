@@ -300,11 +300,11 @@
 - Blad: nowy plik w layout (np. sidecar) nie byl uwzgledniony w deploy/rollback/fast/cleanup, przez co stan na target byl niespojny.
   - Wymaganie: kazdy nowy plik w layout musi byc dodany do wszystkich sciezek deployu, rollbacku i cleanupu oraz pokryty testem.
 
-- Blad: test UI E2E uruchamial `thin-single` przy wlaczonym `strip`/`elfPacker`, co jest niewspierane i konczy sie bledem.
-  - Wymaganie: testy UI używaja `thin-split` albo jawnie wylaczaja `strip`/`elfPacker` dla `thin-single`.
+- Blad: test UI E2E uruchamial AIO z wlaczonym `strip`/`elfPacker`, co jest niewspierane i konczy sie bledem.
+  - Wymaganie: testy UI używaja `thin-split` (lub jawnie wylaczaja `strip`/`elfPacker` dla AIO).
 
-- Blad: testy uruchamialy `thin-single` z wlaczonym `thin.integrity`, co zawsze failuje (integrity wymaga `thin-split`).
-  - Wymaganie: testy dla `thin-single` musza wylaczyc `thin.integrity` albo przejsc na `thin-split`.
+- Blad: testy uruchamialy AIO z wlaczonym `thin.integrity`, co zawsze failuje (integrity wymaga `thin-split`).
+  - Wymaganie: testy dla AIO musza wylaczyc `thin.integrity` albo przejsc na `thin-split`.
 
 - Blad: testy automatycznie wylaczaly funkcje (np. brak obfuscatora/packera), ale brakowalo osobnego testu pokrywajacego te funkcje.
   - Wymaganie: kazda funkcja wylaczana w testach musi miec osobny E2E (gated ENV), ktory wymusza jej wlaczenie i failuje przy braku narzedzia.
@@ -523,8 +523,8 @@
 - Blad: w `thin-split` `strip`/ELF packer byl uruchamiany na wrapperze (`<app>`), a nie na faktycznym launcherze (`b/a`), przez co ochrona nie dzialala lub dawla falszywe wyniki.
   - Wymaganie: dla `thin-split` targetuj realny ELF launchera (`b/a`) i zapisuj w metadanych/logach, ze celem byl `launcher`.
 
-- Blad: w `thin-single` (AIO) probowano `strip`/ELF packer na pliku z doklejonym payloadem, co psulo runtime.
-  - Wymaganie: `strip`/packer dla `thin-single` musi fail-fast z jasnym komunikatem; dokumentacja ma wyraznie wskazywac `thin-single` jako tryb dev/MVP.
+- Blad: w AIO probowano `strip`/ELF packer na pliku z doklejonym payloadem, co psulo runtime.
+  - Wymaganie: `strip`/packer dla AIO musi fail-fast z jasnym komunikatem; dokumentacja ma wyraznie wskazywac `thin-split` jako tryb produkcyjny.
 
 - Blad: `strip` na binarce SEA powodowal crash (SIGSEGV) mimo udanego builda.
   - Wymaganie: dla `sea` `strip` jest niewspierany i musi fail-fast z jasnym komunikatem.

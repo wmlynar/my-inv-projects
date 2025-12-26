@@ -82,7 +82,7 @@ System uznajemy za spełniający wymagania, jeśli:
 
 ### 0.4 Mapowanie na scenariusze (kiedy który poziom ma sens)
 - **S1 (serwer, przeciwnik bez roota):** największą różnicę robi hardening OS/usługi (systemd, separacja kont, brak debug artefaktów, polityka logów).  
-- **S2 (dystrybucja do klienta / hostile host):** zakładaj, że artefakt będzie analizowany offline → `thin-single`/`thin-split(high)` + mocna polityka „no leaks” + (opcjonalnie) THIN Poziom B/C.  
+- **S2 (dystrybucja do klienta / hostile host):** zakładaj, że artefakt będzie analizowany offline → `thin-split(high)` + mocna polityka „no leaks” + (opcjonalnie) THIN Poziom B/C.  
 - **S3 (najbardziej wrażliwy algorytm / core IP):** jeśli to możliwe architektonicznie, rozważ wyniesienie krytycznej logiki do osobnej usługi (lub innego trust boundary). Obfuskacja nie zastąpi kontroli dostępu.
 
 ---
@@ -160,7 +160,7 @@ Jeśli celem jest anti‑casual extraction, dodaj **maskowanie** (patrz §6.3.A)
 
 To usuwa „łatwe podejrzenie”, ale nadal nie jest to kryptografia.
 
-### 3.4 `packager=thin-*` (thin-single / thin-split)
+### 3.4 `packager=thin-split`
 Dedykowany mechanizm **anti‑casual extraction**: runtime Node i payload są pakowane do kontenera (chunking + kompresja + maskowanie) i odtwarzane w runtime przez launcher.
 
 To jest obecnie najmocniejsza warstwa ochrony kodu w SEAL, bo:
@@ -251,7 +251,7 @@ Pipeline powinien produkować i archiwizować:
 ## 6. Packager THIN — ochrona, co już jest, i co można dodać (zwłaszcza na etapie generacji)
 
 ### 6.1 Co THIN robi już teraz (Poziom A / MVP)
-W obecnej implementacji THIN (thin-single / thin-split) typowo mamy:
+W obecnej implementacji THIN (`thin-split`) typowo mamy:
 
 - **Kontener**: chunking + `zstd` + maskowanie bajtów per‑deployment (parametry kodeka losowe per build/target).  
 - **Launcher w C** budowany na maszynie build:
@@ -361,7 +361,7 @@ Poniżej presety praktyczne. Klucz: wskazujemy, co da się zrobić **bez dodatko
 - QA w CI: polityka plików + `strings` + smoke tests
 
 ### 8.3 P2 — Hardened release (bez nowych tooli, większe tarcie)
-- packager: `thin-split` (`high`) lub `thin-single` (AIO) dla dystrybucji
+- packager: `thin-split` (`high`) dla dystrybucji
 - generator:
   - maskowanie także dla `bundle`/`sea` (żeby nie było prostego `gunzip`)
   - sanitizacja metadanych launchera (`-fno-ident`, opcjonalnie `--build-id=none`)

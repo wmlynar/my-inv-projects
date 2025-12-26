@@ -208,6 +208,7 @@ async function buildWithStrip({ outRoot, packager }) {
   });
   projectCfg.build.protection = Object.assign({}, projectCfg.build.protection || {}, {
     strip: { enabled: true, cmd: "strip" },
+    elfPacker: {},
   });
 
   const targetCfg = loadTargetConfig(EXAMPLE_ROOT, "local").cfg;
@@ -219,7 +220,7 @@ async function buildWithStrip({ outRoot, packager }) {
     projectCfg,
     targetCfg,
     configName,
-    packagerOverride: packager || "thin-single",
+    packagerOverride: packager || "thin-split",
     outDirOverride: outDir,
   });
 
@@ -318,16 +319,6 @@ async function main() {
   const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-strip-"));
   let failures = 0;
   try {
-    log("Building thin-single with strip enabled (expect error)...");
-    await withTimeout("buildRelease(strip-thin-single)", buildTimeoutMs, () =>
-      expectBuildFailure(
-        "thin-single",
-        () => buildWithStrip({ outRoot, packager: "thin-single" }),
-        "thin-single"
-      )
-    );
-    log("OK: thin-single strip rejected");
-
     log("Building thin-split with strip enabled...");
     const thinSplitRes = await withTimeout("buildRelease(strip-thin-split)", buildTimeoutMs, () =>
       buildWithStrip({ outRoot, packager: "thin-split" })

@@ -200,6 +200,7 @@ async function buildWithObfuscator({ outRoot, obfuscator, cmd, args }) {
       cmd,
       args,
     },
+    elfPacker: {},
   });
 
   const targetCfg = loadTargetConfig(EXAMPLE_ROOT, "local").cfg;
@@ -211,7 +212,7 @@ async function buildWithObfuscator({ outRoot, obfuscator, cmd, args }) {
     projectCfg,
     targetCfg,
     configName,
-    packagerOverride: "thin-single",
+    packagerOverride: "thin-split",
     outDirOverride: outDir,
   });
 

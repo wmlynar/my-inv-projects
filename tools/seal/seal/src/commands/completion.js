@@ -57,7 +57,7 @@ _seal_complete() {
   local global_opts="-h --help -V --version"
 
   if [[ "$prev" == "--packager" ]]; then
-    COMPREPLY=( $(compgen -W "thin-split thin-single sea bundle none auto" -- "$cur") )
+    COMPREPLY=( $(compgen -W "thin-split sea bundle none auto" -- "$cur") )
     return
   fi
   if [[ "$prev" == "--config" ]]; then

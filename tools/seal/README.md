@@ -273,10 +273,9 @@ build: {
 ## Packagery (kolejność rekomendowana)
 
 1) `thin-split` – **najbardziej rekomendowany** (BOOTSTRAP: stały runtime + payload), szybkie aktualizacje.
-2) `thin-single` – AIO (jeden artefakt).
-3) `sea` – klasyczny SEA (single executable).
-4) `bundle` – obfuskowany bundle JS (fallback bez SEA).
-5) `none` – raw bundle + wrapper (bez protection/bundle.pack; tylko do diagnostyki).
+2) `sea` – klasyczny SEA (single executable).
+3) `bundle` – obfuskowany bundle JS (fallback bez SEA).
+4) `none` – raw bundle + wrapper (bez protection/bundle.pack; tylko do diagnostyki).
 
 `auto` oznacza obecnie `thin-split` i jest polecany, jeśli chcesz automatycznie przechodzić na lepszy packager w przyszłości.
 

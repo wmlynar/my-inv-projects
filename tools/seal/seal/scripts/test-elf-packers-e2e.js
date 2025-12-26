@@ -202,7 +202,7 @@ async function buildWithProtection({ protection, outRoot }) {
     projectCfg,
     targetCfg,
     configName,
-    packagerOverride: "thin-single",
+    packagerOverride: "thin-split",
     outDirOverride: outDir,
   });
 
@@ -231,7 +231,7 @@ async function testElfPacker(ctx, spec) {
   let args = parseArgsEnv(process.env[spec.argsEnv]);
   if (!args) args = spec.defaultArgs.slice();
 
-  log(`Building thin-single with ${spec.name}...`);
+  log(`Building thin-split with ${spec.name}...`);
   const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), `seal-${spec.id}-`));
   try {
     const res = await withTimeout(`buildRelease(${spec.id})`, ctx.buildTimeoutMs, () =>

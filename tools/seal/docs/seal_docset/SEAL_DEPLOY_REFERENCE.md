@@ -13,7 +13,7 @@ W szczególności: przeniesiona sekcja **14.6** (blueprint implementacji SEA).
 
 ## 1.1 Wymagania (Ubuntu, zanim zainstalujesz SEAL)
 
-Jeśli planujesz używać packagera `thin-split`/`thin-single`, potrzebujesz kompilatora C oraz zstd:
+Jeśli planujesz używać packagera `thin-split`, potrzebujesz kompilatora C oraz zstd:
 
 ```bash
 sudo apt-get update

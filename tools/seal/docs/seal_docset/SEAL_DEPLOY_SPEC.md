@@ -1733,15 +1733,15 @@ Przykład (aktualny dla v0.5):
   defaultTarget: "local",
 
   build: {
-    // packager (kolejnosc rekomendowana): thin-split, thin-single, sea, bundle, none (auto = thin-split)
+    // packager (kolejnosc rekomendowana): thin-split, sea, bundle, none (auto = thin-split)
     // none = raw bundle + wrapper (bez protection/bundle.pack; tylko do diagnostyki)
-    // UWAGA: thin-split = produkcja; thin-single = dev/MVP (AIO nie wspiera bezpiecznie strip/ELF packer)
+    // UWAGA: thin-split = produkcja i baza do łączenia zabezpieczeń
     packager: "auto",
     packagerFallback: false,
 
     // Thin-specific settings (used by thin packagers)
     thin: {
-      mode: "split",          // split | single
+      mode: "split",          // split
       level: "low",           // low | medium | high
       chunkSizeBytes: 2097152,
       zstdLevel: 1,
@@ -1781,7 +1781,7 @@ Przykład (aktualny dla v0.5):
     frontendMinify: { enabled: true, level: "safe", html: true, css: true },
 
     // Protection (anti-peek) – domyślnie włączone
-    // - SEA/thin-single: strip/elfPacker NIE są wspierane (build musi fail-fast)
+    // - SEA: strip/elfPacker NIE są wspierane (build musi fail-fast)
     // - thin-split: strip/elfPacker możliwe (target: launcher b/a)
     // - thin.integrity (inline) + elfPacker: NIEkompatybilne (build fail-fast; użyj mode=sidecar)
     // - bundle: bundle.pack = gzip-pack backend bundle + loader

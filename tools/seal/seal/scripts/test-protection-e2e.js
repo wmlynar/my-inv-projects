@@ -212,14 +212,14 @@ async function buildWithProtection({ protection, outRoot, packager }) {
 }
 
 async function testStringObfuscationMeta(ctx) {
-  log("Building thin-single with stringObfuscation metadata...");
+  log("Building thin-split with stringObfuscation metadata...");
   const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-protection-meta-"));
   try {
     const res = await withTimeout("buildRelease(meta)", ctx.buildTimeoutMs, () =>
       buildWithProtection({
         protection: { strings: { obfuscation: "xorstr" } },
         outRoot,
-        packager: "thin-single",
+        packager: "thin-split",
       })
     );
     const value = res.meta?.protection?.stringObfuscation;
@@ -231,7 +231,7 @@ async function testStringObfuscationMeta(ctx) {
 }
 
 async function testElfPacker(ctx) {
-  log("Building thin-single with ELF packer...");
+  log("Building thin-split with ELF packer...");
   const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-protection-elf-"));
   const toolRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-elf-tool-"));
   try {
@@ -246,7 +246,7 @@ async function testElfPacker(ctx) {
           },
         },
         outRoot,
-        packager: "thin-single",
+        packager: "thin-split",
       })
     );
 
@@ -255,7 +255,7 @@ async function testElfPacker(ctx) {
     assert.ok(packStep, "Expected elf_packer step in protection metadata");
     assert.strictEqual(packStep.ok, true, "Expected elf_packer step to be ok");
 
-    log("Running packed thin-single binary...");
+    log("Running packed thin-split binary...");
     await runRelease({ releaseDir: res.releaseDir, buildId: res.buildId, runTimeoutMs: ctx.runTimeoutMs });
   } finally {
     fs.rmSync(outRoot, { recursive: true, force: true });

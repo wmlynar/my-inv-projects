@@ -228,7 +228,7 @@ async function cmdCheck(cwd, targetArg, opts) {
   const packagerSpec = normalizePackager(opts.packager || targetCfg?.packager || proj?.build?.packager || "auto");
   const allowBundleFallback = resolveBundleFallback(targetCfg, proj);
   if (packagerSpec.kind === "unknown") {
-    errors.push(`Unknown packager: ${packagerSpec.label}. Allowed: thin-split, thin-single, sea, bundle, none, auto.`);
+    errors.push(`Unknown packager: ${packagerSpec.label}. Allowed: thin-split, sea, bundle, none, auto.`);
   }
   const seaNeeded = packagerSpec.kind === "sea";
   const thinNeeded = packagerSpec.kind === "thin";

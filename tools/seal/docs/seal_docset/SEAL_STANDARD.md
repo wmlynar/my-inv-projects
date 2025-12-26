@@ -165,7 +165,7 @@ Przykład:
 - STD-150 (SHOULD): zanim uruchomisz `strip`/packer na pliku, zweryfikuj typ (ELF magic/`file`) i w razie braku zgodnosci wykonaj SKIP z powodem.
 - STD-151 (SHOULD): gdy operacja wymaga uprawnien/sandbox escape, komunikat musi jasno prosic o zgode; brak cichych fallbackow.
 - STD-152 (SHOULD): dla `thin-split` hardening (strip/packer) musi targetowac **launcher** (`b/a`), a nie wrapper `./<app>`; zapisuj w metadanych/logach, ktory plik byl celem.
-- STD-153 (SHOULD): dla `thin-single` hardening (strip/packer) jest niedozwolony — fail‑fast z jasnym komunikatem i nie probuj modyfikowac AIO.
+- STD-153 (SHOULD): dla packagerów AIO (SEA) hardening (strip/packer) jest niedozwolony — fail‑fast z jasnym komunikatem i nie probuj modyfikowac AIO.
 - STD-154 (SHOULD): dla `sea` `strip`/ELF packer jest niewspierany i musi fail‑fast z jasnym komunikatem.
 - STD-157 (SHOULD): `thin.appBind` jest domyślnie włączony i używa stabilnego ID projektu (nie ścieżek); w razie kolizji `appName`/`entry` ustaw jawne `appBind.value`.
 - STD-158 (SHOULD): `thin.launcherObfuscation` domyślnie włączone i **fail‑fast**, jeśli brak `protection.cObfuscator` (brak fallbacków).
@@ -230,7 +230,7 @@ Przykład:
 - STD-087 (SHOULD): przy porazce testu wypisuj command line i fragment stdout/stderr oraz effective config (z limitem dlugosci).
 - STD-087a (SHOULD): jesli testy E2E auto‑modyfikuja konfiguracje (np. wylaczaja opcje), musza to jawnie logowac wraz z powodem.
 - STD-087b (SHOULD): jesli konfiguracja wymaga obfuscatora C, testy musza sprawdzic jego dostepnosc i jawnie przejsc w tryb SKIP lub wylaczyc obfuskacje z logiem.
-- STD-087c (SHOULD): jesli test zmienia packager (np. `thin-single` vs `thin-split`), musi dostosowac zalezne opcje (integrity/strip/elfPacker) albo fail‑fast z jasnym komunikatem.
+- STD-087c (SHOULD): jesli test zmienia packager (np. `sea` vs `thin-split`), musi dostosowac zalezne opcje (integrity/strip/elfPacker) albo fail‑fast z jasnym komunikatem.
 - STD-087d (SHOULD): jeśli test automatycznie wyłącza funkcję z powodu brakującego narzędzia, musi istnieć osobny test (gated ENV), który **wymusza** tę funkcję i failuje przy braku zależności.
 - STD-087e (SHOULD): funkcje ochronne (anti‑debug/snapshot) musza miec deterministyczne “test hooks” aktywowane tylko w trybie testowym (ENV), aby E2E byly stabilne.
 - STD-087f (SHOULD): testy E2E musza byc bezpieczne dla uruchomien rownoleglych (unikalne serviceName/installDir/outDir i brak wspolnych plikow globalnych).

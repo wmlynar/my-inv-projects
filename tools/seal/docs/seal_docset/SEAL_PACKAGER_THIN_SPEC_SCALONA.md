@@ -2,7 +2,8 @@
 
 Data: 2025-12-24  
 Status: **proposal → implementacja**  
-Dotyczy: **packagery thin** w frameworku SEAL (**to NIE jest flaga `--fast`**): `thin-split` + `thin-single`
+Dotyczy: **packager thin** w frameworku SEAL (**to NIE jest flaga `--fast`**): `thin-split`  
+(`thin-single` traktujemy jako **legacy** i nie używamy w repo)
 
 Źródła scalone w tym dokumencie:
 - v0.1 (model thinking, “maksymalnie doprecyzowany”)  
@@ -11,9 +12,7 @@ Dotyczy: **packagery thin** w frameworku SEAL (**to NIE jest flaga `--fast`**): 
 
 > **Cel praktyczny**: nie “tajemnica wobec roota”, tylko **anti‑casual extraction** — podnieść próg tak, by proste techniki (`file/strings/binwalk/zstd -d/unzip/odcięcie ogona`) nie wystarczały, a wydobycie kodu wymagało RE/dezasemblacji/debugowania launchera lub formatu.
 
-> **UWAGA (BARDZO WAŻNE):** **`thin-split` to packager produkcyjny i domyślnie rekomendowany.**  
-> **`thin-single` traktuj jako tryb dev/MVP** (szybki, prosty), bo ma ograniczenia: **nie pozwala bezpiecznie łączyć części zabezpieczeń (np. `strip`/ELF packer),** gdy payload jest w tym samym pliku wykonywalnym.  
-> Jeśli chcesz łączyć warstwy ochrony i mieć stabilny release → **używaj `thin-split`.**
+> **UWAGA (BARDZO WAŻNE):** **`thin-split` to packager produkcyjny i domyślnie rekomendowany.**
 
 ---
 
@@ -50,7 +49,7 @@ System uznajemy za “sukces”, jeśli:
 ## 1. Terminologia i osie projektu (żeby nie mieszać pojęć)
 
 ### 1.1 Packager vs wariant dystrybucji vs poziom “sprytu”
-- **Packager**: moduł SEAL budujący release. Tutaj: **rodzina `thin`** (`thin-split` / `thin-single`).
+- **Packager**: moduł SEAL budujący release. Tutaj: **`thin-split`**.
 - **Wariant dystrybucji (operacyjny)**:
   - **AIO**: jeden artefakt (launcher + runtime Node + payload aplikacji).
   - **BOOTSTRAP**: stały launcher + osobne pliki runtime/payload (payload aktualizowany często).
@@ -59,10 +58,10 @@ System uznajemy za “sukces”, jeśli:
   - **Poziom B**: polimorfizm (codegen dekodera/enkodera per deployment).
   - **Poziom C**: dict + padding + dummy chunks/noise i inne utrudniacze heurystyczne.
 
-**Plan wdrożenia** (wspólny dla źródeł): najpierw **Poziom A + wariant AIO**, potem BOOTSTRAP, dopiero później Poziomy B/C.
+**Plan wdrożenia** (wspólny dla źródeł): najpierw **Poziom A + wariant BOOTSTRAP**, potem Poziomy B/C.
 
 ### 1.2 Zasada upraszczająca (MUST)
-AIO i BOOTSTRAP korzystają z **tego samego formatu kontenera THIN** i **tego samego dekodera** w launcherze. Różni się wyłącznie to, **skąd launcher czyta bajty** (z własnego pliku AIO vs z plików obok w BOOTSTRAP).
+BOOTSTRAP korzysta z **tego samego formatu kontenera THIN** i **tego samego dekodera** w launcherze; różni się wyłącznie to, **skąd launcher czyta bajty** (z plików obok w BOOTSTRAP).
 
 ---
 
@@ -70,7 +69,7 @@ AIO i BOOTSTRAP korzystają z **tego samego formatu kontenera THIN** i **tego sa
 
 ### 2.1 Dlaczego to NIE jest `--fast`
 W SEAL istnieje już semantyka `--fast` związana z “fast ship from sources (unsafe)”/bundle. Mechanizm thin ma być **osobnym packagerem**:
-- CLI/config: `--packager thin-split` (BOOTSTRAP) lub `--packager thin-single` (AIO).
+- CLI/config: `--packager thin-split` (BOOTSTRAP).
 
 ### 2.2 Minimalny UX (do zapamiętania)
 Docelowo użytkownik ma 1–2 komendy:
@@ -85,11 +84,11 @@ npx seal ship prod --packager thin-split
 
 Opcjonalnie (lokalny build bez deploy):
 ```bash
-npx seal release prod --packager thin-single
+npx seal release prod --packager thin-split
 ```
 
 **Konfiguracja trybu (MUST):**
-- `build.packager: "thin-single" | "thin-split"` (domyślnie: `thin-split` w nowych projektach).
+- `build.packager: "thin-split"` (domyślnie: `thin-split` w nowych projektach).
 - `targets/<target>.json5` może nadpisać przez `packager`.
 
 **Poziomy wydajności (MUST):**
@@ -167,7 +166,7 @@ npx seal release prod --packager thin-single
   - `SEAL_LOADER_GUARD_FORCE=1`
 - `build.thin.integrity`:
   - `enabled` (domyślnie `false`) — weryfikuje self‑hash launchera (`b/a`) w `thin-split`.
-  - **Tylko `thin-split`**; dla `thin-single` build kończy się błędem.
+  - **Tylko `thin-split`**; dla AIO build kończy się błędem.
   - `mode`: `inline` (marker w binarce) lub `sidecar` (hash w pliku `r/<file>`).
   - `file`: nazwa pliku sidecar (domyślnie `ih`).
   - Inline: hash jest osadzany w launcherze **po** wszystkich operacjach post‑pack (hardening/obfuscation). Każda modyfikacja binarki po tym kroku unieważnia hash.
