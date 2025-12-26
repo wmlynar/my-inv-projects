@@ -15,7 +15,7 @@ const {
   formatSshFailure,
 } = require("./ssh");
 const { ensureDir, fileExists } = require("./fsextra");
-const { packBlobV1, unpackBlobV1 } = require("./sentinelCore");
+const { packBlob, unpackBlob } = require("./sentinelCore");
 const { buildFingerprintHash, resolveAutoLevel, normalizeCpuIdSource } = require("./sentinelConfig");
 
 const FLAG_REQUIRE_XATTR = 0x0001;
@@ -436,6 +436,47 @@ echo "CPUID=$CPUID"
   };
 }
 
+function getEpochSecondsSsh(targetCfg) {
+  const { user, host } = sshUserHost(targetCfg);
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-lc", "date +%s"], stdio: "pipe" });
+  if (!res.ok) {
+    const out = `${res.stdout}\n${res.stderr}`.trim();
+    throw new Error(`sentinel time probe failed (status=${res.status})${formatSshFailure(res) || (out ? `: ${out}` : "")}`);
+  }
+  const raw = String(res.stdout || "").trim();
+  const num = Number(raw);
+  if (!Number.isFinite(num) || num <= 0) {
+    throw new Error(`sentinel time probe failed: invalid epoch "${raw}"`);
+  }
+  return Math.trunc(num);
+}
+
+function resolveExpiresAtSec({ sentinelCfg, nowSec }) {
+  const timeLimit = sentinelCfg && sentinelCfg.timeLimit ? sentinelCfg.timeLimit : { mode: "off" };
+  if (!timeLimit || timeLimit.mode === "off") return 0;
+  if (timeLimit.mode === "absolute") {
+    const exp = Number(timeLimit.expiresAtSec || 0);
+    if (!Number.isFinite(exp) || exp <= 0) {
+      throw new Error("sentinel timeLimit.expiresAt is invalid");
+    }
+    if (nowSec && exp <= nowSec) {
+      throw new Error("sentinel timeLimit.expiresAt is in the past");
+    }
+    return Math.trunc(exp);
+  }
+  if (timeLimit.mode === "relative") {
+    const dur = Number(timeLimit.durationSec || 0);
+    if (!Number.isFinite(dur) || dur <= 0) {
+      throw new Error("sentinel timeLimit duration is invalid");
+    }
+    if (!Number.isFinite(nowSec) || nowSec <= 0) {
+      throw new Error("sentinel timeLimit requires current time");
+    }
+    return Math.trunc(nowSec + dur);
+  }
+  throw new Error(`sentinel timeLimit mode unsupported: ${timeLimit.mode}`);
+}
+
 function probeBaseDirSsh(targetCfg, sentinelCfg) {
   const { user, host } = sshUserHost(targetCfg);
   const { user: serviceUser, group: serviceGroup } = serviceUserGroup(targetCfg, user);
@@ -502,6 +543,9 @@ echo "BASE_EXEC=$BASE_EXEC"
 function installSentinelSsh({ targetCfg, sentinelCfg, force, insecure }) {
   const { user, host } = sshUserHost(targetCfg);
   const hostInfo = getHostInfoSsh(targetCfg);
+  const timeLimit = sentinelCfg && sentinelCfg.timeLimit ? sentinelCfg.timeLimit : { mode: "off" };
+  const needsNow = timeLimit.mode && timeLimit.mode !== "off";
+  const nowSec = needsNow ? getEpochSecondsSsh(targetCfg) : null;
   const level = sentinelCfg.level === "auto" ? resolveAutoLevel(hostInfo) : Number(sentinelCfg.level);
   if (![0, 1, 2].includes(level)) {
     throw new Error(`sentinel level not supported in MVP: ${level}`);
@@ -525,7 +569,8 @@ function installSentinelSsh({ targetCfg, sentinelCfg, force, insecure }) {
   if (includeCpuId) flags |= FLAG_INCLUDE_CPUID;
   const installId = crypto.randomBytes(32);
   const fpHash = buildFingerprintHash(level, hostInfo, { includePuid: false, includeCpuId });
-  const blob = packBlobV1({ level, flags, installId, fpHash }, sentinelCfg.anchor);
+  const expiresAtSec = resolveExpiresAtSec({ sentinelCfg, nowSec });
+  const blob = packBlob({ level, flags, installId, fpHash, expiresAtSec }, sentinelCfg.anchor);
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-"));
   const tmpLocal = path.join(tmpDir, "blob");
@@ -694,6 +739,7 @@ if [ ! -f "$FILE" ]; then
 fi
 statline="$(stat -Lc '%u %g %a' "$FILE" 2>/dev/null || true)"
 echo "FILE_STAT=$statline"
+echo "NOW_EPOCH=$(date +%s)"
 `;
   const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-lc", script], stdio: "pipe" });
   if (!res.ok) {
@@ -718,8 +764,8 @@ echo "FILE_STAT=$statline"
   const blob = fs.readFileSync(tmpLocal);
   fs.rmSync(tmpDir, { recursive: true, force: true });
 
-  const parsed = unpackBlobV1(blob, sentinelCfg.anchor);
-  if (parsed.version !== 1) {
+  const parsed = unpackBlob(blob, sentinelCfg.anchor);
+  if (![1, 2].includes(parsed.version)) {
     return { ok: false, reason: "version", parsed };
   }
   if (![0, 1, 2].includes(parsed.level)) {
@@ -740,18 +786,28 @@ echo "FILE_STAT=$statline"
   const fpHash = buildFingerprintHash(parsed.level, hostInfo, { includePuid, includeCpuId });
   const match = crypto.timingSafeEqual(parsed.fpHash, fpHash);
 
+  let expired = false;
   const kv = parseKeyValueOutput(res.stdout);
+  const nowEpoch = Number(kv.NOW_EPOCH || "");
+  if (parsed.expiresAtSec && nowEpoch > 0) {
+    const exp = typeof parsed.expiresAtSec === "bigint" ? parsed.expiresAtSec : BigInt(parsed.expiresAtSec || 0);
+    if (exp > 0n && BigInt(nowEpoch) > exp) {
+      expired = true;
+    }
+  }
+
   const statParts = (kv.FILE_STAT || "").split(/\s+/);
   const fileUid = statParts[0] ? Number(statParts[0]) : null;
   const fileGid = statParts[1] ? Number(statParts[1]) : null;
   const fileMode = statParts[2] ? String(statParts[2]) : null;
 
   return {
-    ok: match,
-    reason: match ? null : "mismatch",
+    ok: match && !expired,
+    reason: expired ? "expired" : (match ? null : "mismatch"),
     parsed,
     hostInfo,
     file: { path: file, uid: fileUid, gid: fileGid, mode: fileMode, serviceUser, serviceGroup },
+    nowEpoch: Number.isFinite(nowEpoch) ? nowEpoch : null,
   };
 }
 

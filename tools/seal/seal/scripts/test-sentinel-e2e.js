@@ -13,7 +13,7 @@ const { spawn, spawnSync } = require("child_process");
 const { buildRelease } = require("../src/lib/build");
 const { loadProjectConfig, loadTargetConfig, resolveConfigName } = require("../src/lib/project");
 const { readJson5, writeJson5 } = require("../src/lib/json5io");
-const { buildAnchor, deriveOpaqueDir, deriveOpaqueFile, packBlobV1 } = require("../src/lib/sentinelCore");
+const { buildAnchor, deriveOpaqueDir, deriveOpaqueFile, packBlob } = require("../src/lib/sentinelCore");
 const { buildFingerprintHash } = require("../src/lib/sentinelConfig");
 
 const EXAMPLE_ROOT = path.resolve(__dirname, "..", "..", "example");
@@ -240,7 +240,7 @@ function computeCpuIdBoth() {
   return "";
 }
 
-async function buildReleaseWithSentinel({ baseDir, outRoot }) {
+async function buildReleaseWithSentinel({ baseDir, outRoot, sentinelOverride }) {
   const projectCfg = loadProjectConfig(EXAMPLE_ROOT);
   const targetCfg = loadTargetConfig(EXAMPLE_ROOT, "local").cfg;
   const configName = resolveConfigName(targetCfg, "local");
@@ -250,7 +250,7 @@ async function buildReleaseWithSentinel({ baseDir, outRoot }) {
   projectCfg.build.thin = Object.assign({}, projectCfg.build.thin || {}, {
     launcherObfuscation: false,
   });
-  projectCfg.build.sentinel = {
+  const baseSentinel = {
     enabled: true,
     level: 1,
     appId,
@@ -258,8 +258,16 @@ async function buildReleaseWithSentinel({ baseDir, outRoot }) {
     storage: { baseDir, mode: "file" },
     cpuIdSource: "both",
     exitCodeBlock: 222,
+    checkIntervalMs: 0,
   };
-  targetCfg.packager = "thin-single";
+  const override = sentinelOverride || {};
+  projectCfg.build.sentinel = {
+    ...baseSentinel,
+    ...override,
+    storage: { ...baseSentinel.storage, ...(override.storage || {}) },
+    timeLimit: { ...(baseSentinel.timeLimit || {}), ...(override.timeLimit || {}) },
+  };
+  targetCfg.packager = "thin-split";
 
   const outRootFinal = outRoot || fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-"));
   const outDir = path.join(outRootFinal, "seal-out");
@@ -269,7 +277,7 @@ async function buildReleaseWithSentinel({ baseDir, outRoot }) {
     projectCfg,
     targetCfg,
     configName,
-    packagerOverride: "thin-single",
+    packagerOverride: "thin-split",
     outDirOverride: outDir,
   });
 
@@ -291,7 +299,7 @@ function ensureBaseDirOwned(baseDir, mode) {
   fs.chownSync(baseDir, 0, 0);
 }
 
-function installSentinelBlob({ baseDir, namespaceId, appId, cpuid }) {
+function installSentinelBlob({ baseDir, namespaceId, appId, cpuid, expiresAtSec }) {
   ensureBaseDirOwned(baseDir, 0o711);
   const opaqueDir = deriveOpaqueDir(namespaceId);
   const opaqueFile = deriveOpaqueFile(namespaceId, appId);
@@ -311,7 +319,7 @@ function installSentinelBlob({ baseDir, namespaceId, appId, cpuid }) {
   }, { includePuid: false, includeCpuId });
 
   const flags = includeCpuId ? 0x0004 : 0x0000;
-  const blob = packBlobV1({ level: 1, flags, installId, fpHash }, anchor);
+  const blob = packBlob({ level: 1, flags, installId, fpHash, expiresAtSec }, anchor);
   const filePath = path.join(dirPath, opaqueFile);
   fs.writeFileSync(filePath, blob, { mode: 0o640 });
   fs.chmodSync(filePath, 0o640);
@@ -423,8 +431,49 @@ async function runReleaseExpectFail({ releaseDir, runTimeoutMs, expectCode }) {
   }
 }
 
+async function runReleaseExpectExpire({ releaseDir, buildId, runTimeoutMs, expectCode, expireTimeoutMs }) {
+  const port = await getFreePort();
+  writeRuntimeConfig(releaseDir, port);
+  const binPath = path.join(releaseDir, "seal-example");
+  assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
+
+  const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe" });
+  const outChunks = [];
+  const errChunks = [];
+  child.stdout.on("data", (c) => outChunks.push(c));
+  child.stderr.on("data", (c) => errChunks.push(c));
+  const childExit = new Promise((resolve) => {
+    child.on("exit", (code, signal) => resolve({ type: "exit", code, signal }));
+  });
+  const childError = new Promise((resolve) => {
+    child.on("error", (err) => resolve({ type: "error", err }));
+  });
+
+  try {
+    await withTimeout("waitForStatus", runTimeoutMs, () =>
+      Promise.race([waitForStatus(port), childExit, childError])
+    );
+  } catch (e) {
+    child.kill("SIGTERM");
+    throw e;
+  }
+
+  const exitInfo = await withTimeout("waitForExpire", expireTimeoutMs, async () =>
+    Promise.race([childExit, childError])
+  );
+  if (exitInfo && exitInfo.type === "error") {
+    throw new Error(`spawn failed: ${exitInfo.err && exitInfo.err.message ? exitInfo.err.message : "unknown error"}`);
+  }
+  const { code } = exitInfo || {};
+  if (expectCode !== undefined && expectCode !== null) {
+    assert.strictEqual(code, expectCode);
+  } else {
+    assert.ok(code !== 0, "Expected non-zero exit code");
+  }
+}
+
 async function testSentinelBasics(ctx) {
-  log("Building thin-single with sentinel...");
+  log("Building thin-split with sentinel...");
   const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-base-"));
   const namespaceId = "00112233445566778899aabbccddeeff";
 
@@ -476,6 +525,47 @@ async function testSentinelBasics(ctx) {
   }
 }
 
+async function testSentinelExpiry(ctx) {
+  log("Building thin-split with sentinel expiry...");
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-exp-"));
+  const namespaceId = "00112233445566778899aabbccddeeff";
+  let outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-"));
+  let releaseDir = null;
+  let buildId = null;
+  let appId = null;
+
+  try {
+    const res = await withTimeout("buildRelease", ctx.buildTimeoutMs, () =>
+      buildReleaseWithSentinel({
+        baseDir,
+        outRoot,
+        sentinelOverride: {
+          checkIntervalMs: 200,
+          timeLimit: { validForSeconds: 3 },
+        },
+      })
+    );
+    outRoot = res.outRoot;
+    releaseDir = res.releaseDir;
+    buildId = res.buildId;
+    appId = res.appId;
+
+    const cpuid = computeCpuIdBoth();
+    const nowSec = Math.floor(Date.now() / 1000);
+    installSentinelBlob({ baseDir, namespaceId, appId, cpuid, expiresAtSec: nowSec + 3 });
+    await runReleaseExpectExpire({
+      releaseDir,
+      buildId,
+      runTimeoutMs: ctx.runTimeoutMs,
+      expectCode: 222,
+      expireTimeoutMs: 8000,
+    });
+  } finally {
+    if (outRoot) fs.rmSync(outRoot, { recursive: true, force: true });
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+}
+
 async function main() {
   if (process.env.SEAL_SENTINEL_E2E !== "1") {
     log("SKIP: set SEAL_SENTINEL_E2E=1 to run sentinel E2E tests");
@@ -498,6 +588,13 @@ async function main() {
   } catch (e) {
     failures += 1;
     fail(`testSentinelBasics: ${e.message || e}`);
+  }
+  try {
+    await withTimeout("testSentinelExpiry", testTimeoutMs, () => testSentinelExpiry(ctx));
+    log("OK: testSentinelExpiry");
+  } catch (e) {
+    failures += 1;
+    fail(`testSentinelExpiry: ${e.message || e}`);
   }
 
   if (failures > 0) {

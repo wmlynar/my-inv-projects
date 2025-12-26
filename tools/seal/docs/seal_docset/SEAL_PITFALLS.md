@@ -616,8 +616,23 @@
 - Blad: `cpuIdSource` wymagal recznego `off` na architekturach bez CPUID (np. ARM).
   - Wymaganie: na architekturach bez CPUID launcher uzywa pustego/neutralnego ID i **nie** wymaga zmiany konfiguracji.
 
+- Blad: limit czasu sentinela liczony lokalnie, a nie wg czasu docelowego hosta.
+  - Wymaganie: czas `validFor*` liczony w **momencie instalacji** na hoście docelowym (epoch‑sec z hosta).
+  - Wymaganie: weryfikacja expiry w `sentinel verify` uzywa czasu hosta (nie lokalnego).
+
+- Blad: sentinel weryfikowany tylko przed startem, brak okresowej kontroli.
+  - Wymaganie: przy `checkIntervalMs>0` okresowo weryfikuj blob i expiry (setInterval + unref).
+  - Wymaganie: test E2E musi sprawdzac “start OK → po czasie exitCodeBlock”.
+
+- Blad: zmiana formatu bloba (v1/v2) psula runtime (niezgodne rozmiary / CRC).
+  - Wymaganie: runtime akceptuje **oba** rozmiary i waliduje spojnosc (version ↔ length).
+  - Wymaganie: nowe pole (np. `expires_at`) musi byc ignorowane przez v1 i jawnie sprawdzane w v2.
+
 - Blad: w template stringach z bash/script wystapily nie‑escapowane sekwencje `${...}`, co psulo skladnie JS.
   - Wymaganie: w osadzonych skryptach shellowych zawsze escapuj `${` jako `\\${` (lub użyj helpera do here‑doc), zeby uniknac interpolacji JS.
+
+- Blad: generator JS wklejal template literal (backtick + `${...}`) do stringa JS, co psulo skladnie builda.
+  - Wymaganie: w kodzie generowanym przez template string unikaj backticków albo escapuj `${` i same backticki.
 
 - Blad: tymczasowe pliki z danymi wrazliwymi byly tworzone w /tmp z przewidywalna nazwa i zbyt luznymi uprawnieniami.
   - Wymaganie: tworz temp‑dir przez `mkdtemp`, pliki z `0600`, a po uzyciu zawsze sprzataj.

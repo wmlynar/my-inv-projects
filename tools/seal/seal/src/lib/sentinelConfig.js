@@ -16,12 +16,15 @@ const DEFAULT_SENTINEL = {
   cpuIdSource: "auto",
   storage: { baseDir: "/var/lib", mode: "file" },
   exitCodeBlock: 200,
+  checkIntervalMs: 60000,
+  timeLimit: { mode: "off" },
   externalAnchor: { type: "none" },
 };
 
 function mergeSentinelConfig(base, override) {
   const out = { ...base, ...(override || {}) };
   out.storage = { ...(base.storage || {}), ...((override || {}).storage || {}) };
+  out.timeLimit = { ...(base.timeLimit || {}), ...((override || {}).timeLimit || {}) };
   out.externalAnchor = { ...(base.externalAnchor || {}), ...((override || {}).externalAnchor || {}) };
   return out;
 }
@@ -103,6 +106,15 @@ function normalizeExitCode(value) {
   return Math.trunc(n);
 }
 
+function normalizeCheckIntervalMs(value, fallback) {
+  const raw = value === undefined || value === null || value === "" ? fallback : value;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) {
+    throw new Error(`Invalid sentinel checkIntervalMs: ${value}`);
+  }
+  return Math.trunc(n);
+}
+
 function normalizeLevel(value) {
   if (value === undefined || value === null || value === "" || value === "auto") return "auto";
   const n = Number(value);
@@ -130,6 +142,72 @@ function isRidStable(rid, fstype) {
 function resolveAutoLevel(hostInfo) {
   if (!hostInfo) throw new Error("Missing host info for auto level");
   return isRidStable(hostInfo.rid, hostInfo.fstype) ? 2 : 1;
+}
+
+function parseExpiresAtSec(value) {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value) || value <= 0) {
+      throw new Error(`Invalid sentinel timeLimit.expiresAt: ${value}`);
+    }
+    const sec = value > 1e12 ? Math.floor(value / 1000) : Math.floor(value);
+    return sec;
+  }
+  const text = String(value).trim();
+  if (!text) return null;
+  const num = Number(text);
+  if (Number.isFinite(num) && num > 0) {
+    const sec = num > 1e12 ? Math.floor(num / 1000) : Math.floor(num);
+    return sec;
+  }
+  const parsed = Date.parse(text);
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`Invalid sentinel timeLimit.expiresAt: ${value}`);
+  }
+  return Math.floor(parsed / 1000);
+}
+
+function parseDurationSec(value, unitLabel) {
+  if (value === undefined || value === null || value === "") return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new Error(`Invalid sentinel timeLimit.${unitLabel}: ${value}`);
+  }
+  return n;
+}
+
+function normalizeTimeLimit(value) {
+  const cfg = value && typeof value === "object" ? value : {};
+  const expiresAtSec = parseExpiresAtSec(cfg.expiresAt);
+  const validForMs = parseDurationSec(cfg.validForMs, "validForMs");
+  const validForSeconds = parseDurationSec(cfg.validForSeconds, "validForSeconds");
+  const validForDays = parseDurationSec(cfg.validForDays, "validForDays");
+
+  const durationFields = [validForMs, validForSeconds, validForDays].filter((v) => v !== null);
+  if (expiresAtSec !== null && durationFields.length > 0) {
+    throw new Error("sentinel timeLimit: choose expiresAt or validFor*, not both");
+  }
+  if (durationFields.length > 1) {
+    throw new Error("sentinel timeLimit: only one of validForMs/validForSeconds/validForDays may be set");
+  }
+  if (expiresAtSec !== null) {
+    return { mode: "absolute", expiresAtSec, durationSec: null };
+  }
+  if (durationFields.length > 0) {
+    let durationSec = 0;
+    if (validForMs !== null) {
+      durationSec = Math.ceil(validForMs / 1000);
+    } else if (validForSeconds !== null) {
+      durationSec = Math.ceil(validForSeconds);
+    } else {
+      durationSec = Math.ceil(validForDays * 86400);
+    }
+    if (!Number.isFinite(durationSec) || durationSec <= 0) {
+      throw new Error("Invalid sentinel timeLimit duration");
+    }
+    return { mode: "relative", expiresAtSec: null, durationSec };
+  }
+  return { mode: "off", expiresAtSec: null, durationSec: null };
 }
 
 function resolveSentinelConfig({ projectRoot, projectCfg, targetCfg, targetName, packagerSpec }) {
@@ -179,6 +257,8 @@ function resolveSentinelConfig({ projectRoot, projectCfg, targetCfg, targetName,
   const level = normalizeLevel(cfg.level);
   const cpuIdSource = normalizeCpuIdSource(cfg.cpuIdSource);
   const exitCodeBlock = normalizeExitCode(cfg.exitCodeBlock ?? DEFAULT_SENTINEL.exitCodeBlock);
+  const checkIntervalMs = normalizeCheckIntervalMs(cfg.checkIntervalMs, DEFAULT_SENTINEL.checkIntervalMs);
+  const timeLimit = normalizeTimeLimit(cfg.timeLimit);
 
   const anchor = buildAnchor(nsHex, appId);
   const opaqueDir = deriveOpaqueDir(nsHex);
@@ -193,6 +273,8 @@ function resolveSentinelConfig({ projectRoot, projectCfg, targetCfg, targetName,
     level,
     cpuIdSource,
     exitCodeBlock,
+    checkIntervalMs,
+    timeLimit,
     externalAnchor: { type: anchorType },
     anchor,
     opaqueDir,
@@ -224,7 +306,9 @@ module.exports = {
   sentinelPrivatePath,
   getOrCreateNamespaceId,
   normalizeExitCode,
+  normalizeCheckIntervalMs,
   normalizeLevel,
   normalizeCpuIdSource,
+  normalizeTimeLimit,
   buildFingerprintHash,
 };

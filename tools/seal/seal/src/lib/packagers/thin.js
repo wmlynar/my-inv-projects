@@ -657,8 +657,11 @@ static const char SENTINEL_FILE[] = ${toCString(sentinelCfg.opaqueFile)};
 function renderSentinelCode() {
   return `
 #if SENTINEL_ENABLED
-#define SENTINEL_BLOB_LEN 76u
-#define SENTINEL_MASK_LEN 72u
+#define SENTINEL_BLOB_LEN_V1 76u
+#define SENTINEL_MASK_LEN_V1 72u
+#define SENTINEL_BLOB_LEN_V2 84u
+#define SENTINEL_MASK_LEN_V2 80u
+#define SENTINEL_BLOB_LEN_MAX SENTINEL_BLOB_LEN_V2
 #define FLAG_INCLUDE_CPUID 0x0004u
 
 typedef struct {
@@ -1062,15 +1065,25 @@ static int sentinel_check(void) {
     close(base_fd);
     return -1;
   }
-  if (fstat(file_fd, &st) != 0 || !S_ISREG(st.st_mode) || st.st_uid != 0 || (uint64_t)st.st_size != SENTINEL_BLOB_LEN || (st.st_mode & 022) != 0) {
+  if (fstat(file_fd, &st) != 0 || !S_ISREG(st.st_mode) || st.st_uid != 0 || (st.st_mode & 022) != 0) {
+    close(file_fd);
+    close(dir_fd);
+    close(base_fd);
+    return -1;
+  }
+  size_t blob_len = (size_t)st.st_size;
+  size_t mask_len = 0;
+  if (blob_len == SENTINEL_BLOB_LEN_V1) mask_len = SENTINEL_MASK_LEN_V1;
+  else if (blob_len == SENTINEL_BLOB_LEN_V2) mask_len = SENTINEL_MASK_LEN_V2;
+  else {
     close(file_fd);
     close(dir_fd);
     close(base_fd);
     return -1;
   }
 
-  uint8_t blob[SENTINEL_BLOB_LEN];
-  if (read_exact(file_fd, blob, SENTINEL_BLOB_LEN, 0) != 0) {
+  uint8_t blob[SENTINEL_BLOB_LEN_MAX];
+  if (read_exact(file_fd, blob, blob_len, 0) != 0) {
     close(file_fd);
     close(dir_fd);
     close(base_fd);
@@ -1080,8 +1093,8 @@ static int sentinel_check(void) {
   close(dir_fd);
   close(base_fd);
 
-  uint32_t want = read_u32_le(blob + SENTINEL_MASK_LEN);
-  uint32_t got = crc32_buf(blob, SENTINEL_MASK_LEN);
+  uint32_t want = read_u32_le(blob + mask_len);
+  uint32_t got = crc32_buf(blob, mask_len);
   if (want != got) return -1;
 
   uint8_t mask_src[2 + SENTINEL_ANCHOR_LEN];
@@ -1091,15 +1104,24 @@ static int sentinel_check(void) {
   uint8_t mask_key[32];
   sha256_hash(mask_src, sizeof(mask_src), mask_key);
 
-  uint8_t raw[SENTINEL_MASK_LEN];
-  for (size_t i = 0; i < SENTINEL_MASK_LEN; i++) {
+  uint8_t raw[SENTINEL_MASK_LEN_V2];
+  for (size_t i = 0; i < mask_len; i++) {
     raw[i] = (uint8_t)(blob[i] ^ mask_key[i % 32]);
   }
 
   uint8_t version = raw[0];
   uint8_t level = raw[1];
   uint16_t flags = (uint16_t)raw[2] | ((uint16_t)raw[3] << 8);
-  if (version != 1 || level > 2) return -1;
+  uint64_t expires_at = 0;
+  if (version == 1) {
+    if (mask_len != SENTINEL_MASK_LEN_V1) return -1;
+  } else if (version == 2) {
+    if (mask_len != SENTINEL_MASK_LEN_V2) return -1;
+    expires_at = read_u64_le(raw + 72);
+  } else {
+    return -1;
+  }
+  if (level > 2) return -1;
   if ((flags & ~FLAG_INCLUDE_CPUID) != 0) return -1;
   int include_cpuid = (flags & FLAG_INCLUDE_CPUID) ? 1 : 0;
 
@@ -1152,6 +1174,11 @@ static int sentinel_check(void) {
   sha256_hash((uint8_t *)fp, strlen(fp), fp_now);
 
   if (!ct_eq(raw + 40, fp_now, 32)) return -1;
+  if (expires_at != 0) {
+    time_t now = time(NULL);
+    if (now == (time_t)-1) return -1;
+    if ((uint64_t)now > expires_at) return -1;
+  }
   return 0;
 }
 #else
@@ -1238,10 +1265,277 @@ function renderLauncherSource(
   const adCoreDump = adEnabled && antiDebug.coreDump !== false;
   const adLoaderGuard = adEnabled && antiDebug.loaderGuard !== false;
 
+  const sentinelEnabled = !!(sentinelCfg && sentinelCfg.enabled);
+  const sentinelExitCode = sentinelEnabled ? Number(sentinelCfg.exitCodeBlock || 200) : 200;
+  const sentinelCpuMode = sentinelEnabled ? cpuIdModeFromSource(sentinelCfg.cpuIdSource) : 0;
+  const sentinelCheckIntervalMs = sentinelEnabled
+    ? Math.max(0, Math.floor(Number(sentinelCfg.checkIntervalMs || 0)))
+    : 0;
+  const sentinelBaseDir = sentinelEnabled ? (sentinelCfg.storage && sentinelCfg.storage.baseDir ? sentinelCfg.storage.baseDir : "/var/lib") : "";
+  const sentinelDir = sentinelEnabled ? String(sentinelCfg.opaqueDir || "") : "";
+  const sentinelFile = sentinelEnabled ? String(sentinelCfg.opaqueFile || "") : "";
+  const sentinelAnchorHex = sentinelEnabled && Buffer.isBuffer(sentinelCfg.anchor) ? sentinelCfg.anchor.toString("hex") : "";
+
   const bootstrapJs = `"use strict";
 const fs = require("fs");
 const path = require("path");
 const Module = require("module");
+const crypto = require("crypto");
+
+const SENTINEL_ENABLED = ${sentinelEnabled ? 1 : 0};
+const SENTINEL_EXIT_CODE = ${sentinelExitCode};
+const SENTINEL_CPUID_MODE = ${sentinelCpuMode};
+const SENTINEL_CHECK_INTERVAL_MS = ${sentinelCheckIntervalMs};
+const SENTINEL_BASE_DIR = ${toCString(sentinelBaseDir)};
+const SENTINEL_DIR = ${toCString(sentinelDir)};
+const SENTINEL_FILE = ${toCString(sentinelFile)};
+const SENTINEL_ANCHOR_HEX = ${toCString(sentinelAnchorHex)};
+const SENTINEL_TEST_MODE = process.env.SEAL_SENTINEL_E2E === "1";
+const SENTINEL_FORCE_EXPIRE = SENTINEL_TEST_MODE && process.env.SEAL_SENTINEL_FORCE_EXPIRE === "1";
+const SENTINEL_FORCE_EXPIRE_AFTER_MS = SENTINEL_TEST_MODE ? Math.max(0, Number(process.env.SEAL_SENTINEL_FORCE_EXPIRE_AFTER_MS || 0) || 0) : 0;
+const SENTINEL_START_MS = Date.now();
+
+function sentinelForceReady() {
+  if (!SENTINEL_TEST_MODE) return false;
+  if (SENTINEL_FORCE_EXPIRE_AFTER_MS <= 0) return true;
+  return Date.now() - SENTINEL_START_MS >= SENTINEL_FORCE_EXPIRE_AFTER_MS;
+}
+
+function sentinelFail() {
+  try { process.stderr.write("[thin] runtime invalid\\n"); } catch {}
+  process.exit(SENTINEL_EXIT_CODE);
+}
+
+const CRC_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let k = 0; k < 8; k++) {
+      c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+    }
+    table[i] = c >>> 0;
+  }
+  return table;
+})();
+
+function crc32(buf) {
+  let crc = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) {
+    const byte = buf[i];
+    crc = CRC_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function sha256(input) {
+  return crypto.createHash("sha256").update(input).digest();
+}
+
+function readFileTrim(p) {
+  try {
+    return fs.readFileSync(p, "utf8").trim();
+  } catch {
+    return "";
+  }
+}
+
+function readCpuInfoValue(key) {
+  const content = readFileTrim("/proc/cpuinfo");
+  if (!content) return "";
+  const lines = content.split(/\\r?\\n/);
+  for (const line of lines) {
+    const idx = line.indexOf(":");
+    if (idx <= 0) continue;
+    const k = line.slice(0, idx).trim();
+    if (k !== key) continue;
+    return line.slice(idx + 1).trim();
+  }
+  return "";
+}
+
+function getCpuIdProc() {
+  const vendor = readCpuInfoValue("vendor_id");
+  const family = readCpuInfoValue("cpu family");
+  const model = readCpuInfoValue("model");
+  const stepping = readCpuInfoValue("stepping");
+  if (!vendor || !family || !model || !stepping) return "";
+  return (vendor + ":" + family + ":" + model + ":" + stepping).toLowerCase();
+}
+
+function buildCpuId(mode) {
+  const proc = getCpuIdProc();
+  const asm = proc;
+  if (mode === 1) return proc ? "proc:" + proc : "";
+  if (mode === 2) return asm ? "asm:" + asm : "";
+  if (mode === 3) {
+    if (proc && asm) return "proc:" + proc + "|asm:" + asm;
+    if (proc) return "proc:" + proc;
+    if (asm) return "asm:" + asm;
+    return "";
+  }
+  return "";
+}
+
+function decodeMountPath(value) {
+  return String(value || "").replace(/\\\\([0-7]{3})/g, (_, oct) => {
+    const code = parseInt(oct, 8);
+    if (!Number.isFinite(code)) return _;
+    return String.fromCharCode(code);
+  });
+}
+
+function getRootMajMin() {
+  const txt = readFileTrim("/proc/self/mountinfo");
+  if (!txt) return "";
+  const lines = txt.split(/\\r?\\n/);
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const parts = line.split(/\\s+/);
+    if (parts.length < 5) continue;
+    const mountPoint = decodeMountPath(parts[4]);
+    if (mountPoint !== "/") continue;
+    return parts[2] || "";
+  }
+  return "";
+}
+
+function devMajorMinor(stat) {
+  try {
+    const rdev = BigInt(stat.rdev);
+    const major = (rdev >> 8n) & 0xfffn;
+    const minor = (rdev & 0xffn) | ((rdev >> 12n) & 0xfff00n);
+    return String(Number(major)) + ":" + String(Number(minor));
+  } catch {
+    return "";
+  }
+}
+
+function findDevByMajMin(dir, majmin) {
+  try {
+    const entries = fs.readdirSync(dir);
+    for (const name of entries) {
+      const full = path.join(dir, name);
+      let target = full;
+      try {
+        target = fs.realpathSync(full);
+      } catch {}
+      let st;
+      try {
+        st = fs.statSync(target);
+      } catch {
+        continue;
+      }
+      if (!st) continue;
+      const mm = devMajorMinor(st);
+      if (mm && mm === majmin) return name;
+    }
+  } catch {}
+  return "";
+}
+
+function getRootRid() {
+  const majmin = getRootMajMin();
+  if (!majmin) return "";
+  const uuid = findDevByMajMin("/dev/disk/by-uuid", majmin);
+  if (uuid) return "uuid:" + uuid;
+  const partuuid = findDevByMajMin("/dev/disk/by-partuuid", majmin);
+  if (partuuid) return "partuuid:" + partuuid;
+  return "dev:" + majmin;
+}
+
+function buildFingerprint(level, mid, rid, cpuid, includeCpuId) {
+  const lines = [];
+  if (level === 0) {
+    lines.push("v0");
+  } else if (level === 1) {
+    if (!mid) return "";
+    lines.push("v1", "mid=" + mid);
+    if (includeCpuId) {
+      if (!cpuid) return "";
+      lines.push("cpuid=" + cpuid);
+    }
+  } else if (level === 2) {
+    if (!mid || !rid) return "";
+    lines.push("v2", "mid=" + mid, "rid=" + rid);
+    if (includeCpuId) {
+      if (!cpuid) return "";
+      lines.push("cpuid=" + cpuid);
+    }
+  } else {
+    return "";
+  }
+  return lines.join("\\n") + "\\n";
+}
+
+function sentinelCheck() {
+  if (!SENTINEL_ENABLED) return false;
+  if (SENTINEL_TEST_MODE && SENTINEL_FORCE_EXPIRE && sentinelForceReady()) return true;
+
+  let blob;
+  try {
+    blob = fs.readFileSync(path.join(SENTINEL_BASE_DIR, SENTINEL_DIR, SENTINEL_FILE));
+  } catch {
+    return true;
+  }
+  if (!blob || (blob.length !== 76 && blob.length !== 84)) return true;
+  const maskLen = blob.length === 84 ? 80 : 72;
+  const masked = blob.subarray(0, maskLen);
+  const want = blob.readUInt32LE(maskLen);
+  const got = crc32(masked);
+  if (want !== got) return true;
+
+  const anchor = SENTINEL_ANCHOR_HEX ? Buffer.from(SENTINEL_ANCHOR_HEX, "hex") : Buffer.alloc(0);
+  const maskKey = sha256(Buffer.concat([Buffer.from([0x6d, 0x00]), anchor]));
+  const raw = Buffer.alloc(maskLen);
+  for (let i = 0; i < maskLen; i++) {
+    raw[i] = masked[i] ^ maskKey[i % 32];
+  }
+  const version = raw.readUInt8(0);
+  if (version !== 1 && version !== 2) return true;
+  if (version === 1 && maskLen !== 72) return true;
+  if (version === 2 && maskLen !== 80) return true;
+  const level = raw.readUInt8(1);
+  if (level > 2) return true;
+  const flags = raw.readUInt16LE(2);
+  const includeCpuId = (flags & 0x0004) !== 0;
+  let expiresAtSec = 0;
+  if (version === 2) {
+    try {
+      expiresAtSec = Number(raw.readBigUInt64LE(72));
+    } catch {
+      return true;
+    }
+  }
+  if (expiresAtSec > 0) {
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (nowSec > expiresAtSec) return true;
+  }
+
+  const mid = level >= 1 ? readFileTrim("/etc/machine-id") : "";
+  const rid = level >= 2 ? getRootRid() : "";
+  const cpuid = includeCpuId ? buildCpuId(SENTINEL_CPUID_MODE) : "";
+  const fp = buildFingerprint(level, mid, rid, cpuid, includeCpuId);
+  if (!fp) return true;
+  const fpHash = sha256(Buffer.from(fp, "utf8"));
+  if (fpHash.length !== 32) return true;
+  const blobHash = raw.subarray(40, 72);
+  try {
+    if (!crypto.timingSafeEqual(fpHash, blobHash)) return true;
+  } catch {
+    return true;
+  }
+  return false;
+}
+
+if (SENTINEL_ENABLED) {
+  if (sentinelCheck()) sentinelFail();
+  if (SENTINEL_CHECK_INTERVAL_MS > 0) {
+    const timer = setInterval(() => {
+      if (sentinelCheck()) sentinelFail();
+    }, SENTINEL_CHECK_INTERVAL_MS);
+    if (timer && typeof timer.unref === "function") timer.unref();
+  }
+}
 
 const TRACERPID_ENABLED = ${adTracerPid ? 1 : 0};
 const TRACERPID_INTERVAL_MS = ${adTracerPidIntervalMs};
@@ -1398,6 +1692,7 @@ return `#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <sys/mman.h>
 #include <sys/ptrace.h>
 #include <sys/prctl.h>

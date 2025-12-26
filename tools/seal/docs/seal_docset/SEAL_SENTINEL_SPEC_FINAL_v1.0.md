@@ -35,7 +35,7 @@ Dodatkowo (opcjonalnie) jest poziom **Level 4 (anti‑clone)**, który utrudnia 
 - `<installDir>` — katalog instalacji aplikacji (releases/runtime/payload itd.)
 - **thin launcher** — ELF uruchamiany przez systemd (to on robi weryfikację)
 - **deployer** — osoba/pipeline wykonująca bootstrap przez SSH
-- **blob** — plik sentinela (76 bajtów)
+- **blob** — plik sentinela (76 bajtów v1, 84 bajty v2 z expiry)
 - **namespaceId** — 16‑bajtowy sekret po stronie deployera (anchor do ścieżek)
 - **appId** — stabilny identyfikator usługi (anty‑kolizyjny, normalizowany)
 
@@ -124,6 +124,17 @@ Na serwerze istnieje tylko:
       // systemd / exit policy
       exitCodeBlock: 200,        // zarezerwowany kod dla "fatal pre-launch" (patrz §11)
 
+      // okresowa weryfikacja w runtime (JS) + limit czasu działania
+      checkIntervalMs: 60000,    // 0 = wyłącz okresową weryfikację
+      timeLimit: {
+        // tylko jeden wariant:
+        // 1) absolutna data (ISO lub epoch sec/ms):
+        expiresAt: "2026-01-01T00:00:00Z",
+        // 2) względny czas od instalacji (sekundy / dni):
+        // validForSeconds: 7776000,
+        // validForDays: 90
+      },
+
       // anti-clone (Level 4)
       externalAnchor: { type: "none" } // none | usb | file | lease | tpm2
     }
@@ -132,6 +143,10 @@ Na serwerze istnieje tylko:
 ```
 
 `seal-config/targets/<target>.json5` MAY nadpisywać `build.sentinel.*` (np. level, storage.mode, externalAnchor).
+
+Uwagi:
+- **Tylko jeden** z: `expiresAt` albo `validFor*`.
+- `validFor*` jest liczony **w momencie instalacji** na docelowym hoście (czas środowiska).
 
 ### 4.3 Merge configu (MUST)
 Efektywna konfiguracja:
@@ -280,20 +295,23 @@ Jeśli FS nie wspiera `user_xattr` (lub mount ma `nouser_xattr`):
 
 ---
 
-## 7. Format bloba (v1) i integralność
+## 7. Format bloba (v1/v2) i integralność
 
 ### 7.1 Struktura (MUST)
-Stała długość: **76 bajtów**
+Stała długość:
+- **v1**: 76 bajtów
+- **v2**: 84 bajty (dodaje `expires_at`)
 
 | Offset | Rozmiar | Pole | Opis |
 |---:|---:|---|---|
-| 0 | 1 | `version` | 1 |
+| 0 | 1 | `version` | 1 lub 2 |
 | 1 | 1 | `level` | 0/1/2/3/4 |
 | 2 | 2 | `flags` | u16 LE |
 | 4 | 4 | `reserved` | u32 LE = 0 |
 | 8 | 32 | `install_id` | losowe 256‑bit (per instalacja) |
 | 40 | 32 | `fp_hash` | SHA‑256 fingerprint string |
-| 72 | 4 | `crc32` | u32 LE (CRC32 po bajtach 0..71) |
+| 72 | 8 | `expires_at` | u64 LE epoch‑sec (tylko v2; 0 = brak limitu) |
+| 72/80 | 4 | `crc32` | u32 LE (CRC32 po zamaskowanych bajtach 0..71 lub 0..79) |
 
 ### 7.2 Flagi (MUST)
 - `0x0001` — `FLAG_REQUIRE_XATTR` (mode=file+xattr)
@@ -311,8 +329,8 @@ Pole `crc32` zapisujemy jako **little‑endian**.
 Żeby `version/level/flags` nie leżały jawnie:
 
 - `maskKey = sha256(b"m\0" + anchor)[0..31]`
-- bajty `0..71` XOR z `maskKey[i mod 32]`
-- CRC32 liczone po **zamaskowanych** bajtach 0..71
+- bajty `0..71` (v1) albo `0..79` (v2) XOR z `maskKey[i mod 32]`
+- CRC32 liczone po **zamaskowanych** bajtach `0..71` (v1) lub `0..79` (v2)
 - runtime: najpierw CRC32 verify, potem unmask i parsowanie
 
 ### 7.5 HMAC (future, MAY)
@@ -557,18 +575,21 @@ MUST:
 ## 11. Runtime weryfikacja w thin launcherze
 
 ### 11.1 Moment (MUST)
-Weryfikacja sentinela MUSI wykonać się **przed** uruchomieniem runtime/payload.
+Weryfikacja sentinela MUSI wykonać się:
+- **przed** uruchomieniem runtime/payload,
+- **okresowo w runtime** (jeśli `checkIntervalMs > 0`), żeby wykrywać późniejszą zmianę środowiska/plików.
 
 ### 11.2 Odczyt i hardening (MUST)
 - użyj `open(baseDir, O_DIRECTORY)` + `openat` dla katalogu i pliku (SHOULD, ale w MVP mocno zalecane)
 - `open(..., O_RDONLY|O_CLOEXEC|O_NOFOLLOW)`
-- `fstat`: regular file, size==76
+- `fstat`: regular file, size==76 (v1) lub 84 (v2)
 - verify CRC32
 - (MUST) fail jeśli katalog lub plik są group‑writable/world‑writable (insecure bypass)
 
 ### 11.3 Porównanie (MUST)
 - odczytaj blob, CRC ok
 - unmaskuj i parsuj
+- jeśli `version=2` i `expires_at > 0`: **porównaj z bieżącym czasem** (epoch‑sec), fail gdy po terminie
 - wylicz `fp_hash_now` wg level z blobu:
   - L1/L2/L3: mid/rid/puid
   - L4: + eah (external anchor)
@@ -681,7 +702,7 @@ rid=uuid:deadbeef-dead-beef-dead-beefdeadbeef
 - `xattr_name`  = `user.c446df9bf8`
 - `xattr_value` (hex16) = `115fbb05c92623dc32a822263ce3edb8`
 
-### A.5 Blob (76B, zamaskowany, CRC32 LE na końcu)
+### A.5 Blob (v1, 76B, zamaskowany, CRC32 LE na końcu)
 `blob_hex`:
 ```
 14ec44d7cb8242c936e1cd442a71475c30b19ca31008d28a4eee0f11de9bea7c
@@ -711,13 +732,13 @@ Zakres TEGO PR (tylko Krok 0):
    - deriveOpaqueFile(namespaceId, appId)
    - buildFingerprintString(level, mid, rid, puid?, eah?, flags?)
    - sha256(), crc32()
-   - packBlobV1({version=1, level, flags, install_id, fp_hash}, anchor) z masking+CRC32
-   - unpackBlobV1(blob, anchor) z CRC32 verify + unmask
+   - packBlob({version=1, level, flags, install_id, fp_hash}, anchor) z masking+CRC32
+   - unpackBlob(blob, anchor) z CRC32 verify + unmask
 
 2) Dodaj testy jednostkowe:
    - CRC32("123456789") == 0xCBF43926
    - deriveOpaqueDir/deriveOpaqueFile, fp_hash L2 i blob_hex dokładnie wg Appendix A
-   - blob ma 76B, CRC OK, roundtrip pack->unpack działa
+   - blob v1 ma 76B, CRC OK, roundtrip pack->unpack działa
 
 3) Dodaj tools/sentinel_testvec.* generujący Appendix A (opaque_dir/file, fingerprint, fp_hash, xattr, blob_hex).
    Appendix ma być generowany, nie edytowany ręcznie.

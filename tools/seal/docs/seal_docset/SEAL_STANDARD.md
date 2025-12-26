@@ -138,6 +138,8 @@ Przykład:
 - STD-126 (SHOULD): w skryptach shellowych wszystkie zmienne musza byc cytowane (`"$VAR"`), chyba ze jawnie potrzebny jest splitting.
 - STD-127 (SHOULD): unikaj `eval`; gdy musisz dynamicznie skladac komendy, uzywaj args array lub whitelisty tokenow.
 - STD-128 (SHOULD): `xargs` uruchamiaj z `-r` (GNU) lub jawnie sprawdzaj, czy input nie jest pusty.
+- STD-129 (SHOULD): limity czasu (expiry/licencja/sentinel) liczymy wg czasu **hosta docelowego**; runtime musi je sprawdzac okresowo (`checkIntervalMs`) i nie blokowac wyjscia (timer `unref`).
+- STD-130 (SHOULD): jesli format bloba ma wiele wersji, runtime akceptuje znane wersje i waliduje spojnosc `version ↔ length`; nie toleruj cichych rozjazdow.
 - STD-129 (SHOULD): rozpakowanie artefaktu odbywa sie w katalogu stagingowym; `current.buildId` aktualizuj dopiero po walidacji.
 - STD-130 (SHOULD): dla krytycznych binarek nie polegaj na niekontrolowanym `PATH`; uzywaj `command -v` + whitelisty lub absolutnych sciezek, szczegolnie przy `sudo`.
 - STD-130a (SHOULD): wykrywanie narzedzi z `node_modules/.bin` musi uwzgledniac monorepo/workspaces (sprawdzaj kilka poziomow lub uzyj `npm bin -w`/`npm exec`), inaczej CLI/testy beda false‑negative.

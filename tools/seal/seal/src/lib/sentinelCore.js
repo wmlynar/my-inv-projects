@@ -120,35 +120,64 @@ function maskBytes(buf, maskKey) {
   return out;
 }
 
-function packBlobV1({ level, flags, installId, fpHash }, anchor) {
+const BLOB_V1_MASK_LEN = 72;
+const BLOB_V1_LEN = 76;
+const BLOB_V2_MASK_LEN = 80;
+const BLOB_V2_LEN = 84;
+
+function normalizeExpiresAtSec(value) {
+  if (value === undefined || value === null || value === "") return 0;
+  let n;
+  if (typeof value === "bigint") {
+    n = value;
+  } else {
+    const num = Number(value);
+    if (!Number.isFinite(num) || num < 0) {
+      throw new Error(`Invalid expiresAtSec: ${value}`);
+    }
+    n = BigInt(Math.trunc(num));
+  }
+  if (n < 0n) throw new Error(`Invalid expiresAtSec: ${value}`);
+  return n;
+}
+
+function packBlob({ level, flags, installId, fpHash, expiresAtSec }, anchor) {
   if (!Buffer.isBuffer(installId) || installId.length !== 32) {
     throw new Error("installId must be 32 bytes");
   }
   if (!Buffer.isBuffer(fpHash) || fpHash.length !== 32) {
     throw new Error("fpHash must be 32 bytes");
   }
-  const blob = Buffer.alloc(76);
-  blob.writeUInt8(1, 0); // version
+  const expires = normalizeExpiresAtSec(expiresAtSec);
+  const version = expires > 0n ? 2 : 1;
+  const maskLen = version === 2 ? BLOB_V2_MASK_LEN : BLOB_V1_MASK_LEN;
+  const blobLen = version === 2 ? BLOB_V2_LEN : BLOB_V1_LEN;
+  const blob = Buffer.alloc(blobLen);
+  blob.writeUInt8(version, 0);
   blob.writeUInt8(Number(level) & 0xff, 1);
   blob.writeUInt16LE(Number(flags) & 0xffff, 2);
   blob.writeUInt32LE(0, 4); // reserved
   installId.copy(blob, 8);
   fpHash.copy(blob, 40);
+  if (version === 2) {
+    blob.writeBigUInt64LE(expires, 72);
+  }
 
   const maskKey = sha256(Buffer.concat([Buffer.from([0x6d, 0x00]), anchor])); // "m\0"
-  const masked = maskBytes(blob.slice(0, 72), maskKey);
+  const masked = maskBytes(blob.slice(0, maskLen), maskKey);
   masked.copy(blob, 0);
   const crc = crc32(masked);
-  blob.writeUInt32LE(crc >>> 0, 72);
+  blob.writeUInt32LE(crc >>> 0, maskLen);
   return blob;
 }
 
-function unpackBlobV1(blob, anchor) {
-  if (!Buffer.isBuffer(blob) || blob.length !== 76) {
-    throw new Error("blob must be 76 bytes");
+function unpackBlob(blob, anchor) {
+  if (!Buffer.isBuffer(blob) || (blob.length !== BLOB_V1_LEN && blob.length !== BLOB_V2_LEN)) {
+    throw new Error("blob must be 76 or 84 bytes");
   }
-  const masked = blob.slice(0, 72);
-  const want = blob.readUInt32LE(72);
+  const maskLen = blob.length === BLOB_V2_LEN ? BLOB_V2_MASK_LEN : BLOB_V1_MASK_LEN;
+  const masked = blob.slice(0, maskLen);
+  const want = blob.readUInt32LE(maskLen);
   const got = crc32(masked);
   if ((got >>> 0) !== (want >>> 0)) {
     throw new Error("CRC32 mismatch");
@@ -156,11 +185,31 @@ function unpackBlobV1(blob, anchor) {
   const maskKey = sha256(Buffer.concat([Buffer.from([0x6d, 0x00]), anchor]));
   const raw = maskBytes(masked, maskKey);
   const version = raw.readUInt8(0);
+  if (version !== 1 && version !== 2) {
+    throw new Error(`Unsupported blob version: ${version}`);
+  }
+  if (version === 1 && maskLen !== BLOB_V1_MASK_LEN) {
+    throw new Error("blob length mismatch for v1");
+  }
+  if (version === 2 && maskLen !== BLOB_V2_MASK_LEN) {
+    throw new Error("blob length mismatch for v2");
+  }
   const level = raw.readUInt8(1);
   const flags = raw.readUInt16LE(2);
   const installId = Buffer.from(raw.slice(8, 40));
   const fpHash = Buffer.from(raw.slice(40, 72));
-  return { version, level, flags, installId, fpHash };
+  const expiresAtSec = version === 2 ? raw.readBigUInt64LE(72) : 0n;
+  return { version, level, flags, installId, fpHash, expiresAtSec };
+}
+
+function packBlobV1({ level, flags, installId, fpHash }, anchor) {
+  return packBlob({ level, flags, installId, fpHash, expiresAtSec: 0 }, anchor);
+}
+
+function unpackBlobV1(blob, anchor) {
+  const parsed = unpackBlob(blob, anchor);
+  if (parsed.version !== 1) throw new Error("blob version mismatch (expected v1)");
+  return parsed;
 }
 
 module.exports = {
@@ -172,6 +221,10 @@ module.exports = {
   deriveOpaqueDir,
   deriveOpaqueFile,
   buildFingerprintString,
+  BLOB_V1_LEN,
+  BLOB_V2_LEN,
+  packBlob,
+  unpackBlob,
   packBlobV1,
   unpackBlobV1,
 };
