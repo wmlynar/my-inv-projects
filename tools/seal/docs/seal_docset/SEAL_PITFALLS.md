@@ -251,6 +251,10 @@
   - Wymaganie: jeden kanoniczny katalog `seal-out/`, a cache w podfolderach (`seal-out/cache/...`).
   - Wymaganie: narzedzia i docs uzywaja tej samej sciezki; brak „drugich” katalogow.
 
+- Blad: generowane pliki trafialy poza `seal-out/` (np. `seal-config/.private`), co mylilo i brudzilo repo.
+  - Wymaganie: wszystkie pliki generowane (cache/private/metadata/runtime) musza byc pod `seal-out/`.
+  - Wymaganie: nowe potrzeby storage rozwiazuj przez podfolder `seal-out/cache/...` + migracje danych (bez nowych katalogow w root projektu).
+
 - Blad: cache `seal-out/cache/thin` rosl bez limitu i zapychal dysk.
   - Wymaganie: cache ma limit (np. liczba wpisow/rozmiar/TTL) i auto-pruning.
   - Wymaganie: limit musi byc konfigurowalny (0 = wylacza cache), a pruning logowany.

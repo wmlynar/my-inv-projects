@@ -212,6 +212,7 @@ Przykład:
 - STD-159 (SHOULD): jeśli włączono `tracerPidThreads`, sprawdzaj `TracerPid` dla wszystkich tasków (`/proc/self/task/<tid>/status`).
 - STD-078 (SHOULD): skrypty/testy nie zakladaja `bash` – uzywaja `/bin/sh` albo sprawdzaja dostepnosc i robia jawny SKIP.
 - STD-079 (SHOULD): jeden kanoniczny katalog wyjsciowy (`seal-out/`); cache i artefakty trafiaja do podfolderow tego katalogu, bez alternatywnych sciezek.
+- STD-079a (SHOULD): wszystkie pliki generowane (cache/private/metadata/runtime) musza byc zapisywane pod `seal-out/` (np. `seal-out/cache/...`); pojawienie sie nowych katalogow obok projektu (np. `seal-config/.private`) traktuj jako blad i migruj dane do `seal-out/`.
 - STD-080 (SHOULD): testy E2E nie modyfikuja plikow w repo; uzywaja kopii projektu lub `outDirOverride` i sprzataja wszystko w `finally`.
 - STD-081 (SHOULD): testy E2E snapshotuja i przywracaja `process.env` (zwl. `SEAL_*`) aby uniknac wyciekow miedzy testami.
 - STD-082 (SHOULD): testy uruchamiaja procesy z aktywnym wait na gotowosc (health/status) i monitoruja wczesne exit; brak gotowosci = fail z logiem.
