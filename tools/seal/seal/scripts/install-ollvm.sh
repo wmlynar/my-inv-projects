@@ -11,6 +11,9 @@ ROOT="${SEAL_OLLVM_DIR:-$HOME/.cache/seal/obfuscators/obfuscator-llvm}"
 BRANCH="${SEAL_OLLVM_BRANCH:-llvm-4.0}"
 BUILD_DIR="${SEAL_OLLVM_BUILD_DIR:-$ROOT/build}"
 BUILD="${SEAL_OLLVM_BUILD:-1}"
+BIN_NAME="${SEAL_OLLVM_BIN_NAME:-ollvm-clang}"
+BIN_DIR="${SEAL_OLLVM_BIN_DIR:-/usr/local/bin}"
+INSTALL_BIN="${SEAL_OLLVM_INSTALL:-1}"
 
 echo "[install-ollvm] Installing build dependencies..."
 $SUDO apt-get update
@@ -82,5 +85,17 @@ cmake -G Ninja \
 
 ninja -C "$BUILD_DIR" clang
 
+BIN_PATH="$BUILD_DIR/bin/clang"
+if [ ! -x "$BIN_PATH" ]; then
+  echo "[install-ollvm] ERROR: clang binary not found at $BIN_PATH"
+  exit 4
+fi
+
+if [ "$INSTALL_BIN" = "1" ]; then
+  echo "[install-ollvm] Installing to $BIN_DIR/$BIN_NAME"
+  $SUDO install -d "$BIN_DIR"
+  $SUDO install -m 0755 "$BIN_PATH" "$BIN_DIR/$BIN_NAME"
+fi
+
 echo "[install-ollvm] Done."
-echo "[install-ollvm] Obfuscating clang: $BUILD_DIR/bin/clang"
+echo "[install-ollvm] Obfuscating clang: $BIN_PATH"

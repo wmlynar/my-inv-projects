@@ -25,6 +25,9 @@ BUILD_DIR="${SEAL_HIKARI_BUILD_DIR:-$ROOT/build}"
 BUILD="${SEAL_HIKARI_BUILD:-1}"
 TARGET="${SEAL_HIKARI_BUILD_TARGET:-clang}"
 EXTRA_CMAKE_ARGS="${SEAL_HIKARI_CMAKE_ARGS:-}"
+BIN_NAME="${SEAL_HIKARI_BIN_NAME:-hikari-clang}"
+BIN_DIR="${SEAL_HIKARI_BIN_DIR:-/usr/local/bin}"
+INSTALL_BIN="${SEAL_HIKARI_INSTALL:-1}"
 
 echo "[install-hikari] Installing build dependencies..."
 $SUDO apt-get update
@@ -181,5 +184,17 @@ cmake -G Ninja \
 
 ninja -C "$BUILD_DIR" "$TARGET"
 
+BIN_PATH="$BUILD_DIR/bin/clang"
+if [ ! -x "$BIN_PATH" ]; then
+  echo "[install-hikari] ERROR: clang binary not found at $BIN_PATH"
+  exit 4
+fi
+
+if [ "$INSTALL_BIN" = "1" ]; then
+  echo "[install-hikari] Installing to $BIN_DIR/$BIN_NAME"
+  $SUDO install -d "$BIN_DIR"
+  $SUDO install -m 0755 "$BIN_PATH" "$BIN_DIR/$BIN_NAME"
+fi
+
 echo "[install-hikari] Done."
-echo "[install-hikari] Obfuscating clang: $BUILD_DIR/bin/clang"
+echo "[install-hikari] Obfuscating clang: $BIN_PATH"
