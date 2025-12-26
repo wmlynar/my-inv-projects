@@ -11,7 +11,7 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 OUT_DIR="${SEAL_BACKUP_DIR:-$(cd "$(dirname "$0")" && pwd)}"
-OUT_ZIP="${SEAL_BACKUP_ZIP:-$OUT_DIR/third-party-backup-$(date +%Y%m%d).zip}"
+OUT_ZIP="${SEAL_BACKUP_ZIP:-$OUT_DIR/seal-third-party-backup-$(date +%Y%m%d).zip}"
 
 if ! command -v zip >/dev/null 2>&1; then
   $SUDO apt-get update

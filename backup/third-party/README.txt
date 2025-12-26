@@ -14,7 +14,7 @@ Usage:
   ./backup-third-party.sh
 
 Outputs:
-  backup/third-party/third-party-backup-YYYYMMDD.zip
+  backup/third-party/seal-third-party-backup-YYYYMMDD.zip
   (override with SEAL_BACKUP_ZIP=/path/to/file.zip)
 
 Upstream sources (branch pinned where applicable):
