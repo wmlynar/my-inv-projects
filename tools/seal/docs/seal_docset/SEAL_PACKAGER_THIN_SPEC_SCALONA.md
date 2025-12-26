@@ -122,6 +122,13 @@ npx seal release prod --packager thin-single
   - `tracerPidThreads` (domyślnie `true`) — sprawdza `/proc/self/task/<tid>/status` dla wszystkich wątków,
   - `denyEnv` (domyślnie `true`) — fail‑fast, jeśli wykryje zmienne typu `LD_PRELOAD`, `LD_AUDIT`, `NODE_OPTIONS` itd.,
   - `mapsDenylist` (domyślnie `[]`) — lista substringów; jeśli pojawią się w `/proc/self/maps`, launcher kończy się błędem.
+
+**Uwaga (testy E2E):**
+- W testach okresowego `TracerPid` używane są tylko w trybie E2E specjalne ENV:
+  - `SEAL_TRACERPID_FORCE=1`
+  - `SEAL_TRACERPID_FORCE_THREADS=1`
+  - `SEAL_TRACERPID_FORCE_AFTER_MS=...`
+- Są one aktywne wyłącznie, gdy `SEAL_THIN_ANTI_DEBUG_E2E=1`. Nie są to opcje produkcyjne.
 - `build.thin.integrity`:
   - `enabled` (domyślnie `false`) — weryfikuje self‑hash launchera (`b/a`) w `thin-split`.
   - **Tylko `thin-split`**; dla `thin-single` build kończy się błędem.
