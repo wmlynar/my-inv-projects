@@ -138,6 +138,17 @@ Przykład:
 - STD-072 (SHOULD): `seal check` ostrzega tylko o narzedziach rzeczywiscie wymaganych przez wybrany packager/protection (bez szumu).
 - STD-073 (SHOULD): lista dozwolonych wartosci (packagery, poziomy) pochodzi z jednego zrodla i jest wspoldzielona przez CLI, completion i docs; CI ma test zgodnosci.
 - STD-074 (SHOULD): przykladowe `seal.json5` w repo musza przechodzic walidacje schematu (test/CI).
+- STD-075 (SHOULD): generowany kod C nie moze redefiniowac makr (np. `_GNU_SOURCE`) ani duplikowac identyfikatorow; stosuj `#ifndef` i unikalne prefiksy.
+- STD-076 (SHOULD): bledy toolchaina musza pokazywac pelne stderr/stdout i kod wyjscia; nie traktuj ostrzezen jako bledow, chyba ze jawnie uzywasz `-Werror`.
+- STD-077 (SHOULD): dlugie kroki builda/testow loguja postep (co kilka sekund) i w trybie verbose przepuszczaja stdout/stderr narzedzi.
+- STD-078 (SHOULD): skrypty/testy nie zakladaja `bash` – uzywaja `/bin/sh` albo sprawdzaja dostepnosc i robia jawny SKIP.
+- STD-079 (SHOULD): jeden kanoniczny katalog wyjsciowy (`seal-out/`); cache i artefakty trafiaja do podfolderow tego katalogu, bez alternatywnych sciezek.
+- STD-080 (SHOULD): testy E2E nie modyfikuja plikow w repo; uzywaja kopii projektu lub `outDirOverride` i sprzataja wszystko w `finally`.
+- STD-081 (SHOULD): testy E2E snapshotuja i przywracaja `process.env` (zwl. `SEAL_*`) aby uniknac wyciekow miedzy testami.
+- STD-082 (SHOULD): testy uruchamiaja procesy z aktywnym wait na gotowosc (health/status) i monitoruja wczesne exit; brak gotowosci = fail z logiem.
+- STD-083 (SHOULD): testy integracyjne/remote sa gated przez jawne ENV; bez flagi zawsze SKIP z powodem.
+- STD-084 (SHOULD): testy nie uzywaja `sleep()` jako synchronizacji, tylko retry z timeoutem i jitterem/backoff.
+- STD-085 (SHOULD): testy nie wywoluja interaktywnych narzedzi (git/ssh); ustaw `GIT_TERMINAL_PROMPT=0` i fail/skip gdy brakuje dostepu.
 
 #### Logowanie (skrót)
 - STD-042 (SHOULD): logi sa minimalne i bez payloadow; tylko dane potrzebne do diagnozy.

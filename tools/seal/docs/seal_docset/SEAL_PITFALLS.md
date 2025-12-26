@@ -83,6 +83,10 @@
   - Wymaganie: preflight uzywa plikow tymczasowych (nie stdin), zeby narzedzia nie blokowaly sie na wejsciu.
   - Wymaganie: opcja override toolchaina (np. `--cc gcc`) dla srodowisk z wrapperami `cc`.
 
+- Blad: thin build failowal dopiero w trakcie kompilacji launchera (brak `libzstd-dev`), bez jasnej instrukcji instalacji.
+  - Wymaganie: `seal check` wykrywa brakujace pakiety (np. `libzstd-dev`) i podaje **konkretne** `apt-get install ...`.
+  - Wymaganie: `seal release` (thin) fail‑fast z czytelnym komunikatem, gdy toolchain jest niekompletny.
+
 - Blad: build byl niedeterministyczny lub wykonany na innej architekturze/OS niz target (AIO zawiera runtime z build machine).
   - Wymaganie: preflight waliduje OS/arch i wersje narzedzi; mismatch = fail-fast.
   - Wymaganie: zapisuj wersje toolchaina i zaleznosci; unikaj auto‑pobieran w buildzie.
@@ -100,6 +104,11 @@
   - Wymaganie: wszystkie literały string w generowanym C przechodza przez funkcje C‑escape (escapuje `\\`, `"`, `\n`, `\r`, `\t`, `\0`).
   - Wymaganie: nie interpoluj „surowych” stringow do C; uzyj helpera budujacego bezpieczny literal.
   - Wymaganie: testuj generowane C w **obu** konfiguracjach flag (np. sentinel ON/OFF), bo bledy moga byc tylko w jednej galezi.
+
+- Blad: generator C powodowal ostrzezenia/blędy kompilacji przez duplikaty makr lub identyfikatorow (np. `_GNU_SOURCE redefined`, `redefinition of fd`).
+  - Wymaganie: makra typu `_GNU_SOURCE` zawsze owijaj w `#ifndef`/`#define` (brak duplikatow).
+  - Wymaganie: identyfikatory w kodzie generowanym maja unikalny prefix i nie koliduja miedzy galeziami warunkowymi.
+  - Wymaganie: generator C przechodzi compile‑test z `-Werror`, aby ostrzezenia nie przechodzily do produkcji.
 
 - Blad: launcher AIO probowal fallbackowac do BOOTSTRAP po uszkodzeniu stopki (cichy tryb mieszany).
   - Wymaganie: tryb AIO i BOOTSTRAP sa **jawne**.
@@ -121,11 +130,16 @@
   - Wymaganie: kompresja `zstd` musi miec timeout (domyslnie > 0) z jasnym bledem.
   - Wymaganie: timeout musi byc konfigurowalny (`build.thin.zstdTimeoutMs` / `targets.<target>.thin.zstdTimeoutMs` lub `SEAL_THIN_ZSTD_TIMEOUT_MS`).
   - Wymaganie: kompresja nie moze wisiec na `spawnSync` z `stdin` (uzyj streamu i obslugi `error`).
+  - Wymaganie: dla dlugich krokow pokazuj progress i komunikaty "co teraz" (np. `Thin: runtime 3/15`).
 
 - Blad: `codec_state` ginal miedzy deployami (brak zgodnosci kodeka).
   - Wymaganie: `codec_state` musi byc zapisywany lokalnie i utrzymany (`seal-out/cache/thin/<target>/codec_state.json`).
   - Wymaganie: `seal-out/` jest ignorowany w VCS.
   - Wymaganie: brak `codec_state` = rebootstrap.
+
+- Blad: kilka roznych katalogow wyjsciowych (`.seal`, `seal-thin`, `seal-out`) powodowalo chaos i stale artefakty.
+  - Wymaganie: jeden kanoniczny katalog `seal-out/`, a cache w podfolderach (`seal-out/cache/...`).
+  - Wymaganie: narzedzia i docs uzywaja tej samej sciezki; brak „drugich” katalogow.
 
 - Blad: cache `seal-out/cache/thin` rosl bez limitu i zapychal dysk.
   - Wymaganie: cache ma limit (np. liczba wpisow/rozmiar/TTL) i auto-pruning.
@@ -165,6 +179,24 @@
 - Blad: testy „expect fail” nie drenowaly stdout/stderr child procesu, co moglo blokowac proces i zafalszowac timeout.
   - Wymaganie: drenaż stdout/stderr jest wymagany **we wszystkich** sciezkach testu (takze przy spodziewanej porazce).
 
+- Blad: testy modyfikowaly `config.runtime.json5` lub inne pliki projektu i nie przywracaly ich (efekt uboczny w repo).
+  - Wymaganie: testy pracuja na kopii projektu albo uzywaja `outDirOverride` + temp config w katalogu release.
+  - Wymaganie: kazda modyfikacja plikow w repo musi byc przywrocona w `finally`.
+
+- Blad: testy polegaly na `sleep()` zamiast aktywnego wait na gotowosc (`/status`), co bylo flakey.
+  - Wymaganie: start procesu = aktywny wait na health/status z retry, nie twardy sleep.
+  - Wymaganie: test monitoruje wczesne wyjscie procesu i failuje natychmiast z logiem.
+
+- Blad: testy modyfikowaly zmienne `SEAL_*` i nie przywracaly ich, co psulo kolejne testy.
+  - Wymaganie: snapshot i restore `process.env` (albo kluczowych `SEAL_*`) w `finally`.
+
+- Blad: testy tworzyly artefakty w katalogu projektu (`seal-out/`) i zostawialy je po porazce.
+  - Wymaganie: E2E uzywa `outDirOverride` w temp dir; sprzatanie po tescie jest obowiazkowe.
+
+- Blad: testy uruchamialy komendy, ktore prosily o interaktywny input (git/ssh), przez co CI wisial.
+  - Wymaganie: testy maja ustawione `GIT_TERMINAL_PROMPT=0` i nie wywolują interaktywnych narzedzi bez jawnego flag/sekretow.
+  - Wymaganie: testy integracyjne/remote sa jawnie gated env‑flaga i bez niej zawsze SKIP.
+
 - Blad: zmiany w generatorach kodu byly testowane tylko lintem, bez realnego compile/smoke testu.
   - Wymaganie: generator C/JS musi miec automatyczny compile/smoke test (przynajmniej minimalny).
   - Wymaganie: smoke test generatora C uruchamia kompilator z `-Werror`.
@@ -178,6 +210,9 @@
 
 - Blad: testy zalezne od roota/SSH/portow nie sygnalizowaly jawnie, ze zostaly pominiete.
   - Wymaganie: takie testy maja domyslny SKIP i zawsze wypisuja powod.
+
+- Blad: testy uruchamialy skrypty przez `/usr/bin/env bash`, a na minimalnych systemach `bash` nie byl dostepny (`/usr/bin/env: bash: No such file or directory`).
+  - Wymaganie: testy i helpery uzywaja POSIX `/bin/sh` lub jawnie sprawdzaja dostepnosc `bash` i oznaczaja SKIP.
 
 - Blad: brak asercji „brak tmp” pozwalal na ukryty wyciek plikow tymczasowych.
   - Wymaganie: po E2E sprawdzaj, czy nie zostaly `/tmp/seal-*` (fail jeśli tak).
