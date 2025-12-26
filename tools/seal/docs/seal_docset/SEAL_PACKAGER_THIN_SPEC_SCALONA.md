@@ -114,6 +114,16 @@ npx seal release prod --packager thin-single
   - `memfd` wymaga wsparcia jądra; brak wsparcia = błąd uruchomienia.
   - `tmpfile` używa `mkstemp` i usuwa plik z dysku (unlink), ale nie używa memfd; pliki tymczasowe są tworzone z `umask(077)`.
 
+**Anti‑debug / integrity (opcjonalne):**
+- `build.thin.antiDebug`:
+  - `enabled` (domyślnie `true`),
+  - `tracerPid` (domyślnie `true`) — sprawdza `TracerPid` w `/proc/self/status`,
+  - `denyEnv` (domyślnie `true`) — fail‑fast, jeśli wykryje zmienne typu `LD_PRELOAD`, `LD_AUDIT`, `NODE_OPTIONS` itd.,
+  - `mapsDenylist` (domyślnie `[]`) — lista substringów; jeśli pojawią się w `/proc/self/maps`, launcher kończy się błędem.
+- `build.thin.integrity`:
+  - `enabled` (domyślnie `false`) — weryfikuje self‑hash launchera (`b/a`) w `thin-split`.
+  - **Tylko `thin-split`**; dla `thin-single` build kończy się błędem.
+
 **Błędy runtime (bez sentinel):**
 - brak `memfd` przy `runtimeStore=memfd` → `[thin] runtime fd failed` (27) / `[thin] payload fd failed` (29),
 - `clearenv()` niepowodzenie w trybie allowlist → `[thin] runtime invalid` (74).

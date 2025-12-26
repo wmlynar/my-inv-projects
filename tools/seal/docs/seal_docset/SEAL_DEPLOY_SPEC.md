@@ -1747,7 +1747,16 @@ Przykład (aktualny dla v0.5):
       zstdLevel: 1,
       zstdTimeoutMs: 120000,
       envMode: "denylist",    // denylist | allowlist
-      runtimeStore: "memfd"   // memfd | tmpfile
+      runtimeStore: "memfd",  // memfd | tmpfile
+      // Anti-debug (opcjonalne; domyslnie wlaczone podstawowe checki):
+      antiDebug: {
+        enabled: true,
+        tracerPid: true,
+        denyEnv: true,
+        mapsDenylist: []      // np. ["frida", "gdb", "ltrace"] (gdy ustawione, fail-fast)
+      },
+      // Integrity (thin-split only): self-hash launchera b/a
+      integrity: { enabled: false }
     },
 
     // minimal|balanced|aggressive

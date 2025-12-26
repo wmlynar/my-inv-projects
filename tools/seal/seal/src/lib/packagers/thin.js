@@ -35,6 +35,44 @@ const DEFAULT_LIMITS = {
   maxTotalRaw: 4 * 1024 * 1024 * 1024,
 };
 
+const SELF_HASH_MARKER = "THIN_SELF_HASH:";
+const SELF_HASH_HEX_LEN = 8;
+
+function applyLauncherSelfHash(binPath) {
+  try {
+    const buf = fs.readFileSync(binPath);
+    const marker = Buffer.from(SELF_HASH_MARKER + "0".repeat(SELF_HASH_HEX_LEN), "ascii");
+    const positions = [];
+    let offset = 0;
+    while (true) {
+      const pos = buf.indexOf(marker, offset);
+      if (pos === -1) break;
+      positions.push(pos);
+      offset = pos + marker.length;
+    }
+    if (positions.length === 0) {
+      return { ok: false, errorShort: "launcher self-hash marker not found", error: "self_hash_marker_missing" };
+    }
+    const bufForHash = Buffer.from(buf);
+    for (const pos of positions) {
+      const hashStart = pos + SELF_HASH_MARKER.length;
+      if (hashStart + SELF_HASH_HEX_LEN > buf.length) {
+        return { ok: false, errorShort: "launcher self-hash marker truncated", error: "self_hash_marker_truncated" };
+      }
+      bufForHash.fill(0x30, hashStart, hashStart + SELF_HASH_HEX_LEN);
+    }
+    const hash = crc32(bufForHash).toString(16).padStart(SELF_HASH_HEX_LEN, "0");
+    for (const pos of positions) {
+      const hashStart = pos + SELF_HASH_MARKER.length;
+      buf.write(hash, hashStart, SELF_HASH_HEX_LEN, "ascii");
+    }
+    fs.writeFileSync(binPath, buf);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, errorShort: e && e.message ? e.message : String(e), error: e && e.stack ? e.stack : String(e) };
+  }
+}
+
 function randomU32() {
   return crypto.randomBytes(4).readUInt32LE(0);
 }
@@ -1078,7 +1116,7 @@ static int sentinel_check(void) {
 `;
 }
 
-function renderLauncherSource(codecState, limits, allowBootstrap, sentinelCfg, envMode, runtimeStore) {
+function renderLauncherSource(codecState, limits, allowBootstrap, sentinelCfg, envMode, runtimeStore, antiDebugCfg, integrityCfg) {
   const bootstrapJs = `"use strict";
 const fs = require("fs");
 const path = require("path");
@@ -1107,6 +1145,31 @@ m._compile(code, entry);
 
   const envStrictDefault = envMode === "allowlist" ? 1 : 0;
   const runtimeStoreMode = runtimeStore === "tmpfile" ? 2 : 1;
+
+  const antiDebug = (antiDebugCfg && typeof antiDebugCfg === "object") ? antiDebugCfg : {};
+  const adEnabled = antiDebug.enabled !== false;
+  const adTracerPid = adEnabled && antiDebug.tracerPid !== false;
+  const adDenyEnv = adEnabled && antiDebug.denyEnv !== false;
+  const mapsDenylist = adEnabled && Array.isArray(antiDebug.mapsDenylist)
+    ? antiDebug.mapsDenylist
+    : [];
+  const adMaps = mapsDenylist.length > 0;
+
+  const mapsItems = mapsDenylist
+    .map((v) => String(v || "").trim())
+    .filter(Boolean)
+    .map((v) => v.replace(/\\/g, "\\\\").replace(/"/g, '\\"'));
+  const mapsCArray = mapsItems.length
+    ? `static const char *THIN_AD_MAPS_DENY[] = {\n  ${mapsItems.map((v) => `"${v}"`).join(",\n  ")},\n  NULL\n};\n`
+    : "";
+
+  const integrity = (integrityCfg && typeof integrityCfg === "object") ? integrityCfg : {};
+  const selfHashEnabled = integrity.enabled === true;
+  const selfHashMarker = "THIN_SELF_HASH:";
+  const selfHashPlaceholder = "0".repeat(8);
+  const selfHashDefs = selfHashEnabled
+    ? `#define THIN_SELF_HASH_ENABLED 1\n#define THIN_SELF_HASH_MARKER "${selfHashMarker}"\n#define THIN_SELF_HASH_LEN 8\nstatic const char THIN_SELF_HASH_STR[] = THIN_SELF_HASH_MARKER "${selfHashPlaceholder}";\n`
+    : "#define THIN_SELF_HASH_ENABLED 0\n";
 
   return `#include <errno.h>
 #include <ctype.h>
@@ -1158,6 +1221,10 @@ extern char **environ;
 #define THIN_RUNTIME_STORE_MEMFD 1
 #define THIN_RUNTIME_STORE_TMPFILE 2
 #define THIN_RUNTIME_STORE ${runtimeStoreMode}
+#define THIN_AD_ENABLED ${adEnabled ? 1 : 0}
+#define THIN_AD_TRACERPID ${adTracerPid ? 1 : 0}
+#define THIN_AD_DENY_ENV ${adDenyEnv ? 1 : 0}
+#define THIN_AD_MAPS ${adMaps ? 1 : 0}
 
 #define MAX_CHUNKS ${limits.maxChunks}u
 #define MAX_CHUNK_RAW ${limits.maxChunkRaw}u
@@ -1165,6 +1232,8 @@ extern char **environ;
 #define MAX_TOTAL_RAW ${limits.maxTotalRaw}ull
 
 ${sentinelDefs}
+${selfHashDefs}
+${mapsCArray}
 #if SENTINEL_ENABLED
 #define THIN_FAIL(code) SENTINEL_EXIT_BLOCK
 #else
@@ -1574,7 +1643,108 @@ static void set_env_paths(const char *root) {
   set_virtual_entry(root);
 }
 
+#if THIN_SELF_HASH_ENABLED
+static int hex_nibble(char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'a' && c <= 'f') return 10 + (c - 'a');
+  if (c >= 'A' && c <= 'F') return 10 + (c - 'A');
+  return -1;
+}
+
+static int hex_to_u32(const char *hex, uint32_t *out) {
+  uint32_t v = 0;
+  for (int i = 0; i < 8; i++) {
+    int n = hex_nibble(hex[i]);
+    if (n < 0) return -1;
+    v = (v << 4) | (uint32_t)n;
+  }
+  *out = v;
+  return 0;
+}
+
+static int self_hash_check(void) {
+  int fd = open("/proc/self/exe", O_RDONLY | O_CLOEXEC);
+  if (fd < 0) return fail_msg("[thin] runtime invalid", 73);
+  uint64_t size = 0;
+  if (get_file_size(fd, &size) != 0 || size == 0 || size > 256 * 1024 * 1024ull) {
+    close(fd);
+    return fail_msg("[thin] runtime invalid", 73);
+  }
+  uint8_t *buf = (uint8_t *)malloc((size_t)size);
+  if (!buf) {
+    close(fd);
+    return fail_msg("[thin] runtime invalid", 73);
+  }
+  if (read_exact(fd, buf, (size_t)size, 0) != 0) {
+    free(buf);
+    close(fd);
+    return fail_msg("[thin] runtime invalid", 73);
+  }
+  close(fd);
+
+  const volatile char *needle = THIN_SELF_HASH_STR;
+  if (!needle || needle[0] == '\0') {
+    free(buf);
+    return fail_msg("[thin] runtime invalid", 73);
+  }
+  const char *marker = THIN_SELF_HASH_MARKER;
+  size_t marker_len = strlen(marker);
+  uint32_t expected = 0;
+  int found = 0;
+  for (size_t i = 0; i + marker_len + THIN_SELF_HASH_LEN <= (size_t)size; i++) {
+    if (memcmp(buf + i, marker, marker_len) == 0) {
+      uint32_t cur = 0;
+      if (hex_to_u32((const char *)(buf + i + marker_len), &cur) != 0) {
+        continue;
+      }
+      if (!found) {
+        expected = cur;
+      } else if (cur != expected) {
+        free(buf);
+        return fail_msg("[thin] runtime invalid", 73);
+      }
+      memset(buf + i + marker_len, '0', THIN_SELF_HASH_LEN);
+      found = 1;
+      i += marker_len + THIN_SELF_HASH_LEN - 1;
+    }
+  }
+  if (!found) {
+    free(buf);
+    return fail_msg("[thin] runtime invalid", 73);
+  }
+  uint32_t got = crc32_buf(buf, (size_t)size);
+  free(buf);
+  if (expected != got) {
+    return fail_msg("[thin] runtime invalid", 73);
+  }
+  return 0;
+}
+#else
+static int self_hash_check(void) {
+  return 0;
+}
+#endif
+
+#if THIN_AD_MAPS
+static int maps_has_deny(void) {
+  FILE *f = fopen("/proc/self/maps", "r");
+  if (!f) return 0;
+  char line[512];
+  while (fgets(line, sizeof(line), f)) {
+    for (int i = 0; THIN_AD_MAPS_DENY[i]; i++) {
+      if (strstr(line, THIN_AD_MAPS_DENY[i])) {
+        fclose(f);
+        return 1;
+      }
+    }
+  }
+  fclose(f);
+  return 0;
+}
+#endif
+
 static int anti_debug_checks(void) {
+#if THIN_AD_ENABLED && THIN_AD_TRACERPID
   FILE *f = fopen("/proc/self/status", "r");
   if (f) {
     char line[256];
@@ -1592,7 +1762,9 @@ static int anti_debug_checks(void) {
     }
     fclose(f);
   }
+#endif
 
+#if THIN_AD_ENABLED && THIN_AD_DENY_ENV
   const char *deny_env[] = {
     "LD_PRELOAD",
     "LD_LIBRARY_PATH",
@@ -1623,6 +1795,13 @@ static int anti_debug_checks(void) {
       return fail_msg("[thin] runtime invalid", 72);
     }
   }
+#endif
+
+#if THIN_AD_ENABLED && THIN_AD_MAPS
+  if (maps_has_deny()) {
+    return fail_msg("[thin] runtime invalid", 73);
+  }
+#endif
 
   return 0;
 }
@@ -1750,6 +1929,11 @@ int main(int argc, char **argv) {
   int ad = anti_debug_checks();
   if (ad != 0) {
     return ad;
+  }
+
+  int ih = self_hash_check();
+  if (ih != 0) {
+    return ih;
   }
 
   if (SENTINEL_ENABLED) {
@@ -1914,7 +2098,7 @@ int main(int argc, char **argv) {
 `;
 }
 
-function buildLauncher(stageDir, codecState, allowBootstrap, sentinelCfg, envMode, runtimeStore, cObfuscator) {
+function buildLauncher(stageDir, codecState, allowBootstrap, sentinelCfg, envMode, runtimeStore, cObfuscator, antiDebugCfg, integrityCfg) {
   const limits = DEFAULT_LIMITS;
   if (cObfuscator && cObfuscator.kind) {
     if (!cObfuscator.cmd) {
@@ -1934,7 +2118,11 @@ function buildLauncher(stageDir, codecState, allowBootstrap, sentinelCfg, envMod
 
   const cPath = path.join(stageDir, "thin-launcher.c");
   const outPath = path.join(stageDir, "thin-launcher");
-  fs.writeFileSync(cPath, renderLauncherSource(codecState, limits, allowBootstrap, sentinelCfg, envMode, runtimeStore), "utf-8");
+  fs.writeFileSync(
+    cPath,
+    renderLauncherSource(codecState, limits, allowBootstrap, sentinelCfg, envMode, runtimeStore, antiDebugCfg, integrityCfg),
+    "utf-8"
+  );
 
   const zstdFlags = getZstdFlags();
   const obfArgs = (cObfuscator && Array.isArray(cObfuscator.args))
@@ -1988,6 +2176,8 @@ async function packThin({
   zstdTimeoutMs,
   envMode,
   runtimeStore,
+  antiDebug,
+  integrity,
   projectRoot,
   targetName,
   sentinel,
@@ -2006,6 +2196,10 @@ async function packThin({
     const chunkSize = resolveChunkSize(thinLevel, chunkSizeBytes);
     const zstdLevel = resolveZstdLevel(thinLevel, zstdLevelOverride);
     const zstdTimeout = resolveZstdTimeout(zstdTimeoutMs);
+    const integrityCfg = integrity && typeof integrity === "object" ? integrity : {};
+    if (integrityCfg.enabled && thinMode !== "bootstrap") {
+      return { ok: false, errorShort: "thin.integrity requires thin-split", error: "integrity_requires_bootstrap" };
+    }
     let codecState = null;
     if (thinMode === "bootstrap") {
       codecState = loadCodecState(projectRoot, targetName);
@@ -2048,7 +2242,7 @@ async function packThin({
 
     const allowBootstrap = thinMode === "bootstrap";
     info("Thin: building launcher (cc + libzstd)...");
-    const launcherRes = buildLauncher(stageDir, codecState, allowBootstrap, sentinel, envMode, runtimeStore, cObfuscator);
+    const launcherRes = buildLauncher(stageDir, codecState, allowBootstrap, sentinel, envMode, runtimeStore, cObfuscator, antiDebug, integrityCfg);
     if (!launcherRes.ok) return launcherRes;
 
     const outBin = path.join(releaseDir, appName);
@@ -2106,4 +2300,4 @@ exec "$DIR/b/a" "$@"
   }
 }
 
-module.exports = { packThin };
+module.exports = { packThin, applyLauncherSelfHash };

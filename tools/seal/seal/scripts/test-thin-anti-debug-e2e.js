@@ -1,0 +1,359 @@
+#!/usr/bin/env node
+"use strict";
+
+const assert = require("assert");
+const fs = require("fs");
+const http = require("http");
+const net = require("net");
+const os = require("os");
+const path = require("path");
+const { spawn, spawnSync } = require("child_process");
+
+const { buildRelease } = require("../src/lib/build");
+const { loadProjectConfig, loadTargetConfig, resolveConfigName } = require("../src/lib/project");
+const { readJson5, writeJson5 } = require("../src/lib/json5io");
+
+const EXAMPLE_ROOT = path.resolve(__dirname, "..", "..", "example");
+
+function log(msg) {
+  process.stdout.write(`[thin-anti-debug-e2e] ${msg}\n`);
+}
+
+function fail(msg) {
+  process.stderr.write(`[thin-anti-debug-e2e] ERROR: ${msg}\n`);
+}
+
+function runCmd(cmd, args, timeoutMs = 5000) {
+  return spawnSync(cmd, args, { stdio: "pipe", timeout: timeoutMs });
+}
+
+function hasCommand(cmd) {
+  const res = runCmd("bash", ["-lc", `command -v ${cmd} >/dev/null 2>&1`]);
+  return res.status === 0;
+}
+
+function checkPrereqs() {
+  if (process.platform !== "linux") {
+    log(`SKIP: thin anti-debug E2E is linux-only (platform=${process.platform})`);
+    return { ok: false, skip: true };
+  }
+  if (!hasCommand("cc") && !hasCommand("gcc")) {
+    fail("Missing C compiler (cc/gcc)");
+    return { ok: false, skip: false };
+  }
+  if (!hasCommand("pkg-config")) {
+    fail("Missing pkg-config (required for libzstd)");
+    return { ok: false, skip: false };
+  }
+  const zstdCheck = runCmd("pkg-config", ["--libs", "libzstd"]);
+  if (zstdCheck.status !== 0) {
+    fail("libzstd not found via pkg-config");
+    return { ok: false, skip: false };
+  }
+  return { ok: true, skip: false };
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function withTimeout(label, ms, fn) {
+  let timer = null;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([fn(), timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
+function httpJson({ port, path: reqPath, timeoutMs }) {
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      {
+        host: "127.0.0.1",
+        port,
+        path: reqPath,
+        method: "GET",
+        timeout: timeoutMs,
+      },
+      (res) => {
+        const chunks = [];
+        res.on("data", (c) => chunks.push(c));
+        res.on("end", () => {
+          const raw = Buffer.concat(chunks).toString("utf8");
+          try {
+            const json = JSON.parse(raw);
+            resolve({ status: res.statusCode, json });
+          } catch (e) {
+            reject(new Error(`Invalid JSON response: ${raw.slice(0, 200)}`));
+          }
+        });
+      }
+    );
+    req.on("timeout", () => req.destroy(new Error("HTTP timeout")));
+    req.on("error", (err) => reject(err));
+    req.end();
+  });
+}
+
+async function waitForStatus(port, timeoutMs = 10_000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const { status, json } = await httpJson({ port, path: "/api/status", timeoutMs: 800 });
+      if (status === 200 && json && json.ok) return json;
+    } catch {
+      // ignore and retry
+    }
+    await delay(200);
+  }
+  throw new Error(`Timeout waiting for /api/status on port ${port}`);
+}
+
+function getFreePort() {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.on("error", reject);
+    srv.listen(0, "127.0.0.1", () => {
+      const addr = srv.address();
+      const port = typeof addr === "object" && addr ? addr.port : null;
+      srv.close(() => resolve(port));
+    });
+  });
+}
+
+function writeRuntimeConfig(releaseDir, port) {
+  const cfgPath = path.join(EXAMPLE_ROOT, "seal-config", "configs", "local.json5");
+  const cfg = readJson5(cfgPath);
+  cfg.http = cfg.http || {};
+  cfg.http.host = "127.0.0.1";
+  cfg.http.port = port;
+  writeJson5(path.join(releaseDir, "config.runtime.json5"), cfg);
+}
+
+async function runReleaseOk({ releaseDir, runTimeoutMs, env }) {
+  if (runReleaseOk.skipListen) {
+    log("SKIP: listen not permitted; runtime check disabled");
+    return;
+  }
+  const port = await getFreePort();
+  writeRuntimeConfig(releaseDir, port);
+
+  const binPath = path.join(releaseDir, "seal-example");
+  assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
+
+  const childEnv = Object.assign({}, process.env, env || {});
+  const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe", env: childEnv });
+  const outChunks = [];
+  const errChunks = [];
+  child.stdout.on("data", (c) => outChunks.push(c));
+  child.stderr.on("data", (c) => errChunks.push(c));
+
+  const exitPromise = new Promise((_, reject) => {
+    child.on("exit", (code, signal) => {
+      const stdout = Buffer.concat(outChunks).toString("utf8").trim();
+      const stderr = Buffer.concat(errChunks).toString("utf8").trim();
+      const detail = [
+        code !== null ? `code=${code}` : null,
+        signal ? `signal=${signal}` : null,
+        stdout ? `stdout: ${stdout.slice(0, 400)}` : null,
+        stderr ? `stderr: ${stderr.slice(0, 400)}` : null,
+      ].filter(Boolean).join("; ");
+      reject(new Error(`process exited early (${detail || "no output"})`));
+    });
+  });
+
+  try {
+    await withTimeout("waitForStatus", runTimeoutMs, () => Promise.race([waitForStatus(port), exitPromise]));
+  } finally {
+    child.kill("SIGTERM");
+    await new Promise((resolve) => {
+      const t = setTimeout(() => {
+        child.kill("SIGKILL");
+        resolve();
+      }, 4000);
+      child.on("exit", () => {
+        clearTimeout(t);
+        resolve();
+      });
+    });
+  }
+}
+
+async function runReleaseExpectFail({ releaseDir, runTimeoutMs, env }) {
+  if (runReleaseOk.skipListen) {
+    log("SKIP: listen not permitted; runtime check disabled");
+    return;
+  }
+  const port = await getFreePort();
+  writeRuntimeConfig(releaseDir, port);
+
+  const binPath = path.join(releaseDir, "seal-example");
+  assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
+
+  const childEnv = Object.assign({}, process.env, env || {});
+  const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe", env: childEnv });
+  const outChunks = [];
+  const errChunks = [];
+  child.stdout.on("data", (c) => outChunks.push(c));
+  child.stderr.on("data", (c) => errChunks.push(c));
+
+  const exitPromise = new Promise((resolve) => {
+    child.on("exit", (code, signal) => resolve({ code, signal }));
+  });
+
+  try {
+    const winner = await withTimeout("expectFail", runTimeoutMs, () => Promise.race([
+      exitPromise,
+      waitForStatus(port).then(() => ({ ok: true })),
+    ]));
+    if (winner && winner.ok) {
+      throw new Error("process reached /api/status (expected failure)");
+    }
+    const { code, signal } = winner || {};
+    if (code === 0) {
+      throw new Error("process exited with code=0 (expected failure)");
+    }
+    if (code === null && !signal) {
+      throw new Error("process did not fail as expected");
+    }
+  } finally {
+    child.kill("SIGTERM");
+    await new Promise((resolve) => {
+      const t = setTimeout(() => {
+        child.kill("SIGKILL");
+        resolve();
+      }, 4000);
+      child.on("exit", () => {
+        clearTimeout(t);
+        resolve();
+      });
+    });
+  }
+}
+
+async function buildThinSplit({ outRoot, antiDebug, integrity }) {
+  const baseCfg = loadProjectConfig(EXAMPLE_ROOT);
+  const projectCfg = JSON.parse(JSON.stringify(baseCfg));
+  projectCfg.build = projectCfg.build || {};
+  projectCfg.build.thin = Object.assign({}, projectCfg.build.thin || {}, {
+    antiDebug: antiDebug || undefined,
+    integrity: integrity || undefined,
+  });
+
+  const targetCfg = loadTargetConfig(EXAMPLE_ROOT, "local").cfg;
+  const configName = resolveConfigName(targetCfg, "local");
+
+  const outDir = path.join(outRoot, "seal-out");
+  const res = await buildRelease({
+    projectRoot: EXAMPLE_ROOT,
+    projectCfg,
+    targetCfg,
+    configName,
+    packagerOverride: "thin-split",
+    outDirOverride: outDir,
+  });
+  return res;
+}
+
+function tamperLauncher(releaseDir) {
+  const launcherPath = path.join(releaseDir, "b", "a");
+  if (!fs.existsSync(launcherPath)) {
+    throw new Error(`launcher not found: ${launcherPath}`);
+  }
+  const buf = fs.readFileSync(launcherPath);
+  const idx = Math.max(0, buf.length - 16);
+  buf[idx] = buf[idx] ^ 0x01;
+  fs.writeFileSync(launcherPath, buf);
+}
+
+async function main() {
+  if (process.env.SEAL_THIN_ANTI_DEBUG_E2E !== "1") {
+    log("SKIP: set SEAL_THIN_ANTI_DEBUG_E2E=1 to run thin anti-debug E2E tests");
+    process.exit(0);
+  }
+  const prereq = checkPrereqs();
+  if (!prereq.ok) process.exit(prereq.skip ? 0 : 1);
+
+  const buildTimeoutMs = Number(process.env.SEAL_THIN_ANTI_DEBUG_E2E_BUILD_TIMEOUT_MS || "240000");
+  const runTimeoutMs = Number(process.env.SEAL_THIN_ANTI_DEBUG_E2E_RUN_TIMEOUT_MS || "15000");
+  const testTimeoutMs = Number(process.env.SEAL_THIN_ANTI_DEBUG_E2E_TIMEOUT_MS || "300000");
+
+  try {
+    await getFreePort();
+  } catch (e) {
+    if (e && e.code === "EPERM") {
+      runReleaseOk.skipListen = true;
+      log("SKIP: cannot listen on localhost (EPERM)");
+    } else {
+      throw e;
+    }
+  }
+
+  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-thin-ad-"));
+  let failures = 0;
+  try {
+    log("Building thin-split with integrity enabled...");
+    const resA = await withTimeout("buildRelease(integrity)", buildTimeoutMs, () =>
+      buildThinSplit({
+        outRoot,
+        integrity: { enabled: true },
+        antiDebug: { enabled: true, tracerPid: true, denyEnv: true },
+      })
+    );
+    await withTimeout("run ok (integrity)", testTimeoutMs, () =>
+      runReleaseOk({ releaseDir: resA.releaseDir, runTimeoutMs })
+    );
+    log("OK: integrity enabled (runtime ok)");
+
+    log("Testing denyEnv (LD_PRELOAD)...");
+    await withTimeout("denyEnv fail", testTimeoutMs, () =>
+      runReleaseExpectFail({ releaseDir: resA.releaseDir, runTimeoutMs, env: { LD_PRELOAD: "1" } })
+    );
+    log("OK: denyEnv triggers failure");
+
+    log("Testing integrity tamper...");
+    tamperLauncher(resA.releaseDir);
+    await withTimeout("integrity tamper fail", testTimeoutMs, () =>
+      runReleaseExpectFail({ releaseDir: resA.releaseDir, runTimeoutMs })
+    );
+    log("OK: integrity tamper rejected");
+
+    log("Building thin-split with antiDebug disabled...");
+    const resB = await withTimeout("buildRelease(antiDebug=off)", buildTimeoutMs, () =>
+      buildThinSplit({
+        outRoot,
+        antiDebug: { enabled: false },
+      })
+    );
+    await withTimeout("run ok (antiDebug off)", testTimeoutMs, () =>
+      runReleaseOk({ releaseDir: resB.releaseDir, runTimeoutMs, env: { LD_PRELOAD: "1" } })
+    );
+    log("OK: antiDebug disabled allows LD_PRELOAD");
+
+    log("Building thin-split with maps denylist...");
+    const resC = await withTimeout("buildRelease(maps deny)", buildTimeoutMs, () =>
+      buildThinSplit({
+        outRoot,
+        antiDebug: { enabled: true, mapsDenylist: ["libc"] },
+      })
+    );
+    await withTimeout("maps deny fail", testTimeoutMs, () =>
+      runReleaseExpectFail({ releaseDir: resC.releaseDir, runTimeoutMs })
+    );
+    log("OK: maps denylist triggers failure");
+  } catch (e) {
+    failures += 1;
+    fail(e.message || e);
+  } finally {
+    fs.rmSync(outRoot, { recursive: true, force: true });
+  }
+
+  if (failures > 0) process.exit(1);
+}
+
+main().catch((err) => {
+  fail(err.stack || err.message || String(err));
+  process.exit(1);
+});

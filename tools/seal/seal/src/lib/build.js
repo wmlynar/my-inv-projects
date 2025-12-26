@@ -15,7 +15,7 @@ const { spawnSyncSafe } = require("./spawn");
 const { renderAppctl } = require("./appctl");
 const { packSea } = require("./packagers/sea");
 const { packFallback } = require("./packagers/fallback");
-const { packThin } = require("./packagers/thin");
+const { packThin, applyLauncherSelfHash } = require("./packagers/thin");
 const { normalizePackager, resolveBundleFallback, resolveThinConfig, resolveProtectionConfig } = require("./packagerConfig");
 const { resolveSentinelConfig } = require("./sentinelConfig");
 
@@ -841,6 +841,8 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
       zstdTimeoutMs: thinZstdTimeoutMs,
       envMode: thinCfg.envMode,
       runtimeStore: thinCfg.runtimeStore,
+      antiDebug: thinCfg.antiDebug,
+      integrity: thinCfg.integrity,
       projectRoot,
       targetName: targetCfg.target || targetCfg.config || "default",
       sentinel: sentinelCfg,
@@ -928,6 +930,21 @@ if (!hardEnabled) {
   ok(`Protection OK (${bits.length ? bits.join(' + ') : 'no_steps'})`);
 }
 
+const thinIntegrityEnabled = !!(thinCfg.integrity && thinCfg.integrity.enabled);
+let thinIntegrity = { enabled: false };
+if (thinIntegrityEnabled) {
+  if (packagerUsed !== "thin-split") {
+    throw new Error("thin.integrity requires packager thin-split");
+  }
+  const launcherPath = path.join(releaseDir, "b", "a");
+  const res = applyLauncherSelfHash(launcherPath);
+  if (!res.ok) {
+    throw new Error(`Thin integrity failed: ${res.errorShort}`);
+  }
+  thinIntegrity = { enabled: true, ok: true, target: "launcher" };
+  ok("Thin integrity OK (launcher self-hash)");
+}
+protection.integrity = thinIntegrity;
 
   // Includes: public/, data/ etc
   copyIncludes(projectRoot, releaseDir, projectCfg.build.includeDirs);

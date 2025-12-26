@@ -24,6 +24,51 @@ function normalizeThinRuntimeStore(raw) {
   return null;
 }
 
+function normalizeThinIntegrity(raw) {
+  if (raw === undefined || raw === null) return { enabled: false };
+  if (typeof raw === "boolean") return { enabled: raw };
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error(`Invalid thin.integrity: expected object or boolean`);
+  }
+  return { enabled: raw.enabled === true };
+}
+
+function normalizeThinAntiDebug(raw) {
+  if (raw === undefined || raw === null) {
+    return {
+      enabled: true,
+      tracerPid: true,
+      denyEnv: true,
+      mapsDenylist: [],
+    };
+  }
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error(`Invalid thin.antiDebug: expected object`);
+  }
+  const enabled = raw.enabled !== undefined ? !!raw.enabled : true;
+  const tracerPid = raw.tracerPid !== undefined ? !!raw.tracerPid : true;
+  const denyEnv = raw.denyEnv !== undefined ? !!raw.denyEnv : true;
+  let mapsDenylist = [];
+  if (raw.mapsDenylist !== undefined) {
+    if (!Array.isArray(raw.mapsDenylist)) {
+      throw new Error(`Invalid thin.antiDebug.mapsDenylist: expected array of strings`);
+    }
+    mapsDenylist = raw.mapsDenylist.map((v) => String(v || "").trim()).filter(Boolean);
+    for (const item of mapsDenylist) {
+      if (/[^\x20-\x7E]/.test(item)) {
+        throw new Error(`Invalid thin.antiDebug.mapsDenylist entry (non-ASCII): ${item}`);
+      }
+      if (item.length > 64) {
+        throw new Error(`Invalid thin.antiDebug.mapsDenylist entry (too long): ${item}`);
+      }
+    }
+  }
+  if (mapsDenylist.length > 32) {
+    throw new Error("thin.antiDebug.mapsDenylist too long (max 32)");
+  }
+  return { enabled, tracerPid, denyEnv, mapsDenylist };
+}
+
 function resolveThinConfig(targetCfg, projectCfg) {
   const tThin = targetCfg && typeof targetCfg.thin === "object" ? targetCfg.thin : {};
   const pThin = projectCfg?.build && typeof projectCfg.build.thin === "object" ? projectCfg.build.thin : {};
@@ -94,7 +139,19 @@ function resolveThinConfig(targetCfg, projectCfg) {
     throw new Error(`Invalid thin.runtimeStore: ${runtimeStoreRaw} (expected: memfd|tmpfile)`);
   }
 
-  return { mode, level, chunkSizeBytes, zstdLevel, zstdTimeoutMs, envMode, runtimeStore };
+  const antiDebugRaw =
+    tThin.antiDebug ??
+    pThin.antiDebug ??
+    null;
+  const antiDebug = normalizeThinAntiDebug(antiDebugRaw);
+
+  const integrityRaw =
+    tThin.integrity ??
+    pThin.integrity ??
+    null;
+  const integrity = normalizeThinIntegrity(integrityRaw);
+
+  return { mode, level, chunkSizeBytes, zstdLevel, zstdTimeoutMs, envMode, runtimeStore, antiDebug, integrity };
 }
 
 function normalizePackager(rawPackager) {
