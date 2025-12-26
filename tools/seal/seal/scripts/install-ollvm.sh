@@ -47,12 +47,13 @@ if [ "$BUILD" != "1" ]; then
 fi
 
 # Patch rationale (local, non-upstream):
-# - Obfuscator-LLVM targets LLVM 4.0 era sources. GCC 13 tightened diagnostics
-#   around lambda captures in CGOpenMPRuntime.cpp, causing a compile failure.
-# - The change below removes redundant captures that trigger that error.
-# - This keeps the build working without changing behavior of the generated
-#   code. If you need upstream-pure sources, skip the patch or build with an
-#   older GCC.
+# - O-LLVM is based on LLVM 4.0 era sources. Modern GCC (>=13) rejects some
+#   lambda capture patterns in CGOpenMPRuntime.cpp that were accepted earlier.
+# - The patch removes redundant captures that trigger the error. It does not
+#   change codegen behavior; it only unblocks compilation on current toolchains.
+# - The patch is applied only in the local cache clone used by this installer.
+#   Upstream sources remain untouched. If you prefer a pure upstream build,
+#   disable the patch or build with an older GCC toolchain.
 patch_lambda_capture() {
   local file="$1"
   [ -f "$file" ] || return 0

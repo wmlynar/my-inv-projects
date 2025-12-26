@@ -33,16 +33,19 @@ fi
 cd "$ROOT"
 
 # Patch rationale (local, non-upstream):
-# - Midgetpack builds architecture stubs with -static and custom ld flags.
-#   On Ubuntu this often fails because libgcc_s or static libgcc variants
-#   are missing or incompatible for the selected arch. The upstream build
-#   system already ships precompiled stubs. We force those to avoid toolchain
-#   issues while keeping the packer usable for SEAL.
-# - The upstream tests also build fully static binaries across multiple
-#   architectures and are not needed for installing the packer binary. We
-#   guard them behind WITH_TESTS to avoid hard failures on systems without
-#   all static deps available.
-# You can disable all patching with SEAL_MIDGETPACK_PATCH=0.
+# - Midgetpack's default build compiles per-arch stubs with -static and custom
+#   ld flags. On Ubuntu, that commonly fails because static libgcc/libgcc_s
+#   for the requested arch is missing or incompatible (we hit "cannot find -lgcc_s").
+#   The upstream repo already ships precompiled stubs for common arches, so we
+#   force those instead of re-linking locally. This keeps the packer usable
+#   without installing a full multiarch/static toolchain.
+# - The upstream tests also build fully static binaries for multiple arches.
+#   Those tests are not required to install the packer binary, and they are
+#   fragile on systems that don't have all static libs installed. We gate the
+#   test subtree behind WITH_TESTS so the installer stays robust.
+# - These changes are applied only inside the local cache clone. The upstream
+#   repo is not modified and the patches are repeatable. Disable them with
+#   SEAL_MIDGETPACK_PATCH=0 if you want a pure upstream build.
 PATCH_MARKER="SEAL_PATCHED_MIDGETPACK"
 if [ "${SEAL_MIDGETPACK_PATCH:-1}" = "1" ]; then
   if ! grep -q "$PATCH_MARKER" "$ROOT/src/stub/CMakeLists.txt"; then

@@ -8,6 +8,17 @@ fi
 
 REPO="${SEAL_HIKARI_REPO:-https://github.com/ChandHsu/Hikari-LLVM15.git}"
 TOKEN="${SEAL_HIKARI_TOKEN:-${SEAL_GITHUB_TOKEN:-${GITHUB_TOKEN:-}}}"
+
+# Patch/installer rationale (operational, non-upstream):
+# - The original upstream Hikari repo is deprecated and does not contain LLVM
+#   sources. We default to a maintained LLVM15 fork and to its known branch
+#   (llvm-15.0.0rc3) to ensure the repo actually builds.
+# - Git over HTTPS will prompt for credentials on some machines (2FA), which
+#   breaks non-interactive installers. We disable prompts and support
+#   SEAL_HIKARI_TOKEN (or SEAL_GITHUB_TOKEN) and SSH fallback.
+# - These are installer behaviors only; the script does not patch the Hikari
+#   source tree. If you want a different fork or branch, override
+#   SEAL_HIKARI_REPO/SEAL_HIKARI_REF.
 REF="${SEAL_HIKARI_REF:-llvm-15.0.0rc3}"
 ROOT="${SEAL_HIKARI_DIR:-$HOME/.cache/seal/obfuscators/hikari}"
 BUILD_DIR="${SEAL_HIKARI_BUILD_DIR:-$ROOT/build}"
