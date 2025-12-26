@@ -440,6 +440,12 @@
 - Blad: w `thin-single` (AIO) probowano `strip`/ELF packer na pliku z doklejonym payloadem, co psulo runtime.
   - Wymaganie: `strip`/packer dla `thin-single` musza byc jawnie SKIP z powodem; dokumentacja ma wyraznie wskazywac `thin-single` jako tryb dev/MVP.
 
+- Blad: `strip` na binarce SEA powodowal crash (SIGSEGV) mimo udanego builda.
+  - Wymaganie: dla `sea` `strip` jest domyslnie blokowany; odblokowanie wymaga jawnego `build.protection.strip.allowSea=true`.
+
+- Blad: detekcja narzedzi (`postject`, packery) nie uwzgledniala monorepo/workspace i szukala tylko w `./node_modules/.bin`, przez co testy/CLI nie widzialy narzedzia mimo instalacji.
+  - Wymaganie: przy wykrywaniu CLI sprawdzaj kilka poziomow `node_modules/.bin` lub uzywaj mechanizmu typu `npm bin -w`/`npm exec`.
+
 - Blad: pliki binarne byly czytane/zapisywane z `utf8`, co uszkadzalo dane (codec/payload).
   - Wymaganie: binarki czytaj/zapisuj jako `Buffer` (bez encoding), a tekst jawnie jako `utf8`.
 

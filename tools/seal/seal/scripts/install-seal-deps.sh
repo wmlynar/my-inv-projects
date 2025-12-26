@@ -8,7 +8,7 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SEAL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
 NODE_MAJOR="${SEAL_NODE_MAJOR:-24}"
 INSTALL_APT="${SEAL_INSTALL_APT:-1}"

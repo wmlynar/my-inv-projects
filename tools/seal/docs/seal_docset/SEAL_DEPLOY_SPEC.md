@@ -1766,7 +1766,7 @@ Przykład (aktualny dla v0.5):
       enabled: true,
       seaMain: { pack: true, method: "brotli", chunkSize: 8000 },
       bundle: { pack: true },
-      strip: { enabled: false, cmd: "strip", args: ["--strip-all"] }, // strip | llvm-strip | eu-strip | sstrip
+      strip: { enabled: false, cmd: "strip", args: ["--strip-all"], allowSea: false }, // strip | llvm-strip | eu-strip | sstrip
       // ELF packers/protectors (opcjonalne, wysokie ryzyko operacyjne):
       // elfPacker: { tool: "kiteshield" | "midgetpack" | "upx", cmd: "kiteshield", args: ["-n", "{in}", "{out}"] },
       // Source-level string obfuscation libs (informacyjne, manualna integracja):

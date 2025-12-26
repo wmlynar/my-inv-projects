@@ -199,12 +199,12 @@ function readelfHasSymtab(binPath) {
   return out.includes(".symtab");
 }
 
-async function buildWithStrip({ outRoot, packager }) {
+async function buildWithStrip({ outRoot, packager, allowSea }) {
   const baseCfg = loadProjectConfig(EXAMPLE_ROOT);
   const projectCfg = JSON.parse(JSON.stringify(baseCfg));
   projectCfg.build = projectCfg.build || {};
   projectCfg.build.protection = Object.assign({}, projectCfg.build.protection || {}, {
-    strip: { enabled: true, cmd: "strip" },
+    strip: { enabled: true, cmd: "strip", allowSea: !!allowSea },
   });
 
   const targetCfg = loadTargetConfig(EXAMPLE_ROOT, "local").cfg;
@@ -268,6 +268,13 @@ async function testStripMetadataSea(res) {
   }
 }
 
+async function testStripMetadataSeaSkip(res) {
+  const stripStep = extractStripStep(res);
+  if (!(stripStep.skipped && stripStep.reason === "sea_requires_allow")) {
+    throw new Error(`expected SEA strip skip, got: ${JSON.stringify(stripStep)}`);
+  }
+}
+
 async function testStripRuntime(res, ctx) {
   await runRelease({ releaseDir: res.releaseDir, runTimeoutMs: ctx.runTimeoutMs });
 }
@@ -281,9 +288,14 @@ async function main() {
   if (!prereq.ok) process.exit(prereq.skip ? 0 : 1);
 
   const prevPath = process.env.PATH;
-  const localBin = path.resolve(__dirname, "..", "node_modules", ".bin");
-  if (fs.existsSync(localBin) && !process.env.PATH.split(path.delimiter).includes(localBin)) {
-    process.env.PATH = `${localBin}${path.delimiter}${process.env.PATH}`;
+  const binCandidates = [
+    path.resolve(__dirname, "..", "node_modules", ".bin"),
+    path.resolve(__dirname, "..", "..", "node_modules", ".bin"),
+  ];
+  for (const binPath of binCandidates) {
+    if (fs.existsSync(binPath) && !process.env.PATH.split(path.delimiter).includes(binPath)) {
+      process.env.PATH = `${binPath}${path.delimiter}${process.env.PATH}`;
+    }
   }
 
   const prevChunk = process.env.SEAL_THIN_CHUNK_SIZE;
@@ -296,6 +308,7 @@ async function main() {
   const buildTimeoutMs = Number(process.env.SEAL_STRIP_E2E_BUILD_TIMEOUT_MS || "180000");
   const runTimeoutMs = Number(process.env.SEAL_STRIP_E2E_RUN_TIMEOUT_MS || "15000");
   const testTimeoutMs = Number(process.env.SEAL_STRIP_E2E_TIMEOUT_MS || "240000");
+  const allowSea = process.env.SEAL_STRIP_E2E_ALLOW_SEA === "1";
   const ctx = { buildTimeoutMs, runTimeoutMs };
 
   try {
@@ -349,10 +362,15 @@ async function main() {
     } else {
       log("Building SEA with strip enabled...");
       const seaRes = await withTimeout("buildRelease(strip-sea)", buildTimeoutMs, () =>
-        buildWithStrip({ outRoot, packager: "sea" })
+        buildWithStrip({ outRoot, packager: "sea", allowSea })
       );
-      await withTimeout("testStripMetadataSea", testTimeoutMs, () => testStripMetadataSea(seaRes));
-      log("OK: testStripMetadataSea");
+      if (allowSea) {
+        await withTimeout("testStripMetadataSea", testTimeoutMs, () => testStripMetadataSea(seaRes));
+        log("OK: testStripMetadataSea");
+      } else {
+        await withTimeout("testStripMetadataSeaSkip", testTimeoutMs, () => testStripMetadataSeaSkip(seaRes));
+        log("OK: testStripMetadataSeaSkip");
+      }
       if (!runRelease.skipListen) {
         await withTimeout("testStripRuntime(sea)", testTimeoutMs, () => testStripRuntime(seaRes, ctx));
         log("OK: testStripRuntime(sea)");

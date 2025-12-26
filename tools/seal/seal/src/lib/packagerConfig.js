@@ -221,6 +221,7 @@ function resolveProtectionConfig(projectCfg) {
     stripSymbols: stripCfg.enabled !== undefined ? !!stripCfg.enabled : false,
     stripTool: stripCfg.cmd ?? "strip",
     stripArgs: stripCfg.args ?? null,
+    stripAllowSea: stripCfg.allowSea === true,
     elfPacker: elfCfg.tool ?? null,
     elfPackerCmd: elfCfg.cmd ?? null,
     elfPackerArgs: normalizeArgList(elfCfg.args ?? null),

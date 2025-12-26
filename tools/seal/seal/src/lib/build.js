@@ -655,13 +655,17 @@ function applyHardeningPost(releaseDir, appName, packagerUsed, hardCfg) {
   const isScript = isShebangScript(hardTargetPath);
   const isThin = typeof packagerUsed === "string" && packagerUsed.startsWith("thin");
   const isThinSingle = packagerUsed === "thin-single";
+  const isSea = packagerUsed === "sea";
 
   const stripEnabled = cfg.stripSymbols === true; // default false
+  const stripAllowSea = cfg.stripAllowSea === true;
   const stripTool = cfg.stripTool || "strip";
   const stripArgs = cfg.stripArgs || null;
   if (!isScript && stripEnabled) {
     if (isThinSingle) {
       steps.push({ step: "strip", ok: false, skipped: true, reason: "thin_single_not_supported", target: hardTargetLabel });
+    } else if (isSea && !stripAllowSea) {
+      steps.push({ step: "strip", ok: false, skipped: true, reason: "sea_requires_allow", target: hardTargetLabel });
     } else {
       steps.push({ step: "strip", target: hardTargetLabel, ...tryStripBinary(hardTargetPath, { cmd: stripTool, args: stripArgs }) });
     }

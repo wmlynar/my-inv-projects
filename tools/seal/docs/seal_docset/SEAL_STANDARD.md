@@ -138,6 +138,7 @@ Przykład:
 - STD-128 (SHOULD): `xargs` uruchamiaj z `-r` (GNU) lub jawnie sprawdzaj, czy input nie jest pusty.
 - STD-129 (SHOULD): rozpakowanie artefaktu odbywa sie w katalogu stagingowym; `current.buildId` aktualizuj dopiero po walidacji.
 - STD-130 (SHOULD): dla krytycznych binarek nie polegaj na niekontrolowanym `PATH`; uzywaj `command -v` + whitelisty lub absolutnych sciezek, szczegolnie przy `sudo`.
+- STD-130a (SHOULD): wykrywanie narzedzi z `node_modules/.bin` musi uwzgledniac monorepo/workspaces (sprawdzaj kilka poziomow lub uzyj `npm bin -w`/`npm exec`), inaczej CLI/testy beda false‑negative.
 - STD-131 (SHOULD): przy ekstrakcji archiwow w deploy ustaw `--no-same-owner` i `--no-same-permissions` oraz ustaw jawne perm po rozpakowaniu.
 - STD-132 (SHOULD): masowe operacje na plikach nie moga przekraczac `ARG_MAX`; uzywaj `find ... -exec ... +` lub `xargs -0`.
 - STD-133 (SHOULD): odrzucaj absolutne segmenty sciezek w danych z configu i normalizuj `..` przed `path.join`.
@@ -161,6 +162,7 @@ Przykład:
 - STD-151 (SHOULD): gdy operacja wymaga uprawnien/sandbox escape, komunikat musi jasno prosic o zgode; brak cichych fallbackow.
 - STD-152 (SHOULD): dla `thin-split` hardening (strip/packer) musi targetowac **launcher** (`b/a`), a nie wrapper `./<app>`; zapisuj w metadanych/logach, ktory plik byl celem.
 - STD-153 (SHOULD): dla `thin-single` hardening (strip/packer) jest niedozwolony — wykonaj jawny SKIP z powodem i nie probuj modyfikowac AIO.
+- STD-154 (SHOULD): dla `sea` `strip` jest domyslnie blokowany (ryzyko crash po postject); wymaga jawnego `build.protection.strip.allowSea=true`.
 
 #### Testy / CI
 - STD-018 (SHOULD): testy automatyczne nie polegają na kruchym parsowaniu stdout/stderr child procesów; preferuj JSON output, kody wyjścia lub wywołania in‑process; gdy parsujesz, zawsze usuwaj ANSI.
