@@ -615,6 +615,7 @@ Mechanizmy:
 - Na serwerze nie ma zainstalowanego Seal.
 - Seal łączy się przez SSH.
 - SSH używa `StrictHostKeyChecking=accept-new` **celowo** (pierwsze połączenie akceptuje nowy host key). Możesz to zmienić per‑target przez `sshStrictHostKeyChecking` w `seal-config/targets/<target>.json5`.
+- SSH działa w trybie **non‑interactive** (BatchMode) i **nie** obsługuje haseł/keyboard‑interactive. Wymagane są klucze SSH (ssh-agent/authorized_keys).
 - Host jest offline, a wdrożenia są idempotentne.
 
 ### 11.2. Kiedy bootstrap jest potrzebny

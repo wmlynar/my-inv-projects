@@ -175,6 +175,7 @@ Opcja: 2
   sshPort: 22,
   // accept-new | yes | no | ask
   sshStrictHostKeyChecking: "accept-new",
+  // SSH jest non-interactive (BatchMode): wymagane klucze, brak promptów na hasło.
   installDir: "/home/admin/apps/my-app",
   serviceName: "my-app",
   serviceUser: "my-app",
