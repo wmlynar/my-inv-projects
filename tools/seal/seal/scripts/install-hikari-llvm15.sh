@@ -6,9 +6,9 @@ if [ "$(id -u)" -ne 0 ]; then
   SUDO="sudo"
 fi
 
-REPO="${SEAL_HIKARI_REPO:-https://github.com/NeHyci/Hikari-LLVM15.git}"
+REPO="${SEAL_HIKARI_REPO:-https://github.com/ChandHsu/Hikari-LLVM15.git}"
 TOKEN="${SEAL_HIKARI_TOKEN:-${SEAL_GITHUB_TOKEN:-${GITHUB_TOKEN:-}}}"
-REF="${SEAL_HIKARI_REF:-}"
+REF="${SEAL_HIKARI_REF:-llvm-15.0.0rc3}"
 ROOT="${SEAL_HIKARI_DIR:-$HOME/.cache/seal/obfuscators/hikari}"
 BUILD_DIR="${SEAL_HIKARI_BUILD_DIR:-$ROOT/build}"
 BUILD="${SEAL_HIKARI_BUILD:-1}"
@@ -90,7 +90,11 @@ fi
 
 if [ -n "$REF" ]; then
   echo "[install-hikari] Checkout ref: $REF"
-  git -C "$ROOT" checkout "$REF"
+  if git -C "$ROOT" show-ref --verify --quiet "refs/heads/$REF"; then
+    git -C "$ROOT" checkout "$REF"
+  else
+    git -C "$ROOT" checkout -B "$REF" "origin/$REF"
+  fi
 fi
 
 if [ -f "$ROOT/.gitmodules" ]; then
@@ -129,7 +133,11 @@ if [ -z "$SRC_DIR" ]; then
       exit 2
     fi
     if [ -n "$REF" ]; then
-      git -C "$ROOT" checkout "$REF"
+      if git -C "$ROOT" show-ref --verify --quiet "refs/heads/$REF"; then
+        git -C "$ROOT" checkout "$REF"
+      else
+        git -C "$ROOT" checkout -B "$REF" "origin/$REF"
+      fi
     fi
     if [ -f "$ROOT/.gitmodules" ]; then
       git -C "$ROOT" submodule update --init --recursive
