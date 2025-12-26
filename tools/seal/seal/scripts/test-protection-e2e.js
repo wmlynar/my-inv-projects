@@ -214,7 +214,7 @@ async function testStringObfuscationMeta(ctx) {
   try {
     const res = await withTimeout("buildRelease(meta)", ctx.buildTimeoutMs, () =>
       buildWithProtection({
-        protection: { stringObfuscation: "xorstr" },
+        protection: { strings: { obfuscation: "xorstr" } },
         outRoot,
         packager: "thin-single",
       })
@@ -236,9 +236,11 @@ async function testElfPacker(ctx) {
     const res = await withTimeout("buildRelease(elf)", ctx.buildTimeoutMs, () =>
       buildWithProtection({
         protection: {
-          elfPacker: "fake",
-          elfPackerCmd: packerPath,
-          elfPackerArgs: ["{in}", "{out}"],
+          elfPacker: {
+            tool: "fake",
+            cmd: packerPath,
+            args: ["{in}", "{out}"],
+          },
         },
         outRoot,
         packager: "thin-single",

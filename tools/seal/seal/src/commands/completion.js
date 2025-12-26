@@ -6,7 +6,7 @@ _seal_find_root() {
   local dir="$PWD"
   local i=0
   while [[ "$dir" != "/" && $i -lt 25 ]]; do
-    if [[ -f "$dir/seal.json5" || -d "$dir/seal-config/targets" || -f "$dir/seal-config/project.json5" ]]; then
+    if [[ -f "$dir/seal.json5" || -d "$dir/seal-config/targets" ]]; then
       echo "$dir"
       return 0
     fi

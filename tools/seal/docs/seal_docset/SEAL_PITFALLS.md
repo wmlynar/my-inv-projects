@@ -55,9 +55,9 @@
 - Blad: obfuskacja/minifikacja frontendu byla wylaczona.
   - Wymaganie: `build.frontendObfuscation` i `build.frontendMinify` sa **domyslnie wlaczone** dla UI.
 
-- Blad: `upx` byl wlaczony, ale jego blad byl ignorowany (build przechodzil mimo `CantUnpackException` itp.).
-  - Wymaganie: jezeli `upx` jest wlaczony i sie nie powiedzie, build **musi** sie przerwac z bledem.
-  - Wymaganie: `upx` domyslnie wylaczony dla SEA; wlaczaj tylko po potwierdzeniu `upx -t` na binarce.
+- Blad: `elfPacker.tool="upx"` byl wlaczony, ale jego blad byl ignorowany (build przechodzil mimo `CantUnpackException` itp.).
+  - Wymaganie: jezeli `elfPacker.tool="upx"` jest wlaczony i sie nie powiedzie, build **musi** sie przerwac z bledem.
+  - Wymaganie: `elfPacker.tool="upx"` domyslnie wylaczony dla SEA; wlaczaj tylko po potwierdzeniu `upx -t` na binarce.
 
 - Blad: rozjazd wykrywania narzedzi i opcji miedzy `check` i `build` (postject/cc/packager).
   - Wymaganie: **jedno zrodlo prawdy** dla wykrywania narzedzi (resolver binarki).
@@ -408,7 +408,7 @@
 ## Co sprawdzac po zmianach (checklist)
 
 - `seal release` bez `postject` musi failowac (chyba ze bundle fallback jawnie wlaczony).
-- `upx` wlaczony + blad `upx` => build musi failowac.
+- `elfPacker.tool="upx"` wlaczony + blad `upx` => build musi failowac.
 - `seal deploy` nie wysyla artefaktu podwojnie.
 - `installDir` w targetach jest w `/home/admin/apps/...`.
 - `config.runtime.json5` jest obecny i poprawny JSON5.

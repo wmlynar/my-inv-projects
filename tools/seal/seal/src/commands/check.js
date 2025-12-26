@@ -225,10 +225,10 @@ async function cmdCheck(cwd, targetArg, opts) {
 
   // Toolchain checks
   const thinCfg = resolveThinConfig(targetCfg, proj);
-  const packagerSpec = normalizePackager(opts.packager || targetCfg?.packager || proj?.build?.packager || "auto", thinCfg.mode);
+  const packagerSpec = normalizePackager(opts.packager || targetCfg?.packager || proj?.build?.packager || "auto");
   const allowBundleFallback = resolveBundleFallback(targetCfg, proj);
   if (packagerSpec.kind === "unknown") {
-    errors.push(`Unknown packager: ${packagerSpec.label}. Allowed: thin-split, thin-single, thin (legacy), sea, bundle, none, auto.`);
+    errors.push(`Unknown packager: ${packagerSpec.label}. Allowed: thin-split, thin-single, sea, bundle, none, auto.`);
   }
   const seaNeeded = packagerSpec.kind === "sea";
   const thinNeeded = packagerSpec.kind === "thin";
@@ -237,7 +237,7 @@ async function cmdCheck(cwd, targetArg, opts) {
   const major = nodeMajor();
   if (major < 18) errors.push(`Node too old: ${process.version} (need >= 18; SEA needs >= 20)`);
   if (seaNeeded && major < 20) {
-    warnings.push(`Node < 20: SEA may not work. ${allowBundleFallback ? "Bundle fallback is enabled." : "Build will fail unless bundle fallback is explicitly enabled (build.bundleFallback=true or packager=bundle)."} Node=${process.version}`);
+    warnings.push(`Node < 20: SEA may not work. ${allowBundleFallback ? "Bundle fallback is enabled." : "Build will fail unless bundle fallback is explicitly enabled (build.packagerFallback=true or packager=bundle)."} Node=${process.version}`);
   }
 
   // Dependencies present?
@@ -267,14 +267,14 @@ async function cmdCheck(cwd, targetArg, opts) {
         if (allowBundleFallback) {
           warnings.push(`${msg} Bundle fallback is enabled.`);
         } else {
-          errors.push(`${msg} Build will fail unless bundle fallback is explicitly enabled (build.bundleFallback=true or packager=bundle).`);
+          errors.push(`${msg} Build will fail unless bundle fallback is explicitly enabled (build.packagerFallback=true or packager=bundle).`);
         }
       } catch {
         const msg = "postject not installed – SEA may fail.";
         if (allowBundleFallback) {
           warnings.push(`${msg} Bundle fallback is enabled.`);
         } else {
-          errors.push(`${msg} Build will fail unless bundle fallback is explicitly enabled (build.bundleFallback=true or packager=bundle).`);
+          errors.push(`${msg} Build will fail unless bundle fallback is explicitly enabled (build.packagerFallback=true or packager=bundle).`);
         }
       }
     }
@@ -379,8 +379,11 @@ async function cmdCheck(cwd, targetArg, opts) {
     if (hasCommand('strip')) ok('strip: OK (symbol stripping)');
     else warnings.push('strip not installed – binaries will be easier to inspect (install binutils)');
 
-    if (hasCommand('upx')) ok('upx: OK (binary packing)');
-    else warnings.push('upx not installed – binaries will not be packed (optional but recommended)');
+    if (protectionCfg.elfPacker) {
+      const packerCmd = protectionCfg.elfPackerCmd || protectionCfg.elfPacker;
+      if (hasCommand(packerCmd)) ok(`${packerCmd}: OK (ELF packer)`);
+      else warnings.push(`ELF packer not found (${packerCmd}) – protection.elfPacker will fail`);
+    }
   }
 
   finalize();

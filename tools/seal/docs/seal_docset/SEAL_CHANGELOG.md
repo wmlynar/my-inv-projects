@@ -54,7 +54,7 @@
 - **Protection domyślnie włączony:**
   - **SEA**: main script jest pakowany do loadera (Brotli/Gzip) przed generacją blobu (bez plaintext JS w binarce),
   - **bundle** (jawnie włączony): backend bundle jest pakowany do `app.bundle.cjs.gz` + loader,
-  - `protection.strip.enabled`/`protection.upx.enabled` są dostępne jako opcje, ale **OFF by default** (kompatybilność postject).
+  - `protection.strip.enabled` i `protection.elfPacker.tool="upx"` są dostępne jako opcje, ale **OFF by default** (kompatybilność postject).
 
 ---
 

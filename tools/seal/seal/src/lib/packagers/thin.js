@@ -21,6 +21,7 @@ const CODEC_BIN_HASH_LEN = 32;
 const CODEC_BIN_LEN = 4 + 1 + 1 + 2 + CODEC_BIN_HASH_LEN;
 const THIN_LEVELS = {
   low: { chunkSize: 2 * 1024 * 1024, zstdLevel: 1 },
+  medium: { chunkSize: 512 * 1024, zstdLevel: 2 },
   high: { chunkSize: 64 * 1024, zstdLevel: 3 },
 };
 
@@ -342,7 +343,7 @@ function writeU64LE(buf, offset, value) {
 function normalizeThinLevel(level) {
   const lvl = String(level || "low").toLowerCase();
   if (!THIN_LEVELS[lvl]) {
-    throw new Error(`Unknown thinLevel: ${lvl}`);
+    throw new Error(`Unknown thin.level: ${lvl} (expected: low|medium|high)`);
   }
   return lvl;
 }
@@ -352,11 +353,11 @@ function resolveChunkSize(level, chunkSizeOpt) {
   if (raw !== undefined && raw !== null && raw !== "") {
     const value = Number(raw);
     if (!Number.isFinite(value) || value <= 0) {
-      throw new Error(`Invalid thinChunkSize: ${raw}`);
+      throw new Error(`Invalid thin.chunkSizeBytes: ${raw}`);
     }
     const size = Math.floor(value);
     if (size > DEFAULT_LIMITS.maxChunkRaw) {
-      throw new Error(`thinChunkSize too large (${size} > ${DEFAULT_LIMITS.maxChunkRaw})`);
+      throw new Error(`thin.chunkSizeBytes too large (${size} > ${DEFAULT_LIMITS.maxChunkRaw})`);
     }
     return size;
   }
@@ -368,7 +369,7 @@ function resolveZstdLevel(level, zstdLevelOpt) {
   if (raw !== undefined && raw !== null && raw !== "") {
     const value = Number(raw);
     if (!Number.isFinite(value) || value < 1 || value > 19) {
-      throw new Error(`Invalid thinZstdLevel: ${raw} (expected 1..19)`);
+      throw new Error(`Invalid thin.zstdLevel: ${raw} (expected 1..19)`);
     }
     return Math.floor(value);
   }
@@ -380,7 +381,7 @@ function resolveZstdTimeout(timeoutOpt) {
   if (raw !== undefined && raw !== null && raw !== "") {
     const value = Number(raw);
     if (!Number.isFinite(value) || value < 0) {
-      throw new Error(`Invalid thinZstdTimeoutMs: ${raw} (expected >= 0)`);
+      throw new Error(`Invalid thin.zstdTimeoutMs: ${raw} (expected >= 0)`);
     }
     return Math.floor(value);
   }

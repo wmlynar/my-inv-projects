@@ -195,9 +195,11 @@ async function buildWithObfuscator({ outRoot, obfuscator, cmd, args }) {
   const projectCfg = JSON.parse(JSON.stringify(baseCfg));
   projectCfg.build = projectCfg.build || {};
   projectCfg.build.protection = Object.assign({}, projectCfg.build.protection || {}, {
-    cObfuscator: obfuscator,
-    cObfuscatorCmd: cmd,
-    cObfuscatorArgs: args,
+    cObfuscator: {
+      tool: obfuscator,
+      cmd,
+      args,
+    },
   });
 
   const targetCfg = loadTargetConfig(EXAMPLE_ROOT, "local").cfg;

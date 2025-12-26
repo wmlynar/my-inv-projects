@@ -6,7 +6,7 @@ const path = require("path");
 const { findProjectRoot } = require("../lib/paths");
 const { getSealPaths, detectAppName, detectEntry } = require("../lib/project");
 const { ensureDir, safeWriteFile, fileExists } = require("../lib/fsextra");
-const { readJson5, writeJson5 } = require("../lib/json5io");
+const { writeJson5 } = require("../lib/json5io");
 const { info, ok, hr } = require("../lib/ui");
 
 function templateProjectJson5(appName, entry) {
@@ -16,21 +16,18 @@ function templateProjectJson5(appName, entry) {
     defaultTarget: "local",
     build: {
       packager: "auto",
-      bundleFallback: false,
+      packagerFallback: false,
       obfuscationProfile: "balanced",
       frontendObfuscation: { enabled: true, profile: "balanced" },
       frontendMinify: { enabled: true, level: "safe", html: true, css: true },
-      // NOTE: strip/upx are experimental for SEA binaries; keep them OFF by default.
+      // NOTE: strip/ELF packer are experimental for SEA binaries; keep them OFF by default.
       protection: {
         enabled: true,
-        packSeaMain: true,
-        packSeaMainMethod: "brotli",
-        packSeaMainChunkSize: 8000,
-        packBundle: true,
-        stripSymbols: false,
-        upxPack: false,
+        seaMain: { pack: true, method: "brotli", chunkSize: 8000 },
+        bundle: { pack: true },
+        strip: { enabled: false, cmd: "strip" },
       },
-      thin: { level: "low" },
+      thin: { mode: "split", level: "low" },
       includeDirs: ["public", "data"],
     },
   };
@@ -108,15 +105,13 @@ async function cmdInit(cwd, opts) {
   const force = !!opts.force;
 
   // seal.json5 (project + policy)
-  const legacyProject = fileExists(paths.projectFile) ? readJson5(paths.projectFile) : null;
-  const legacyPolicy = fileExists(paths.policyFile) ? readJson5(paths.policyFile) : null;
   if (!fileExists(paths.sealFile) || force) {
-    const proj = legacyProject || templateProjectJson5(appName, entry);
+    const proj = templateProjectJson5(appName, entry);
     if (!proj.appName) proj.appName = appName;
     if (!proj.entry) proj.entry = entry;
     if (!proj.defaultTarget) proj.defaultTarget = "local";
     if (!proj.build) proj.build = templateProjectJson5(appName, entry).build;
-    const sealCfg = { ...proj, policy: legacyPolicy || templatePolicyJson5() };
+    const sealCfg = { ...proj, policy: templatePolicyJson5() };
     writeJson5(paths.sealFile, sealCfg);
     ok("Created seal.json5");
   } else {

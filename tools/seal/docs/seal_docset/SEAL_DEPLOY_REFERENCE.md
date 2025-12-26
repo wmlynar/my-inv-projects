@@ -99,9 +99,9 @@ Seal powinien mieć interfejs packagera, aby można było podmieniać metodę pa
   - alternatywnie: przez mechanizm assets SEA (jeśli packager to wspiera w danej wersji).
 
 **F) Protection/pack (domyślnie włączone)**
-- Domyślnie SEAL próbuje wykonać `strip` (Linux) oraz spakować binarkę przez `upx` (jeśli dostępny).
+- Domyślnie SEAL **nie** uruchamia `strip` ani ELF packera; są **OFF by default** i wymagają jawnego włączenia (np. `protection.strip.enabled=true`, `protection.elfPacker.tool="upx"`).
 - Gdy SEA nie jest możliwe i **bundle fallback jest jawnie włączony**, backend bundle jest pakowany do `app.bundle.cjs.gz` i uruchamiany przez mały loader (żeby nie leżał czytelny plik JS).
-- Bundle fallback wymaga jawnego włączenia: `build.packagerFallback=true` (alias: `build.bundleFallback`) lub `packager=bundle`.
+- Bundle fallback wymaga jawnego włączenia: `build.packagerFallback=true` lub `packager=bundle`.
 - Protection można wyłączyć w `seal.json5` (`build.protection.enabled=false`).
 - (MAY w przyszłości) self-integrity / anti-tamper jako opt-in.
 

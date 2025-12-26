@@ -23,7 +23,7 @@ function resolveContext(cwd, targetArg) {
   targetCfg.serviceName = targetCfg.serviceName || proj.appName;
 
   const thinCfg = resolveThinConfig(targetCfg, proj);
-  const packagerSpec = normalizePackager(targetCfg.packager || proj.build.packager || "auto", thinCfg.mode);
+  const packagerSpec = normalizePackager(targetCfg.packager || proj.build.packager || "auto");
   const sentinelCfg = resolveSentinelConfig({
     projectRoot,
     projectCfg: proj,
@@ -62,7 +62,7 @@ function resolveInspectContext(cwd, targetArg) {
   let sentinelCfgError = null;
   try {
     const thinCfg = resolveThinConfig(targetCfg, proj);
-    const packagerSpec = normalizePackager(targetCfg.packager || proj.build.packager || "auto", thinCfg.mode);
+    const packagerSpec = normalizePackager(targetCfg.packager || proj.build.packager || "auto");
     sentinelCfg = resolveSentinelConfig({
       projectRoot,
       projectCfg: proj,

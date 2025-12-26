@@ -53,12 +53,8 @@ function resolveTarget(projectRoot, targetArg) {
   t.cfg.serviceName = t.cfg.serviceName || proj.appName;
   t.cfg.installDir = t.cfg.installDir || (t.cfg.kind === "ssh" ? `/home/admin/apps/${proj.appName}` : `~/.local/share/seal/${proj.appName}`);
   const thinCfg = resolveThinConfig(t.cfg, proj);
-  const packagerSpec = normalizePackager(t.cfg.packager || proj.build.packager || "auto", thinCfg.mode);
-  t.cfg.thinMode = (packagerSpec.kind === "thin" && packagerSpec.thinMode) ? packagerSpec.thinMode : thinCfg.mode;
-  t.cfg.thinLevel = thinCfg.level;
-  t.cfg.thinChunkSize = thinCfg.chunkSizeBytes;
-  t.cfg.thinZstdLevel = thinCfg.zstdLevel;
-  t.cfg.thinZstdTimeoutMs = thinCfg.zstdTimeoutMs;
+  const packagerSpec = normalizePackager(t.cfg.packager || proj.build.packager || "auto");
+  t.cfg._thinMode = (packagerSpec.kind === "thin" && packagerSpec.thinMode) ? packagerSpec.thinMode : thinCfg.mode;
   return { proj, targetName, targetCfg: t.cfg, packagerSpec };
 }
 

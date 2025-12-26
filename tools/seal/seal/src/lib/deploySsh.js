@@ -10,6 +10,7 @@ const { fileExists, ensureDir } = require("./fsextra");
 const { ok, info, warn } = require("./ui");
 const { normalizeRetention, filterReleaseNames, computeKeepSet } = require("./retention");
 const { getTarRoot } = require("./tarSafe");
+const { normalizeThinMode } = require("./packagerConfig");
 
 /**
  * Minimal remote deploy baseline (Linux, systemd system scope).
@@ -76,6 +77,18 @@ function shQuote(value) {
 
 function sshStrictHostKeyChecking(targetCfg) {
   return normalizeStrictHostKeyChecking(targetCfg ? targetCfg.sshStrictHostKeyChecking : undefined);
+}
+
+function resolveThinMode(targetCfg) {
+  if (targetCfg && typeof targetCfg._thinMode === "string") {
+    return targetCfg._thinMode;
+  }
+  const raw = targetCfg && targetCfg.thin ? targetCfg.thin.mode : null;
+  const norm = normalizeThinMode(raw);
+  if (raw !== undefined && raw !== null && norm === null) {
+    throw new Error(`Invalid target.thin.mode: ${raw} (expected: split|single)`);
+  }
+  return norm || "aio";
 }
 
 function sshPort(targetCfg) {
@@ -479,7 +492,7 @@ function cleanupFastReleasesSsh({ targetCfg, current }) {
 }
 
 function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootstrap, policy, fast, releaseDir, buildId }) {
-  const thinMode = String(targetCfg.thinMode || "aio").toLowerCase();
+  const thinMode = resolveThinMode(targetCfg);
   let reuseBootstrap = thinMode === "bootstrap" && !bootstrap;
   const { res: preflight, layout, user, host } = checkRemoteWritable(targetCfg, { requireService: !bootstrap });
   const out = `${preflight.stdout}\n${preflight.stderr}`.trim();
@@ -770,7 +783,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
 }
 
 function deploySshFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, bootstrap, buildId }) {
-  const thinMode = String(targetCfg.thinMode || "aio").toLowerCase();
+  const thinMode = resolveThinMode(targetCfg);
   const { res: preflight, layout, user, host } = checkRemoteWritable(targetCfg, { requireService: !bootstrap });
   const out = `${preflight.stdout}\n${preflight.stderr}`.trim();
   if (!preflight.ok) {
@@ -1094,7 +1107,7 @@ echo "__SEAL_OK__"
 function rollbackSsh(targetCfg) {
   const { user, host } = sshUserHost(targetCfg);
   const layout = remoteLayout(targetCfg);
-  const thinMode = String(targetCfg.thinMode || "aio").toLowerCase();
+  const thinMode = resolveThinMode(targetCfg);
   const cmd = ["bash","-lc", `
 set -euo pipefail
 ROOT=${shQuote(layout.installDir)}

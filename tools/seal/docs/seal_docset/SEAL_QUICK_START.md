@@ -88,7 +88,7 @@ Domyślnie `seal release`:
 - **domyślnie wykonuje protection/anti-peek**:
   - **SEA**: pakuje backend bundle do „loadera” (Brotli/Gzip) zanim trafi do SEA blobu (bez plaintext JS),
   - **bundle** (jawnie włączony): gzip + loader (brak `app.bundle.cjs` w prostym podglądzie),
-  - **UPX/strip**: dostępne jako opcje, ale **OFF by default**, bo potrafią psuć postject-ed binarki.
+  - **ELF packer (np. `upx`) / strip**: dostępne jako opcje, ale **OFF by default**, bo potrafią psuć postject-ed binarki.
 - uruchamia `seal check` (fail-fast),
 - buduje artefakt do `seal-out/<app>-<buildId>.tgz`,
 - rozpakowuje build do `seal-out/release/` (zawsze tylko ostatni release).

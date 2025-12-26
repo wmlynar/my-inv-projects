@@ -67,7 +67,6 @@ AIO i BOOTSTRAP korzystają z **tego samego formatu kontenera THIN** i **tego sa
 ### 2.1 Dlaczego to NIE jest `--fast`
 W SEAL istnieje już semantyka `--fast` związana z “fast ship from sources (unsafe)”/bundle. Mechanizm thin ma być **osobnym packagerem**:
 - CLI/config: `--packager thin-split` (BOOTSTRAP) lub `--packager thin-single` (AIO).
-- Legacy kompatybilność: `packager=thin` + `build.thinMode` (ale preferuj nowe nazwy).
 
 ### 2.2 Minimalny UX (do zapamiętania)
 Docelowo użytkownik ma 1–2 komendy:
@@ -88,15 +87,15 @@ npx seal release prod --packager thin-single
 **Konfiguracja trybu (MUST):**
 - `build.packager: "thin-single" | "thin-split"` (domyślnie: `thin-split` w nowych projektach).
 - `targets/<target>.json5` może nadpisać przez `packager`.
-> Legacy: `build.thinMode` / `targets.<target>.thinMode` są akceptowane tylko dla `packager=thin`.
 
 **Poziomy wydajności (MUST):**
-- `build.thin.level: "low" | "high"` (domyślnie `"low"`).
+- `build.thin.level: "low" | "medium" | "high"` (domyślnie `"low"`).
   - `low`: chunk ok. **2MB**, `zstd` level **1** (szybsze buildy).
+  - `medium`: chunk ok. **512KB**, `zstd` level **2** (balans).
   - `high`: chunk ok. **64KB**, `zstd` level **3** (wolniejsze, mniejsze paczki).
 - `targets/<target>.json5` może nadpisać przez `thin.level`.
 - Dodatkowe override (opcjonalne, najwyższy priorytet):
-  - `build.thin.chunkSize` / `targets.<target>.thin.chunkSize` (liczba bajtów).
+  - `build.thin.chunkSizeBytes` / `targets.<target>.thin.chunkSizeBytes` (liczba bajtów).
   - `build.thin.zstdLevel` / `targets.<target>.thin.zstdLevel` (1..19).
   - `build.thin.zstdTimeoutMs` / `targets.<target>.thin.zstdTimeoutMs` (ms; `0` = bez limitu).
   - ENV: `SEAL_THIN_ZSTD_TIMEOUT_MS` (ms; nadpisuje domyślne).

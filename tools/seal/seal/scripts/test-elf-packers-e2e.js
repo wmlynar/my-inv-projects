@@ -208,31 +208,6 @@ async function buildWithProtection({ protection, outRoot }) {
   return { ...res, meta };
 }
 
-async function testUpx(ctx) {
-  if (process.env.SEAL_UPX_SKIP === "1") {
-    log("SKIP: UPX disabled by SEAL_UPX_SKIP");
-    return;
-  }
-  if (!hasCommand("upx")) {
-    log("SKIP: upx not found in PATH");
-    return;
-  }
-  log("Building thin-single with UPX...");
-  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-upx-"));
-  try {
-    const res = await withTimeout("buildRelease(upx)", ctx.buildTimeoutMs, () =>
-      buildWithProtection({ protection: { upxPack: true }, outRoot })
-    );
-    const steps = res.meta?.protection?.post?.steps || [];
-    const step = steps.find((s) => s && s.step === "upx");
-    assert.ok(step, "Expected upx step in protection metadata");
-    assert.strictEqual(step.ok, true, "Expected upx step to be ok");
-    await runRelease({ releaseDir: res.releaseDir, buildId: res.buildId, runTimeoutMs: ctx.runTimeoutMs });
-  } finally {
-    fs.rmSync(outRoot, { recursive: true, force: true });
-  }
-}
-
 async function testElfPacker(ctx, spec) {
   const skipEnv = process.env[spec.skipEnv];
   if (skipEnv === "1") {
@@ -259,9 +234,11 @@ async function testElfPacker(ctx, spec) {
     const res = await withTimeout(`buildRelease(${spec.id})`, ctx.buildTimeoutMs, () =>
       buildWithProtection({
         protection: {
-          elfPacker: spec.id,
-          elfPackerCmd: cmd,
-          elfPackerArgs: args,
+          elfPacker: {
+            tool: spec.id,
+            cmd,
+            args,
+          },
         },
         outRoot,
       })
@@ -311,6 +288,15 @@ async function main() {
 
   const packers = [
     {
+      id: "upx",
+      name: "UPX",
+      cmdEnv: "SEAL_UPX_CMD",
+      argsEnv: "SEAL_UPX_ARGS",
+      skipEnv: "SEAL_UPX_SKIP",
+      defaultCmd: "upx",
+      defaultArgs: [],
+    },
+    {
       id: "kiteshield",
       name: "Kiteshield",
       cmdEnv: "SEAL_KITESHIELD_CMD",
@@ -330,10 +316,7 @@ async function main() {
     },
   ];
 
-  const tests = [
-    () => testUpx(ctx),
-    ...packers.map((spec) => () => testElfPacker(ctx, spec)),
-  ];
+  const tests = packers.map((spec) => () => testElfPacker(ctx, spec));
 
   let failures = 0;
   try {

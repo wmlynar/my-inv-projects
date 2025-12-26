@@ -4,7 +4,7 @@
   "defaultTarget": "local",
   "build": {
     "packager": "sea",
-    "bundleFallback": false,
+    "packagerFallback": false,
     "obfuscationProfile": "balanced",
     "frontendObfuscation": {
       "enabled": true,
@@ -18,9 +18,12 @@
     },
     "protection": {
       "enabled": true,
-      "stripSymbols": false,
-      "upxPack": false,
-      "packBundle": true
+      "bundle": {
+        "pack": true
+      },
+      "strip": {
+        "enabled": false
+      }
     },
     "includeDirs": [
       "public"

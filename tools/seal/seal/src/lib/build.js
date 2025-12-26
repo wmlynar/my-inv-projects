@@ -464,20 +464,22 @@ function tryStripBinary(binPath, opts = {}) {
   return { ok: r.ok, skipped: false, reason: r.ok ? "ok" : (r.stderr || r.error || "strip_failed"), tool: cmd };
 }
 
-function tryUpxPack(binPath) {
-  if (!hasCommand('upx')) {
-    return { ok: false, skipped: true, reason: 'upx_not_installed' };
+function tryUpxPack(binPath, cmdOverride) {
+  const cmd = cmdOverride || "upx";
+  if (!hasCommand(cmd) && !fileExists(cmd)) {
+    return { ok: false, skipped: true, reason: "upx_not_installed", tool: cmd };
   }
   // --best is a good default; --lzma increases compression but may be slower.
-  const r = spawnSyncSafe('upx', ['--best', '--lzma', binPath], { stdio: 'pipe' });
-  return { ok: r.ok, skipped: false, reason: r.ok ? 'ok' : (r.stderr || r.error || 'upx_failed') };
+  const r = spawnSyncSafe(cmd, ["--best", "--lzma", binPath], { stdio: "pipe" });
+  return { ok: r.ok, skipped: false, reason: r.ok ? "ok" : (r.stderr || r.error || "upx_failed"), tool: cmd };
 }
 
 function tryElfPacker(binPath, cfg) {
   const tool = (cfg && cfg.elfPacker) ? String(cfg.elfPacker) : "";
   if (!tool) return { ok: false, skipped: true, reason: "disabled_by_default" };
   if (tool === "upx") {
-    return { ...tryUpxPack(binPath), tool: "upx" };
+    const cmd = (cfg && cfg.elfPackerCmd) ? String(cfg.elfPackerCmd) : "upx";
+    return { ...tryUpxPack(binPath, cmd), tool: cmd };
   }
 
   const cmd = (cfg && cfg.elfPackerCmd) ? String(cfg.elfPackerCmd) : tool;
@@ -632,15 +634,15 @@ function applyHardeningPost(releaseDir, appName, packagerUsed, hardCfg) {
 
   // 1) Bundle packager: hide the backend bundle from casual inspection (gzip + loader).
   const bundlePacking = cfg.packBundle !== false; // default true
-  if (packagerUsed === 'bundle' || packagerUsed === 'fallback') {
+  if (packagerUsed === 'bundle') {
     const r = bundlePacking
       ? packFallbackBundleGzip(releaseDir, appName)
       : { ok: false, skipped: true, reason: 'bundle_packing_disabled' };
     steps.push({ step: 'bundle_pack_gzip', ...r });
   }
 
-  // 2) SEA binary repacking (strip/upx) is EXPERIMENTAL.
-  // There are real-world cases where postject-ed binaries break after strip/upx.
+  // 2) SEA binary repacking (strip/ELF packer) is EXPERIMENTAL.
+  // There are real-world cases where postject-ed binaries break after strip/packing.
   // Therefore it is OFF by default and must be enabled explicitly.
   const exePath = path.join(releaseDir, appName);
   const isScript = isShebangScript(exePath);
@@ -654,22 +656,6 @@ function applyHardeningPost(releaseDir, appName, packagerUsed, hardCfg) {
   } else if (!isScript && !isThin) {
     steps.push({ step: 'strip', ok: false, skipped: true, reason: stripEnabled ? 'strip_failed' : 'disabled_by_default' });
   }
-
-  const upxEnabled = cfg.upxPack === true; // default false
-  if (upxEnabled && cfg.elfPacker) {
-    throw new Error("ELF packer and upxPack cannot be enabled together");
-  }
-  if (!isScript && upxEnabled) {
-    const r = tryUpxPack(exePath);
-    if (!r.ok) {
-      const reason = r.reason || 'upx_failed';
-      throw new Error(`UPX failed: ${reason}`);
-    }
-    steps.push({ step: 'upx', ...r });
-  } else if (!isScript && !isThin) {
-    steps.push({ step: 'upx', ok: false, skipped: true, reason: 'disabled_by_default' });
-  }
-
   const packerEnabled = !!cfg.elfPacker;
   if (packerEnabled && isScript) {
     steps.push({ step: "elf_packer", ok: false, skipped: true, reason: "script_not_supported" });
@@ -677,9 +663,12 @@ function applyHardeningPost(releaseDir, appName, packagerUsed, hardCfg) {
     const r = tryElfPacker(exePath, cfg);
     if (!r.ok) {
       const reason = r.reason || "elf_packer_failed";
-      throw new Error(`ELF packer failed: ${reason}`);
+      const tool = r.tool ? ` (${r.tool})` : "";
+      throw new Error(`ELF packer failed${tool}: ${reason}`);
     }
     steps.push({ step: "elf_packer", ...r });
+  } else if (!isScript && !isThin) {
+    steps.push({ step: "elf_packer", ok: false, skipped: true, reason: "disabled_by_default" });
   }
 
   return { enabled: true, steps };
@@ -751,7 +740,7 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   info(`Build: appName=${appName} buildId=${buildId}`);
   info(`Entry: ${projectCfg.entry}`);
   const thinCfg = resolveThinConfig(targetCfg, projectCfg);
-  const packagerSpec = normalizePackager(packagerOverride || targetCfg.packager || projectCfg.build.packager || "auto", thinCfg.mode);
+  const packagerSpec = normalizePackager(packagerOverride || targetCfg.packager || projectCfg.build.packager || "auto");
 
   info(`Target: ${targetCfg.target} (packager=${packagerSpec.label}) config=${configName}`);
 
@@ -879,7 +868,7 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   if (!packOk) {
     const fallbackAllowed = allowBundleFallback;
     if (!fallbackAllowed) {
-      const hint = "Set build.bundleFallback=true in seal.json5 or use --packager bundle.";
+      const hint = "Set build.packagerFallback=true in seal.json5 or use --packager bundle.";
       const reason = packErrorShort ? `Reason: ${packErrorShort}.` : "Reason: SEA packager failed.";
       throw new Error(`SEA packager failed and bundle fallback is disabled. ${reason} ${hint}`);
     }

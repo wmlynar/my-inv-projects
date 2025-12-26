@@ -5,6 +5,10 @@
   "build": {
     "packager": "auto",
     "packagerFallback": false,
+    "thin": {
+      "mode": "split",
+      "level": "low"
+    },
     "obfuscationProfile": "balanced",
     "frontendObfuscation": {
       "enabled": true,
@@ -23,9 +27,6 @@
       "strip": {
         "enabled": false,
         "cmd": "strip"
-      },
-      "upx": {
-        "enabled": false
       }
     },
     "includeDirs": [

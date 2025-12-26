@@ -241,7 +241,7 @@ SEAL domyślnie dokłada dodatkową warstwę "anti-peek" (utrudnia proste podgl�
 - **SEA (binarka)**: pakuje backend bundle do „loadera” (Brotli/Gzip) *przed* generacją blobu SEA – w binarce nie ma plaintext JS.
 - **Bundle** (opcja jawna): backendowy bundle jest pakowany do `app.bundle.cjs.gz` + mały loader (`seal.loader.cjs`), żeby nie leżał obok czytelny plik JS.
 
-Opcjonalnie (EXPERIMENTAL): `strip`/`upx` na binarce SEA – **OFF by default**, bo postject-ed binarki potrafią się po tym wysypać.
+Opcjonalnie (EXPERIMENTAL): `strip`/ELF packer (np. `upx`) na binarce SEA – **OFF by default**, bo postject-ed binarki potrafią się po tym wysypać.
 
 To nie jest kryptografia – celem jest utrudnienie "zobaczę od razu po otwarciu pliku" i podniesienie kosztu analizy.
 
@@ -257,20 +257,18 @@ Możesz też sterować szczegółami:
 
 ```json5
 build: {
-  bundleFallback: false, // ustaw true jeśli chcesz jawnie zezwolić na bundle fallback
+  packagerFallback: false, // ustaw true jeśli chcesz jawnie zezwolić na bundle fallback
   protection: {
     enabled: true,
-    packSeaMain: true,
-    packSeaMainMethod: "brotli",
-    packSeaMainChunkSize: 8000,
-    packBundle: true, // gzip backend bundle w bundle
-    stripSymbols: false,
-    upxPack: false
+    seaMain: { pack: true, method: "brotli", chunkSize: 8000 },
+    bundle: { pack: true }, // gzip backend bundle w bundle
+    strip: { enabled: false, cmd: "strip" },
+    // elfPacker: { tool: "upx" }
   }
 }
 ```
 
-> Tip: jeśli chcesz eksperymentować z `upxPack`/`stripSymbols`, włącz je jawnie w `seal.json5` i przetestuj uruchomienie na docelowym OS/arch (po postject bywa to wrażliwe).
+> Tip: jeśli chcesz eksperymentować z `protection.elfPacker.tool="upx"`/`protection.strip.enabled`, włącz je jawnie w `seal.json5` i przetestuj uruchomienie na docelowym OS/arch (po postject bywa to wrażliwe).
 
 ## Packagery (kolejność rekomendowana)
 
@@ -278,7 +276,7 @@ build: {
 2) `thin-single` – AIO (jeden artefakt).
 3) `sea` – klasyczny SEA (single executable).
 4) `bundle` – obfuskowany bundle JS (fallback bez SEA).
-5) `none` – raw bundle + wrapper (bez protection/packBundle; tylko do diagnostyki).
+5) `none` – raw bundle + wrapper (bez protection/bundle.pack; tylko do diagnostyki).
 
 `auto` oznacza obecnie `thin-split` i jest polecany, jeśli chcesz automatycznie przechodzić na lepszy packager w przyszłości.
 
@@ -304,7 +302,7 @@ Gdzie są artefakty:
 
 - Deploy zdalny przez SSH jest dodany jako „baseline”, ale nie jest jeszcze „battle tested”.
 - SEA w Node jest funkcją eksperymentalną (Node wypisze warning). To normalne.
-- Jeśli SEA nie zadziała, build kończy się błędem, chyba że bundle fallback jest jawnie włączony (`build.bundleFallback=true` lub `--packager bundle`).
+- Jeśli SEA nie zadziała, build kończy się błędem, chyba że bundle fallback jest jawnie włączony (`build.packagerFallback=true` lub `--packager bundle`).
 
 ---
 

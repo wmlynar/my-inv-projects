@@ -79,12 +79,11 @@ function loadProjectConfig(projectRoot) {
   cfg.entry = cfg.entry || detectEntry(projectRoot) || "src/index.js";
   cfg.defaultTarget = cfg.defaultTarget || "local";
   cfg.build = cfg.build || {};
-  cfg.build.packager = cfg.build.packager || "auto"; // auto|sea|bundle|none|thin-split|thin-single|thin(legacy)
-  if (cfg.build.packagerFallback === undefined) {
-    cfg.build.packagerFallback = cfg.build.bundleFallback ?? cfg.build.allowFallback ?? false;
-  }
+  cfg.build.packager = cfg.build.packager || "auto"; // auto|sea|bundle|none|thin-split|thin-single
+  if (cfg.build.packagerFallback === undefined) cfg.build.packagerFallback = false;
   cfg.build.thin = cfg.build.thin || {};
-  if (cfg.build.thin.level === undefined) cfg.build.thin.level = cfg.build.thinLevel || "low";
+  if (cfg.build.thin.mode === undefined) cfg.build.thin.mode = "split";
+  if (cfg.build.thin.level === undefined) cfg.build.thin.level = "low";
   cfg.build.obfuscationProfile = cfg.build.obfuscationProfile || "balanced";
   cfg.build.includeDirs = cfg.build.includeDirs || ["public", "data"];
   // Frontend obfuscation: enabled by default (can be set to false)
@@ -99,10 +98,7 @@ function loadProjectConfig(projectRoot) {
   // Protection: enabled by default. Attempts to reduce "casual" inspection of executables/bundles.
   // - SEA: packs the main bundle into a compressed loader (so the SEA blob has no plaintext JS)
   // - bundle: gzip-pack backend bundle + loader
-  // - strip/upx for SEA binaries are EXPERIMENTAL and therefore OFF by default
-  if (cfg.build.protection === undefined && cfg.build.hardening !== undefined) {
-    cfg.build.protection = cfg.build.hardening;
-  }
+  // - strip/ELF packer for SEA binaries are EXPERIMENTAL and therefore OFF by default
   if (cfg.build.protection === undefined) {
     cfg.build.protection = {
       enabled: true,
@@ -117,9 +113,6 @@ function loadProjectConfig(projectRoot) {
       strip: {
         enabled: false,
         cmd: "strip",
-      },
-      upx: {
-        enabled: false,
       },
     };
   }
@@ -144,12 +137,7 @@ function loadPolicy(projectRoot) {
   if (proj && proj.policy) {
     return { retention: normalizeRetention(proj.policy || {}) };
   }
-  const { policyFile } = getSealPaths(projectRoot);
-  if (!fs.existsSync(policyFile)) {
-    return { retention: normalizeRetention({ retention: {} }) };
-  }
-  const cfg = readJson5(policyFile) || {};
-  return { retention: normalizeRetention(cfg) };
+  return { retention: normalizeRetention({ retention: {} }) };
 }
 
 function resolveTargetName(projectRoot, maybeTarget) {

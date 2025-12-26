@@ -355,8 +355,8 @@ Ta sekcja jest celowo krótka: ma umożliwić szybkie zrozumienie *dlaczego* Sea
    Bo usuwa „czytelny kod” z artefaktów bez ryzykownych modyfikacji binarki:
    - **SEA**: main script jest spakowany (Brotli/Gzip loader) zanim trafi do blobu.
    - **bundle** (jawnie włączony): `app.bundle.cjs` jest zastąpione przez `.gz` + loader.
-   UPX/strip są dostępne jako opcje, ale **OFF by default** (kompatybilność zależna od platformy i postject).
-   Bundle fallback wymaga jawnego włączenia: `build.packagerFallback=true` (alias: `build.bundleFallback`) lub `packager=bundle`.
+   Strip/ELF packer (np. `upx`) są dostępne jako opcje, ale **OFF by default** (kompatybilność zależna od platformy i postject).
+   Bundle fallback wymaga jawnego włączenia: `build.packagerFallback=true` lub `packager=bundle`.
 
 8) **Publiczne `/healthz` i `/status`**  
    Bo aplikacje w tym kontekście bywają wdrażane „normalnie”, a UI i serwis potrzebują tych endpointów na standardowym porcie.
@@ -760,7 +760,7 @@ Warstwy (od najbardziej praktycznych):
 3) **Baseline hardening systemd** → utrudnia szybkie sztuczki typu `NODE_OPTIONS=--inspect`, core dumpy, itp.
 4) **(Opcjonalnie) Anti‑copy / licencja** → utrudnia uruchomienie skopiowanej binarki na innym hoście.
 5) **(Domyślnie) Pack bundla (SEA, bundle tylko jawnie)** → brak plaintext kodu w artefaktach (SEA main packing + gzip loader w bundle, gdy włączony).
-6) **(Opcjonalnie) UPX/strip** → eksperymentalne i OFF by default (postject-ed binarki potrafią się po tym wykrzaczyć).
+6) **(Opcjonalnie) ELF packer/strip** → eksperymentalne i OFF by default (postject-ed binarki potrafią się po tym wykrzaczyć).
 
 W praktyce:
 - przeciw A1/A2 (z sekcji 3.3) rozwiązanie jest bardzo mocne,
@@ -777,7 +777,7 @@ W praktyce:
 - **Single artifact**: preferowany jeden plik uruchomieniowy.
 - **Domyślnie**: pack bundla (SEA main packing + gzip loader w bundle, gdy włączony) – bez plaintext JS w artefaktach.
 
-**Opcjonalnie**: UPX/strip – OFF by default (kompatybilność zależna od platformy i postject).
+**Opcjonalnie**: ELF packer (np. `upx`) / strip – OFF by default (kompatybilność zależna od platformy i postject).
 
 
 #### 14.2.1. Definicja „SEALED” (weryfikowalna checklista)
@@ -870,8 +870,8 @@ SEA w Node (Single Executable Application) ma twarde ograniczenia, które determ
 6) **Protection/pack (domyślnie włączone):**
    - **SEA:** Seal domyślnie pakuje backend bundle do „loadera” (Brotli/Gzip) *przed* generacją blobu SEA, aby w blobie nie było plaintext JS.
    - **Bundle fallback:** gdy SEA nie jest możliwe, Seal domyślnie pakuje backend bundle do `app.bundle.cjs.gz` i uruchamia go przez mały loader (brak czytelnego pliku JS obok launchera).
-   - **UPX/strip:** dostępne jako opcje (eksperymentalne) i **OFF by default**, bo postject-ed binarki potrafią się po tym wysypać.
-     - Gdy `upx` jest włączony i nie działa (brak narzędzia lub błąd typu `CantUnpackException: bad e_phoff`), build **musi** się przerwać z błędem.
+   - **ELF packer/strip:** dostępne jako opcje (eksperymentalne) i **OFF by default**, bo postject-ed binarki potrafią się po tym wysypać.
+     - Gdy `elfPacker.tool="upx"` jest włączony i nie działa (brak narzędzia lub błąd typu `CantUnpackException: bad e_phoff`), build **musi** się przerwać z błędem.
      - Gdy `strip` jest włączony i narzędzie jest niedostępne, Seal wypisuje ostrzeżenie (bez przerywania builda).
   - Użytkownik **MUST** mieć możliwość wyłączenia protection w `seal.json5` (np. `build.protection.enabled=false`).
    - (MAY) w przyszłości: self-integrity / anti-tamper jako opcja (nie domyślna w v0.5).
@@ -1530,7 +1530,7 @@ Minimalne pola (MUST):
 4) Zbundle’uj backend do **jednego** pliku (dla SEA: CommonJS).
 5) Wykonaj minifikację + agresywną obfuskację **na zbundlowanym pliku**.
 6) Spakuj do single artifact (preferowane: SEA → single executable).
-7) (Opcjonalnie) Protection/pack: `strip`, UPX, itp.
+7) (Opcjonalnie) Protection/pack: `strip`, ELF packer (np. `upx`), itp.
 8) Zbuduj `manifest.json`.
 9) Utwórz paczkę `seal-out/<app>-<buildId>.tgz`.
 
@@ -1709,7 +1709,7 @@ Minimalne pola (MUST):
 ### 28.4. Milestone 4 – frontend obfuskacja + hardening + licencja (opcjonalnie)
 - frontend obfuskacja (domyślnie włączona, z opt-out),
 - frontend minifikacja HTML/CSS (domyślnie włączona, safe),
-- hardening binarki/bundla (strip + upx, gzip bundle),
+- hardening binarki/bundla (strip + ELF packer (np. `upx`), gzip bundle),
 - sentinel/licencja (opcjonalnie).
 
 ---
@@ -1737,6 +1737,17 @@ Przykład (aktualny dla v0.5):
     packager: "auto",
     packagerFallback: false,
 
+    // Thin-specific settings (used by thin packagers)
+    thin: {
+      mode: "split",          // split | single
+      level: "low",           // low | medium | high
+      chunkSizeBytes: 2097152,
+      zstdLevel: 1,
+      zstdTimeoutMs: 120000,
+      envMode: "denylist",    // denylist | allowlist
+      runtimeStore: "memfd"   // memfd | tmpfile
+    },
+
     // minimal|balanced|aggressive
     obfuscationProfile: "balanced",
 
@@ -1747,14 +1758,13 @@ Przykład (aktualny dla v0.5):
     frontendMinify: { enabled: true, level: "safe", html: true, css: true },
 
     // Protection (anti-peek) – domyślnie włączone
-    // - SEA: seaMain.pack (Brotli/Gzip loader); upx/strip opcjonalne (OFF by default)
+    // - SEA: seaMain.pack (Brotli/Gzip loader); elfPacker/strip opcjonalne (OFF by default)
     // - bundle: bundle.pack = gzip-pack backend bundle + loader
     protection: {
       enabled: true,
       seaMain: { pack: true, method: "brotli", chunkSize: 8000 },
       bundle: { pack: true },
       strip: { enabled: false, cmd: "strip", args: ["--strip-all"] }, // strip | llvm-strip | eu-strip | sstrip
-      upx: { enabled: false },
       // ELF packers/protectors (opcjonalne, wysokie ryzyko operacyjne):
       // elfPacker: { tool: "kiteshield" | "midgetpack" | "upx", cmd: "kiteshield", args: ["-n", "{in}", "{out}"] },
       // Source-level string obfuscation libs (informacyjne, manualna integracja):
@@ -1777,31 +1787,21 @@ Przykład (aktualny dla v0.5):
 - `build.packager`: `auto` (domyślnie `thin-split`).
 - `build.obfuscationProfile`: `balanced`.
 - `build.includeDirs`: `["public", "data"]`.
-- `build.packagerFallback`: `false` (alias: `build.bundleFallback`).
+- `build.packagerFallback`: `false`.
+- `build.thin.mode`: `split`.
+- `build.thin.level`: `low` | `medium` | `high`.
 - `build.frontendObfuscation`: domyślnie `{ enabled: true, profile: build.obfuscationProfile }`.
 - `build.frontendMinify`: domyślnie `{ enabled: true, level: "safe", html: true, css: true }`.
-- `build.protection`: domyślnie `{ enabled: true, seaMain:{pack:true,method:"brotli",chunkSize:8000}, bundle:{pack:true}, strip:{enabled:false,cmd:"strip"}, upx:{enabled:false} }`.
+- `build.protection`: domyślnie `{ enabled: true, seaMain:{pack:true,method:"brotli",chunkSize:8000}, bundle:{pack:true}, strip:{enabled:false,cmd:"strip"} }`.
 - `build.protection.strip.cmd`: `strip` | `llvm-strip` | `eu-strip` | `sstrip` (domyślnie `strip`).
 - `build.protection.strip.args`: opcjonalne argumenty dla strip (placeholder `{in}` podstawia ścieżkę binarki); jeśli nie podasz — używane jest `--strip-all`.
 - `build.protection.elfPacker.tool`: opcjonalny packer/protector ELF: `kiteshield` | `midgetpack` | `upx`.
 - `build.protection.elfPacker.cmd`: nadpisuje nazwę komendy (np. pełna ścieżka).
-- `build.protection.elfPacker.args`: **wymagane** dla `kiteshield`/`midgetpack`; użyj `{in}` i `{out}` jako placeholderów. Brak args = błąd.
+- `build.protection.elfPacker.args`: **wymagane** dla `kiteshield`/`midgetpack`; użyj `{in}` i `{out}` jako placeholderów. Brak args = błąd (dla `upx` nie wymagane).
 - `build.protection.strings.obfuscation`: **informacyjne**; lista lub string (`xorstr`, `crystr`, `obfuscate`). SEAL nie wstrzykuje tych bibliotek automatycznie – integracja jest po stronie kodu C/C++.
-- `build.protection.cObfuscator.tool`: obfuscator dla kodu C (launchera thin). Wartości: `obfuscator-llvm` (alias: `ollvm`) lub `hikari`.
+- `build.protection.cObfuscator.tool`: obfuscator dla kodu C (launchera thin). Wartości: `obfuscator-llvm` lub `hikari`.
 - `build.protection.cObfuscator.cmd`: ścieżka do obfuscating clang (wymagane, jeśli `cObfuscator` ustawione).
 - `build.protection.cObfuscator.args`: **wymagane**; argumenty obfuscatora (np. `-mllvm -fla -mllvm -sub`). Brak args = błąd.
-
-### 29.3.1. Aliasy legacy (wciąż obsługiwane, ale niezalecane)
-- `build.bundleFallback` / `build.allowFallback` → `build.packagerFallback`
-- `build.hardening` / `build.artifactProtection` → `build.protection`
-- `build.thinMode`, `build.thinVariant`, `build.thinLevel`, `build.thinChunkSize`, `build.thinZstdLevel`, `build.thinZstdTimeoutMs`, `build.thinEnvMode`, `build.thinRuntimeStore` → `build.thin.*`
-- `build.protection.packSeaMain`, `packSeaMainMethod`, `packSeaMainChunkSize` → `build.protection.seaMain.*`
-- `build.protection.packBundle` → `build.protection.bundle.pack`
-- `build.protection.stripSymbols`, `stripTool`, `stripArgs` → `build.protection.strip.*`
-- `build.protection.upxPack` → `build.protection.upx.enabled`
-- `build.protection.elfPacker`, `elfPackerCmd`, `elfPackerArgs` → `build.protection.elfPacker.*`
-- `build.protection.stringObfuscation` → `build.protection.strings.obfuscation`
-- `build.protection.cObfuscator`, `cObfuscatorCmd`, `cObfuscatorArgs` → `build.protection.cObfuscator.*`
 
 ### 29.4. Polityka (`seal.json5#policy`)
 
@@ -1981,7 +1981,7 @@ WantedBy=multi-user.target
 
 **Hardening tools (opcjonalne, ale domyślnie używane jeśli dostępne):**
 - `strip` (pakiet binutils) – usuwa symbole z binarki ELF.
-- `upx` – pakuje binarkę (zmniejsza rozmiar i utrudnia proste `strings`).
+- `elfPacker.tool="upx"` – pakuje binarkę (zmniejsza rozmiar i utrudnia proste `strings`).
 
 Seal działa bez tych narzędzi, ale `seal check` **SHOULD** ostrzegać, gdy ich brakuje.
 

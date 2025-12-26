@@ -94,12 +94,12 @@ Na serwerze istnieje tylko:
 - opcjonalnie xattr na tym blobie.
 
 ### 4.2 Schema (propozycja)
-`seal-config/project.json5`:
+`seal.json5`:
 
 ```json5
 {
   build: {
-    packager: "thin",
+    packager: "thin-split",
     sentinel: {
       enabled: "auto",           // auto | true | false
 
@@ -136,7 +136,7 @@ Na serwerze istnieje tylko:
 ### 4.3 Merge configu (MUST)
 Efektywna konfiguracja:
 
-1) start od `project.json5`  
+1) start od `seal.json5`  
 2) nałóż override z `targets/<target>.json5`  
 3) rozwiąż `auto`:
    - `enabled:auto` → `true` tylko gdy builder = `thin`, inaczej `false`

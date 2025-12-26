@@ -9,6 +9,7 @@ const { ensureDir, fileExists, rmrf, copyFile, copyDir } = require("./fsextra");
 const { info, warn, err, ok, hr } = require("./ui");
 const { normalizeRetention, filterReleaseNames, computeKeepSet } = require("./retention");
 const { getTarRoot } = require("./tarSafe");
+const { normalizeThinMode } = require("./packagerConfig");
 
 function expandHome(p) {
   if (!p) return p;
@@ -115,6 +116,18 @@ function localInstallLayout(targetCfg) {
   const currentFile = path.join(installDir, "current.buildId");
   const runner = path.join(installDir, "run-current.sh");
   return { installDir, releasesDir, sharedDir, currentFile, runner };
+}
+
+function resolveThinMode(targetCfg) {
+  if (targetCfg && typeof targetCfg._thinMode === "string") {
+    return targetCfg._thinMode;
+  }
+  const raw = targetCfg && targetCfg.thin ? targetCfg.thin.mode : null;
+  const norm = normalizeThinMode(raw);
+  if (raw !== undefined && raw !== null && norm === null) {
+    throw new Error(`Invalid target.thin.mode: ${raw} (expected: split|single)`);
+  }
+  return norm || "aio";
 }
 
 function localServiceUserGroup(targetCfg) {
@@ -324,7 +337,7 @@ function cleanupFastReleasesLocal({ targetCfg, layout, current }) {
 
 function deployLocal({ targetCfg, artifactPath, repoConfigPath, pushConfig, policy, fast, bootstrap }) {
   const layout = localInstallLayout(targetCfg);
-  const thinMode = String(targetCfg.thinMode || "aio").toLowerCase();
+  const thinMode = resolveThinMode(targetCfg);
 
   // Deploy is deploy: copy/extract files and update pointers.
   // It must NOT install or restart a systemd service implicitly.
@@ -389,7 +402,7 @@ function deployLocal({ targetCfg, artifactPath, repoConfigPath, pushConfig, poli
 
 function deployLocalFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, buildId }) {
   const layout = localInstallLayout(targetCfg);
-  const thinMode = String(targetCfg.thinMode || "aio").toLowerCase();
+  const thinMode = resolveThinMode(targetCfg);
 
   ensureDir(layout.installDir);
   ensureDir(layout.releasesDir);
@@ -565,7 +578,7 @@ function rollbackLocal(targetCfg) {
   const layout = localInstallLayout(targetCfg);
   const appName = targetCfg.appName || targetCfg.serviceName || "app";
   const fastPrefix = `${appName}-fast-`;
-  const thinMode = String(targetCfg.thinMode || "aio").toLowerCase();
+  const thinMode = resolveThinMode(targetCfg);
   if (!fileExists(layout.currentFile)) throw new Error("No current.buildId – deploy first.");
 
   const current = fs.readFileSync(layout.currentFile, "utf-8").trim();
