@@ -157,6 +157,7 @@ Przykład:
 - STD-147 (SHOULD): retry sieciowe maja exponential backoff + jitter oraz limit prob i max delay.
 - STD-148 (SHOULD): ekstrakcja archiwow ma limit rozmiaru i liczby plikow (ochrona przed zip‑bomb).
 - STD-149 (SHOULD): `host`/`user` w targetach sa walidowane (brak spacji/znakow kontrolnych; whitelist znakow).
+- STD-150 (SHOULD): zanim uruchomisz `strip`/packer na pliku, zweryfikuj typ (ELF magic/`file`) i w razie braku zgodnosci wykonaj SKIP z powodem.
 
 #### Testy / CI
 - STD-018 (SHOULD): testy automatyczne nie polegają na kruchym parsowaniu stdout/stderr child procesów; preferuj JSON output, kody wyjścia lub wywołania in‑process; gdy parsujesz, zawsze usuwaj ANSI.

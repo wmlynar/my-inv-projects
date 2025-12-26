@@ -428,6 +428,9 @@
 - Blad: `rm -rf`/`chmod`/`chown` na duzej liczbie plikow failowal przez `ARG_MAX`.
   - Wymaganie: przy masowych operacjach uzywaj `find ... -print0 | xargs -0` lub `find -exec ... +`.
 
+- Blad: `strip` byl uruchamiany na pliku, ktory nie byl ELF (np. skrypt), co powodowalo bledy.
+  - Wymaganie: przed uruchomieniem `strip` sprawdz typ pliku (ELF magic lub `file`) i w razie niezgodnosci SKIP z powodem.
+
 - Blad: pliki binarne byly czytane/zapisywane z `utf8`, co uszkadzalo dane (codec/payload).
   - Wymaganie: binarki czytaj/zapisuj jako `Buffer` (bez encoding), a tekst jawnie jako `utf8`.
 
