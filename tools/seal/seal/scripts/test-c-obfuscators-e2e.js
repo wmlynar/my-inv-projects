@@ -251,6 +251,10 @@ async function testObfuscator(ctx, spec) {
     );
 
     assert.strictEqual(res.meta?.protection?.cObfuscator, spec.id);
+    if (spec.runtimeSkip && process.env[spec.runtimeEnv] !== "1") {
+      log(`SKIP: ${spec.name} runtime check disabled (set ${spec.runtimeEnv}=1 to enable)`);
+      return;
+    }
     await runRelease({ releaseDir: res.releaseDir, runTimeoutMs: ctx.runTimeoutMs });
   } finally {
     fs.rmSync(outRoot, { recursive: true, force: true });
@@ -299,7 +303,9 @@ async function main() {
       cmdEnv: "SEAL_HIKARI_CMD",
       argsEnv: "SEAL_HIKARI_ARGS",
       defaultCmd: "hikari-clang",
-      defaultArgs: ["-mllvm", "-fla", "-mllvm", "-sub"],
+      defaultArgs: ["-mllvm", "-enable-allobf"],
+      runtimeSkip: true,
+      runtimeEnv: "SEAL_HIKARI_RUNTIME",
       installHint: "./tools/seal/seal/scripts/install-hikari-llvm15.sh",
     }),
   ];

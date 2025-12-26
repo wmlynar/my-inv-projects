@@ -73,6 +73,16 @@ if [ "${SEAL_E2E_INSTALL_EXAMPLE_DEPS:-1}" = "1" ]; then
   fi
 fi
 
+if [ ! -s /etc/machine-id ]; then
+  log "Generating /etc/machine-id for sentinel E2E..."
+  if has_cmd systemd-machine-id-setup; then
+    systemd-machine-id-setup >/dev/null 2>&1 || true
+  fi
+  if [ ! -s /etc/machine-id ]; then
+    cat /proc/sys/kernel/random/uuid | tr -d '-' > /etc/machine-id
+  fi
+fi
+
 export SEAL_THIN_E2E=1
 export SEAL_THIN_ANTI_DEBUG_E2E=1
 export SEAL_SENTINEL_E2E=1
@@ -97,6 +107,17 @@ export SEAL_THIN_ZSTD_LEVEL="${SEAL_THIN_ZSTD_LEVEL:-1}"
 export SEAL_THIN_ZSTD_TIMEOUT_MS="${SEAL_THIN_ZSTD_TIMEOUT_MS:-120000}"
 
 export SEAL_UI_E2E_HEADLESS="${SEAL_UI_E2E_HEADLESS:-1}"
+
+if [ "${SEAL_UI_E2E:-0}" = "1" ]; then
+  if ! has_cmd npx; then
+    log "WARN: npx not found; skipping Playwright browser install"
+  else
+    if [ ! -d "/root/.cache/ms-playwright" ] || [ -z "$(ls -A /root/.cache/ms-playwright 2>/dev/null)" ]; then
+      log "Installing Playwright browsers for UI E2E..."
+      (cd "$REPO_ROOT" && npx playwright install --with-deps chromium)
+    fi
+  fi
+fi
 
 run_test() {
   local name="$1"

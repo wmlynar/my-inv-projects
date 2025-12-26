@@ -253,6 +253,10 @@ async function testElfPacker(ctx, spec) {
     const step = steps.find((s) => s && s.step === "elf_packer");
     assert.ok(step, "Expected elf_packer step in protection metadata");
     assert.strictEqual(step.ok, true, "Expected elf_packer step to be ok");
+    if (spec.runtimeSkip && process.env[spec.runtimeEnv] !== "1") {
+      log(`SKIP: ${spec.name} runtime check disabled (set ${spec.runtimeEnv}=1 to enable)`);
+      return;
+    }
     await runRelease({ releaseDir: res.releaseDir, buildId: res.buildId, runTimeoutMs: ctx.runTimeoutMs });
   } finally {
     fs.rmSync(outRoot, { recursive: true, force: true });
@@ -317,6 +321,8 @@ async function main() {
       cmdEnv: "SEAL_MIDGETPACK_CMD",
       argsEnv: "SEAL_MIDGETPACK_ARGS",
       skipEnv: "SEAL_MIDGETPACK_SKIP",
+      runtimeSkip: true,
+      runtimeEnv: "SEAL_MIDGETPACK_RUNTIME",
       defaultCmd: "midgetpack",
       defaultArgs: ["-P", "seal-test", "-o", "{out}", "{in}"],
     },

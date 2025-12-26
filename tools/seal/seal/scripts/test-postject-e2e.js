@@ -45,7 +45,11 @@ fs.writeFileSync(
   "utf-8"
 );
 fs.writeFileSync(path.join(cfgDir, "local.json5"), "{ http: { host: \"127.0.0.1\", port: 0 } }\n", "utf-8");
-fs.writeFileSync(path.join(targetDir, "local.json5"), "{ target: \"local\", kind: \"local\", config: \"local\" }\n", "utf-8");
+fs.writeFileSync(
+  path.join(targetDir, "local.json5"),
+  "{ target: \"local\", kind: \"local\", config: \"local\", packager: \"sea\" }\n",
+  "utf-8"
+);
 
 async function main() {
   const logs = [];

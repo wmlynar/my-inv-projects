@@ -61,6 +61,26 @@ function obfuscationOptions(profile) {
     renameGlobals: false,
   };
 
+  if (profile === "prod-strict") {
+    return {
+      ...base,
+      simplify: false,
+      numbersToExpressions: true,
+      controlFlowFlattening: true,
+      controlFlowFlatteningThreshold: 0.75,
+      deadCodeInjection: true,
+      deadCodeInjectionThreshold: 0.3,
+      identifierNamesGenerator: "mangled-shuffled",
+      renameGlobals: true,
+      renameProperties: false,
+      transformObjectKeys: false,
+      unicodeEscapeSequence: false,
+      debugProtection: false,
+      selfDefending: false,
+      target: "node",
+    };
+  }
+
   if (profile === "aggressive") {
     return {
       ...base,
@@ -83,9 +103,10 @@ function obfuscationOptions(profile) {
   };
 }
 
-async function buildBundle({ projectRoot, entryRel, stageDir, buildId, appName }) {
+async function buildBundle({ projectRoot, entryRel, stageDir, buildId, appName, minify }) {
   const entryAbs = path.join(projectRoot, entryRel);
   const outFile = path.join(stageDir, "bundle.cjs");
+  const doMinify = !!minify;
 
   await esbuild.build({
     entryPoints: [entryAbs],
@@ -94,7 +115,7 @@ async function buildBundle({ projectRoot, entryRel, stageDir, buildId, appName }
     target: "node20",
     format: "cjs",
     sourcemap: false,
-    minify: false,
+    minify: doMinify,
     outfile: outFile,
     define: {
       "__SEAL_BUILD_ID__": JSON.stringify(buildId),
@@ -771,11 +792,20 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
     packagerSpec,
   });
 
-  info("Bundling (esbuild)...");
-  const bundlePath = await buildBundle({ projectRoot, entryRel: projectCfg.entry, stageDir, buildId, appName });
-  ok("Bundle OK (esbuild)");
-
   const obfProfile = projectCfg.build.obfuscationProfile || "balanced";
+  const backendMinify = projectCfg.build.backendMinify !== undefined
+    ? !!projectCfg.build.backendMinify
+    : obfProfile === "prod-strict";
+  info("Bundling (esbuild)...");
+  const bundlePath = await buildBundle({
+    projectRoot,
+    entryRel: projectCfg.entry,
+    stageDir,
+    buildId,
+    appName,
+    minify: backendMinify,
+  });
+  ok(`Bundle OK (esbuild${backendMinify ? ", minify" : ""})`);
   info("Obfuscating bundle...");
   const obfPath = obfuscateBundle(bundlePath, stageDir, obfProfile);
   ok(`Obfuscation OK (${obfProfile})`);

@@ -574,6 +574,7 @@ async function main() {
         buildThinSplit({
           outRoot: bindRootA,
           appBind: { value: "bind-a" },
+          integrity: { enabled: false },
           launcherObfuscation: false,
         })
       );
@@ -581,6 +582,7 @@ async function main() {
         buildThinSplit({
           outRoot: bindRootB,
           appBind: { value: "bind-b" },
+          integrity: { enabled: false },
           launcherObfuscation: false,
         })
       );

@@ -221,7 +221,7 @@ function buildRemoteTarValidateCmd(remoteArtifactTmpQ, expectedRoot) {
     `done < <(tar -tzf ${remoteArtifactTmpQ})`,
     "if [ \"$seen\" = \"0\" ]; then echo \"__SEAL_TAR_BAD__ empty\" >&2; exit 17; fi",
   ];
-  return `( ${parts.join(" ; ")} )`;
+  return `( ${parts.join("\n")} )`;
 }
 
 function ensureRsyncAvailable(targetCfg, user, host) {
