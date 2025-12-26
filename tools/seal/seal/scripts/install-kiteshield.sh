@@ -36,7 +36,70 @@ if [ -n "$REF" ]; then
   git -C "$ROOT" checkout "$REF"
 fi
 
+if [ -f "$ROOT/.gitmodules" ]; then
+  echo "[install-kiteshield] Syncing submodules..."
+  git -C "$ROOT" submodule update --init --recursive
+fi
+
 cd "$ROOT"
+
+PATCH_MARKER="SEAL_PATCHED_KITESHIELD"
+if [ "${SEAL_KITESHIELD_PATCH:-1}" = "1" ]; then
+  echo "[install-kiteshield] Patching loader build to serialize obfuscated header generation..."
+  perl -pi -e 's/^CFLAGS_COMMON = .*/CFLAGS_COMMON = -Wall -std=gnu99 -fno-pie -nostdlib -nostartfiles -nodefaultlibs -fno-builtin -c -I ../' "$ROOT/loader/Makefile"
+  ROOT_PATH="$ROOT" python3 - <<'PY'
+import os
+import re
+from pathlib import Path
+
+path = Path(os.environ["ROOT_PATH"]) / "loader" / "Makefile"
+text = path.read_text()
+
+text = re.sub(r"^all:.*$", "all: output-dirs $(OBFUSCATED_STRINGS_HEADER) out/loader_header_rt.h out/loader_header_no_rt.h", text, flags=re.M)
+
+block = """out/rt/%.o: %.c $(OBFUSCATED_STRINGS_HEADER)
+\t$(CC) -DUSE_RUNTIME $(CFLAGS) $< -o $@
+
+out/rt/%.o: ../common/%.c $(OBFUSCATED_STRINGS_HEADER)
+\t$(CC) -DUSE_RUNTIME $(CFLAGS) $< -o $@
+
+out/rt/%.o: %.S $(OBFUSCATED_STRINGS_HEADER)
+\t$(CC) -DUSE_RUNTIME -c $< -o $@
+
+out/no_rt/%.o: %.c $(OBFUSCATED_STRINGS_HEADER)
+\t$(CC) $(CFLAGS) -c $< -o $@
+
+out/no_rt/%.o: ../common/%.c $(OBFUSCATED_STRINGS_HEADER)
+\t$(CC) $(CFLAGS) $< -o $@
+
+out/no_rt/%.o: %.S $(OBFUSCATED_STRINGS_HEADER)
+\t$(CC) -c $< -o $@
+
+"""
+
+text, n = re.subn(r"^out/rt/%\.o:.*?^output-dirs:", block + "output-dirs:", text, flags=re.S | re.M)
+if n != 1:
+    raise SystemExit("[install-kiteshield] ERROR: unexpected Makefile structure; cannot patch rules block.")
+
+path.write_text(text)
+PY
+  if ! grep -q "$PATCH_MARKER" "$ROOT/loader/Makefile"; then
+    printf "\n# %s\n" "$PATCH_MARKER" >> "$ROOT/loader/Makefile"
+  fi
+fi
+
+if [ -f "$ROOT/packer/Makefile" ]; then
+  echo "[install-kiteshield] Patching packer warnings..."
+  perl -pi -e 's/ -Werror//g' "$ROOT/packer/Makefile"
+fi
+
+if [ -f "$ROOT/packer/bddisasm/Makefile" ]; then
+  BDD_LIB="$ROOT/packer/bddisasm/bin/x64/Release/libbddisasm.a"
+  if [ ! -f "$BDD_LIB" ]; then
+    echo "[install-kiteshield] Building bddisasm (Release)..."
+    make -C "$ROOT/packer/bddisasm" bddisasm
+  fi
+fi
 
 echo "[install-kiteshield] Building..."
 if [ -f Cargo.toml ]; then
