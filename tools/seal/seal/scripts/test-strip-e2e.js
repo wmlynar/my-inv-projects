@@ -232,10 +232,26 @@ function extractStripStep(res) {
   return stripStep;
 }
 
-async function testStripMetadataThin(res) {
+async function testStripMetadataThinSingle(res) {
   const stripStep = extractStripStep(res);
-  if (!(stripStep.skipped && stripStep.reason === "thin_not_supported")) {
-    throw new Error(`expected thin strip skip, got: ${JSON.stringify(stripStep)}`);
+  if (!(stripStep.skipped && stripStep.reason === "thin_single_not_supported")) {
+    throw new Error(`expected thin-single strip skip, got: ${JSON.stringify(stripStep)}`);
+  }
+}
+
+async function testStripMetadataThinSplit(res) {
+  const stripStep = extractStripStep(res);
+  if (!stripStep.ok) {
+    throw new Error(`strip step not OK: ${JSON.stringify(stripStep)}`);
+  }
+
+  const launcherPath = path.join(res.releaseDir, "b", "a");
+  const binPath = fs.existsSync(launcherPath)
+    ? launcherPath
+    : path.join(res.releaseDir, "seal-example");
+  const symtab = readelfHasSymtab(binPath);
+  if (symtab === true) {
+    throw new Error("Expected stripped thin-split binary (symtab still present)");
   }
 }
 
@@ -302,17 +318,30 @@ async function main() {
   let failures = 0;
   try {
     log("Building thin-single with strip enabled (expect skip)...");
-    const thinRes = await withTimeout("buildRelease(strip-thin)", buildTimeoutMs, () =>
+    const thinSingleRes = await withTimeout("buildRelease(strip-thin-single)", buildTimeoutMs, () =>
       buildWithStrip({ outRoot, packager: "thin-single" })
     );
-    await withTimeout("testStripMetadataThin", testTimeoutMs, () => testStripMetadataThin(thinRes));
-    log("OK: testStripMetadataThin");
+    await withTimeout("testStripMetadataThinSingle", testTimeoutMs, () => testStripMetadataThinSingle(thinSingleRes));
+    log("OK: testStripMetadataThinSingle");
 
     if (!runRelease.skipListen) {
-      await withTimeout("testStripRuntime(thin)", testTimeoutMs, () => testStripRuntime(thinRes, ctx));
-      log("OK: testStripRuntime(thin)");
+      await withTimeout("testStripRuntime(thin-single)", testTimeoutMs, () => testStripRuntime(thinSingleRes, ctx));
+      log("OK: testStripRuntime(thin-single)");
     } else {
-      log("SKIP: testStripRuntime(thin) (listen not permitted)");
+      log("SKIP: testStripRuntime(thin-single) (listen not permitted)");
+    }
+
+    log("Building thin-split with strip enabled...");
+    const thinSplitRes = await withTimeout("buildRelease(strip-thin-split)", buildTimeoutMs, () =>
+      buildWithStrip({ outRoot, packager: "thin-split" })
+    );
+    await withTimeout("testStripMetadataThinSplit", testTimeoutMs, () => testStripMetadataThinSplit(thinSplitRes));
+    log("OK: testStripMetadataThinSplit");
+    if (!runRelease.skipListen) {
+      await withTimeout("testStripRuntime(thin-split)", testTimeoutMs, () => testStripRuntime(thinSplitRes, ctx));
+      log("OK: testStripRuntime(thin-split)");
+    } else {
+      log("SKIP: testStripRuntime(thin-split) (listen not permitted)");
     }
 
     if (!hasCommand("postject")) {

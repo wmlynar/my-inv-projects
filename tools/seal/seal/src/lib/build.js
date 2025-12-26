@@ -645,20 +645,28 @@ function applyHardeningPost(releaseDir, appName, packagerUsed, hardCfg) {
   // There are real-world cases where postject-ed binaries break after strip/packing.
   // Therefore it is OFF by default and must be enabled explicitly.
   const exePath = path.join(releaseDir, appName);
-  const isScript = isShebangScript(exePath);
+  const thinSplitLauncher = packagerUsed === "thin-split"
+    ? path.join(releaseDir, "b", "a")
+    : null;
+  const hardTargetPath = (thinSplitLauncher && fileExists(thinSplitLauncher))
+    ? thinSplitLauncher
+    : exePath;
+  const hardTargetLabel = hardTargetPath === exePath ? "app" : "launcher";
+  const isScript = isShebangScript(hardTargetPath);
   const isThin = typeof packagerUsed === "string" && packagerUsed.startsWith("thin");
+  const isThinSingle = packagerUsed === "thin-single";
 
   const stripEnabled = cfg.stripSymbols === true; // default false
   const stripTool = cfg.stripTool || "strip";
   const stripArgs = cfg.stripArgs || null;
   if (!isScript && stripEnabled) {
-    if (isThin) {
-      steps.push({ step: "strip", ok: false, skipped: true, reason: "thin_not_supported" });
+    if (isThinSingle) {
+      steps.push({ step: "strip", ok: false, skipped: true, reason: "thin_single_not_supported", target: hardTargetLabel });
     } else {
-      steps.push({ step: "strip", ...tryStripBinary(exePath, { cmd: stripTool, args: stripArgs }) });
+      steps.push({ step: "strip", target: hardTargetLabel, ...tryStripBinary(hardTargetPath, { cmd: stripTool, args: stripArgs }) });
     }
   } else if (!isScript && !isThin) {
-    steps.push({ step: "strip", ok: false, skipped: true, reason: stripEnabled ? "strip_failed" : "disabled_by_default" });
+    steps.push({ step: "strip", ok: false, skipped: true, reason: stripEnabled ? "strip_failed" : "disabled_by_default", target: hardTargetLabel });
   }
   const packerEnabled = !!cfg.elfPacker;
   if (packerEnabled && isScript) {

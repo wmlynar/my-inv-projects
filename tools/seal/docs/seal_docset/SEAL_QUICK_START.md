@@ -96,6 +96,10 @@ Domyślnie `seal release`:
 
 **Packagery (kolejność rekomendowana):** `thin-split`, `thin-single`, `sea`, `bundle`, `none` (raw bundle + wrapper; bez protection) (`auto` = `thin-split`).
 
+> **UWAGA (BARDZO WAŻNE):** **`thin-split` to packager produkcyjny i bazowy dla łączenia zabezpieczeń.**  
+> **`thin-single` traktuj jako tryb dev/MVP** — przy AIO payload jest w pliku wykonywalnym, więc **nie da się bezpiecznie składać części ochron (np. `strip`/ELF packer)**.  
+> Jeśli potrzebujesz warstw ochrony i stabilnego release → **używaj `thin-split`.**
+
 Bundle fallback jest wyłączony domyślnie; włącz go jawnie przez `build.packagerFallback=true` albo `--packager bundle`.
 
 **Cleanup:** jeśli chcesz ręcznie wyczyścić artefakty, użyj `seal clean` (w monorepo uruchom w root, zadziała dla wszystkich podprojektów).

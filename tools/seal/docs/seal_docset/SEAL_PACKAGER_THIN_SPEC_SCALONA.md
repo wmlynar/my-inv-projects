@@ -11,6 +11,10 @@ Dotyczy: **packagery thin** w frameworku SEAL (**to NIE jest flaga `--fast`**): 
 
 > **Cel praktyczny**: nie “tajemnica wobec roota”, tylko **anti‑casual extraction** — podnieść próg tak, by proste techniki (`file/strings/binwalk/zstd -d/unzip/odcięcie ogona`) nie wystarczały, a wydobycie kodu wymagało RE/dezasemblacji/debugowania launchera lub formatu.
 
+> **UWAGA (BARDZO WAŻNE):** **`thin-split` to packager produkcyjny i domyślnie rekomendowany.**  
+> **`thin-single` traktuj jako tryb dev/MVP** (szybki, prosty), bo ma ograniczenia: **nie pozwala bezpiecznie łączyć części zabezpieczeń (np. `strip`/ELF packer),** gdy payload jest w tym samym pliku wykonywalnym.  
+> Jeśli chcesz łączyć warstwy ochrony i mieć stabilny release → **używaj `thin-split`.**
+
 ---
 
 ## 0. Założenia, threat model, cele, non‑goals

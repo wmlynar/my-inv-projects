@@ -1735,6 +1735,7 @@ Przykład (aktualny dla v0.5):
   build: {
     // packager (kolejnosc rekomendowana): thin-split, thin-single, sea, bundle, none (auto = thin-split)
     // none = raw bundle + wrapper (bez protection/bundle.pack; tylko do diagnostyki)
+    // UWAGA: thin-split = produkcja; thin-single = dev/MVP (AIO nie wspiera bezpiecznie strip/ELF packer)
     packager: "auto",
     packagerFallback: false,
 
