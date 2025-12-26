@@ -127,6 +127,7 @@ npx seal release prod --packager thin-single
     - `mode: "errno" | "kill"`: `errno` zwraca `EPERM`, `kill` natychmiast kończy proces.
     - brak wsparcia seccomp = **fail‑fast** (bez fallbacku).
   - `coreDump` (domyślnie `true`) — ustawia `RLIMIT_CORE=0` (brak core‑dumpów).
+  - `loaderGuard` (domyślnie `true`) — weryfikuje loader z `PT_INTERP` vs `/proc/self/maps` (blokuje uruchomienie przez alternatywny `ld-linux`).
 - **Brak aktywnego `PTRACE_TRACEME` guard**: wymagałby modelu fork/parent‑handshake (TRACEME → SIGTRAP → parent `PTRACE_DETACH`) oraz zmian w unitach systemd (`Type=forking`/PIDFile) i przekazywania sygnałów/logów. Obecnie używamy `PR_SET_DUMPABLE` + seccomp jako twardej blokady.
 
 **Jak wyglądałaby implementacja aktywnego `PTRACE_TRACEME` (opcjonalny projekt):**
@@ -162,6 +163,8 @@ npx seal release prod --packager thin-single
   - `SEAL_DUMPABLE_PROBE=1`
   - `SEAL_CORE_PROBE=1`
   - `SEAL_SECCOMP_PROBE=1`
+- W testach `loaderGuard` używany jest tylko w trybie E2E specjalny ENV:
+  - `SEAL_LOADER_GUARD_FORCE=1`
 - `build.thin.integrity`:
   - `enabled` (domyślnie `false`) — weryfikuje self‑hash launchera (`b/a`) w `thin-split`.
   - **Tylko `thin-split`**; dla `thin-single` build kończy się błędem.

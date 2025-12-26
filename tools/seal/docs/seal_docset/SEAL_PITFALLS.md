@@ -277,6 +277,9 @@
   - Wymaganie: `seccompNoDebug` ma czytelny fail‑fast (brak wsparcia = blad z instrukcja).
   - Wymaganie: testy E2E probuja `seccompNoDebug` w trybie `errno` (nie `kill`), aby mozna bylo asercyjnie sprawdzic blad.
 
+- Blad: brak kontroli loadera pozwalal uruchomic launcher przez alternatywny `ld-linux` i ominac czyszczenie env.
+  - Wymaganie: `loaderGuard` sprawdza `PT_INTERP` i obecność loadera w `/proc/self/maps`; mismatch = fail‑fast.
+
 - Blad: metadane kodeka byly zapisywane jako JSON na serwerze.
   - Wymaganie: wszystko co trafia na target powinno byc binarne/obfuskowane (brak czytelnych JSON).
   - Wymaganie: nazwy plikow na target nie powinny zdradzac roli (uzywaj krotszych/nijakich nazw, np. `c` zamiast `codec.bin`).

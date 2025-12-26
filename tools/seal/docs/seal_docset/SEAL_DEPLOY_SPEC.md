@@ -1762,7 +1762,8 @@ Przykład (aktualny dla v0.5):
         mapsDenylist: [],     // np. ["frida", "gdb", "ltrace"] (gdy ustawione, fail-fast)
         ptraceGuard: { enabled: true, dumpable: true },
         seccompNoDebug: { enabled: true, mode: "errno" }, // errno | kill
-        coreDump: true
+        coreDump: true,
+        loaderGuard: true       // kontrola loadera (PT_INTERP vs /proc/self/maps)
       },
       // Integrity (thin-split only): self-hash launchera b/a
       integrity: { enabled: false }
@@ -1818,6 +1819,7 @@ Przykład (aktualny dla v0.5):
 - `build.thin.antiDebug.ptraceGuard`: domyślnie `{ enabled: true, dumpable: true }`.
 - `build.thin.antiDebug.seccompNoDebug`: domyślnie `{ enabled: true, mode: "errno" }`.
 - `build.thin.antiDebug.coreDump`: domyślnie `true`.
+- `build.thin.antiDebug.loaderGuard`: domyślnie `true`.
 - `build.frontendObfuscation`: domyślnie `{ enabled: true, profile: build.obfuscationProfile }`.
 - `build.frontendMinify`: domyślnie `{ enabled: true, level: "safe", html: true, css: true }`.
 - `build.protection`: domyślnie `{ enabled: true, seaMain:{pack:true,method:"brotli",chunkSize:8000}, bundle:{pack:true}, strip:{enabled:false,cmd:"strip"} }`.

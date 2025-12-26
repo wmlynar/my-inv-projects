@@ -98,6 +98,7 @@ function normalizeThinAntiDebug(raw) {
       ptraceGuard: { enabled: true, dumpable: true },
       seccompNoDebug: { enabled: true, mode: "errno" },
       coreDump: true,
+      loaderGuard: true,
     };
   }
   if (typeof raw !== "object" || Array.isArray(raw)) {
@@ -170,6 +171,11 @@ function normalizeThinAntiDebug(raw) {
   if (typeof coreDump !== "boolean") {
     throw new Error(`Invalid thin.antiDebug.coreDump: ${raw.coreDump} (expected boolean)`);
   }
+  let loaderGuard = raw.loaderGuard;
+  if (loaderGuard === undefined) loaderGuard = true;
+  if (typeof loaderGuard !== "boolean") {
+    throw new Error(`Invalid thin.antiDebug.loaderGuard: ${raw.loaderGuard} (expected boolean)`);
+  }
   let tracerPidThreadsFinal = tracerPidThreads;
   if (!enabled || !tracerPid) {
     tracerPidIntervalMs = 0;
@@ -179,6 +185,7 @@ function normalizeThinAntiDebug(raw) {
     ptraceGuard = { enabled: false, dumpable: false };
     seccompNoDebug = { enabled: false, mode: seccompNoDebug.mode };
     coreDump = false;
+    loaderGuard = false;
   }
   return {
     enabled,
@@ -190,6 +197,7 @@ function normalizeThinAntiDebug(raw) {
     ptraceGuard,
     seccompNoDebug,
     coreDump,
+    loaderGuard,
   };
 }
 

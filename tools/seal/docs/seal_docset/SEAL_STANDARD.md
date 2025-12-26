@@ -168,6 +168,8 @@ Przykład:
 - STD-159 (SHOULD): `thin.snapshotGuard` jest opt‑in; testy muszą wymuszać trigger poprzez dedykowane ENV, a produkcja nie polega na testowych override.
 - STD-160 (SHOULD): `antiDebug.ptraceGuard` i `antiDebug.coreDump` muszą sprawdzać kody błędów (`prctl`/`setrlimit`) i fail‑fast (bez cichych skipów).
 - STD-161 (SHOULD): `antiDebug.seccompNoDebug` ma czytelny tryb działania (`errno`/`kill`), a testy używają trybu `errno` do asercji błędów.
+- STD-162 (SHOULD): aktywny guard `PTRACE_TRACEME` wymaga modelu fork/parent‑handshake i `Type=forking` w systemd; domyślny tryb simple exec go nie wspiera (używaj `dumpable+seccomp`).
+- STD-163 (SHOULD): `antiDebug.loaderGuard` weryfikuje loader (PT_INTERP vs `/proc/self/maps`) i fail‑fast przy mismatch; testy muszą mieć wymuszenie kontrolowane przez ENV.
 
 #### Testy / CI
 - STD-018 (SHOULD): testy automatyczne nie polegają na kruchym parsowaniu stdout/stderr child procesów; preferuj JSON output, kody wyjścia lub wywołania in‑process; gdy parsujesz, zawsze usuwaj ANSI.

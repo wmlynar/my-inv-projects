@@ -443,6 +443,17 @@ async function main() {
     );
     log("OK: ptrace force triggers failure");
 
+    log("Testing loader guard force (expect failure)...");
+    await withTimeout("loader guard fail", testTimeoutMs, () =>
+      runReleaseExpectFail({
+        releaseDir: resA.releaseDir,
+        runTimeoutMs,
+        env: { SEAL_LOADER_GUARD_FORCE: "1" },
+        expectStderr: "[thin] runtime invalid",
+      })
+    );
+    log("OK: loader guard triggers failure");
+
     log("Testing seccomp probe (expect success)...");
     await withTimeout("seccomp probe ok", testTimeoutMs, () =>
       runReleaseOk({
@@ -577,11 +588,10 @@ async function main() {
       })
     );
     await withTimeout("snapshot guard fail", testTimeoutMs, () =>
-      runReleaseExpectFailAfterReady({
+      runReleaseExpectFail({
         releaseDir: resSnap.releaseDir,
-        readyTimeoutMs: 8000,
-        failTimeoutMs: 8000,
-        env: { SEAL_SNAPSHOT_FORCE: "1", SEAL_SNAPSHOT_FORCE_AFTER_MS: "300" },
+        runTimeoutMs,
+        env: { SEAL_SNAPSHOT_FORCE: "1" },
         expectStderr: "[thin] runtime invalid",
       })
     );

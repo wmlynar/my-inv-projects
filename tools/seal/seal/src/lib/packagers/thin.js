@@ -1197,6 +1197,7 @@ function renderLauncherSource(
   const adSeccomp = adEnabled && seccompCfg.enabled !== false;
   const seccompMode = seccompCfg.mode === "kill" ? "kill" : "errno";
   const adCoreDump = adEnabled && antiDebug.coreDump !== false;
+  const adLoaderGuard = adEnabled && antiDebug.loaderGuard !== false;
 
   const bootstrapJs = `"use strict";
 const fs = require("fs");
@@ -1419,6 +1420,7 @@ extern char **environ;
 #define THIN_AD_SECCOMP ${adSeccomp ? 1 : 0}
 #define THIN_AD_SECCOMP_KILL ${seccompMode === "kill" ? 1 : 0}
 #define THIN_AD_CORE_DUMP ${adCoreDump ? 1 : 0}
+#define THIN_AD_LOADER_GUARD ${adLoaderGuard ? 1 : 0}
 
 #define MAX_CHUNKS ${limits.maxChunks}u
 #define MAX_CHUNK_RAW ${limits.maxChunkRaw}u
@@ -1992,6 +1994,135 @@ static int maps_has_deny(void) {
 }
 #endif
 
+static uint16_t read_u16_le(const uint8_t *p) {
+  return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
+}
+
+static int read_elf_interp(char *out, size_t out_len) {
+  if (!out || out_len < 4) return -1;
+  int fd = open("/proc/self/exe", O_RDONLY | O_CLOEXEC);
+  if (fd < 0) return -1;
+  uint8_t hdr[64];
+  ssize_t n = pread(fd, hdr, sizeof(hdr), 0);
+  if (n < 56) {
+    close(fd);
+    return -1;
+  }
+  if (hdr[0] != 0x7f || hdr[1] != 'E' || hdr[2] != 'L' || hdr[3] != 'F') {
+    close(fd);
+    return -1;
+  }
+  int elf_class = hdr[4];
+  int elf_data = hdr[5];
+  if (elf_data != 1) { // little-endian only
+    close(fd);
+    return -1;
+  }
+
+  uint64_t phoff = 0;
+  uint16_t phentsize = 0;
+  uint16_t phnum = 0;
+  if (elf_class == 2) { // ELF64
+    phoff = read_u64_le(hdr + 32);
+    phentsize = read_u16_le(hdr + 54);
+    phnum = read_u16_le(hdr + 56);
+  } else if (elf_class == 1) { // ELF32
+    phoff = read_u32_le(hdr + 28);
+    phentsize = read_u16_le(hdr + 42);
+    phnum = read_u16_le(hdr + 44);
+  } else {
+    close(fd);
+    return -1;
+  }
+
+  if (phoff == 0 || phentsize == 0 || phnum == 0) {
+    close(fd);
+    return -1;
+  }
+
+  for (uint16_t i = 0; i < phnum; i++) {
+    uint8_t phdr[64];
+    ssize_t pn = pread(fd, phdr, sizeof(phdr), (off_t)(phoff + (uint64_t)i * phentsize));
+    if (pn < 32) {
+      close(fd);
+      return -1;
+    }
+    uint32_t p_type = read_u32_le(phdr + 0);
+    if (p_type != 3) continue; // PT_INTERP
+    uint64_t p_offset = 0;
+    uint64_t p_filesz = 0;
+    if (elf_class == 2) {
+      p_offset = read_u64_le(phdr + 8);
+      p_filesz = read_u64_le(phdr + 32);
+    } else {
+      p_offset = read_u32_le(phdr + 4);
+      p_filesz = read_u32_le(phdr + 16);
+    }
+    if (p_filesz == 0 || p_filesz >= out_len) {
+      close(fd);
+      return -1;
+    }
+    ssize_t rn = pread(fd, out, (size_t)p_filesz, (off_t)p_offset);
+    if (rn <= 0) {
+      close(fd);
+      return -1;
+    }
+    out[out_len - 1] = 0;
+    if (out[p_filesz - 1] != 0) {
+      out[p_filesz] = 0;
+    }
+    close(fd);
+    return 0;
+  }
+  close(fd);
+  return 1; // no PT_INTERP (likely static)
+}
+
+static int loader_guard_check(void) {
+#if THIN_AD_LOADER_GUARD
+  const char *e2e = getenv("SEAL_THIN_ANTI_DEBUG_E2E");
+  if (e2e && strcmp(e2e, "1") == 0) {
+    const char *force = getenv("SEAL_LOADER_GUARD_FORCE");
+    if (force && strcmp(force, "1") == 0) {
+      return fail_msg("[thin] runtime invalid", 81);
+    }
+  }
+  char interp[PATH_MAX + 1];
+  int rc = read_elf_interp(interp, sizeof(interp));
+  if (rc == 1) {
+    return 0;
+  }
+  if (rc != 0) {
+    return fail_msg("[thin] runtime invalid", 81);
+  }
+  char interp_real[PATH_MAX + 1];
+  int has_real = 0;
+  if (realpath(interp, interp_real) != NULL) {
+    interp_real[PATH_MAX] = 0;
+    has_real = 1;
+  }
+  FILE *f = fopen("/proc/self/maps", "r");
+  if (!f) return fail_msg("[thin] runtime invalid", 81);
+  char line[512];
+  int found = 0;
+  while (fgets(line, sizeof(line), f)) {
+    if (strstr(line, interp)) {
+      found = 1;
+      break;
+    }
+    if (has_real && strstr(line, interp_real)) {
+      found = 1;
+      break;
+    }
+  }
+  fclose(f);
+  if (!found) {
+    return fail_msg("[thin] runtime invalid", 81);
+  }
+#endif
+  return 0;
+}
+
 static int anti_debug_checks(void) {
 #if THIN_AD_ENABLED && THIN_AD_TRACERPID
   long pid = 0;
@@ -2041,6 +2172,13 @@ static int anti_debug_checks(void) {
 #if THIN_AD_ENABLED && THIN_AD_MAPS
   if (maps_has_deny()) {
     return fail_msg("[thin] runtime invalid", 73);
+  }
+#endif
+
+#if THIN_AD_ENABLED && THIN_AD_LOADER_GUARD
+  {
+    int rc = loader_guard_check();
+    if (rc != 0) return rc;
   }
 #endif
 
