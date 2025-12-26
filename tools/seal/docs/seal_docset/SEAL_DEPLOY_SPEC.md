@@ -1750,6 +1750,7 @@ Przykład (aktualny dla v0.5):
       runtimeStore: "memfd",  // memfd | tmpfile
       appBind: { enabled: true }, // bind launcher to runtime/payload (use value for stable project ID)
       launcherHardening: true,    // CET/RELRO/PIE/stack-protector/fortify
+      launcherHardeningCET: true, // CET only; disable for older clang (e.g., O-LLVM)
       launcherObfuscation: true,  // requires protection.cObfuscator (fail-fast if missing)
       snapshotGuard: { enabled: false, intervalMs: 1000, maxJumpMs: 60000, maxBackMs: 100 },
       // Anti-debug (opcjonalne; domyslnie wlaczone podstawowe checki):
@@ -1814,6 +1815,7 @@ Przykład (aktualny dla v0.5):
 - `build.thin.level`: `low` | `medium` | `high`.
 - `build.thin.appBind`: domyślnie `{ enabled: true }`.
 - `build.thin.launcherHardening`: domyślnie `true`.
+- `build.thin.launcherHardeningCET`: domyślnie `true` (jeśli compiler nie wspiera `-fcf-protection=full`, build fail‑fast; wyłącz ręcznie).
 - `build.thin.launcherObfuscation`: domyślnie `true` (wymaga `build.protection.cObfuscator`).
 - `build.thin.snapshotGuard`: domyślnie `{ enabled: false }`.
 - `build.thin.antiDebug.ptraceGuard`: domyślnie `{ enabled: true, dumpable: true }`.

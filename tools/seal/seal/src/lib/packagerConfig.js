@@ -80,6 +80,14 @@ function normalizeThinLauncherHardening(raw) {
   return raw;
 }
 
+function normalizeThinLauncherHardeningCet(raw) {
+  if (raw === undefined || raw === null) return true;
+  if (typeof raw !== "boolean") {
+    throw new Error(`Invalid thin.launcherHardeningCET: ${raw} (expected boolean)`);
+  }
+  return raw;
+}
+
 function normalizeThinLauncherObfuscation(raw) {
   if (raw === undefined || raw === null) return true;
   if (typeof raw !== "boolean") {
@@ -301,6 +309,12 @@ function resolveThinConfig(targetCfg, projectCfg) {
     null;
   const launcherHardening = normalizeThinLauncherHardening(launcherHardeningRaw);
 
+  const launcherHardeningCetRaw =
+    tThin.launcherHardeningCET ??
+    pThin.launcherHardeningCET ??
+    null;
+  const launcherHardeningCET = normalizeThinLauncherHardeningCet(launcherHardeningCetRaw);
+
   const launcherObfRaw =
     tThin.launcherObfuscation ??
     pThin.launcherObfuscation ??
@@ -320,6 +334,7 @@ function resolveThinConfig(targetCfg, projectCfg) {
     appBind,
     snapshotGuard,
     launcherHardening,
+    launcherHardeningCET,
     launcherObfuscation,
   };
 }

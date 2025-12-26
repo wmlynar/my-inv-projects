@@ -27,6 +27,7 @@
         "maxBackMs": 100
       },
       "launcherHardening": true,
+      "launcherHardeningCET": true,
       "launcherObfuscation": true,
       "antiDebug": {
         "enabled": true,

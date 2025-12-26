@@ -834,6 +834,7 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
       throw new Error("thin.launcherObfuscation enabled but no protection.cObfuscator configured");
     }
     const launcherHardening = thinCfg.launcherHardening !== false;
+    const launcherHardeningCET = thinCfg.launcherHardeningCET !== false;
     const res = await packThin({
       stageDir,
       releaseDir,
@@ -848,6 +849,7 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
       envMode: thinCfg.envMode,
       runtimeStore: thinCfg.runtimeStore,
       launcherHardening,
+      launcherHardeningCET,
       launcherObfuscation,
       antiDebug: thinCfg.antiDebug,
       integrity: thinCfg.integrity,

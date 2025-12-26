@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const os = require("os");
 const { spawn, spawnSync } = require("child_process");
 
 const { spawnSyncSafe } = require("../spawn");
@@ -2645,7 +2646,8 @@ function buildLauncher(
   appBindValue,
   appBindEnabled,
   snapshotGuardCfg,
-  launcherHardening
+  launcherHardening,
+  launcherHardeningCET
 ) {
   const limits = DEFAULT_LIMITS;
   if (cObfuscator && cObfuscator.kind) {
@@ -2662,6 +2664,16 @@ function buildLauncher(
       ? "cObfuscatorCmd not found or not executable"
       : "C compiler not found (cc/gcc)";
     return { ok: false, errorShort: hint, error: "missing_cc" };
+  }
+
+  function probeCompilerFlag(flag) {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-cc-flag-"));
+    const srcPath = path.join(tmpDir, "flag-test.c");
+    const outPath = path.join(tmpDir, "flag-test.o");
+    fs.writeFileSync(srcPath, "int main(void){return 0;}\n", "utf-8");
+    const res = spawnSyncSafe(cc, [flag, "-c", srcPath, "-o", outPath], { stdio: "pipe" });
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    return res;
   }
 
   const cPath = path.join(stageDir, "thin-launcher.c");
@@ -2689,6 +2701,7 @@ function buildLauncher(
     ? cObfuscator.args.map((v) => String(v))
     : [];
   const hardeningEnabled = launcherHardening !== false;
+  const cetEnabled = launcherHardeningCET !== false;
   const hardeningArgs = hardeningEnabled ? [
     "-s",
     "-D_FORTIFY_SOURCE=2",
@@ -2706,7 +2719,18 @@ function buildLauncher(
     "-Wl,--build-id=none",
     "-pie",
   ] : [];
-  if (hardeningEnabled && (process.arch === "x64" || process.arch === "ia32")) {
+  if (hardeningEnabled && cetEnabled && (process.arch === "x64" || process.arch === "ia32")) {
+    const probe = probeCompilerFlag("-fcf-protection=full");
+    if (!probe.ok) {
+      const msg = (probe.stderr || probe.stdout || probe.error || "unknown").trim();
+      const lines = msg.split(/\r?\n/).filter(Boolean);
+      const short = lines.slice(0, 2).join(" | ") || "unsupported flag";
+      return {
+        ok: false,
+        errorShort: `launcher hardening failed: compiler does not support -fcf-protection=full (disable build.thin.launcherHardeningCET or use newer clang) | ${short}`,
+        error: msg,
+      };
+    }
     hardeningArgs.push("-fcf-protection=full");
   }
   const args = [
@@ -2745,6 +2769,7 @@ async function packThin({
   envMode,
   runtimeStore,
   launcherHardening,
+  launcherHardeningCET,
   antiDebug,
   integrity,
   appBind,
@@ -2830,7 +2855,8 @@ async function packThin({
       appBindValue,
       appBindEnabled,
       snapshotGuard,
-      launcherHardening
+      launcherHardening,
+      launcherHardeningCET
     );
     if (!launcherRes.ok) return launcherRes;
 
