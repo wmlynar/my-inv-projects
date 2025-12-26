@@ -32,6 +32,17 @@ function hasCommand(cmd) {
   return res.status === 0;
 }
 
+function ensureLauncherObfuscation(projectCfg) {
+  const thinCfg = projectCfg.build && projectCfg.build.thin ? projectCfg.build.thin : {};
+  const cObf = projectCfg.build && projectCfg.build.protection ? projectCfg.build.protection.cObfuscator || {} : {};
+  const cObfCmd = cObf.cmd || cObf.tool;
+  if (thinCfg.launcherObfuscation !== false && cObfCmd && !hasCommand(cObfCmd)) {
+    log(`C obfuscator not available (${cObfCmd}); disabling launcherObfuscation for test`);
+    thinCfg.launcherObfuscation = false;
+  }
+  projectCfg.build.thin = thinCfg;
+}
+
 function hasCxx() {
   return hasCommand("c++") || hasCommand("g++") || hasCommand("clang++");
 }
@@ -184,13 +195,12 @@ async function buildThinRelease(buildTimeoutMs, opts = {}) {
   projectCfg.build.sentinel = Object.assign({}, projectCfg.build.sentinel || {}, {
     enabled: false,
   });
-  const thinCfg = Object.assign({}, projectCfg.build.thin || {}, {
-    launcherObfuscation: false,
-  });
+  const thinCfg = Object.assign({}, projectCfg.build.thin || {});
   if (opts.nativeBootstrap === true) {
     thinCfg.nativeBootstrap = { enabled: true };
   }
   projectCfg.build.thin = thinCfg;
+  ensureLauncherObfuscation(projectCfg);
   if (projectCfg.build.protection?.elfPacker?.tool && !hasCommand(projectCfg.build.protection.elfPacker.cmd || projectCfg.build.protection.elfPacker.tool)) {
     log("ELF packer not available; disabling elfPacker for test");
     projectCfg.build.protection.elfPacker = {};

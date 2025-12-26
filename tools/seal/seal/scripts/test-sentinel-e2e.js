@@ -35,6 +35,17 @@ function hasCommand(cmd) {
   return res.status === 0;
 }
 
+function ensureLauncherObfuscation(projectCfg) {
+  const thinCfg = projectCfg.build && projectCfg.build.thin ? projectCfg.build.thin : {};
+  const cObf = projectCfg.build && projectCfg.build.protection ? projectCfg.build.protection.cObfuscator || {} : {};
+  const cObfCmd = cObf.cmd || cObf.tool;
+  if (thinCfg.launcherObfuscation !== false && cObfCmd && !hasCommand(cObfCmd)) {
+    log(`C obfuscator not available (${cObfCmd}); disabling launcherObfuscation for test`);
+    thinCfg.launcherObfuscation = false;
+  }
+  projectCfg.build.thin = thinCfg;
+}
+
 function checkPrereqs() {
   if (process.platform !== "linux") {
     log(`SKIP: sentinel E2E is linux-only (platform=${process.platform})`);
@@ -247,9 +258,8 @@ async function buildReleaseWithSentinel({ baseDir, outRoot, sentinelOverride }) 
 
   const appId = "seal-example";
   projectCfg.build = projectCfg.build || {};
-  projectCfg.build.thin = Object.assign({}, projectCfg.build.thin || {}, {
-    launcherObfuscation: false,
-  });
+  projectCfg.build.thin = Object.assign({}, projectCfg.build.thin || {});
+  ensureLauncherObfuscation(projectCfg);
   const baseSentinel = {
     enabled: true,
     level: 1,

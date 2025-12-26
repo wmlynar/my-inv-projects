@@ -32,6 +32,17 @@ function hasCommand(cmd) {
   return res.status === 0;
 }
 
+function ensureLauncherObfuscation(projectCfg) {
+  const thinCfg = projectCfg.build && projectCfg.build.thin ? projectCfg.build.thin : {};
+  const cObf = projectCfg.build && projectCfg.build.protection ? projectCfg.build.protection.cObfuscator || {} : {};
+  const cObfCmd = cObf.cmd || cObf.tool;
+  if (thinCfg.launcherObfuscation !== false && cObfCmd && !hasCommand(cObfCmd)) {
+    log(`C obfuscator not available (${cObfCmd}); disabling launcherObfuscation for test`);
+    thinCfg.launcherObfuscation = false;
+  }
+  projectCfg.build.thin = thinCfg;
+}
+
 function checkPrereqs() {
   if (process.platform !== "linux") {
     log(`SKIP: protection E2E is linux-only (platform=${process.platform})`);
@@ -191,10 +202,9 @@ async function buildWithProtection({ protection, outRoot, packager }) {
   projectCfg.build.sentinel = Object.assign({}, projectCfg.build.sentinel || {}, {
     enabled: false,
   });
-  projectCfg.build.thin = Object.assign({}, projectCfg.build.thin || {}, {
-    launcherObfuscation: false,
-  });
+  projectCfg.build.thin = Object.assign({}, projectCfg.build.thin || {});
   projectCfg.build.protection = Object.assign({}, projectCfg.build.protection || {}, protection || {});
+  ensureLauncherObfuscation(projectCfg);
 
   const targetCfg = loadTargetConfig(EXAMPLE_ROOT, "local").cfg;
   const configName = resolveConfigName(targetCfg, "local");
