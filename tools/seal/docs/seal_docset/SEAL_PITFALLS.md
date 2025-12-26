@@ -24,9 +24,93 @@
   - Wymaganie: uzywaj `spawn`/`execFile` z args array i `shell: false`.
   - Wymaganie: gdy shell jest konieczny (ssh/rsync), stosuj `--` i bezpieczne quoting; sanitizuj wszystkie fragmenty pochodzace z configu.
 
+- Blad: `exec()` z domyslnym `maxBuffer` obcinal output lub powodowal bledy przy wiekszych logach.
+  - Wymaganie: preferuj `spawn`/`execFile`; jesli uzywasz `exec`, ustaw `maxBuffer` i loguj gdy zostal przekroczony.
+
+- Blad: parsery polegaly na outputach narzedzi zaleznych od locale (np. `df`, `lsblk`) i rozjezdzaly sie na innych systemach.
+  - Wymaganie: ustaw `LC_ALL=C` (lub `LANG=C`) dla komend parsowanych tekstowo, albo uzywaj trybu `--json`/`--output`.
+
+- Blad: sciezki zaczynajace sie od `-` byly interpretowane jako opcje (rm/cp/rsync/scp).
+  - Wymaganie: zawsze wstaw `--` przed listą sciezek i waliduj, ze sciezka nie jest pusta.
+
+- Blad: JSON5 z BOM/CRLF powodowal bledy parsowania na niektorych systemach.
+  - Wymaganie: parser usuwa BOM i akceptuje CRLF (normalizuj `\\r\\n` -> `\\n`).
+
 - Blad: operacje na sciezkach (rm/rsync/copy) podazaly za symlinkami i mogly wyjsc poza root.
   - Wymaganie: przed operacjami destrukcyjnymi sprawdz `realpath` i czy jest w dozwolonym root.
   - Wymaganie: nie podazaj za symlinkami (`lstat` + blokada) i odrzucaj `..` w identyfikatorach.
+
+- Blad: atomic rename failowal (EXDEV), bo tmp byl na innym filesystemie.
+  - Wymaganie: tmp dla operacji atomowych tworz w tym samym katalogu/FS co plik docelowy.
+
+- Blad: skrypty z CRLF (`^M`) nie uruchamialy sie na Linux (`/bin/sh^M`).
+  - Wymaganie: generowane pliki skryptow zawsze z LF (`\n`), bez CRLF; w razie importu stosuj `dos2unix`.
+
+- Blad: skrypty shellowe nie mialy `set -euo pipefail`, przez co ukrywaly bledy w pipeline.
+  - Wymaganie: kazdy skrypt zdalny/produkcyjny zaczyna sie od `set -euo pipefail`.
+
+- Blad: `rm -rf "$DIR"/*` przy pustym `DIR` kasowal `/` (lub inne krytyczne katalogi).
+  - Wymaganie: przed destrukcyjnym `rm` wymagaj niepustego `DIR` + `realpath` w dozwolonym root.
+  - Wymaganie: stosuj helper typu `safeRmDir(dir, root)` zamiast inline `rm`.
+
+- Blad: `set -e` przerywal skrypt na `grep`/`diff` zwracajacych 1 (brak dopasowania), mimo ze to nie byl błąd.
+  - Wymaganie: dla `grep`/`diff` uzywaj jawnego sprawdzania exit code lub `|| true` + test warunku.
+
+- Blad: procesy uruchamiane w trybie automatycznym miały stdin z TTY i wchodzily w tryb interaktywny.
+  - Wymaganie: dla nieinteraktywnych komend ustaw `stdio: ["ignore", ...]` lub `input: ""`.
+
+- Blad: skrypty uzywaly niecytowanych zmiennych (`$VAR`), co powodowalo word‑splitting i globbing.
+  - Wymaganie: kazda zmienna w shellu jest widocznie cytowana (`"$VAR"`), chyba ze jawnie potrzebny jest splitting.
+
+- Blad: `eval`/`bash -lc "$CMD"` z danymi z configu pozwalal na wstrzykniecia lub bledy quoting.
+  - Wymaganie: unikaj `eval`; uzywaj args array lub whitelisty dopuszczalnych tokenow.
+
+- Blad: `xargs` bez `-r` wykonywal polecenie bez argumentow (na pustym input), co psulo logike.
+  - Wymaganie: `xargs -0 -r` albo jawna blokada, gdy input jest pusty.
+
+- Blad: wywolania narzedzi krytycznych polegaly na `PATH` uzytkownika (mozliwy PATH‑hijack lub inne wersje binarek).
+  - Wymaganie: dla kluczowych binarek w trybie uprzywilejowanym uzywaj `command -v` + whitelisty katalogow albo absolutnych sciezek.
+  - Wymaganie: gdy uruchamiasz przez `sudo`, nie polegaj na odziedziczonym `PATH` (ustaw jawny `PATH` albo sprawdz `secure_path`).
+
+- Blad: segmenty sciezki pochodzace z configu mogly byc absolutne i omijaly `path.join`, prowadzac poza root.
+  - Wymaganie: odrzucaj segmenty z `path.isAbsolute()` oraz normalizuj `..` przed uzyciem.
+
+- Blad: `~` i sciezki relatywne w komendach `sudo` wskazywaly na niewlasciwe HOME (root), co psulo deploy.
+  - Wymaganie: uzywaj sciezek absolutnych; nie polegaj na `~` pod `sudo`. Jawnie ustawiaj `HOME`/`cwd` gdy potrzeba.
+
+- Blad: skrypty polegaly na `ls`/globbingu (`for f in *`) i psuly sie na spacjach lub pustych katalogach.
+  - Wymaganie: nie parsuj `ls`; uzywaj `find -print0` + `xargs -0` lub `glob` z `nullglob`.
+  - Wymaganie: wszystkie operacje na plikach w shellu musza byc odporne na spacje i puste katalogi.
+
+- Blad: srodowisko uruchomienia wstrzykiwalo zachowanie (`BASH_ENV`, `ENV`, `CDPATH`) i zmienialo logike skryptu.
+  - Wymaganie: przed uruchomieniem skryptow czysc ryzykowne ENV (`BASH_ENV`, `ENV`, `CDPATH`, `GLOBIGNORE`) lub ustaw jawne bezpieczne wartosci.
+
+- Blad: `exists`/`stat` przed zapisem powodowal race (TOCTOU) – plik zmienial sie miedzy check a write.
+  - Wymaganie: uzywaj atomowych operacji (`open` z `O_EXCL`, lock, write+rename) i weryfikuj `fstat` po otwarciu.
+
+- Blad: zmiana `umask` w procesie nie byla przywracana, co psulo uprawnienia kolejnych plikow.
+  - Wymaganie: zmieniaj `umask` tylko lokalnie (snapshot + restore w `finally`).
+
+- Blad: procesy potomne zostawaly jako sieroty (brak process group/kill), co blokowalo kolejne uruchomienia.
+  - Wymaganie: przy exit/signal zabijaj caly process group lub sledz wszystkie PIDy i sprzataj deterministycznie.
+
+- Blad: `unhandledRejection`/`uncaughtException` nie byly logowane i proces znikał bez informacji.
+  - Wymaganie: globalne handlery loguja blad i kończą proces z kodem != 0.
+
+- Blad: w shellu uzywano `set -u` bez zabezpieczen dla opcjonalnych zmiennych, co przerywalo skrypt.
+  - Wymaganie: dla opcjonalnych zmiennych uzywaj `${VAR:-}` lub `: "${VAR:=default}"`.
+
+- Blad: `read` bez `-r` zjadalo backslashe i psulo dane (np. sciezki).
+  - Wymaganie: uzywaj `read -r`.
+
+- Blad: timeouts i pomiary czasu oparte o `Date.now()` byly wrażliwe na zmiany czasu/NTP.
+  - Wymaganie: do timeoutów i elapsed używaj zegara monotonicznego (`process.hrtime`/`performance.now`).
+
+- Blad: retry petle nie mialy limitu (wieczne wieszanie przy awarii sieci/SSH).
+  - Wymaganie: kazdy retry ma limit prób i limit czasu calkowitego; loguj liczbe prób i powód przerwania.
+
+- Blad: lockfile zostawal po crashu i blokowal kolejne operacje.
+  - Wymaganie: lock zawiera PID+timestamp, a kod ma detekcje stale locka i bezpieczne odblokowanie.
 
 - Blad: operacje workspace wykonywaly sie na wielu projektach bez potwierdzenia i jasnego zakresu.
   - Wymaganie: przy >1 projekcie pokaz liste i wymagaj jawnego `--yes/--workspace`.
@@ -324,6 +408,47 @@
 - Blad: polityka SSH byla twardo ustawiona (sporne zachowanie bez opcji).
   - Wymaganie: parametry sporne/ryzykowne (np. `StrictHostKeyChecking`) musza byc konfigurowalne per‑target.
 
+- Blad: rsync bez trailing slash kopiowal katalog zamiast jego zawartosci, co psulo layout release.
+  - Wymaganie: zdefiniuj semantyke syncu i zawsze wymuszaj trailing slash dla katalogow zrodlowych (plus test e2e).
+
+- Blad: `rsync --delete` potrafil usunac niezamierzone pliki przy zlej sciezce docelowej.
+  - Wymaganie: przed `rsync --delete` waliduj, ze dst jest w dozwolonym root (np. `installDir`) i nie jest pusty.
+  - Wymaganie: dla ryzykownych syncow wymagaj jawnego `--force-delete` lub warning + prompt w wizardzie.
+
+- Blad: rozpakowanie archiwum bez walidacji sciezek pozwalalo na path traversal lub nadpisywanie symlinkow.
+  - Wymaganie: waliduj archiwa (brak `..`, brak absolutnych, brak linkow) i fail‑fast przy naruszeniach.
+
+- Blad: rozpakowanie artefaktu bez stagingu zostawialo polowiczny release po bledzie.
+  - Wymaganie: rozpakowuj do katalogu tymczasowego i dopiero po walidacji przenos do `releases/<buildId>`.
+  - Wymaganie: `current.buildId` aktualizuj **po** udanym extract+validate.
+
+- Blad: `tar` nadpisywal owner/permissions z archiwum (ryzyko niezamierzonych uprawnien).
+  - Wymaganie: przy ekstrakcji w trybie deploy ustaw `--no-same-owner` i `--no-same-permissions`, a permissje ustaw jawnie po rozpakowaniu.
+
+- Blad: `rm -rf`/`chmod`/`chown` na duzej liczbie plikow failowal przez `ARG_MAX`.
+  - Wymaganie: przy masowych operacjach uzywaj `find ... -print0 | xargs -0` lub `find -exec ... +`.
+
+- Blad: pliki binarne byly czytane/zapisywane z `utf8`, co uszkadzalo dane (codec/payload).
+  - Wymaganie: binarki czytaj/zapisuj jako `Buffer` (bez encoding), a tekst jawnie jako `utf8`.
+
+- Blad: diff configu porownywal formatowanie (kolejnosc kluczy/whitespace), dajac falszywe roznice.
+  - Wymaganie: diff opiera sie na kanonicznej reprezentacji (parse+stable sort+stringify).
+
+- Blad: transfer artefaktu byl uznawany za poprawny bez walidacji (rozmiar/sha), co maskowalo uszkodzenia.
+  - Wymaganie: po transferze weryfikuj checksum (np. sha256) lub przynajmniej rozmiar.
+
+- Blad: odczyt duzych plikow w calosci powodowal skoki pamieci.
+  - Wymaganie: dla potencjalnie duzych plikow uzywaj streamow i limitow rozmiaru.
+
+- Blad: retry sieciowe byly natychmiastowe i bez jittera, powodujac thundering herd i dalsze awarie.
+  - Wymaganie: retry ma exponential backoff + jitter, z limitem prob i max delay.
+
+- Blad: rozpakowanie archiwum nie mialo limitow rozmiaru/ilosci plikow (zip‑bomb).
+  - Wymaganie: limituj maksymalny rozmiar i liczbe plikow przy ekstrakcji.
+
+- Blad: niepoprawnie sformatowany `host/user` w targetach powodowal bledy lub ryzyko wstrzykniec.
+  - Wymaganie: waliduj `host`/`user` (brak spacji i znakow kontrolnych; whitelist dla dozwolonych znakow).
+
 - Blad: brak timeoutow na operacjach zewnetrznych (ssh/scp/rsync/http) blokowal deploy.
   - Wymaganie: kazda operacja zewnetrzna ma timeout + jasny komunikat "co dalej".
 
@@ -439,6 +564,9 @@
 - Blad: uzywanie `.env` jako runtime configu w produkcji.
   - Wymaganie: `.env` nie jest runtime configiem; uzywamy `config.runtime.json5`.
 
+- Blad: `config.runtime.json5` mial zbyt szerokie uprawnienia (world‑readable) i mogl ujawnic dane.
+  - Wymaganie: ustaw permissje plikow runtime (np. 0640/0600) i weryfikuj w preflight.
+
 - Blad: dane RDS (login/haslo/lang) byly w configach lub logach.
   - Wymaganie: RDS login/haslo/lang sa stalymi w kodzie (swiadomy wyjatek), bez ekspozycji w logach.
 
@@ -453,6 +581,9 @@
 - Blad: logowanie pelnych payloadow/odpowiedzi (duze logi, ryzyko sekretow).
   - Wymaganie: loguj tylko metadane i krotkie preview (limit znakow), bez pelnych body.
   - Wymaganie: logi minimalne, tylko dane potrzebne do diagnozy.
+
+- Blad: logi JSONL byly psute przez znaki nowej linii lub binarne dane w polach.
+  - Wymaganie: dane z zewnatrz sa normalizowane/escapowane (np. `\\n`), a binarne pola kodowane (base64/hex).
 
 ## UI availability / aktualizacje
 

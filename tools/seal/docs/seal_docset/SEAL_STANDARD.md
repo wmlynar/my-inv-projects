@@ -114,6 +114,49 @@ Przykład:
 - STD-102 (SHOULD): uruchamiaj komendy zewnetrzne przez `spawn`/`execFile` z args array i `shell: false`; gdy shell jest konieczny, stosuj `--` i bezpieczne quoting/sanitizacje.
 - STD-103 (SHOULD): operacje destrukcyjne (rm/copy/rsync) musza weryfikowac `realpath` i czy sciezka miesci sie w dozwolonym root; nie podazaj za symlinkami.
 - STD-106 (SHOULD): ssh/scp/rsync w trybie nieinteraktywnym musza byc uruchamiane z `BatchMode=yes` i fail-fast, bez wiszenia na prompt.
+- STD-107 (SHOULD): parsowanie outputu narzedzi systemowych powinno wymuszac `LC_ALL=C` (lub `LANG=C`) albo uzywac trybu `--json`/`--output`, aby uniknac roznic locale.
+- STD-108 (SHOULD): unikaj `exec()` z domyslnym `maxBuffer`; uzywaj `spawn`/`execFile` lub ustaw `maxBuffer` i loguj przycinki outputu.
+- STD-109 (SHOULD): zawsze stosuj `--` przed listą sciezek w komendach zewnetrznych (rm/cp/rsync/scp), aby sciezki zaczynajace sie od `-` nie byly traktowane jako opcje.
+- STD-110 (SHOULD): dla komend nieinteraktywnych ustawiaj `stdin` na `ignore`/pusty input, by nie blokowac sie na promptach.
+- STD-111 (SHOULD): skrypty shellowe uruchamiane zdalnie zaczynaja sie od `set -euo pipefail`, aby bledy w pipeline nie byly ukryte.
+- STD-112 (SHOULD): dla synchronizacji katalogow przez rsync stosuj jawna semantyke trailing slash (sync zawartosci vs katalogu) i pokryj to testem.
+- STD-113 (SHOULD): parser JSON/JSON5 usuwa BOM i normalizuje CRLF (unikaj bledow na plikach z Windows).
+- STD-114 (SHOULD): tmp dla operacji atomowych jest tworzony w tym samym katalogu/FS co plik docelowy (unikaj `EXDEV`).
+- STD-115 (SHOULD): rozpakowywanie archiwow wymaga walidacji sciezek (brak `..`, brak absolutnych, brak symlink/hardlink) i twardego fail na naruszenia.
+- STD-116 (SHOULD): `rsync --delete` wymaga walidacji dst (w dozwolonym root) i jawnego trybu/zgody dla operacji ryzykownych.
+- STD-117 (SHOULD): generowane skrypty maja LF (bez CRLF); w pipeline użyj `dos2unix`/normalizacji newline.
+- STD-118 (SHOULD): timeouty i pomiary czasu opieraj na zegarze monotonicznym (`process.hrtime`/`performance.now`), nie na `Date.now()`.
+- STD-119 (SHOULD): retry maja limit prób i limit czasu całkowitego (brak nieskończonych pętli), z logowaniem liczby prób.
+- STD-120 (SHOULD): lockfile zawiera PID+timestamp; stale locki sa wykrywane i bezpiecznie czyszczone.
+- STD-121 (SHOULD): skrypty zawierajace bash‑isms musza byc uruchamiane przez `bash` jawnie (nie domyslny `sh`).
+- STD-122 (SHOULD): destrukcyjne kasowanie katalogow odbywa sie przez helper z walidacja niepustej sciezki i `realpath` w dozwolonym root.
+- STD-123 (SHOULD): w skryptach z `set -e` operacje typu `grep`/`diff` musza miec jawne sprawdzenie exit code (1 = brak dopasowania) zamiast przerywac skrypt.
+- STD-124 (SHOULD): nie parsuj `ls`; do list plikow uzywaj `find -print0`/`xargs -0` lub globbing z `nullglob`, aby uniknac bledow na spacjach/pustych katalogach.
+- STD-125 (SHOULD): przed uruchomieniem skryptow czysc ryzykowne ENV (`BASH_ENV`, `ENV`, `CDPATH`, `GLOBIGNORE`) lub ustaw bezpieczne defaulty.
+- STD-126 (SHOULD): w skryptach shellowych wszystkie zmienne musza byc cytowane (`"$VAR"`), chyba ze jawnie potrzebny jest splitting.
+- STD-127 (SHOULD): unikaj `eval`; gdy musisz dynamicznie skladac komendy, uzywaj args array lub whitelisty tokenow.
+- STD-128 (SHOULD): `xargs` uruchamiaj z `-r` (GNU) lub jawnie sprawdzaj, czy input nie jest pusty.
+- STD-129 (SHOULD): rozpakowanie artefaktu odbywa sie w katalogu stagingowym; `current.buildId` aktualizuj dopiero po walidacji.
+- STD-130 (SHOULD): dla krytycznych binarek nie polegaj na niekontrolowanym `PATH`; uzywaj `command -v` + whitelisty lub absolutnych sciezek, szczegolnie przy `sudo`.
+- STD-131 (SHOULD): przy ekstrakcji archiwow w deploy ustaw `--no-same-owner` i `--no-same-permissions` oraz ustaw jawne perm po rozpakowaniu.
+- STD-132 (SHOULD): masowe operacje na plikach nie moga przekraczac `ARG_MAX`; uzywaj `find ... -exec ... +` lub `xargs -0`.
+- STD-133 (SHOULD): odrzucaj absolutne segmenty sciezek w danych z configu i normalizuj `..` przed `path.join`.
+- STD-134 (SHOULD): dla plikow runtime z danymi ustaw jawne permissje (np. 0640/0600) i waliduj je w preflight.
+- STD-135 (SHOULD): pliki binarne czytaj/zapisuj jako `Buffer` (bez encoding), a tekst jako `utf8`.
+- STD-136 (SHOULD): diff konfiguracji opieraj na kanonicznej reprezentacji (parse+stable sort+stringify), nie na whitespace.
+- STD-137 (SHOULD): unikaj TOCTOU na plikach — używaj atomowych operacji (`O_EXCL`, lock, write+rename) i weryfikuj `fstat` po otwarciu.
+- STD-138 (SHOULD): jeśli zmieniasz `umask`, zawsze przywracaj poprzednią wartość w `finally`.
+- STD-139 (SHOULD): procesy potomne muszą być sprzątane (kill całej grupy procesów lub tracking PID) przy exit/signal.
+- STD-140 (SHOULD): obsługuj `unhandledRejection`/`uncaughtException` globalnie, loguj i kończ proces kodem != 0.
+- STD-141 (SHOULD): przy `set -u` dla opcjonalnych zmiennych stosuj `${VAR:-}` lub `: "${VAR:=default}"`, aby uniknac naglych abortow.
+- STD-142 (SHOULD): w skryptach uzywaj `read -r`, zeby nie tracić backslashy.
+- STD-143 (SHOULD): po transferze artefaktow weryfikuj checksum (np. sha256) lub rozmiar.
+- STD-144 (SHOULD): dla duzych plikow uzywaj streamow i limitow rozmiaru zamiast `readFile` w calosci.
+- STD-145 (SHOULD): logi JSONL nie moga zawierac surowych znakow nowych linii lub binarnych bajtow; normalizuj/escapuj dane.
+- STD-146 (SHOULD): unikaj `~` i sciezek relatywnych przy `sudo`; uzywaj sciezek absolutnych i jawnego `HOME`/`cwd`.
+- STD-147 (SHOULD): retry sieciowe maja exponential backoff + jitter oraz limit prob i max delay.
+- STD-148 (SHOULD): ekstrakcja archiwow ma limit rozmiaru i liczby plikow (ochrona przed zip‑bomb).
+- STD-149 (SHOULD): `host`/`user` w targetach sa walidowane (brak spacji/znakow kontrolnych; whitelist znakow).
 
 #### Testy / CI
 - STD-018 (SHOULD): testy automatyczne nie polegają na kruchym parsowaniu stdout/stderr child procesów; preferuj JSON output, kody wyjścia lub wywołania in‑process; gdy parsujesz, zawsze usuwaj ANSI.
