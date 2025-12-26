@@ -455,6 +455,12 @@
 - Blad: sprawdzanie `TracerPid` tylko przy starcie nie wykrywalo późniejszego attach/debug.
   - Wymaganie: jeśli `TracerPid` jest używany jako anti‑debug, check musi być okresowy lub wykonywany w punktach krytycznych.
 
+- Blad: okresowy check `TracerPid` byl zrobiony na `setInterval`, ale timer nie byl `unref()`, co blokowalo procesy ktore mialy sie naturalnie zakonczyc.
+  - Wymaganie: wszystkie background timery w launcherze/bootstrapie musza byc `unref()` (o ile platforma to wspiera).
+
+- Blad: check `TracerPid` nie obejmowal watkow (`/proc/self/task/*`), wiec attach do pojedynczego TID mogl zostac przeoczony.
+  - Wymaganie: gdy wlaczone `tracerPidThreads`, sprawdzaj `TracerPid` dla wszystkich taskow.
+
 - Blad: self‑hash launchera padal przez kolizje markera (np. string `THIN_SELF_HASH:` pojawial sie w innym miejscu binarki), co dawalo falszywe `runtime invalid`.
   - Wymaganie: identyfikuj marker po **pelnym wzorcu** (marker + hex) lub waliduj hex i ignoruj nie‑hex; obsluz wiele wystapien i wymagaj spojnosc hasha.
 

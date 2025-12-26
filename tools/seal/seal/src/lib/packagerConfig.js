@@ -48,6 +48,19 @@ function normalizeThinAntiDebug(raw) {
   const enabled = raw.enabled !== undefined ? !!raw.enabled : true;
   const tracerPid = raw.tracerPid !== undefined ? !!raw.tracerPid : true;
   const denyEnv = raw.denyEnv !== undefined ? !!raw.denyEnv : true;
+  let tracerPidIntervalMs = raw.tracerPidIntervalMs;
+  if (tracerPidIntervalMs === undefined || tracerPidIntervalMs === null) {
+    tracerPidIntervalMs = 10_000;
+  }
+  if (!Number.isFinite(Number(tracerPidIntervalMs))) {
+    throw new Error(`Invalid thin.antiDebug.tracerPidIntervalMs: ${tracerPidIntervalMs}`);
+  }
+  tracerPidIntervalMs = Math.floor(Number(tracerPidIntervalMs));
+  if (tracerPidIntervalMs < 0) {
+    throw new Error(`Invalid thin.antiDebug.tracerPidIntervalMs: ${tracerPidIntervalMs}`);
+  }
+  const tracerPidThreads =
+    raw.tracerPidThreads !== undefined ? !!raw.tracerPidThreads : true;
   let mapsDenylist = [];
   if (raw.mapsDenylist !== undefined) {
     if (!Array.isArray(raw.mapsDenylist)) {
@@ -66,7 +79,12 @@ function normalizeThinAntiDebug(raw) {
   if (mapsDenylist.length > 32) {
     throw new Error("thin.antiDebug.mapsDenylist too long (max 32)");
   }
-  return { enabled, tracerPid, denyEnv, mapsDenylist };
+  let tracerPidThreadsFinal = tracerPidThreads;
+  if (!enabled || !tracerPid) {
+    tracerPidIntervalMs = 0;
+    tracerPidThreadsFinal = false;
+  }
+  return { enabled, tracerPid, denyEnv, mapsDenylist, tracerPidIntervalMs, tracerPidThreads: tracerPidThreadsFinal };
 }
 
 function resolveThinConfig(targetCfg, projectCfg) {

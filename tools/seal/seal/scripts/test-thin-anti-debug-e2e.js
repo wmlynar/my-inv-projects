@@ -233,6 +233,59 @@ async function runReleaseExpectFail({ releaseDir, runTimeoutMs, env }) {
   }
 }
 
+async function runReleaseExpectFailAfterReady({ releaseDir, readyTimeoutMs, failTimeoutMs, env }) {
+  if (runReleaseOk.skipListen) {
+    log("SKIP: listen not permitted; runtime check disabled");
+    return;
+  }
+  const port = await getFreePort();
+  writeRuntimeConfig(releaseDir, port);
+
+  const binPath = path.join(releaseDir, "seal-example");
+  assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
+
+  const childEnv = Object.assign({}, process.env, env || {});
+  const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe", env: childEnv });
+  const outChunks = [];
+  const errChunks = [];
+  child.stdout.on("data", (c) => outChunks.push(c));
+  child.stderr.on("data", (c) => errChunks.push(c));
+
+  const exitPromise = new Promise((resolve) => {
+    child.on("exit", (code, signal) => resolve({ code, signal }));
+  });
+
+  try {
+    await withTimeout("waitForReady", readyTimeoutMs, () => Promise.race([
+      waitForStatus(port),
+      exitPromise.then(({ code, signal }) => {
+        throw new Error(`process exited before ready (code=${code} signal=${signal || "none"})`);
+      }),
+    ]));
+
+    const failRes = await withTimeout("waitForFail", failTimeoutMs, () => exitPromise);
+    const { code, signal } = failRes || {};
+    if (code === 0) {
+      throw new Error("process exited with code=0 (expected failure)");
+    }
+    if (code === null && !signal) {
+      throw new Error("process did not fail as expected");
+    }
+  } finally {
+    child.kill("SIGTERM");
+    await new Promise((resolve) => {
+      const t = setTimeout(() => {
+        child.kill("SIGKILL");
+        resolve();
+      }, 4000);
+      child.on("exit", () => {
+        clearTimeout(t);
+        resolve();
+      });
+    });
+  }
+}
+
 async function buildThinSplit({ outRoot, antiDebug, integrity }) {
   const baseCfg = loadProjectConfig(EXAMPLE_ROOT);
   const projectCfg = JSON.parse(JSON.stringify(baseCfg));
@@ -343,6 +396,40 @@ async function main() {
       runReleaseExpectFail({ releaseDir: resC.releaseDir, runTimeoutMs })
     );
     log("OK: maps denylist triggers failure");
+
+    log("Testing periodic TracerPid (forced after ready)...");
+    const resD = await withTimeout("buildRelease(tracerpid interval)", buildTimeoutMs, () =>
+      buildThinSplit({
+        outRoot,
+        antiDebug: { enabled: true, tracerPid: true, tracerPidIntervalMs: 200, tracerPidThreads: false },
+      })
+    );
+    await withTimeout("tracerpid interval fail", testTimeoutMs, () =>
+      runReleaseExpectFailAfterReady({
+        releaseDir: resD.releaseDir,
+        readyTimeoutMs: 8000,
+        failTimeoutMs: 8000,
+        env: { SEAL_TRACERPID_FORCE: "1", SEAL_TRACERPID_FORCE_AFTER_MS: "300" },
+      })
+    );
+    log("OK: periodic TracerPid triggers failure");
+
+    log("Testing TracerPid thread scan (forced after ready)...");
+    const resE = await withTimeout("buildRelease(tracerpid threads)", buildTimeoutMs, () =>
+      buildThinSplit({
+        outRoot,
+        antiDebug: { enabled: true, tracerPid: true, tracerPidIntervalMs: 200, tracerPidThreads: true },
+      })
+    );
+    await withTimeout("tracerpid threads fail", testTimeoutMs, () =>
+      runReleaseExpectFailAfterReady({
+        releaseDir: resE.releaseDir,
+        readyTimeoutMs: 8000,
+        failTimeoutMs: 8000,
+        env: { SEAL_TRACERPID_FORCE_THREADS: "1", SEAL_TRACERPID_FORCE_AFTER_MS: "300" },
+      })
+    );
+    log("OK: TracerPid thread scan triggers failure");
   } catch (e) {
     failures += 1;
     fail(e.message || e);

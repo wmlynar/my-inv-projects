@@ -1117,29 +1117,6 @@ static int sentinel_check(void) {
 }
 
 function renderLauncherSource(codecState, limits, allowBootstrap, sentinelCfg, envMode, runtimeStore, antiDebugCfg, integrityCfg) {
-  const bootstrapJs = `"use strict";
-const fs = require("fs");
-const path = require("path");
-const Module = require("module");
-
-const fd = Number(process.env.SEAL_BUNDLE_FD || 4);
-const entry = process.env.SEAL_VIRTUAL_ENTRY || path.join(process.cwd(), "app.bundle.cjs");
-
-const code = fs.readFileSync(fd, "utf8");
-process.argv[1] = entry;
-
-const m = new Module(entry, module);
-m.filename = entry;
-m.paths = Module._nodeModulePaths(path.dirname(entry));
-m._compile(code, entry);
-`;
-
-  const jsLiteral = bootstrapJs
-    .split("\n")
-    .map((line) => line.replace(/\\/g, "\\\\").replace(/"/g, '\\"'))
-    .map((line) => `"${line}\\n"`)
-    .join("\n");
-
   const sentinelDefs = renderSentinelDefs(sentinelCfg);
   const sentinelCode = renderSentinelCode();
 
@@ -1150,6 +1127,10 @@ m._compile(code, entry);
   const adEnabled = antiDebug.enabled !== false;
   const adTracerPid = adEnabled && antiDebug.tracerPid !== false;
   const adDenyEnv = adEnabled && antiDebug.denyEnv !== false;
+  const adTracerPidIntervalMs = adTracerPid && Number.isFinite(Number(antiDebug.tracerPidIntervalMs))
+    ? Math.max(0, Math.floor(Number(antiDebug.tracerPidIntervalMs)))
+    : 0;
+  const adTracerPidThreads = adTracerPid && antiDebug.tracerPidThreads !== false;
   const mapsDenylist = adEnabled && Array.isArray(antiDebug.mapsDenylist)
     ? antiDebug.mapsDenylist
     : [];
@@ -1170,6 +1151,95 @@ m._compile(code, entry);
   const selfHashDefs = selfHashEnabled
     ? `#define THIN_SELF_HASH_ENABLED 1\n#define THIN_SELF_HASH_MARKER "${selfHashMarker}"\n#define THIN_SELF_HASH_LEN 8\nstatic const char THIN_SELF_HASH_STR[] = THIN_SELF_HASH_MARKER "${selfHashPlaceholder}";\n`
     : "#define THIN_SELF_HASH_ENABLED 0\n";
+
+  const bootstrapJs = `"use strict";
+const fs = require("fs");
+const path = require("path");
+const Module = require("module");
+
+const TRACERPID_ENABLED = ${adTracerPid ? 1 : 0};
+const TRACERPID_INTERVAL_MS = ${adTracerPidIntervalMs};
+const TRACERPID_THREADS = ${adTracerPidThreads ? 1 : 0};
+const TRACERPID_TEST_MODE = process.env.SEAL_THIN_ANTI_DEBUG_E2E === "1";
+const TRACERPID_FORCE = TRACERPID_TEST_MODE && process.env.SEAL_TRACERPID_FORCE === "1";
+const TRACERPID_FORCE_THREADS = TRACERPID_TEST_MODE && process.env.SEAL_TRACERPID_FORCE_THREADS === "1";
+const TRACERPID_FORCE_AFTER_MS = TRACERPID_TEST_MODE ? Math.max(0, Number(process.env.SEAL_TRACERPID_FORCE_AFTER_MS || 0) || 0) : 0;
+const TRACERPID_START_MS = Date.now();
+
+function tracerPidForceReady() {
+  if (!TRACERPID_TEST_MODE) return false;
+  if (TRACERPID_FORCE_AFTER_MS <= 0) return true;
+  return Date.now() - TRACERPID_START_MS >= TRACERPID_FORCE_AFTER_MS;
+}
+
+function tracerPidFail() {
+  try { process.stderr.write("[thin] runtime invalid\\n"); } catch {}
+  process.exit(71);
+}
+
+function tracerPidFromStatusFile(file) {
+  try {
+    const txt = fs.readFileSync(file, "utf8");
+    const m = txt.match(/TracerPid:\\s*(\\d+)/);
+    if (!m) return 0;
+    const pid = Number(m[1]);
+    return Number.isFinite(pid) ? pid : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function tracerPidCheckTasks() {
+  if (TRACERPID_TEST_MODE && TRACERPID_FORCE_THREADS && tracerPidForceReady()) return true;
+  let tids = [];
+  try {
+    tids = fs.readdirSync("/proc/self/task");
+  } catch {
+    return false;
+  }
+  for (const tid of tids) {
+    if (!/^\\d+$/.test(tid)) continue;
+    const pid = tracerPidFromStatusFile(\`/proc/self/task/\${tid}/status\`);
+    if (pid > 0) return true;
+  }
+  return false;
+}
+
+function tracerPidCheck() {
+  if (TRACERPID_TEST_MODE && TRACERPID_FORCE && tracerPidForceReady()) return true;
+  const pid = tracerPidFromStatusFile("/proc/self/status");
+  if (pid > 0) return true;
+  if (TRACERPID_THREADS && tracerPidCheckTasks()) return true;
+  return false;
+}
+
+if (TRACERPID_ENABLED) {
+  if (tracerPidCheck()) tracerPidFail();
+  if (TRACERPID_INTERVAL_MS > 0) {
+    const timer = setInterval(() => {
+      if (tracerPidCheck()) tracerPidFail();
+    }, TRACERPID_INTERVAL_MS);
+    if (timer && typeof timer.unref === "function") timer.unref();
+  }
+}
+
+const fd = Number(process.env.SEAL_BUNDLE_FD || 4);
+const entry = process.env.SEAL_VIRTUAL_ENTRY || path.join(process.cwd(), "app.bundle.cjs");
+
+const code = fs.readFileSync(fd, "utf8");
+process.argv[1] = entry;
+
+const m = new Module(entry, module);
+m.filename = entry;
+m.paths = Module._nodeModulePaths(path.dirname(entry));
+m._compile(code, entry);
+`;
+
+  const jsLiteral = bootstrapJs
+    .split("\n")
+    .map((line) => line.replace(/\\/g, "\\\\").replace(/"/g, '\\"'))
+    .map((line) => `"${line}\\n"`)
+    .join("\n");
 
   return `#include <errno.h>
 #include <ctype.h>
@@ -1223,6 +1293,7 @@ extern char **environ;
 #define THIN_RUNTIME_STORE ${runtimeStoreMode}
 #define THIN_AD_ENABLED ${adEnabled ? 1 : 0}
 #define THIN_AD_TRACERPID ${adTracerPid ? 1 : 0}
+#define THIN_AD_TRACERPID_THREADS ${adTracerPidThreads ? 1 : 0}
 #define THIN_AD_DENY_ENV ${adDenyEnv ? 1 : 0}
 #define THIN_AD_MAPS ${adMaps ? 1 : 0}
 
@@ -1725,6 +1796,59 @@ static int self_hash_check(void) {
 }
 #endif
 
+#if THIN_AD_ENABLED && THIN_AD_TRACERPID
+static int read_tracer_pid_file(const char *path, long *out_pid) {
+  FILE *f = fopen(path, "r");
+  if (!f) return -1;
+  char line[256];
+  long pid = 0;
+  int found = 0;
+  while (fgets(line, sizeof(line), f)) {
+    if (strncmp(line, "TracerPid:", 10) == 0) {
+      char *p = line + 10;
+      while (*p == ' ' || *p == '\\t') p++;
+      pid = strtol(p, NULL, 10);
+      found = 1;
+      break;
+    }
+  }
+  fclose(f);
+  if (!found) return -1;
+  *out_pid = pid;
+  return 0;
+}
+
+#if THIN_AD_TRACERPID_THREADS
+static int tracerpid_tasks(void) {
+  DIR *dir = opendir("/proc/self/task");
+  if (!dir) return 0;
+  struct dirent *ent = NULL;
+  while ((ent = readdir(dir)) != NULL) {
+    const char *name = ent->d_name;
+    if (!name || !*name) continue;
+    if (!isdigit((unsigned char)name[0])) continue;
+    int ok = 1;
+    for (const char *p = name; *p; p++) {
+      if (!isdigit((unsigned char)*p)) {
+        ok = 0;
+        break;
+      }
+    }
+    if (!ok) continue;
+    char path[PATH_MAX + 64];
+    snprintf(path, sizeof(path), "/proc/self/task/%s/status", name);
+    long pid = 0;
+    if (read_tracer_pid_file(path, &pid) == 0 && pid > 0) {
+      closedir(dir);
+      return 1;
+    }
+  }
+  closedir(dir);
+  return 0;
+}
+#endif
+#endif
+
 #if THIN_AD_MAPS
 static int maps_has_deny(void) {
   FILE *f = fopen("/proc/self/maps", "r");
@@ -1745,23 +1869,15 @@ static int maps_has_deny(void) {
 
 static int anti_debug_checks(void) {
 #if THIN_AD_ENABLED && THIN_AD_TRACERPID
-  FILE *f = fopen("/proc/self/status", "r");
-  if (f) {
-    char line[256];
-    while (fgets(line, sizeof(line), f)) {
-      if (strncmp(line, "TracerPid:", 10) == 0) {
-        char *p = line + 10;
-        while (*p == ' ' || *p == '\t') p++;
-        long pid = strtol(p, NULL, 10);
-        if (pid > 0) {
-          fclose(f);
-          return fail_msg("[thin] runtime invalid", 71);
-        }
-        break;
-      }
-    }
-    fclose(f);
+  long pid = 0;
+  if (read_tracer_pid_file("/proc/self/status", &pid) == 0 && pid > 0) {
+    return fail_msg("[thin] runtime invalid", 71);
   }
+#if THIN_AD_TRACERPID_THREADS
+  if (tracerpid_tasks()) {
+    return fail_msg("[thin] runtime invalid", 71);
+  }
+#endif
 #endif
 
 #if THIN_AD_ENABLED && THIN_AD_DENY_ENV

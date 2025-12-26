@@ -118,6 +118,8 @@ npx seal release prod --packager thin-single
 - `build.thin.antiDebug`:
   - `enabled` (domyślnie `true`),
   - `tracerPid` (domyślnie `true`) — sprawdza `TracerPid` w `/proc/self/status`,
+  - `tracerPidIntervalMs` (domyślnie `10000`, `0` = wyłącz) — okresowy check `TracerPid` w runtime (po starcie),
+  - `tracerPidThreads` (domyślnie `true`) — sprawdza `/proc/self/task/<tid>/status` dla wszystkich wątków,
   - `denyEnv` (domyślnie `true`) — fail‑fast, jeśli wykryje zmienne typu `LD_PRELOAD`, `LD_AUDIT`, `NODE_OPTIONS` itd.,
   - `mapsDenylist` (domyślnie `[]`) — lista substringów; jeśli pojawią się w `/proc/self/maps`, launcher kończy się błędem.
 - `build.thin.integrity`:

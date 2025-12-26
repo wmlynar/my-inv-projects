@@ -1752,6 +1752,8 @@ Przykład (aktualny dla v0.5):
       antiDebug: {
         enabled: true,
         tracerPid: true,
+        tracerPidIntervalMs: 10000, // 0 = wylacz okresowe sprawdzanie
+        tracerPidThreads: true,     // sprawdza /proc/self/task/<tid>/status
         denyEnv: true,
         mapsDenylist: []      // np. ["frida", "gdb", "ltrace"] (gdy ustawione, fail-fast)
       },
