@@ -6,6 +6,7 @@ if [ "$(id -u)" -ne 0 ]; then
   SUDO="sudo"
 fi
 
+REPO="${SEAL_OLLVM_REPO:-https://github.com/obfuscator-llvm/obfuscator.git}"
 ROOT="${SEAL_OLLVM_DIR:-$HOME/.cache/seal/obfuscators/obfuscator-llvm}"
 BRANCH="${SEAL_OLLVM_BRANCH:-llvm-4.0}"
 BUILD_DIR="${SEAL_OLLVM_BUILD_DIR:-$ROOT/build}"
@@ -30,7 +31,7 @@ if [ -d "$ROOT/.git" ]; then
   git -C "$ROOT" fetch --all --tags
 else
   echo "[install-ollvm] Cloning O-LLVM..."
-  git clone https://github.com/obfuscator-llvm/obfuscator.git "$ROOT"
+  git clone "$REPO" "$ROOT"
 fi
 
 echo "[install-ollvm] Checkout branch: $BRANCH"

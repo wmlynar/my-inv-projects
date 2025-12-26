@@ -6,17 +6,11 @@ if [ "$(id -u)" -ne 0 ]; then
   SUDO="sudo"
 fi
 
-REPO="${SEAL_MIDGETPACK_REPO:-}"
+REPO="${SEAL_MIDGETPACK_REPO:-https://github.com/arisada/midgetpack}"
 REF="${SEAL_MIDGETPACK_REF:-}"
 ROOT="${SEAL_MIDGETPACK_DIR:-$HOME/.cache/seal/midgetpack}"
 BIN_NAME="${SEAL_MIDGETPACK_BIN:-midgetpack}"
 BIN_DIR="${SEAL_MIDGETPACK_BIN_DIR:-/usr/local/bin}"
-
-if [ -z "$REPO" ]; then
-  echo "[install-midgetpack] ERROR: SEAL_MIDGETPACK_REPO is not set."
-  echo "[install-midgetpack] Example: SEAL_MIDGETPACK_REPO=https://github.com/<org>/<repo>.git"
-  exit 2
-fi
 
 echo "[install-midgetpack] Installing build dependencies..."
 $SUDO apt-get update

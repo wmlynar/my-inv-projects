@@ -6,17 +6,11 @@ if [ "$(id -u)" -ne 0 ]; then
   SUDO="sudo"
 fi
 
-REPO="${SEAL_KITESHIELD_REPO:-}"
+REPO="${SEAL_KITESHIELD_REPO:-https://github.com/GunshipPenguin/kiteshield}"
 REF="${SEAL_KITESHIELD_REF:-}"
 ROOT="${SEAL_KITESHIELD_DIR:-$HOME/.cache/seal/kiteshield}"
 BIN_NAME="${SEAL_KITESHIELD_BIN:-kiteshield}"
 BIN_DIR="${SEAL_KITESHIELD_BIN_DIR:-/usr/local/bin}"
-
-if [ -z "$REPO" ]; then
-  echo "[install-kiteshield] ERROR: SEAL_KITESHIELD_REPO is not set."
-  echo "[install-kiteshield] Example: SEAL_KITESHIELD_REPO=https://github.com/<org>/<repo>.git"
-  exit 2
-fi
 
 echo "[install-kiteshield] Installing build dependencies..."
 $SUDO apt-get update
