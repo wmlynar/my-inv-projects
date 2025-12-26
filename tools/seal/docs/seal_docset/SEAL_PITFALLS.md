@@ -287,8 +287,17 @@
 - Blad: deploy/rollback zakladal na sztywno nazwe `ih`, ignorujac `thin.integrity.file`.
   - Wymaganie: nazwa sidecara pochodzi zawsze z configu (fail‑fast przy niedozwolonej nazwie).
 
+- Blad: nowy plik w layout (np. sidecar) nie byl uwzgledniony w deploy/rollback/fast/cleanup, przez co stan na target byl niespojny.
+  - Wymaganie: kazdy nowy plik w layout musi byc dodany do wszystkich sciezek deployu, rollbacku i cleanupu oraz pokryty testem.
+
 - Blad: test UI E2E uruchamial `thin-single` przy wlaczonym `strip`/`elfPacker`, co jest niewspierane i konczy sie bledem.
   - Wymaganie: testy UI używaja `thin-split` albo jawnie wylaczaja `strip`/`elfPacker` dla `thin-single`.
+
+- Blad: testy uruchamialy `thin-single` z wlaczonym `thin.integrity`, co zawsze failuje (integrity wymaga `thin-split`).
+  - Wymaganie: testy dla `thin-single` musza wylaczyc `thin.integrity` albo przejsc na `thin-split`.
+
+- Blad: testy automatycznie wylaczaly funkcje (np. brak obfuscatora/packera), ale brakowalo osobnego testu pokrywajacego te funkcje.
+  - Wymaganie: kazda funkcja wylaczana w testach musi miec osobny E2E (gated ENV), ktory wymusza jej wlaczenie i failuje przy braku narzedzia.
 
 - Blad: lokalne testy E2E failowaly, bo `sentinel` byl wlaczony i brakowalo sentinel blob na hoście.
   - Wymaganie: lokalne E2E musza jawnie wylaczac `build.sentinel.enabled` albo instalowac sentinel przed uruchomieniem.
@@ -346,6 +355,9 @@
 - Blad: testy E2E auto‑modyfikowaly konfiguracje (np. wylaczenie ochron/packerow) bez jawnego logu, przez co maskowaly regresje.
   - Wymaganie: kazda automatyczna zmiana configu w testach musi byc logowana i uzasadniona.
 
+- Blad: testy E2E uruchamialy build z wlaczona obfuskacja C, ale bez zainstalowanego obfuscating clang, co konczylo sie nieczytelnym bledem.
+  - Wymaganie: testy wykrywaja brak obfuscatora i **jawnie** wylaczaja launcherObfuscation (lub robia SKIP), z jasnym logiem.
+
 - Blad: testy E2E nie wypisywaly wystarczajacego kontekstu przy porazce (brak stdout/stderr/command/config).
   - Wymaganie: przy failu test wypisuje command line, fragment stdout/stderr (z limitem) i effective config.
 
@@ -368,6 +380,10 @@
 
 - Blad: E2E budowaly ciezkie warianty (np. wysoki poziom `thin`) przez co testy byly zbyt wolne.
   - Wymaganie: testy E2E wymuszaja szybkie ustawienia (`thin.level=low` lub mniejsze chunkSize) i minimalne payloady.
+
+- Blad: zabezpieczenia anti‑debug/snapshot nie mialy deterministycznych wyzwalaczy w testach, przez co E2E byly flakey.
+  - Wymaganie: kazda funkcja ochronna ma dedykowane, jawne “test hooks” (ENV) do deterministycznego wywolania w E2E.
+  - Wymaganie: test hooks sa aktywne tylko w trybie testowym i domyslnie wylaczone w produkcji.
 
 - Blad: testy/skripty zakladaly, ze `/tmp` jest wykonywalny i bezpieczny, ale na niektorych systemach jest `noexec`.
   - Wymaganie: respektuj `TMPDIR` i unikaj uruchamiania binarek z `/tmp` bez sprawdzenia.

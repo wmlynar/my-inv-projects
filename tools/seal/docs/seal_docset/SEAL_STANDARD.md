@@ -225,6 +225,10 @@ Przykład:
 - STD-086 (SHOULD): testy zalezne od narzedzi (packery/strip/postject) sprawdzaja dostepnosc i robia SKIP z powodem, chyba ze env wymusza fail.
 - STD-087 (SHOULD): przy porazce testu wypisuj command line i fragment stdout/stderr oraz effective config (z limitem dlugosci).
 - STD-087a (SHOULD): jesli testy E2E auto‑modyfikuja konfiguracje (np. wylaczaja opcje), musza to jawnie logowac wraz z powodem.
+- STD-087b (SHOULD): jesli konfiguracja wymaga obfuscatora C, testy musza sprawdzic jego dostepnosc i jawnie przejsc w tryb SKIP lub wylaczyc obfuskacje z logiem.
+- STD-087c (SHOULD): jesli test zmienia packager (np. `thin-single` vs `thin-split`), musi dostosowac zalezne opcje (integrity/strip/elfPacker) albo fail‑fast z jasnym komunikatem.
+- STD-087d (SHOULD): jeśli test automatycznie wyłącza funkcję z powodu brakującego narzędzia, musi istnieć osobny test (gated ENV), który **wymusza** tę funkcję i failuje przy braku zależności.
+- STD-087e (SHOULD): funkcje ochronne (anti‑debug/snapshot) musza miec deterministyczne “test hooks” aktywowane tylko w trybie testowym (ENV), aby E2E byly stabilne.
 - STD-088 (SHOULD): testy przywracaja `process.cwd()` po zmianach (snapshot/restore).
 - STD-089 (SHOULD): testy E2E wymuszaja szybkie ustawienia (np. `thin.level=low`) i minimalne payloady, aby nie blokowac CI.
 - STD-090 (SHOULD): preflight sprawdza **narzedzia CLI** (np. `postject` w `node_modules/.bin`/PATH), nie tylko obecność modulu.
