@@ -3,12 +3,15 @@
 
 const assert = require("assert");
 const fs = require("fs");
+const http = require("http");
+const net = require("net");
 const os = require("os");
 const path = require("path");
-const { spawnSync } = require("child_process");
+const { spawn, spawnSync } = require("child_process");
 
 const { buildRelease } = require("../src/lib/build");
 const { loadProjectConfig, loadTargetConfig, resolveConfigName } = require("../src/lib/project");
+const { readJson5, writeJson5 } = require("../src/lib/json5io");
 
 const EXAMPLE_ROOT = path.resolve(__dirname, "..", "..", "example");
 
@@ -66,26 +69,125 @@ function resolveSystemCc() {
   return null;
 }
 
-function createFakeCompiler(dir) {
-  const scriptPath = path.join(dir, "fake-obf-cc.sh");
-  const script = `#!/usr/bin/env bash
-set -euo pipefail
-marker="\${SEAL_OBF_MARKER:-}"
-cc="\${SEAL_OBF_CC:-cc}"
-hit=0
-for arg in "$@"; do
-  if [[ "$arg" == "-DSEAL_OBF_TEST=1" ]]; then
-    hit=1
-  fi
-done
-if [[ -n "$marker" && "$hit" -eq 1 ]]; then
-  echo "ok" > "$marker"
-fi
-exec "$cc" "$@"
-`;
-  fs.writeFileSync(scriptPath, script, "utf-8");
-  fs.chmodSync(scriptPath, 0o755);
-  return scriptPath;
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function httpJson({ port, path: reqPath, timeoutMs }) {
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      {
+        host: "127.0.0.1",
+        port,
+        path: reqPath,
+        method: "GET",
+        timeout: timeoutMs,
+      },
+      (res) => {
+        const chunks = [];
+        res.on("data", (c) => chunks.push(c));
+        res.on("end", () => {
+          const raw = Buffer.concat(chunks).toString("utf8");
+          try {
+            const json = JSON.parse(raw);
+            resolve({ status: res.statusCode, json });
+          } catch (e) {
+            reject(new Error(`Invalid JSON response: ${raw.slice(0, 200)}`));
+          }
+        });
+      }
+    );
+    req.on("timeout", () => req.destroy(new Error("HTTP timeout")));
+    req.on("error", (err) => reject(err));
+    req.end();
+  });
+}
+
+async function waitForStatus(port, timeoutMs = 10_000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const { status, json } = await httpJson({ port, path: "/api/status", timeoutMs: 800 });
+      if (status === 200 && json && json.ok) return json;
+    } catch {
+      // ignore and retry
+    }
+    await delay(200);
+  }
+  throw new Error(`Timeout waiting for /api/status on port ${port}`);
+}
+
+function getFreePort() {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.on("error", reject);
+    srv.listen(0, "127.0.0.1", () => {
+      const addr = srv.address();
+      const port = typeof addr === "object" && addr ? addr.port : null;
+      srv.close(() => resolve(port));
+    });
+  });
+}
+
+function writeRuntimeConfig(releaseDir, port) {
+  const cfgPath = path.join(EXAMPLE_ROOT, "seal-config", "configs", "local.json5");
+  const cfg = readJson5(cfgPath);
+  cfg.http = cfg.http || {};
+  cfg.http.host = "127.0.0.1";
+  cfg.http.port = port;
+  writeJson5(path.join(releaseDir, "config.runtime.json5"), cfg);
+}
+
+async function runRelease({ releaseDir, runTimeoutMs }) {
+  if (runRelease.skipListen) {
+    log("SKIP: listen not permitted; runtime check disabled");
+    return;
+  }
+
+  const port = await getFreePort();
+  writeRuntimeConfig(releaseDir, port);
+
+  const binPath = path.join(releaseDir, "seal-example");
+  assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
+
+  const child = spawn(binPath, [], { cwd: releaseDir, stdio: ["ignore", "pipe", "pipe"] });
+  child.stdout.on("data", () => {});
+  child.stderr.on("data", () => {});
+  let exitErr = null;
+  child.on("exit", (code, signal) => {
+    if (code && code !== 0) {
+      exitErr = new Error(`app exited (code=${code}, signal=${signal || "none"})`);
+    }
+  });
+
+  try {
+    await withTimeout("waitForStatus", runTimeoutMs, () => waitForStatus(port));
+    if (exitErr) throw exitErr;
+  } finally {
+    child.kill("SIGTERM");
+    await new Promise((resolve) => {
+      const t = setTimeout(() => {
+        child.kill("SIGKILL");
+        resolve();
+      }, 4000);
+      child.on("exit", () => {
+        clearTimeout(t);
+        resolve();
+      });
+    });
+  }
+}
+
+function parseArgsEnv(raw) {
+  if (!raw) return null;
+  const trimmed = String(raw).trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("[")) {
+    const parsed = JSON.parse(trimmed);
+    if (!Array.isArray(parsed)) throw new Error("args must be a JSON array");
+    return parsed.map((v) => String(v));
+  }
+  return trimmed.split(/\s+/).filter(Boolean);
 }
 
 async function buildWithObfuscator({ outRoot, obfuscator, cmd, args }) {
@@ -116,38 +218,36 @@ async function buildWithObfuscator({ outRoot, obfuscator, cmd, args }) {
   return { ...res, meta };
 }
 
-async function testObfuscator(ctx, obfuscator) {
-  log(`Building with cObfuscator=${obfuscator}...`);
+async function testObfuscator(ctx, spec) {
+  const cmd = process.env[spec.cmdEnv] || spec.defaultCmd;
+  if (!cmd || !hasCommand(cmd)) {
+    const msg = `${spec.name} command not found (${cmd || "unset"})`;
+    if (process.env.SEAL_C_OBF_ALLOW_MISSING === "1") {
+      log(`SKIP: ${msg}`);
+      return;
+    }
+    throw new Error(`${msg}. Install via ${spec.installHint}`);
+  }
+  let args = parseArgsEnv(process.env[spec.argsEnv]);
+  if (!args) args = spec.defaultArgs.slice();
+
+  log(`Building with cObfuscator=${spec.id} (${cmd})...`);
   const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-c-obf-"));
-  const toolRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-c-obf-tool-"));
-  const marker = path.join(toolRoot, "marker.txt");
 
   try {
-    const systemCc = resolveSystemCc();
-    if (!systemCc) {
-      throw new Error("Missing system CC");
-    }
-    const fakeCompiler = createFakeCompiler(toolRoot);
-    process.env.SEAL_OBF_CC = systemCc;
-    process.env.SEAL_OBF_MARKER = marker;
-
-    if (fs.existsSync(marker)) fs.rmSync(marker);
-    const res = await withTimeout(`buildRelease(${obfuscator})`, ctx.buildTimeoutMs, () =>
+    const res = await withTimeout(`buildRelease(${spec.id})`, ctx.buildTimeoutMs, () =>
       buildWithObfuscator({
         outRoot,
-        obfuscator,
-        cmd: fakeCompiler,
-        args: ["-DSEAL_OBF_TEST=1"],
+        obfuscator: spec.id,
+        cmd,
+        args,
       })
     );
 
-    assert.ok(fs.existsSync(marker), "Expected fake compiler to receive obfuscator args");
-    assert.strictEqual(res.meta?.protection?.cObfuscator, obfuscator);
+    assert.strictEqual(res.meta?.protection?.cObfuscator, spec.id);
+    await runRelease({ releaseDir: res.releaseDir, runTimeoutMs: ctx.runTimeoutMs });
   } finally {
-    delete process.env.SEAL_OBF_CC;
-    delete process.env.SEAL_OBF_MARKER;
     fs.rmSync(outRoot, { recursive: true, force: true });
-    fs.rmSync(toolRoot, { recursive: true, force: true });
   }
 }
 
@@ -161,13 +261,41 @@ async function main() {
     process.exit(prereq.skip ? 0 : 1);
   }
 
+  try {
+    await getFreePort();
+  } catch (e) {
+    if (e && e.code === "EPERM") {
+      runRelease.skipListen = true;
+      log("SKIP: cannot listen on localhost (EPERM)");
+    } else {
+      throw e;
+    }
+  }
+
   const buildTimeoutMs = Number(process.env.SEAL_C_OBF_E2E_BUILD_TIMEOUT_MS || "180000");
+  const runTimeoutMs = Number(process.env.SEAL_C_OBF_E2E_RUN_TIMEOUT_MS || "15000");
   const testTimeoutMs = Number(process.env.SEAL_C_OBF_E2E_TIMEOUT_MS || "240000");
-  const ctx = { buildTimeoutMs };
+  const ctx = { buildTimeoutMs, runTimeoutMs };
 
   const tests = [
-    () => testObfuscator(ctx, "obfuscator-llvm"),
-    () => testObfuscator(ctx, "hikari"),
+    () => testObfuscator(ctx, {
+      id: "obfuscator-llvm",
+      name: "O-LLVM",
+      cmdEnv: "SEAL_OLLVM_CMD",
+      argsEnv: "SEAL_OLLVM_ARGS",
+      defaultCmd: "ollvm-clang",
+      defaultArgs: ["-mllvm", "-fla", "-mllvm", "-sub"],
+      installHint: "./tools/seal/seal/scripts/install-ollvm.sh",
+    }),
+    () => testObfuscator(ctx, {
+      id: "hikari",
+      name: "Hikari",
+      cmdEnv: "SEAL_HIKARI_CMD",
+      argsEnv: "SEAL_HIKARI_ARGS",
+      defaultCmd: "hikari-clang",
+      defaultArgs: ["-mllvm", "-fla", "-mllvm", "-sub"],
+      installHint: "./tools/seal/seal/scripts/install-hikari-llvm15.sh",
+    }),
   ];
 
   let failures = 0;

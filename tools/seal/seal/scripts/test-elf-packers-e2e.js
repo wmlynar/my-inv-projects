@@ -242,8 +242,12 @@ async function testElfPacker(ctx, spec) {
 
   const cmd = process.env[spec.cmdEnv] || spec.defaultCmd;
   if (!cmd || !hasCommand(cmd)) {
-    log(`SKIP: ${spec.name} command not found (${cmd || "unset"})`);
-    return;
+    const msg = `${spec.name} command not found (${cmd || "unset"})`;
+    if (process.env.SEAL_ELF_PACKERS_ALLOW_MISSING === "1") {
+      log(`SKIP: ${msg}`);
+      return;
+    }
+    throw new Error(msg);
   }
 
   let args = parseArgsEnv(process.env[spec.argsEnv]);
@@ -313,7 +317,7 @@ async function main() {
       argsEnv: "SEAL_KITESHIELD_ARGS",
       skipEnv: "SEAL_KITESHIELD_SKIP",
       defaultCmd: "kiteshield",
-      defaultArgs: ["--in", "{in}", "--out", "{out}"],
+      defaultArgs: ["-n", "{in}", "{out}"],
     },
     {
       id: "midgetpack",
@@ -322,7 +326,7 @@ async function main() {
       argsEnv: "SEAL_MIDGETPACK_ARGS",
       skipEnv: "SEAL_MIDGETPACK_SKIP",
       defaultCmd: "midgetpack",
-      defaultArgs: ["--in", "{in}", "--out", "{out}"],
+      defaultArgs: ["-P", "seal-test", "-o", "{out}", "{in}"],
     },
   ];
 
