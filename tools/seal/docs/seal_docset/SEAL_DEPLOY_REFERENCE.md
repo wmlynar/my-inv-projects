@@ -249,7 +249,11 @@ seal-out/run.last_failed/
     "protection": {
       "enabled": true,
       // opcjonalnie, informacyjnie:
-      "stringObfuscation": "xorstr"
+      "stringObfuscation": "xorstr",
+      // opcjonalnie, dla launchera thin:
+      "cObfuscator": "obfuscator-llvm",
+      "cObfuscatorCmd": "/path/to/obfuscating-clang",
+      "cObfuscatorArgs": ["-mllvm", "-fla", "-mllvm", "-sub"]
     }
   },
   "decisions": [

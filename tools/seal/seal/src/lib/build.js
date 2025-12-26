@@ -836,6 +836,11 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
       projectRoot,
       targetName: targetCfg.target || targetCfg.config || "default",
       sentinel: sentinelCfg,
+      cObfuscator: protectionCfg.cObfuscator ? {
+        kind: protectionCfg.cObfuscator,
+        cmd: protectionCfg.cObfuscatorCmd,
+        args: protectionCfg.cObfuscatorArgs,
+      } : null,
     });
     if (!res.ok) {
       throw new Error(`Thin packager failed: ${res.errorShort}`);
@@ -896,6 +901,7 @@ const protection = {
   seaMainPacking,
   post: hardPost,
   stringObfuscation: protectionCfg.stringObfuscation || null,
+  cObfuscator: protectionCfg.cObfuscator || null,
 };
 
 if (!hardEnabled) {

@@ -144,6 +144,16 @@ function resolveProtectionConfig(projectCfg) {
     null;
   const stringObfuscation = normalizeStringObfuscation(stringObfuscationRaw);
 
+  const cObfuscatorRaw =
+    cfg.cObfuscator ??
+    cfg.cObfuscatorMode ??
+    cfg.codeObfuscator ??
+    cfg.obfuscatorC ??
+    null;
+  const cObfuscator = normalizeCObfuscator(cObfuscatorRaw);
+  const cObfuscatorCmd = cfg.cObfuscatorCmd ?? cfg.cObfuscatorBin ?? cfg.codeObfuscatorCmd ?? null;
+  const cObfuscatorArgs = normalizeArgList(cfg.cObfuscatorArgs ?? cfg.cObfuscatorFlags ?? null);
+
   return {
     enabled,
     packSeaMain: cfg.packSeaMain ?? cfg.seaMainPacking ?? true,
@@ -157,6 +167,9 @@ function resolveProtectionConfig(projectCfg) {
     elfPacker: cfg.elfPacker ?? cfg.elfPack ?? null,
     elfPackerCmd: cfg.elfPackerCmd ?? cfg.elfPackerBin ?? null,
     elfPackerArgs: cfg.elfPackerArgs ?? cfg.elfPackerFlags ?? null,
+    cObfuscator,
+    cObfuscatorCmd,
+    cObfuscatorArgs,
     stringObfuscation,
     raw,
   };
@@ -172,6 +185,25 @@ function normalizeStringObfuscation(raw) {
   return out.length ? out : null;
 }
 
+function normalizeCObfuscator(raw) {
+  if (!raw) return null;
+  const v = String(raw).trim().toLowerCase();
+  if (v === "ollvm" || v === "obfuscator-llvm" || v === "obfuscatorllvm" || v === "obfuscator_llvm") {
+    return "obfuscator-llvm";
+  }
+  if (v === "hikari") return "hikari";
+  return null;
+}
+
+function normalizeArgList(raw) {
+  if (!raw) return null;
+  if (Array.isArray(raw)) return raw.map((v) => String(v));
+  if (typeof raw === "string") {
+    return raw.split(/\s+/).map((v) => v.trim()).filter(Boolean);
+  }
+  return null;
+}
+
 module.exports = {
   normalizeThinMode,
   normalizeThinEnvMode,
@@ -181,4 +213,6 @@ module.exports = {
   resolveBundleFallback,
   resolveProtectionConfig,
   normalizeStringObfuscation,
+  normalizeCObfuscator,
+  normalizeArgList,
 };

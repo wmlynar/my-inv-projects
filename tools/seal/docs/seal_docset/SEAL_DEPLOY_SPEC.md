@@ -1765,6 +1765,10 @@ Przykład (aktualny dla v0.5):
       // elfPackerArgs: ["--in", "{in}", "--out", "{out}"],
       // Source-level string obfuscation libs (informacyjne, manualna integracja):
       // stringObfuscation: "xorstr" | "crystr" | "obfuscate" | ["xorstr", "crystr"],
+      // C-level obfuscation (dla launchera thin; wymaga obfuscating clang):
+      // cObfuscator: "obfuscator-llvm" | "hikari",
+      // cObfuscatorCmd: "/path/to/obfuscating-clang",
+      // cObfuscatorArgs: ["-mllvm", "-fla", "-mllvm", "-sub"],
     },
 
     // Katalogi kopiowane 1:1 do release (np. static assets, dane)
@@ -1791,6 +1795,9 @@ Przykład (aktualny dla v0.5):
 - `build.protection.elfPackerCmd`: nadpisuje nazwę komendy (np. pełna ścieżka).
 - `build.protection.elfPackerArgs`: **wymagane** dla `kiteshield`/`midgetpack`; użyj `{in}` i `{out}` jako placeholderów. Brak args = błąd.
 - `build.protection.stringObfuscation`: **informacyjne**; lista lub string (`xorstr`, `crystr`, `obfuscate`). SEAL nie wstrzykuje tych bibliotek automatycznie – integracja jest po stronie kodu C/C++.
+- `build.protection.cObfuscator`: obfuscator dla kodu C (launchera thin). Wartości: `obfuscator-llvm` (alias: `ollvm`) lub `hikari`.
+- `build.protection.cObfuscatorCmd`: ścieżka do obfuscating clang (wymagane, jeśli `cObfuscator` ustawione).
+- `build.protection.cObfuscatorArgs`: **wymagane**; argumenty obfuscatora (np. `-mllvm -fla -mllvm -sub`). Brak args = błąd.
 
 ### 29.4. Polityka (`seal.json5#policy`)
 

@@ -492,7 +492,23 @@ function buildAioFooter({ codecState, runtimeOff, runtimeLen, payloadOff, payloa
   return encodeBytes(footer, footerSeed, codecState.rot, codecState.add);
 }
 
-function resolveCc() {
+function isExecutable(filePath) {
+  try {
+    fs.accessSync(filePath, fs.constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function resolveCc(cObfuscator) {
+  if (cObfuscator && cObfuscator.cmd) {
+    const cmd = String(cObfuscator.cmd);
+    if (cmd.includes("/")) {
+      return isExecutable(cmd) ? cmd : null;
+    }
+    return hasCommand(cmd) ? cmd : null;
+  }
   const envCc = process.env.CC;
   if (envCc) return envCc;
   if (hasCommand("cc")) return "cc";
@@ -1897,11 +1913,22 @@ int main(int argc, char **argv) {
 `;
 }
 
-function buildLauncher(stageDir, codecState, allowBootstrap, sentinelCfg, envMode, runtimeStore) {
+function buildLauncher(stageDir, codecState, allowBootstrap, sentinelCfg, envMode, runtimeStore, cObfuscator) {
   const limits = DEFAULT_LIMITS;
-  const cc = resolveCc();
+  if (cObfuscator && cObfuscator.kind) {
+    if (!cObfuscator.cmd) {
+      return { ok: false, errorShort: "cObfuscatorCmd missing", error: "missing_c_obfuscator_cmd" };
+    }
+    if (!Array.isArray(cObfuscator.args) || !cObfuscator.args.length) {
+      return { ok: false, errorShort: "cObfuscatorArgs missing", error: "missing_c_obfuscator_args" };
+    }
+  }
+  const cc = resolveCc(cObfuscator);
   if (!cc) {
-    return { ok: false, errorShort: "C compiler not found (cc/gcc)", error: "missing_cc" };
+    const hint = (cObfuscator && cObfuscator.kind)
+      ? "cObfuscatorCmd not found or not executable"
+      : "C compiler not found (cc/gcc)";
+    return { ok: false, errorShort: hint, error: "missing_cc" };
   }
 
   const cPath = path.join(stageDir, "thin-launcher.c");
@@ -1909,6 +1936,9 @@ function buildLauncher(stageDir, codecState, allowBootstrap, sentinelCfg, envMod
   fs.writeFileSync(cPath, renderLauncherSource(codecState, limits, allowBootstrap, sentinelCfg, envMode, runtimeStore), "utf-8");
 
   const zstdFlags = getZstdFlags();
+  const obfArgs = (cObfuscator && Array.isArray(cObfuscator.args))
+    ? cObfuscator.args.map((v) => String(v))
+    : [];
   const args = [
     "-O2",
     "-s",
@@ -1927,6 +1957,7 @@ function buildLauncher(stageDir, codecState, allowBootstrap, sentinelCfg, envMod
     "-Wl,-z,noexecstack",
     "-Wl,--build-id=none",
     "-pie",
+    ...obfArgs,
     "-o", outPath,
     cPath,
     ...zstdFlags,
@@ -1944,7 +1975,23 @@ function buildLauncher(stageDir, codecState, allowBootstrap, sentinelCfg, envMod
   return { ok: true, path: outPath };
 }
 
-async function packThin({ stageDir, releaseDir, appName, obfPath, mode, level, chunkSizeBytes, zstdLevelOverride, zstdTimeoutMs, envMode, projectRoot, targetName, sentinel }) {
+async function packThin({
+  stageDir,
+  releaseDir,
+  appName,
+  obfPath,
+  mode,
+  level,
+  chunkSizeBytes,
+  zstdLevelOverride,
+  zstdTimeoutMs,
+  envMode,
+  runtimeStore,
+  projectRoot,
+  targetName,
+  sentinel,
+  cObfuscator,
+}) {
   try {
     if (!hasCommand("zstd")) {
       return { ok: false, errorShort: "zstd not found in PATH", error: "missing_zstd" };
@@ -2000,7 +2047,7 @@ async function packThin({ stageDir, releaseDir, appName, obfPath, mode, level, c
 
     const allowBootstrap = thinMode === "bootstrap";
     info("Thin: building launcher (cc + libzstd)...");
-    const launcherRes = buildLauncher(stageDir, codecState, allowBootstrap, sentinel, envMode);
+    const launcherRes = buildLauncher(stageDir, codecState, allowBootstrap, sentinel, envMode, runtimeStore, cObfuscator);
     if (!launcherRes.ok) return launcherRes;
 
     const outBin = path.join(releaseDir, appName);
