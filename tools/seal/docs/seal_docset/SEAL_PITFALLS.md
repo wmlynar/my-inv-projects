@@ -438,10 +438,10 @@
   - Wymaganie: dla `thin-split` targetuj realny ELF launchera (`b/a`) i zapisuj w metadanych/logach, ze celem byl `launcher`.
 
 - Blad: w `thin-single` (AIO) probowano `strip`/ELF packer na pliku z doklejonym payloadem, co psulo runtime.
-  - Wymaganie: `strip`/packer dla `thin-single` musza byc jawnie SKIP z powodem; dokumentacja ma wyraznie wskazywac `thin-single` jako tryb dev/MVP.
+  - Wymaganie: `strip`/packer dla `thin-single` musi fail-fast z jasnym komunikatem; dokumentacja ma wyraznie wskazywac `thin-single` jako tryb dev/MVP.
 
 - Blad: `strip` na binarce SEA powodowal crash (SIGSEGV) mimo udanego builda.
-  - Wymaganie: dla `sea` `strip` jest domyslnie blokowany; odblokowanie wymaga jawnego `build.protection.strip.allowSea=true`.
+  - Wymaganie: dla `sea` `strip` jest niewspierany i musi fail-fast z jasnym komunikatem.
 
 - Blad: detekcja narzedzi (`postject`, packery) nie uwzgledniala monorepo/workspace i szukala tylko w `./node_modules/.bin`, przez co testy/CLI nie widzialy narzedzia mimo instalacji.
   - Wymaganie: przy wykrywaniu CLI sprawdzaj kilka poziomow `node_modules/.bin` lub uzywaj mechanizmu typu `npm bin -w`/`npm exec`.

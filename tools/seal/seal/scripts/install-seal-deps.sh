@@ -89,8 +89,21 @@ if [ "$INSTALL_NPM" = "1" ]; then
     (cd "$SEAL_DIR" && npm install)
   fi
 
-  if [ -x "$SEAL_DIR/node_modules/.bin/postject" ]; then
-    log "postject OK: $SEAL_DIR/node_modules/.bin/postject"
+  POSTJECT_CANDIDATES=(
+    "$SEAL_DIR/node_modules/.bin/postject"
+    "$(dirname "$SEAL_DIR")/node_modules/.bin/postject"
+    "$REPO_ROOT/node_modules/.bin/postject"
+  )
+  FOUND_POSTJECT=""
+  for p in "${POSTJECT_CANDIDATES[@]}"; do
+    if [ -x "$p" ]; then
+      FOUND_POSTJECT="$p"
+      break
+    fi
+  done
+
+  if [ -n "$FOUND_POSTJECT" ]; then
+    log "postject OK: $FOUND_POSTJECT"
   elif has_cmd postject; then
     log "postject OK: $(command -v postject)"
   else

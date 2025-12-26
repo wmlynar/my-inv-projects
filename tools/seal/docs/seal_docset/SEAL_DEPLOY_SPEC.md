@@ -1760,13 +1760,14 @@ Przykład (aktualny dla v0.5):
     frontendMinify: { enabled: true, level: "safe", html: true, css: true },
 
     // Protection (anti-peek) – domyślnie włączone
-    // - SEA: seaMain.pack (Brotli/Gzip loader); elfPacker/strip opcjonalne (OFF by default)
+    // - SEA/thin-single: strip/elfPacker NIE są wspierane (build musi fail-fast)
+    // - thin-split: strip/elfPacker możliwe (target: launcher b/a)
     // - bundle: bundle.pack = gzip-pack backend bundle + loader
     protection: {
       enabled: true,
       seaMain: { pack: true, method: "brotli", chunkSize: 8000 },
       bundle: { pack: true },
-      strip: { enabled: false, cmd: "strip", args: ["--strip-all"], allowSea: false }, // strip | llvm-strip | eu-strip | sstrip
+      strip: { enabled: false, cmd: "strip", args: ["--strip-all"] }, // strip | llvm-strip | eu-strip | sstrip
       // ELF packers/protectors (opcjonalne, wysokie ryzyko operacyjne):
       // elfPacker: { tool: "kiteshield" | "midgetpack" | "upx", cmd: "kiteshield", args: ["-n", "{in}", "{out}"] },
       // Source-level string obfuscation libs (informacyjne, manualna integracja):

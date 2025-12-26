@@ -161,8 +161,8 @@ Przykład:
 - STD-150 (SHOULD): zanim uruchomisz `strip`/packer na pliku, zweryfikuj typ (ELF magic/`file`) i w razie braku zgodnosci wykonaj SKIP z powodem.
 - STD-151 (SHOULD): gdy operacja wymaga uprawnien/sandbox escape, komunikat musi jasno prosic o zgode; brak cichych fallbackow.
 - STD-152 (SHOULD): dla `thin-split` hardening (strip/packer) musi targetowac **launcher** (`b/a`), a nie wrapper `./<app>`; zapisuj w metadanych/logach, ktory plik byl celem.
-- STD-153 (SHOULD): dla `thin-single` hardening (strip/packer) jest niedozwolony — wykonaj jawny SKIP z powodem i nie probuj modyfikowac AIO.
-- STD-154 (SHOULD): dla `sea` `strip` jest domyslnie blokowany (ryzyko crash po postject); wymaga jawnego `build.protection.strip.allowSea=true`.
+- STD-153 (SHOULD): dla `thin-single` hardening (strip/packer) jest niedozwolony — fail‑fast z jasnym komunikatem i nie probuj modyfikowac AIO.
+- STD-154 (SHOULD): dla `sea` `strip`/ELF packer jest niewspierany i musi fail‑fast z jasnym komunikatem.
 
 #### Testy / CI
 - STD-018 (SHOULD): testy automatyczne nie polegają na kruchym parsowaniu stdout/stderr child procesów; preferuj JSON output, kody wyjścia lub wywołania in‑process; gdy parsujesz, zawsze usuwaj ANSI.

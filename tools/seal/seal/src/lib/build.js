@@ -658,31 +658,34 @@ function applyHardeningPost(releaseDir, appName, packagerUsed, hardCfg) {
   const isSea = packagerUsed === "sea";
 
   const stripEnabled = cfg.stripSymbols === true; // default false
-  const stripAllowSea = cfg.stripAllowSea === true;
   const stripTool = cfg.stripTool || "strip";
   const stripArgs = cfg.stripArgs || null;
-  if (!isScript && stripEnabled) {
+  const packerEnabled = !!cfg.elfPacker;
+
+  if (!isScript && (stripEnabled || packerEnabled)) {
     if (isThinSingle) {
-      steps.push({ step: "strip", ok: false, skipped: true, reason: "thin_single_not_supported", target: hardTargetLabel });
-    } else if (isSea && !stripAllowSea) {
-      steps.push({ step: "strip", ok: false, skipped: true, reason: "sea_requires_allow", target: hardTargetLabel });
-    } else {
-      steps.push({ step: "strip", target: hardTargetLabel, ...tryStripBinary(hardTargetPath, { cmd: stripTool, args: stripArgs }) });
+      throw new Error("Hardening not supported for thin-single (AIO): strip/ELF packer would corrupt embedded payload. Use thin-split.");
     }
+    if (isSea) {
+      throw new Error("Hardening not supported for SEA: strip/ELF packer may break postject binary. Use thin-split or disable hardening.");
+    }
+  }
+
+  if (!isScript && stripEnabled) {
+    steps.push({ step: "strip", target: hardTargetLabel, ...tryStripBinary(hardTargetPath, { cmd: stripTool, args: stripArgs }) });
   } else if (!isScript && !isThin) {
     steps.push({ step: "strip", ok: false, skipped: true, reason: stripEnabled ? "strip_failed" : "disabled_by_default", target: hardTargetLabel });
   }
-  const packerEnabled = !!cfg.elfPacker;
   if (packerEnabled && isScript) {
-    steps.push({ step: "elf_packer", ok: false, skipped: true, reason: "script_not_supported" });
+    steps.push({ step: "elf_packer", ok: false, skipped: true, reason: "script_not_supported", target: hardTargetLabel });
   } else if (packerEnabled) {
-    const r = tryElfPacker(exePath, cfg);
+    const r = tryElfPacker(hardTargetPath, cfg);
     if (!r.ok) {
       const reason = r.reason || "elf_packer_failed";
       const tool = r.tool ? ` (${r.tool})` : "";
       throw new Error(`ELF packer failed${tool}: ${reason}`);
     }
-    steps.push({ step: "elf_packer", ...r });
+    steps.push({ step: "elf_packer", target: hardTargetLabel, ...r });
   } else if (!isScript && !isThin) {
     steps.push({ step: "elf_packer", ok: false, skipped: true, reason: "disabled_by_default" });
   }
