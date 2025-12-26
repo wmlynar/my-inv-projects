@@ -1748,6 +1748,10 @@ Przykład (aktualny dla v0.5):
       zstdTimeoutMs: 120000,
       envMode: "denylist",    // denylist | allowlist
       runtimeStore: "memfd",  // memfd | tmpfile
+      appBind: { enabled: true }, // bind launcher to runtime/payload (use value for stable project ID)
+      launcherHardening: true,    // CET/RELRO/PIE/stack-protector/fortify
+      launcherObfuscation: true,  // requires protection.cObfuscator (fail-fast if missing)
+      snapshotGuard: { enabled: false, intervalMs: 1000, maxJumpMs: 60000, maxBackMs: 100 },
       // Anti-debug (opcjonalne; domyslnie wlaczone podstawowe checki):
       antiDebug: {
         enabled: true,
@@ -1804,6 +1808,10 @@ Przykład (aktualny dla v0.5):
 - `build.packagerFallback`: `false`.
 - `build.thin.mode`: `split`.
 - `build.thin.level`: `low` | `medium` | `high`.
+- `build.thin.appBind`: domyślnie `{ enabled: true }`.
+- `build.thin.launcherHardening`: domyślnie `true`.
+- `build.thin.launcherObfuscation`: domyślnie `true` (wymaga `build.protection.cObfuscator`).
+- `build.thin.snapshotGuard`: domyślnie `{ enabled: false }`.
 - `build.frontendObfuscation`: domyślnie `{ enabled: true, profile: build.obfuscationProfile }`.
 - `build.frontendMinify`: domyślnie `{ enabled: true, level: "safe", html: true, css: true }`.
 - `build.protection`: domyślnie `{ enabled: true, seaMain:{pack:true,method:"brotli",chunkSize:8000}, bundle:{pack:true}, strip:{enabled:false,cmd:"strip"} }`.

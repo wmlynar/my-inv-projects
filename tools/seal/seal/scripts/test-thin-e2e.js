@@ -129,6 +129,10 @@ function getFreePort() {
 
 async function buildThinRelease(mode, buildTimeoutMs) {
   const projectCfg = loadProjectConfig(EXAMPLE_ROOT);
+  projectCfg.build = projectCfg.build || {};
+  projectCfg.build.thin = Object.assign({}, projectCfg.build.thin || {}, {
+    launcherObfuscation: false,
+  });
   const targetCfg = loadTargetConfig(EXAMPLE_ROOT, "local").cfg;
   const configName = resolveConfigName(targetCfg, "local");
 

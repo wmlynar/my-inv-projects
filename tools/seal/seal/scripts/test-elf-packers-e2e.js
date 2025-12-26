@@ -188,6 +188,9 @@ async function buildWithProtection({ protection, outRoot }) {
   const baseCfg = loadProjectConfig(EXAMPLE_ROOT);
   const projectCfg = JSON.parse(JSON.stringify(baseCfg));
   projectCfg.build = projectCfg.build || {};
+  projectCfg.build.thin = Object.assign({}, projectCfg.build.thin || {}, {
+    launcherObfuscation: false,
+  });
   projectCfg.build.protection = Object.assign({}, projectCfg.build.protection || {}, protection || {});
 
   const targetCfg = loadTargetConfig(EXAMPLE_ROOT, "local").cfg;

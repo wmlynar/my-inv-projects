@@ -247,6 +247,9 @@ async function buildReleaseWithSentinel({ baseDir, outRoot }) {
 
   const appId = "seal-example";
   projectCfg.build = projectCfg.build || {};
+  projectCfg.build.thin = Object.assign({}, projectCfg.build.thin || {}, {
+    launcherObfuscation: false,
+  });
   projectCfg.build.sentinel = {
     enabled: true,
     level: 1,

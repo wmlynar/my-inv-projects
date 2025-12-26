@@ -203,6 +203,9 @@ async function buildWithStrip({ outRoot, packager }) {
   const baseCfg = loadProjectConfig(EXAMPLE_ROOT);
   const projectCfg = JSON.parse(JSON.stringify(baseCfg));
   projectCfg.build = projectCfg.build || {};
+  projectCfg.build.thin = Object.assign({}, projectCfg.build.thin || {}, {
+    launcherObfuscation: false,
+  });
   projectCfg.build.protection = Object.assign({}, projectCfg.build.protection || {}, {
     strip: { enabled: true, cmd: "strip" },
   });

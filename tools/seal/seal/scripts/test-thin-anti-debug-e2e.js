@@ -181,7 +181,7 @@ async function runReleaseOk({ releaseDir, runTimeoutMs, env }) {
   }
 }
 
-async function runReleaseExpectFail({ releaseDir, runTimeoutMs, env }) {
+async function runReleaseExpectFail({ releaseDir, runTimeoutMs, env, expectStderr }) {
   if (runReleaseOk.skipListen) {
     log("SKIP: listen not permitted; runtime check disabled");
     return;
@@ -200,7 +200,11 @@ async function runReleaseExpectFail({ releaseDir, runTimeoutMs, env }) {
   child.stderr.on("data", (c) => errChunks.push(c));
 
   const exitPromise = new Promise((resolve) => {
-    child.on("exit", (code, signal) => resolve({ code, signal }));
+    child.on("exit", (code, signal) => {
+      const stdout = Buffer.concat(outChunks).toString("utf8").trim();
+      const stderr = Buffer.concat(errChunks).toString("utf8").trim();
+      resolve({ code, signal, stdout, stderr });
+    });
   });
 
   try {
@@ -211,12 +215,19 @@ async function runReleaseExpectFail({ releaseDir, runTimeoutMs, env }) {
     if (winner && winner.ok) {
       throw new Error("process reached /api/status (expected failure)");
     }
-    const { code, signal } = winner || {};
+    const { code, signal, stderr } = winner || {};
     if (code === 0) {
       throw new Error("process exited with code=0 (expected failure)");
     }
     if (code === null && !signal) {
       throw new Error("process did not fail as expected");
+    }
+    if (expectStderr) {
+      const hay = String(stderr || "");
+      const ok = expectStderr instanceof RegExp ? expectStderr.test(hay) : hay.includes(String(expectStderr));
+      if (!ok) {
+        throw new Error(`stderr did not match expected pattern: ${expectStderr}`);
+      }
     }
   } finally {
     child.kill("SIGTERM");
@@ -233,7 +244,7 @@ async function runReleaseExpectFail({ releaseDir, runTimeoutMs, env }) {
   }
 }
 
-async function runReleaseExpectFailAfterReady({ releaseDir, readyTimeoutMs, failTimeoutMs, env }) {
+async function runReleaseExpectFailAfterReady({ releaseDir, readyTimeoutMs, failTimeoutMs, env, expectStderr }) {
   if (runReleaseOk.skipListen) {
     log("SKIP: listen not permitted; runtime check disabled");
     return;
@@ -252,7 +263,11 @@ async function runReleaseExpectFailAfterReady({ releaseDir, readyTimeoutMs, fail
   child.stderr.on("data", (c) => errChunks.push(c));
 
   const exitPromise = new Promise((resolve) => {
-    child.on("exit", (code, signal) => resolve({ code, signal }));
+    child.on("exit", (code, signal) => {
+      const stdout = Buffer.concat(outChunks).toString("utf8").trim();
+      const stderr = Buffer.concat(errChunks).toString("utf8").trim();
+      resolve({ code, signal, stdout, stderr });
+    });
   });
 
   try {
@@ -264,12 +279,19 @@ async function runReleaseExpectFailAfterReady({ releaseDir, readyTimeoutMs, fail
     ]));
 
     const failRes = await withTimeout("waitForFail", failTimeoutMs, () => exitPromise);
-    const { code, signal } = failRes || {};
+    const { code, signal, stderr } = failRes || {};
     if (code === 0) {
       throw new Error("process exited with code=0 (expected failure)");
     }
     if (code === null && !signal) {
       throw new Error("process did not fail as expected");
+    }
+    if (expectStderr) {
+      const hay = String(stderr || "");
+      const ok = expectStderr instanceof RegExp ? expectStderr.test(hay) : hay.includes(String(expectStderr));
+      if (!ok) {
+        throw new Error(`stderr did not match expected pattern: ${expectStderr}`);
+      }
     }
   } finally {
     child.kill("SIGTERM");
@@ -286,14 +308,26 @@ async function runReleaseExpectFailAfterReady({ releaseDir, readyTimeoutMs, fail
   }
 }
 
-async function buildThinSplit({ outRoot, antiDebug, integrity }) {
+async function buildThinSplit({
+  outRoot,
+  antiDebug,
+  integrity,
+  appBind,
+  snapshotGuard,
+  launcherHardening,
+  launcherObfuscation,
+}) {
   const baseCfg = loadProjectConfig(EXAMPLE_ROOT);
   const projectCfg = JSON.parse(JSON.stringify(baseCfg));
   projectCfg.build = projectCfg.build || {};
-  projectCfg.build.thin = Object.assign({}, projectCfg.build.thin || {}, {
-    antiDebug: antiDebug || undefined,
-    integrity: integrity || undefined,
-  });
+  const thinCfg = Object.assign({}, projectCfg.build.thin || {});
+  if (antiDebug !== undefined) thinCfg.antiDebug = antiDebug;
+  if (integrity !== undefined) thinCfg.integrity = integrity;
+  if (appBind !== undefined) thinCfg.appBind = appBind;
+  if (snapshotGuard !== undefined) thinCfg.snapshotGuard = snapshotGuard;
+  if (launcherHardening !== undefined) thinCfg.launcherHardening = launcherHardening;
+  if (launcherObfuscation !== undefined) thinCfg.launcherObfuscation = launcherObfuscation;
+  projectCfg.build.thin = thinCfg;
 
   const targetCfg = loadTargetConfig(EXAMPLE_ROOT, "local").cfg;
   const configName = resolveConfigName(targetCfg, "local");
@@ -347,12 +381,34 @@ async function main() {
   const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-thin-ad-"));
   let failures = 0;
   try {
+    log("Testing launcherObfuscation requires cObfuscator...");
+    await withTimeout("buildRelease(launcherObfuscation missing)", buildTimeoutMs, async () => {
+      let threw = false;
+      try {
+        await buildThinSplit({
+          outRoot,
+          launcherObfuscation: true,
+        });
+      } catch (e) {
+        const msg = e && e.message ? e.message : String(e);
+        if (!msg.includes("launcherObfuscation")) {
+          throw e;
+        }
+        threw = true;
+      }
+      if (!threw) {
+        throw new Error("expected launcherObfuscation build failure");
+      }
+    });
+    log("OK: launcherObfuscation requires cObfuscator");
+
     log("Building thin-split with integrity enabled...");
     const resA = await withTimeout("buildRelease(integrity)", buildTimeoutMs, () =>
       buildThinSplit({
         outRoot,
         integrity: { enabled: true },
         antiDebug: { enabled: true, tracerPid: true, denyEnv: true },
+        launcherObfuscation: false,
       })
     );
     await withTimeout("run ok (integrity)", testTimeoutMs, () =>
@@ -362,14 +418,14 @@ async function main() {
 
     log("Testing denyEnv (LD_PRELOAD)...");
     await withTimeout("denyEnv fail", testTimeoutMs, () =>
-      runReleaseExpectFail({ releaseDir: resA.releaseDir, runTimeoutMs, env: { LD_PRELOAD: "1" } })
+      runReleaseExpectFail({ releaseDir: resA.releaseDir, runTimeoutMs, env: { LD_PRELOAD: "1" }, expectStderr: "[thin] runtime invalid" })
     );
     log("OK: denyEnv triggers failure");
 
     log("Testing integrity tamper...");
     tamperLauncher(resA.releaseDir);
     await withTimeout("integrity tamper fail", testTimeoutMs, () =>
-      runReleaseExpectFail({ releaseDir: resA.releaseDir, runTimeoutMs })
+      runReleaseExpectFail({ releaseDir: resA.releaseDir, runTimeoutMs, expectStderr: "[thin] runtime invalid" })
     );
     log("OK: integrity tamper rejected");
 
@@ -378,6 +434,7 @@ async function main() {
       buildThinSplit({
         outRoot,
         antiDebug: { enabled: false },
+        launcherObfuscation: false,
       })
     );
     await withTimeout("run ok (antiDebug off)", testTimeoutMs, () =>
@@ -385,15 +442,30 @@ async function main() {
     );
     log("OK: antiDebug disabled allows LD_PRELOAD");
 
+    log("Building thin-split with launcher hardening disabled...");
+    const resHard = await withTimeout("buildRelease(hardening off)", buildTimeoutMs, () =>
+      buildThinSplit({
+        outRoot,
+        antiDebug: { enabled: false },
+        launcherHardening: false,
+        launcherObfuscation: false,
+      })
+    );
+    await withTimeout("run ok (hardening off)", testTimeoutMs, () =>
+      runReleaseOk({ releaseDir: resHard.releaseDir, runTimeoutMs })
+    );
+    log("OK: launcher hardening off still runs");
+
     log("Building thin-split with maps denylist...");
     const resC = await withTimeout("buildRelease(maps deny)", buildTimeoutMs, () =>
       buildThinSplit({
         outRoot,
         antiDebug: { enabled: true, mapsDenylist: ["libc"] },
+        launcherObfuscation: false,
       })
     );
     await withTimeout("maps deny fail", testTimeoutMs, () =>
-      runReleaseExpectFail({ releaseDir: resC.releaseDir, runTimeoutMs })
+      runReleaseExpectFail({ releaseDir: resC.releaseDir, runTimeoutMs, expectStderr: "[thin] runtime invalid" })
     );
     log("OK: maps denylist triggers failure");
 
@@ -402,6 +474,7 @@ async function main() {
       buildThinSplit({
         outRoot,
         antiDebug: { enabled: true, tracerPid: true, tracerPidIntervalMs: 200, tracerPidThreads: false },
+        launcherObfuscation: false,
       })
     );
     await withTimeout("tracerpid interval fail", testTimeoutMs, () =>
@@ -410,6 +483,7 @@ async function main() {
         readyTimeoutMs: 8000,
         failTimeoutMs: 8000,
         env: { SEAL_TRACERPID_FORCE: "1", SEAL_TRACERPID_FORCE_AFTER_MS: "300" },
+        expectStderr: "[thin] runtime invalid",
       })
     );
     log("OK: periodic TracerPid triggers failure");
@@ -419,6 +493,7 @@ async function main() {
       buildThinSplit({
         outRoot,
         antiDebug: { enabled: true, tracerPid: true, tracerPidIntervalMs: 200, tracerPidThreads: true },
+        launcherObfuscation: false,
       })
     );
     await withTimeout("tracerpid threads fail", testTimeoutMs, () =>
@@ -427,9 +502,59 @@ async function main() {
         readyTimeoutMs: 8000,
         failTimeoutMs: 8000,
         env: { SEAL_TRACERPID_FORCE_THREADS: "1", SEAL_TRACERPID_FORCE_AFTER_MS: "300" },
+        expectStderr: "[thin] runtime invalid",
       })
     );
     log("OK: TracerPid thread scan triggers failure");
+
+    log("Testing appBind mismatch (launcher swap)...");
+    const bindRootA = fs.mkdtempSync(path.join(os.tmpdir(), "seal-thin-bind-a-"));
+    const bindRootB = fs.mkdtempSync(path.join(os.tmpdir(), "seal-thin-bind-b-"));
+    try {
+      const resBindA = await withTimeout("buildRelease(appBind A)", buildTimeoutMs, () =>
+        buildThinSplit({
+          outRoot: bindRootA,
+          appBind: { value: "bind-a" },
+          launcherObfuscation: false,
+        })
+      );
+      const resBindB = await withTimeout("buildRelease(appBind B)", buildTimeoutMs, () =>
+        buildThinSplit({
+          outRoot: bindRootB,
+          appBind: { value: "bind-b" },
+          launcherObfuscation: false,
+        })
+      );
+      const launcherA = path.join(resBindA.releaseDir, "b", "a");
+      const launcherB = path.join(resBindB.releaseDir, "b", "a");
+      fs.copyFileSync(launcherB, launcherA);
+      await withTimeout("appBind mismatch fail", testTimeoutMs, () =>
+        runReleaseExpectFail({ releaseDir: resBindA.releaseDir, runTimeoutMs, expectStderr: "decode runtime failed" })
+      );
+    } finally {
+      fs.rmSync(bindRootA, { recursive: true, force: true });
+      fs.rmSync(bindRootB, { recursive: true, force: true });
+    }
+    log("OK: appBind mismatch rejected");
+
+    log("Testing snapshot guard (forced after ready)...");
+    const resSnap = await withTimeout("buildRelease(snapshotGuard)", buildTimeoutMs, () =>
+      buildThinSplit({
+        outRoot,
+        snapshotGuard: { enabled: true, intervalMs: 200, maxJumpMs: 200, maxBackMs: 100 },
+        launcherObfuscation: false,
+      })
+    );
+    await withTimeout("snapshot guard fail", testTimeoutMs, () =>
+      runReleaseExpectFailAfterReady({
+        releaseDir: resSnap.releaseDir,
+        readyTimeoutMs: 8000,
+        failTimeoutMs: 8000,
+        env: { SEAL_SNAPSHOT_FORCE: "1", SEAL_SNAPSHOT_FORCE_AFTER_MS: "300" },
+        expectStderr: "[thin] runtime invalid",
+      })
+    );
+    log("OK: snapshot guard triggers failure");
   } catch (e) {
     failures += 1;
     fail(e.message || e);

@@ -829,10 +829,16 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
 
   if (packagerRequested === "thin") {
     info(`Packaging (${packagerSpec.label}, level=${thinLevel})...`);
+    const launcherObfuscation = thinCfg.launcherObfuscation !== false;
+    if (launcherObfuscation && !protectionCfg.cObfuscator) {
+      throw new Error("thin.launcherObfuscation enabled but no protection.cObfuscator configured");
+    }
+    const launcherHardening = thinCfg.launcherHardening !== false;
     const res = await packThin({
       stageDir,
       releaseDir,
       appName,
+      entryRel: projectCfg.entry,
       obfPath,
       mode: thinMode,
       level: thinLevel,
@@ -841,12 +847,16 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
       zstdTimeoutMs: thinZstdTimeoutMs,
       envMode: thinCfg.envMode,
       runtimeStore: thinCfg.runtimeStore,
+      launcherHardening,
+      launcherObfuscation,
       antiDebug: thinCfg.antiDebug,
       integrity: thinCfg.integrity,
+      appBind: thinCfg.appBind,
+      snapshotGuard: thinCfg.snapshotGuard,
       projectRoot,
       targetName: targetCfg.target || targetCfg.config || "default",
       sentinel: sentinelCfg,
-      cObfuscator: protectionCfg.cObfuscator ? {
+      cObfuscator: launcherObfuscation && protectionCfg.cObfuscator ? {
         kind: protectionCfg.cObfuscator,
         cmd: protectionCfg.cObfuscatorCmd,
         args: protectionCfg.cObfuscatorArgs,

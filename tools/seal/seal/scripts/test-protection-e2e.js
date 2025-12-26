@@ -188,6 +188,9 @@ cp "$in" "$out"
 async function buildWithProtection({ protection, outRoot, packager }) {
   const projectCfg = loadProjectConfig(EXAMPLE_ROOT);
   projectCfg.build = projectCfg.build || {};
+  projectCfg.build.thin = Object.assign({}, projectCfg.build.thin || {}, {
+    launcherObfuscation: false,
+  });
   projectCfg.build.protection = Object.assign({}, projectCfg.build.protection || {}, protection || {});
 
   const targetCfg = loadTargetConfig(EXAMPLE_ROOT, "local").cfg;

@@ -259,6 +259,17 @@
   - Wymaganie: `release/r/c` musi istniec i byc porownany z `<installDir>/r/c`.
   - Wymaganie: mismatch lub brak `c` = **fallback do pelnego bootstrap**.
 
+- Blad: brak app‑bindingu pozwalal uruchomic runtime/payload z innego projektu na tym samym launcherze.
+  - Wymaganie: `thin.appBind` domyslnie wlaczony i weryfikowany w `footer` runtime/payload oraz stopce AIO.
+  - Wymaganie: `appBind.value` powinien byc stabilnym ID projektu (nie zaleznym od sciezki), aby uniknac falszywych mismatchy po deployu.
+
+- Blad: `launcherObfuscation` wlaczone bez skonfigurowanego obfuscatora C powodowalo niejasne fail w buildzie.
+  - Wymaganie: brak `protection.cObfuscator` = twardy blad z jasnym komunikatem (fail‑fast, bez fallbacku).
+
+- Blad: `snapshotGuard` uruchomiony domyslnie generowal falszywe blokady (przerwy, resume VM).
+  - Wymaganie: `snapshotGuard` jest opt‑in, ma jasne progi (`intervalMs`, `maxJumpMs`, `maxBackMs`) i nie trzyma event‑loop (timer `unref`).
+  - Wymaganie: testy wymuszaja trigger tylko przez dedykowane ENV i nie uzywaja tego w produkcji.
+
 - Blad: metadane kodeka byly zapisywane jako JSON na serwerze.
   - Wymaganie: wszystko co trafia na target powinno byc binarne/obfuskowane (brak czytelnych JSON).
   - Wymaganie: nazwy plikow na target nie powinny zdradzac roli (uzywaj krotszych/nijakich nazw, np. `c` zamiast `codec.bin`).

@@ -33,6 +33,61 @@ function normalizeThinIntegrity(raw) {
   return { enabled: raw.enabled === true };
 }
 
+function normalizeThinAppBind(raw) {
+  if (raw === undefined || raw === null) return { enabled: true, value: null };
+  if (typeof raw === "boolean") return { enabled: raw, value: null };
+  if (typeof raw === "string") return { enabled: true, value: raw };
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error(`Invalid thin.appBind: expected object/boolean/string`);
+  }
+  const enabled = raw.enabled !== undefined ? !!raw.enabled : true;
+  const value = raw.value !== undefined && raw.value !== null ? String(raw.value) : null;
+  return { enabled, value };
+}
+
+function normalizeThinSnapshotGuard(raw) {
+  if (raw === undefined || raw === null) return { enabled: false };
+  if (typeof raw === "boolean") return { enabled: raw };
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error(`Invalid thin.snapshotGuard: expected object or boolean`);
+  }
+  const enabled = raw.enabled === true;
+  const intervalMs = raw.intervalMs !== undefined ? Number(raw.intervalMs) : 1000;
+  const maxJumpMs = raw.maxJumpMs !== undefined ? Number(raw.maxJumpMs) : 60_000;
+  const maxBackMs = raw.maxBackMs !== undefined ? Number(raw.maxBackMs) : 100;
+  if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
+    throw new Error(`Invalid thin.snapshotGuard.intervalMs: ${raw.intervalMs}`);
+  }
+  if (!Number.isFinite(maxJumpMs) || maxJumpMs < 0) {
+    throw new Error(`Invalid thin.snapshotGuard.maxJumpMs: ${raw.maxJumpMs}`);
+  }
+  if (!Number.isFinite(maxBackMs) || maxBackMs < 0) {
+    throw new Error(`Invalid thin.snapshotGuard.maxBackMs: ${raw.maxBackMs}`);
+  }
+  return {
+    enabled,
+    intervalMs: Math.floor(intervalMs),
+    maxJumpMs: Math.floor(maxJumpMs),
+    maxBackMs: Math.floor(maxBackMs),
+  };
+}
+
+function normalizeThinLauncherHardening(raw) {
+  if (raw === undefined || raw === null) return true;
+  if (typeof raw !== "boolean") {
+    throw new Error(`Invalid thin.launcherHardening: ${raw} (expected boolean)`);
+  }
+  return raw;
+}
+
+function normalizeThinLauncherObfuscation(raw) {
+  if (raw === undefined || raw === null) return true;
+  if (typeof raw !== "boolean") {
+    throw new Error(`Invalid thin.launcherObfuscation: ${raw} (expected boolean)`);
+  }
+  return raw;
+}
+
 function normalizeThinAntiDebug(raw) {
   if (raw === undefined || raw === null) {
     return {
@@ -169,7 +224,45 @@ function resolveThinConfig(targetCfg, projectCfg) {
     null;
   const integrity = normalizeThinIntegrity(integrityRaw);
 
-  return { mode, level, chunkSizeBytes, zstdLevel, zstdTimeoutMs, envMode, runtimeStore, antiDebug, integrity };
+  const appBindRaw =
+    tThin.appBind ??
+    pThin.appBind ??
+    null;
+  const appBind = normalizeThinAppBind(appBindRaw);
+
+  const snapshotRaw =
+    tThin.snapshotGuard ??
+    pThin.snapshotGuard ??
+    null;
+  const snapshotGuard = normalizeThinSnapshotGuard(snapshotRaw);
+
+  const launcherHardeningRaw =
+    tThin.launcherHardening ??
+    pThin.launcherHardening ??
+    null;
+  const launcherHardening = normalizeThinLauncherHardening(launcherHardeningRaw);
+
+  const launcherObfRaw =
+    tThin.launcherObfuscation ??
+    pThin.launcherObfuscation ??
+    null;
+  const launcherObfuscation = normalizeThinLauncherObfuscation(launcherObfRaw);
+
+  return {
+    mode,
+    level,
+    chunkSizeBytes,
+    zstdLevel,
+    zstdTimeoutMs,
+    envMode,
+    runtimeStore,
+    antiDebug,
+    integrity,
+    appBind,
+    snapshotGuard,
+    launcherHardening,
+    launcherObfuscation,
+  };
 }
 
 function normalizePackager(rawPackager) {

@@ -129,10 +129,28 @@ npx seal release prod --packager thin-single
   - `SEAL_TRACERPID_FORCE_THREADS=1`
   - `SEAL_TRACERPID_FORCE_AFTER_MS=...`
 - Są one aktywne wyłącznie, gdy `SEAL_THIN_ANTI_DEBUG_E2E=1`. Nie są to opcje produkcyjne.
+- W testach `snapshotGuard` używane są tylko w trybie E2E specjalne ENV:
+  - `SEAL_SNAPSHOT_FORCE=1`
+  - `SEAL_SNAPSHOT_FORCE_AFTER_MS=...`
+  - (aktywne tylko przy `SEAL_THIN_ANTI_DEBUG_E2E=1`).
 - `build.thin.integrity`:
   - `enabled` (domyślnie `false`) — weryfikuje self‑hash launchera (`b/a`) w `thin-split`.
   - **Tylko `thin-split`**; dla `thin-single` build kończy się błędem.
   - Hash jest osadzany inline w launcherze **po** wszystkich operacjach post‑pack (hardening/obfuscation). Każda modyfikacja binarki po tym kroku unieważnia hash.
+
+**App binding / hardening / snapshot (opcjonalne):**
+- `build.thin.appBind` (domyślnie `enabled: true`):
+  - wiąże launchera z runtime/payload (zapobiega podmianie `b/a` lub `r/rt` z innego projektu),
+  - `value` (opcjonalne) — własny, stabilny identyfikator projektu; zalecane, gdy aplikacje mogą mieć takie same `appName` i `entry`.
+- `build.thin.launcherHardening` (domyślnie `true`):
+  - włącza profil hardening kompilatora (CET/RELRO/PIE/stack‑protector/fortify),
+  - `false` wyłącza tylko te flagi (nie zmienia zachowania thin).
+- `build.thin.launcherObfuscation` (domyślnie `true`):
+  - wymusza obfuskację C‑launchera (CF‑flattening/opaque predicates przez obfuscating clang),
+  - jeśli brak `build.protection.cObfuscator` → **build fail‑fast** (brak fallbacku).
+- `build.thin.snapshotGuard` (domyślnie `enabled: false`):
+  - wykrywa suspend/resume i duże skoki czasu monotonicznego,
+  - `intervalMs` (domyślnie `1000`), `maxJumpMs` (domyślnie `60000`), `maxBackMs` (domyślnie `100`).
 
 **Błędy runtime (bez sentinel):**
 - brak `memfd` przy `runtimeStore=memfd` → `[thin] runtime fd failed` (27) / `[thin] payload fd failed` (29),

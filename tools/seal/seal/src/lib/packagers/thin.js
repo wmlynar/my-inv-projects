@@ -77,6 +77,15 @@ function randomU32() {
   return crypto.randomBytes(4).readUInt32LE(0);
 }
 
+function computeAppBind(appName, entryRel, appBindCfg) {
+  if (appBindCfg && appBindCfg.enabled === false) return 0n;
+  const seed = appBindCfg.value
+    ? String(appBindCfg.value)
+    : `${String(appName || "").trim()}\n${String(entryRel || "").trim()}`;
+  const hash = crypto.createHash("sha256").update(seed, "utf8").digest();
+  return hash.readBigUInt64LE(0);
+}
+
 function normalizeTargetName(name) {
   return String(name || "default").replace(/[^a-zA-Z0-9_.-]/g, "_");
 }
@@ -431,6 +440,7 @@ async function encodeContainer(rawBuf, codecState, chunkSize, zstdLevel, opts = 
     throw new Error("raw buffer is empty");
   }
   const progress = opts.progress;
+  const appBindValue = typeof opts.appBind === "bigint" ? opts.appBind : 0n;
   let lastLog = 0;
   const chunks = [];
   const entries = [];
@@ -504,7 +514,7 @@ async function encodeContainer(rawBuf, codecState, chunkSize, zstdLevel, opts = 
   footer.writeUInt32LE(indexLen >>> 0, 8);
   footer.writeUInt32LE(entries.length >>> 0, 12);
   writeU64LE(footer, 16, rawTotal);
-  writeU64LE(footer, 24, 0);
+  writeU64LE(footer, 24, appBindValue);
 
   const indexSeed = (codecState.seed ^ codecState.indexNonce) >>> 0;
   const footerSeed = (codecState.seed ^ codecState.footerNonce) >>> 0;
@@ -515,7 +525,7 @@ async function encodeContainer(rawBuf, codecState, chunkSize, zstdLevel, opts = 
   return Buffer.concat([...chunks, maskedIndex, maskedFooter]);
 }
 
-function buildAioFooter({ codecState, runtimeOff, runtimeLen, payloadOff, payloadLen }) {
+function buildAioFooter({ codecState, runtimeOff, runtimeLen, payloadOff, payloadLen, appBindValue }) {
   const footer = Buffer.allocUnsafe(THIN_AIO_FOOTER_LEN);
   footer.writeUInt32LE(THIN_VERSION, 0);
   footer.writeUInt32LE(codecState.codecId >>> 0, 4);
@@ -523,7 +533,7 @@ function buildAioFooter({ codecState, runtimeOff, runtimeLen, payloadOff, payloa
   writeU64LE(footer, 16, runtimeLen);
   writeU64LE(footer, 24, payloadOff);
   writeU64LE(footer, 32, payloadLen);
-  writeU64LE(footer, 40, 0);
+  writeU64LE(footer, 40, appBindValue || 0n);
   writeU64LE(footer, 48, 0);
   writeU64LE(footer, 56, 0);
 
@@ -1116,7 +1126,19 @@ static int sentinel_check(void) {
 `;
 }
 
-function renderLauncherSource(codecState, limits, allowBootstrap, sentinelCfg, envMode, runtimeStore, antiDebugCfg, integrityCfg) {
+function renderLauncherSource(
+  codecState,
+  limits,
+  allowBootstrap,
+  sentinelCfg,
+  envMode,
+  runtimeStore,
+  antiDebugCfg,
+  integrityCfg,
+  appBindValue,
+  appBindEnabled,
+  snapshotGuardCfg
+) {
   const sentinelDefs = renderSentinelDefs(sentinelCfg);
   const sentinelCode = renderSentinelCode();
 
@@ -1151,6 +1173,18 @@ function renderLauncherSource(codecState, limits, allowBootstrap, sentinelCfg, e
   const selfHashDefs = selfHashEnabled
     ? `#define THIN_SELF_HASH_ENABLED 1\n#define THIN_SELF_HASH_MARKER "${selfHashMarker}"\n#define THIN_SELF_HASH_LEN 8\nstatic const char THIN_SELF_HASH_STR[] = THIN_SELF_HASH_MARKER "${selfHashPlaceholder}";\n`
     : "#define THIN_SELF_HASH_ENABLED 0\n";
+
+  const snapshotCfg = (snapshotGuardCfg && typeof snapshotGuardCfg === "object") ? snapshotGuardCfg : {};
+  const snapshotEnabled = snapshotCfg.enabled === true;
+  const snapshotIntervalMs = snapshotEnabled
+    ? Math.max(1, Math.floor(Number(snapshotCfg.intervalMs || 1000)))
+    : 0;
+  const snapshotMaxJumpMs = snapshotEnabled
+    ? Math.max(0, Math.floor(Number(snapshotCfg.maxJumpMs || 60000)))
+    : 0;
+  const snapshotMaxBackMs = snapshotEnabled
+    ? Math.max(0, Math.floor(Number(snapshotCfg.maxBackMs || 100)))
+    : 0;
 
   const bootstrapJs = `"use strict";
 const fs = require("fs");
@@ -1223,6 +1257,52 @@ if (TRACERPID_ENABLED) {
   }
 }
 
+const SNAPSHOT_ENABLED = ${snapshotEnabled ? 1 : 0};
+const SNAPSHOT_INTERVAL_MS = ${snapshotIntervalMs};
+const SNAPSHOT_MAX_JUMP_MS = ${snapshotMaxJumpMs};
+const SNAPSHOT_MAX_BACK_MS = ${snapshotMaxBackMs};
+const SNAPSHOT_TEST_MODE = process.env.SEAL_THIN_ANTI_DEBUG_E2E === "1";
+const SNAPSHOT_FORCE = SNAPSHOT_TEST_MODE && process.env.SEAL_SNAPSHOT_FORCE === "1";
+const SNAPSHOT_FORCE_AFTER_MS = SNAPSHOT_TEST_MODE ? Math.max(0, Number(process.env.SEAL_SNAPSHOT_FORCE_AFTER_MS || 0) || 0) : 0;
+const SNAPSHOT_START_MS = Date.now();
+let snapshotLast = null;
+
+function snapshotForceReady() {
+  if (!SNAPSHOT_TEST_MODE) return false;
+  if (SNAPSHOT_FORCE_AFTER_MS <= 0) return true;
+  return Date.now() - SNAPSHOT_START_MS >= SNAPSHOT_FORCE_AFTER_MS;
+}
+
+function snapshotFail() {
+  try { process.stderr.write("[thin] runtime invalid\\n"); } catch {}
+  process.exit(76);
+}
+
+function snapshotCheck() {
+  if (SNAPSHOT_TEST_MODE && SNAPSHOT_FORCE && snapshotForceReady()) return true;
+  const now = process.hrtime.bigint();
+  if (snapshotLast === null) {
+    snapshotLast = now;
+    return false;
+  }
+  const diffMs = Number(now - snapshotLast) / 1e6;
+  snapshotLast = now;
+  if (!Number.isFinite(diffMs)) return false;
+  if (SNAPSHOT_MAX_BACK_MS > 0 && diffMs < -SNAPSHOT_MAX_BACK_MS) return true;
+  if (SNAPSHOT_MAX_JUMP_MS > 0 && diffMs > SNAPSHOT_MAX_JUMP_MS) return true;
+  return false;
+}
+
+if (SNAPSHOT_ENABLED) {
+  if (snapshotCheck()) snapshotFail();
+  if (SNAPSHOT_INTERVAL_MS > 0) {
+    const timer = setInterval(() => {
+      if (snapshotCheck()) snapshotFail();
+    }, SNAPSHOT_INTERVAL_MS);
+    if (timer && typeof timer.unref === "function") timer.unref();
+  }
+}
+
 const fd = Number(process.env.SEAL_BUNDLE_FD || 4);
 const entry = process.env.SEAL_VIRTUAL_ENTRY || path.join(process.cwd(), "app.bundle.cjs");
 
@@ -1286,6 +1366,8 @@ extern char **environ;
 #define THIN_INDEX_NONCE ${codecState.indexNonce}u
 #define THIN_FOOTER_NONCE ${codecState.footerNonce}u
 #define THIN_AIO_FOOTER_NONCE ${codecState.aioFooterNonce}u
+#define THIN_APP_BIND_ENABLED ${appBindEnabled ? 1 : 0}
+#define THIN_APP_BIND ${(appBindEnabled && appBindValue !== undefined) ? `${String(appBindValue)}ull` : "0ull"}
 #define THIN_BOOTSTRAP_ALLOWED ${allowBootstrap ? 1 : 0}
 #define THIN_ENV_STRICT_DEFAULT ${envStrictDefault}
 #define THIN_RUNTIME_STORE_MEMFD 1
@@ -1565,9 +1647,11 @@ static int decode_container(int src_fd, uint64_t off, uint64_t len, int out_fd) 
   uint32_t index_len = read_u32_le(footer_enc + 8);
   uint32_t chunk_count = read_u32_le(footer_enc + 12);
   uint64_t raw_total = read_u64_le(footer_enc + 16);
+  uint64_t app_bind = read_u64_le(footer_enc + 24);
 
   if (version != THIN_VERSION) return -4;
   if (codec_id != THIN_CODEC_ID) return -5;
+  if (THIN_APP_BIND_ENABLED && app_bind != THIN_APP_BIND) return -25;
   if (chunk_count == 0 || chunk_count > MAX_CHUNKS) return -6;
   if (index_len == 0 || index_len > MAX_INDEX_BYTES) return -7;
   if (raw_total > MAX_TOTAL_RAW) return -8;
@@ -2070,6 +2154,7 @@ int main(int argc, char **argv) {
   }
 
   int aio_ok = 0;
+  int aio_bind_fail = 0;
   uint64_t rt_off = 0;
   uint64_t rt_len = 0;
   uint64_t pl_off = 0;
@@ -2084,6 +2169,10 @@ int main(int argc, char **argv) {
       uint32_t version = read_u32_le(aio_footer + 0);
       uint32_t codec_id = read_u32_le(aio_footer + 4);
       if (version == THIN_VERSION && codec_id == THIN_CODEC_ID) {
+        uint64_t app_bind = read_u64_le(aio_footer + 40);
+        if (THIN_APP_BIND_ENABLED && app_bind != THIN_APP_BIND) {
+          aio_bind_fail = 1;
+        }
         rt_off = read_u64_le(aio_footer + 8);
         rt_len = read_u64_le(aio_footer + 16);
         pl_off = read_u64_le(aio_footer + 24);
@@ -2098,6 +2187,10 @@ int main(int argc, char **argv) {
         }
       }
     }
+  }
+
+  if (aio_bind_fail) {
+    return fail_msg("[thin] runtime invalid", 72);
   }
 
   if (!aio_ok && !THIN_BOOTSTRAP_ALLOWED) {
@@ -2214,7 +2307,21 @@ int main(int argc, char **argv) {
 `;
 }
 
-function buildLauncher(stageDir, codecState, allowBootstrap, sentinelCfg, envMode, runtimeStore, cObfuscator, antiDebugCfg, integrityCfg) {
+function buildLauncher(
+  stageDir,
+  codecState,
+  allowBootstrap,
+  sentinelCfg,
+  envMode,
+  runtimeStore,
+  cObfuscator,
+  antiDebugCfg,
+  integrityCfg,
+  appBindValue,
+  appBindEnabled,
+  snapshotGuardCfg,
+  launcherHardening
+) {
   const limits = DEFAULT_LIMITS;
   if (cObfuscator && cObfuscator.kind) {
     if (!cObfuscator.cmd) {
@@ -2236,7 +2343,19 @@ function buildLauncher(stageDir, codecState, allowBootstrap, sentinelCfg, envMod
   const outPath = path.join(stageDir, "thin-launcher");
   fs.writeFileSync(
     cPath,
-    renderLauncherSource(codecState, limits, allowBootstrap, sentinelCfg, envMode, runtimeStore, antiDebugCfg, integrityCfg),
+    renderLauncherSource(
+      codecState,
+      limits,
+      allowBootstrap,
+      sentinelCfg,
+      envMode,
+      runtimeStore,
+      antiDebugCfg,
+      integrityCfg,
+      appBindValue,
+      appBindEnabled,
+      snapshotGuardCfg
+    ),
     "utf-8"
   );
 
@@ -2244,10 +2363,9 @@ function buildLauncher(stageDir, codecState, allowBootstrap, sentinelCfg, envMod
   const obfArgs = (cObfuscator && Array.isArray(cObfuscator.args))
     ? cObfuscator.args.map((v) => String(v))
     : [];
-  const args = [
-    "-O2",
+  const hardeningEnabled = launcherHardening !== false;
+  const hardeningArgs = hardeningEnabled ? [
     "-s",
-    "-D_GNU_SOURCE",
     "-D_FORTIFY_SOURCE=2",
     "-fPIE",
     "-fno-ident",
@@ -2262,6 +2380,14 @@ function buildLauncher(stageDir, codecState, allowBootstrap, sentinelCfg, envMod
     "-Wl,-z,noexecstack",
     "-Wl,--build-id=none",
     "-pie",
+  ] : [];
+  if (hardeningEnabled && (process.arch === "x64" || process.arch === "ia32")) {
+    hardeningArgs.push("-fcf-protection=full");
+  }
+  const args = [
+    "-O2",
+    "-D_GNU_SOURCE",
+    ...hardeningArgs,
     ...obfArgs,
     "-o", outPath,
     cPath,
@@ -2284,6 +2410,7 @@ async function packThin({
   stageDir,
   releaseDir,
   appName,
+  entryRel,
   obfPath,
   mode,
   level,
@@ -2292,8 +2419,11 @@ async function packThin({
   zstdTimeoutMs,
   envMode,
   runtimeStore,
+  launcherHardening,
   antiDebug,
   integrity,
+  appBind,
+  snapshotGuard,
   projectRoot,
   targetName,
   sentinel,
@@ -2343,14 +2473,18 @@ async function packThin({
     info(`Thin: encoding runtime (zstd + mask, chunk=${chunkSize})...`);
     const nodeBin = fs.readFileSync(process.execPath);
     const payload = fs.readFileSync(obfPath);
+    const appBindEnabled = !appBind || appBind.enabled !== false;
+    const appBindValue = computeAppBind(appName, entryRel, appBind);
 
     zstdCompress.timeoutMs = zstdTimeout;
     const runtimeContainer = await encodeContainer(nodeBin, codecState, chunkSize, zstdLevel, {
       progress: (i, total) => info(`Thin: runtime ${i}/${total}`),
+      appBind: appBindValue,
     });
     info("Thin: encoding payload (zstd + mask)...");
     const payloadContainer = await encodeContainer(payload, codecState, chunkSize, zstdLevel, {
       progress: (i, total) => info(`Thin: payload ${i}/${total}`),
+      appBind: appBindValue,
     });
 
     ensureDir(stageDir);
@@ -2358,7 +2492,21 @@ async function packThin({
 
     const allowBootstrap = thinMode === "bootstrap";
     info("Thin: building launcher (cc + libzstd)...");
-    const launcherRes = buildLauncher(stageDir, codecState, allowBootstrap, sentinel, envMode, runtimeStore, cObfuscator, antiDebug, integrityCfg);
+    const launcherRes = buildLauncher(
+      stageDir,
+      codecState,
+      allowBootstrap,
+      sentinel,
+      envMode,
+      runtimeStore,
+      cObfuscator,
+      antiDebug,
+      integrityCfg,
+      appBindValue,
+      appBindEnabled,
+      snapshotGuard,
+      launcherHardening
+    );
     if (!launcherRes.ok) return launcherRes;
 
     const outBin = path.join(releaseDir, appName);
@@ -2403,6 +2551,7 @@ exec "$DIR/b/a" "$@"
       runtimeLen: runtimeContainer.length,
       payloadOff,
       payloadLen: payloadContainer.length,
+      appBindValue,
     });
 
     fs.appendFileSync(outBin, runtimeContainer);
