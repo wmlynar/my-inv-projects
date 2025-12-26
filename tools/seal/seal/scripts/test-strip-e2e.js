@@ -149,19 +149,34 @@ async function runRelease({ releaseDir, runTimeoutMs }) {
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
 
   const child = spawn(binPath, [], { cwd: releaseDir, stdio: ["ignore", "pipe", "pipe"] });
-  child.stdout.on("data", () => {});
-  child.stderr.on("data", () => {});
-  let exitErr = null;
-  child.on("exit", (code, signal) => {
-    if (code && code !== 0) {
-      exitErr = new Error(`app exited (code=${code}, signal=${signal || "none"})`);
-    }
+  const maxLog = 16000;
+  const logs = { out: "", err: "" };
+  const append = (prev, chunk) => {
+    const next = prev + chunk.toString("utf8");
+    return next.length > maxLog ? next.slice(-maxLog) : next;
+  };
+  child.stdout.on("data", (c) => { logs.out = append(logs.out, c); });
+  child.stderr.on("data", (c) => { logs.err = append(logs.err, c); });
+  let done = false;
+  const exitPromise = new Promise((_, reject) => {
+    child.on("exit", (code, signal) => {
+      if (done) return;
+      reject(new Error(`app exited (code=${code ?? "null"}, signal=${signal || "none"})`));
+    });
   });
 
   try {
-    await withTimeout("waitForStatus", runTimeoutMs, () => waitForStatus(port));
-    if (exitErr) throw exitErr;
+    await withTimeout("waitForStatus", runTimeoutMs, () => Promise.race([
+      waitForStatus(port),
+      exitPromise,
+    ]));
+  } catch (err) {
+    const out = logs.out ? `\n--- stdout ---\n${logs.out}` : "";
+    const errOut = logs.err ? `\n--- stderr ---\n${logs.err}` : "";
+    const msg = `${err && err.message ? err.message : err}${out}${errOut}`;
+    throw new Error(msg);
   } finally {
+    done = true;
     child.kill("SIGTERM");
     await new Promise((resolve) => {
       const t = setTimeout(() => {
@@ -184,7 +199,7 @@ function readelfHasSymtab(binPath) {
   return out.includes(".symtab");
 }
 
-async function buildWithStrip({ outRoot }) {
+async function buildWithStrip({ outRoot, packager }) {
   const baseCfg = loadProjectConfig(EXAMPLE_ROOT);
   const projectCfg = JSON.parse(JSON.stringify(baseCfg));
   projectCfg.build = projectCfg.build || {};
@@ -201,7 +216,7 @@ async function buildWithStrip({ outRoot }) {
     projectCfg,
     targetCfg,
     configName,
-    packagerOverride: "thin-single",
+    packagerOverride: packager || "thin-single",
     outDirOverride: outDir,
   });
 
@@ -210,32 +225,35 @@ async function buildWithStrip({ outRoot }) {
   return { ...res, meta };
 }
 
-async function testStripEnabled(ctx) {
-  log("Building thin-single with strip enabled...");
-  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-strip-"));
-  try {
-    const res = await withTimeout("buildRelease(strip)", ctx.buildTimeoutMs, () =>
-      buildWithStrip({ outRoot })
-    );
-    const steps = ((res.meta || {}).protection || {}).post?.steps || [];
-    const stripStep = steps.find((s) => s.step === "strip");
-    assert.ok(stripStep, "Missing strip step in meta");
-    if (!stripStep.ok) {
-      throw new Error(`strip step not OK: ${JSON.stringify(stripStep)}`);
-    }
+function extractStripStep(res) {
+  const steps = ((res.meta || {}).protection || {}).post?.steps || [];
+  const stripStep = steps.find((s) => s.step === "strip");
+  assert.ok(stripStep, "Missing strip step in meta");
+  return stripStep;
+}
 
-    const binPath = path.join(res.releaseDir, "seal-example");
-    const symtab = readelfHasSymtab(binPath);
-    if (symtab === true) {
-      throw new Error("Expected stripped binary (symtab still present)");
-    } else if (symtab === null) {
-      log("NOTE: readelf not available; skip symtab check");
-    }
-
-    await runRelease({ releaseDir: res.releaseDir, runTimeoutMs: ctx.runTimeoutMs });
-  } finally {
-    fs.rmSync(outRoot, { recursive: true, force: true });
+async function testStripMetadataThin(res) {
+  const stripStep = extractStripStep(res);
+  if (!(stripStep.skipped && stripStep.reason === "thin_not_supported")) {
+    throw new Error(`expected thin strip skip, got: ${JSON.stringify(stripStep)}`);
   }
+}
+
+async function testStripMetadataSea(res) {
+  const stripStep = extractStripStep(res);
+  if (!stripStep.ok) {
+    throw new Error(`strip step not OK: ${JSON.stringify(stripStep)}`);
+  }
+
+  const binPath = path.join(res.releaseDir, "seal-example");
+  const symtab = readelfHasSymtab(binPath);
+  if (symtab === true) {
+    throw new Error("Expected stripped binary (symtab still present)");
+  }
+}
+
+async function testStripRuntime(res, ctx) {
+  await runRelease({ releaseDir: res.releaseDir, runTimeoutMs: ctx.runTimeoutMs });
 }
 
 async function main() {
@@ -245,6 +263,12 @@ async function main() {
   }
   const prereq = checkPrereqs();
   if (!prereq.ok) process.exit(prereq.skip ? 0 : 1);
+
+  const prevPath = process.env.PATH;
+  const localBin = path.resolve(__dirname, "..", "node_modules", ".bin");
+  if (fs.existsSync(localBin) && !process.env.PATH.split(path.delimiter).includes(localBin)) {
+    process.env.PATH = `${localBin}${path.delimiter}${process.env.PATH}`;
+  }
 
   const prevChunk = process.env.SEAL_THIN_CHUNK_SIZE;
   const prevZstd = process.env.SEAL_THIN_ZSTD_LEVEL;
@@ -269,20 +293,56 @@ async function main() {
     }
   }
 
+  if (process.env.SEAL_STRIP_E2E_SKIP_RUN === "1") {
+    runRelease.skipListen = true;
+    log("SKIP: runtime check disabled by SEAL_STRIP_E2E_SKIP_RUN");
+  }
+
+  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-strip-"));
   let failures = 0;
   try {
-    await withTimeout("testStripEnabled", testTimeoutMs, () => testStripEnabled(ctx));
-    log("OK: testStripEnabled");
+    log("Building thin-single with strip enabled (expect skip)...");
+    const thinRes = await withTimeout("buildRelease(strip-thin)", buildTimeoutMs, () =>
+      buildWithStrip({ outRoot, packager: "thin-single" })
+    );
+    await withTimeout("testStripMetadataThin", testTimeoutMs, () => testStripMetadataThin(thinRes));
+    log("OK: testStripMetadataThin");
+
+    if (!runRelease.skipListen) {
+      await withTimeout("testStripRuntime(thin)", testTimeoutMs, () => testStripRuntime(thinRes, ctx));
+      log("OK: testStripRuntime(thin)");
+    } else {
+      log("SKIP: testStripRuntime(thin) (listen not permitted)");
+    }
+
+    if (!hasCommand("postject")) {
+      log("SKIP: postject not available; SEA strip test disabled");
+    } else {
+      log("Building SEA with strip enabled...");
+      const seaRes = await withTimeout("buildRelease(strip-sea)", buildTimeoutMs, () =>
+        buildWithStrip({ outRoot, packager: "sea" })
+      );
+      await withTimeout("testStripMetadataSea", testTimeoutMs, () => testStripMetadataSea(seaRes));
+      log("OK: testStripMetadataSea");
+      if (!runRelease.skipListen) {
+        await withTimeout("testStripRuntime(sea)", testTimeoutMs, () => testStripRuntime(seaRes, ctx));
+        log("OK: testStripRuntime(sea)");
+      } else {
+        log("SKIP: testStripRuntime(sea) (listen not permitted)");
+      }
+    }
   } catch (e) {
     failures += 1;
-    fail(`testStripEnabled: ${e.message || e}`);
+    fail(e.message || e);
   } finally {
+    fs.rmSync(outRoot, { recursive: true, force: true });
     if (prevChunk === undefined) delete process.env.SEAL_THIN_CHUNK_SIZE;
     else process.env.SEAL_THIN_CHUNK_SIZE = prevChunk;
     if (prevZstd === undefined) delete process.env.SEAL_THIN_ZSTD_LEVEL;
     else process.env.SEAL_THIN_ZSTD_LEVEL = prevZstd;
     if (prevZstdTimeout === undefined) delete process.env.SEAL_THIN_ZSTD_TIMEOUT_MS;
     else process.env.SEAL_THIN_ZSTD_TIMEOUT_MS = prevZstdTimeout;
+    process.env.PATH = prevPath;
   }
 
   if (failures > 0) process.exit(1);

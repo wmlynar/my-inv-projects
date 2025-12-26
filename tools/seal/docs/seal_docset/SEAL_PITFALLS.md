@@ -103,6 +103,9 @@
 - Blad: `read` bez `-r` zjadalo backslashe i psulo dane (np. sciezki).
   - Wymaganie: uzywaj `read -r`.
 
+- Blad: operacje wymagajace uprawnien byly „maskowane” fallbackiem zamiast jawnego zgloszenia potrzeby zgody.
+  - Wymaganie: gdy potrzebne sa uprawnienia/sandbox escape, bledy musza byc jawne i wymagac zgody uzytkownika (bez cichych fallbackow).
+
 - Blad: timeouts i pomiary czasu oparte o `Date.now()` byly wrażliwe na zmiany czasu/NTP.
   - Wymaganie: do timeoutów i elapsed używaj zegara monotonicznego (`process.hrtime`/`performance.now`).
 

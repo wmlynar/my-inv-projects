@@ -652,9 +652,13 @@ function applyHardeningPost(releaseDir, appName, packagerUsed, hardCfg) {
   const stripTool = cfg.stripTool || "strip";
   const stripArgs = cfg.stripArgs || null;
   if (!isScript && stripEnabled) {
-    steps.push({ step: "strip", ...tryStripBinary(exePath, { cmd: stripTool, args: stripArgs }) });
+    if (isThin) {
+      steps.push({ step: "strip", ok: false, skipped: true, reason: "thin_not_supported" });
+    } else {
+      steps.push({ step: "strip", ...tryStripBinary(exePath, { cmd: stripTool, args: stripArgs }) });
+    }
   } else if (!isScript && !isThin) {
-    steps.push({ step: 'strip', ok: false, skipped: true, reason: stripEnabled ? 'strip_failed' : 'disabled_by_default' });
+    steps.push({ step: "strip", ok: false, skipped: true, reason: stripEnabled ? "strip_failed" : "disabled_by_default" });
   }
   const packerEnabled = !!cfg.elfPacker;
   if (packerEnabled && isScript) {
