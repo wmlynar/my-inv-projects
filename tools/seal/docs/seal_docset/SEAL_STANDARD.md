@@ -170,6 +170,8 @@ Przykład:
 - STD-056 (SHOULD): drenaż stdout/stderr dotyczy **wszystkich** scenariuszy testowych (takze gdy spodziewasz sie porazki procesu).
 - STD-059 (SHOULD): testy E2E musza obejmowac scenariusze negatywne (brak plikow, zle uprawnienia, symlink), bo tam najczesciej wychodza regresje.
 - STD-060 (SHOULD): testy musza deterministycznie sprzatac zasoby (tmp/porty/procesy), a brak sprzatania jest traktowany jako fail.
+- STD-155 (SHOULD): negatywne testy E2E musza asercyjnie weryfikowac **konkretny** sygnal bledu (exit code lub wzorzec stderr); inne bledy = FAIL.
+- STD-156 (SHOULD): gdy krok testu wymaga uprawnien (EPERM/EACCES, brak `ptrace`, brak bind), test oznacza **SKIP z instrukcja** jak uruchomic z eskalacja/zezwoleniem.
 - STD-062 (SHOULD): testy wymagajace roota/SSH/portow musza byc domyslnie wylaczone i raportowac **jawny SKIP z powodem**.
 - STD-063 (SHOULD): po E2E dodaj asercje „brak tmp” (np. `/tmp/seal-*`), zeby wykryc brak sprzatania.
 - STD-065 (SHOULD): kazda funkcja zalezna od ENV ma jawny default i loguje „effective config”.
@@ -195,6 +197,9 @@ Przykład:
 - STD-075 (SHOULD): generowany kod C nie moze redefiniowac makr (np. `_GNU_SOURCE`) ani duplikowac identyfikatorow; stosuj `#ifndef` i unikalne prefiksy.
 - STD-076 (SHOULD): bledy toolchaina musza pokazywac pelne stderr/stdout i kod wyjscia; nie traktuj ostrzezen jako bledow, chyba ze jawnie uzywasz `-Werror`.
 - STD-077 (SHOULD): dlugie kroki builda/testow loguja postep (co kilka sekund) i w trybie verbose przepuszczaja stdout/stderr narzedzi.
+- STD-090 (SHOULD): self‑integrity hash binarki musi byc liczony **po** wszystkich operacjach post‑pack (hardening/packery); po tym kroku nie wolno juz modyfikowac pliku.
+- STD-091 (SHOULD): self‑hash marker musi byc wykrywany bez falszywych trafien (waliduj hex, ignoruj nie‑hex) i obslugiwac wiele wystapien, wymagajac spojnosc hasha.
+- STD-092 (SHOULD): marker/hash placeholder w generowanym C musi byc utrzymany w binarce (np. `volatile`/jawna referencja), aby patcher zawsze go znalazl.
 - STD-078 (SHOULD): skrypty/testy nie zakladaja `bash` – uzywaja `/bin/sh` albo sprawdzaja dostepnosc i robia jawny SKIP.
 - STD-079 (SHOULD): jeden kanoniczny katalog wyjsciowy (`seal-out/`); cache i artefakty trafiaja do podfolderow tego katalogu, bez alternatywnych sciezek.
 - STD-080 (SHOULD): testy E2E nie modyfikuja plikow w repo; uzywaja kopii projektu lub `outDirOverride` i sprzataja wszystko w `finally`.

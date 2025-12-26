@@ -289,6 +289,9 @@
 - Blad: testy „expect fail” nie drenowaly stdout/stderr child procesu, co moglo blokowac proces i zafalszowac timeout.
   - Wymaganie: drenaż stdout/stderr jest wymagany **we wszystkich** sciezkach testu (takze przy spodziewanej porazce).
 
+- Blad: testy „expect fail” akceptowaly dowolny błąd (np. brak configu) zamiast tego konkretnego, ktory mial byc wykryty.
+  - Wymaganie: negatywne testy musza asercyjnie weryfikowac **konkretny** sygnal (kod wyjscia lub wzorzec stderr); inne bledy = FAIL.
+
 - Blad: testy zalezne od narzedzi (postject/strip/packery) failowaly zamiast graczejnego SKIP, gdy narzedzia nie byly zainstalowane.
   - Wymaganie: testy tool‑dependent sprawdzaja dostepnosc narzedzi i robia SKIP z powodem (chyba ze env wymusza fail).
 
@@ -361,7 +364,7 @@
 - Blad: format binarny nie mial wersji, a nieznana wersja powodowala niejasne bledy.
   - Wymaganie: formaty binarne maja wersjonowanie i twardy fail na nieznana wersje.
   - Wymaganie: testy nie zalezne od internetu; zewnetrzne call'e stubuj lokalnie.
-  - Wymaganie: jesli srodowisko blokuje `listen` (EPERM), testy powinny sie jawnie oznaczyc jako SKIP.
+  - Wymaganie: jesli srodowisko blokuje `listen` (EPERM), testy powinny sie jawnie oznaczyc jako SKIP **z instrukcja** (np. „uruchom z eskalacja/zezwoleniem”).
 
 ## Deploy / infrastruktura
 
@@ -448,6 +451,15 @@
 
 - Blad: zbyt szeroka `mapsDenylist` (np. `libc`) powodowala falszywe alarmy i blokowala poprawne uruchomienia.
   - Wymaganie: listy deny powinny byc precyzyjne (np. `frida`, `gdb`, `ltrace`), a testy musza pokrywac scenariusz false‑positive.
+
+- Blad: self‑hash launchera padal przez kolizje markera (np. string `THIN_SELF_HASH:` pojawial sie w innym miejscu binarki), co dawalo falszywe `runtime invalid`.
+  - Wymaganie: identyfikuj marker po **pelnym wzorcu** (marker + hex) lub waliduj hex i ignoruj nie‑hex; obsluz wiele wystapien i wymagaj spojnosc hasha.
+
+- Blad: self‑hash byl wstawiany przed hardeningiem/packerem i uniewaznial sie po pozniejszych modyfikacjach binarki.
+  - Wymaganie: obliczaj i wstawiaj hash **po** wszystkich operacjach post‑pack (ostatni krok).
+
+- Blad: kompilator optymalizowal nieuzywany string markera, przez co patcher nie znajdowal placeholdera.
+  - Wymaganie: utrzymuj marker w binarce (np. `volatile` lub jawna referencja), zeby patchowanie bylo deterministyczne.
 
 - Blad: pliki binarne byly czytane/zapisywane z `utf8`, co uszkadzalo dane (codec/payload).
   - Wymaganie: binarki czytaj/zapisuj jako `Buffer` (bez encoding), a tekst jawnie jako `utf8`.
