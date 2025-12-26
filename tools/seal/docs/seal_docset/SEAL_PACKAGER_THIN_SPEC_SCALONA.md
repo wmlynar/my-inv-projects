@@ -127,6 +127,25 @@ npx seal release prod --packager thin-single
     - `mode: "errno" | "kill"`: `errno` zwraca `EPERM`, `kill` natychmiast kończy proces.
     - brak wsparcia seccomp = **fail‑fast** (bez fallbacku).
   - `coreDump` (domyślnie `true`) — ustawia `RLIMIT_CORE=0` (brak core‑dumpów).
+- **Brak aktywnego `PTRACE_TRACEME` guard**: wymagałby modelu fork/parent‑handshake (TRACEME → SIGTRAP → parent `PTRACE_DETACH`) oraz zmian w unitach systemd (`Type=forking`/PIDFile) i przekazywania sygnałów/logów. Obecnie używamy `PR_SET_DUMPABLE` + seccomp jako twardej blokady.
+
+**Jak wyglądałaby implementacja aktywnego `PTRACE_TRACEME` (opcjonalny projekt):**
+- **Child**:
+  - `ptrace(PTRACE_TRACEME)` → jeśli `EPERM`, **fail‑fast** (już debugowany).
+  - `execve` runtime (u nas: `fexecve` Node).
+  - Po `exec` child dostaje `SIGTRAP` i **wstrzymuje się** do czasu akcji parenta.
+- **Parent**:
+  - `waitpid(child, &st, WUNTRACED)`; oczekuje na `SIGTRAP`.
+  - wykonuje weryfikacje (opcjonalnie: `TracerPid`, env denylist, itd.).
+  - `ptrace(PTRACE_DETACH, child, 0, SIGCONT)` — dopiero wtedy child kontynuuje.
+- **Systemd / uruchomienie usługi**:
+  - Wymagany **forking model**: `Type=forking` + `PIDFile`, albo **parent‑shim** utrzymujący się przy życiu.
+  - Parent musi forwardować `SIGTERM/SIGINT` do childa (inaczej `systemctl stop` nie kończy usługi).
+  - Stdout/stderr childa muszą być przekierowane przez parenta (w trybie `seal run`/foreground).
+- **Konsekwencje w Sealu**:
+  - Zmiana launcher‑workflow (fork + handshake).
+  - Aktualizacja unitów systemd generowanych przez `appctl`/`seal remote`.
+  - Aktualizacja `seal run` i E2E (run‑local/foreground wymaga obsługi forka i sygnałów).
 
 **Uwaga (testy E2E):**
 - W testach okresowego `TracerPid` używane są tylko w trybie E2E specjalne ENV:
