@@ -13,7 +13,7 @@ const { buildRelease } = require("../src/lib/build");
 const { loadProjectConfig, loadTargetConfig, resolveConfigName } = require("../src/lib/project");
 const { readJson5, writeJson5 } = require("../src/lib/json5io");
 
-const EXAMPLE_ROOT = path.resolve(__dirname, "..", "..", "example");
+const EXAMPLE_ROOT = process.env.SEAL_E2E_EXAMPLE_ROOT || path.resolve(__dirname, "..", "..", "example");
 
 function log(msg) {
   process.stdout.write(`[ui-e2e] ${msg}\n`);

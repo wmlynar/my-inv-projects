@@ -1,0 +1,30 @@
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV container=docker
+
+RUN apt-get update && apt-get install -y \
+  systemd \
+  openssh-server \
+  sudo \
+  curl \
+  rsync \
+  ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN useradd -m -s /bin/bash admin \
+  && echo "admin ALL=(ALL) NOPASSWD:ALL" >/etc/sudoers.d/admin \
+  && chmod 440 /etc/sudoers.d/admin \
+  && mkdir -p /home/admin/.ssh /var/run/sshd /home/admin/apps \
+  && chown -R admin:admin /home/admin/.ssh /home/admin/apps \
+  && chmod 700 /home/admin/.ssh
+
+RUN ln -s /lib/systemd/system/ssh.service /etc/systemd/system/multi-user.target.wants/ssh.service
+
+COPY tools/seal/seal/docker/e2e/server-entrypoint.sh /usr/local/bin/seal-server-entrypoint
+RUN chmod +x /usr/local/bin/seal-server-entrypoint
+
+VOLUME ["/sys/fs/cgroup"]
+
+ENTRYPOINT ["/usr/local/bin/seal-server-entrypoint"]
+CMD ["/sbin/init"]

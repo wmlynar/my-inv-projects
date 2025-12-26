@@ -1,0 +1,49 @@
+services:
+  seal-server:
+    build:
+      context: ../../../../..
+      dockerfile: tools/seal/seal/docker/e2e/Dockerfile.server
+      network: host
+    container_name: seal-e2e-server
+    hostname: seal-e2e-server
+    privileged: true
+    security_opt:
+      - seccomp=unconfined
+      - apparmor=unconfined
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    tmpfs:
+      - /run
+      - /tmp
+      - /run/lock
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+      - ./ssh:/tmp/seal-ssh:ro
+    environment:
+      - SEAL_SERVER_USER=admin
+    networks:
+      - seal-e2e
+
+  seal-builder:
+    build:
+      context: ../../../../..
+      dockerfile: tools/seal/seal/docker/e2e/Dockerfile.builder
+      network: host
+    container_name: seal-e2e-builder
+    privileged: true
+    working_dir: /workspace
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    volumes:
+      - ../../../..:/workspace
+      - ./ssh:/root/.ssh
+    environment:
+      - SEAL_DOCKER_E2E=1
+    networks:
+      - seal-e2e
+
+networks:
+  seal-e2e:
+    driver: bridge

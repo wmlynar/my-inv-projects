@@ -36,6 +36,8 @@ config.runtime.json5
 seal-out/
 backup/third-party/*.zip
 .obfuscators/
+tools/seal/seal/docker/e2e/ssh/
+tools/seal/seal/docker/e2e/cache/
 
 # OS/editor
 .DS_Store

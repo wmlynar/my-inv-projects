@@ -13,7 +13,7 @@ const { buildRelease } = require("../src/lib/build");
 const { loadProjectConfig, loadTargetConfig, resolveConfigName } = require("../src/lib/project");
 const { readJson5, writeJson5 } = require("../src/lib/json5io");
 
-const EXAMPLE_ROOT = path.resolve(__dirname, "..", "..", "example");
+const EXAMPLE_ROOT = process.env.SEAL_E2E_EXAMPLE_ROOT || path.resolve(__dirname, "..", "..", "example");
 
 function log(msg) {
   process.stdout.write(`[thin-anti-debug-e2e] ${msg}\n`);
@@ -320,11 +320,14 @@ async function buildThinSplit({
   const baseCfg = loadProjectConfig(EXAMPLE_ROOT);
   const projectCfg = JSON.parse(JSON.stringify(baseCfg));
   projectCfg.build = projectCfg.build || {};
+  projectCfg.build.sentinel = Object.assign({}, projectCfg.build.sentinel || {}, {
+    enabled: false,
+  });
   const thinCfg = Object.assign({}, projectCfg.build.thin || {});
-  if (antiDebug !== undefined) thinCfg.antiDebug = antiDebug;
-  if (integrity !== undefined) thinCfg.integrity = integrity;
-  if (appBind !== undefined) thinCfg.appBind = appBind;
-  if (snapshotGuard !== undefined) thinCfg.snapshotGuard = snapshotGuard;
+  if (antiDebug !== undefined) thinCfg.antiDebug = Object.assign({}, thinCfg.antiDebug || {}, antiDebug);
+  if (integrity !== undefined) thinCfg.integrity = Object.assign({}, thinCfg.integrity || {}, integrity);
+  if (appBind !== undefined) thinCfg.appBind = Object.assign({}, thinCfg.appBind || {}, appBind);
+  if (snapshotGuard !== undefined) thinCfg.snapshotGuard = Object.assign({}, thinCfg.snapshotGuard || {}, snapshotGuard);
   if (launcherHardening !== undefined) thinCfg.launcherHardening = launcherHardening;
   if (launcherObfuscation !== undefined) thinCfg.launcherObfuscation = launcherObfuscation;
   projectCfg.build.thin = thinCfg;
@@ -381,26 +384,40 @@ async function main() {
   const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-thin-ad-"));
   let failures = 0;
   try {
-    log("Testing launcherObfuscation requires cObfuscator...");
-    await withTimeout("buildRelease(launcherObfuscation missing)", buildTimeoutMs, async () => {
-      let threw = false;
-      try {
-        await buildThinSplit({
+    const baseCfg = loadProjectConfig(EXAMPLE_ROOT);
+    const cObfCmd = baseCfg?.build?.protection?.cObfuscator?.cmd;
+    const cObfAvailable = !!(cObfCmd && hasCommand(cObfCmd));
+    if (cObfAvailable) {
+      log("Testing launcherObfuscation with available cObfuscator...");
+      await withTimeout("buildRelease(launcherObfuscation ok)", buildTimeoutMs, () =>
+        buildThinSplit({
           outRoot,
           launcherObfuscation: true,
-        });
-      } catch (e) {
-        const msg = e && e.message ? e.message : String(e);
-        if (!msg.includes("launcherObfuscation")) {
-          throw e;
+        })
+      );
+      log("OK: launcherObfuscation build succeeded");
+    } else {
+      log("Testing launcherObfuscation requires cObfuscator...");
+      await withTimeout("buildRelease(launcherObfuscation missing)", buildTimeoutMs, async () => {
+        let threw = false;
+        try {
+          await buildThinSplit({
+            outRoot,
+            launcherObfuscation: true,
+          });
+        } catch (e) {
+          const msg = e && e.message ? e.message : String(e);
+          if (!msg.includes("launcherObfuscation")) {
+            throw e;
+          }
+          threw = true;
         }
-        threw = true;
-      }
-      if (!threw) {
-        throw new Error("expected launcherObfuscation build failure");
-      }
-    });
-    log("OK: launcherObfuscation requires cObfuscator");
+        if (!threw) {
+          throw new Error("expected launcherObfuscation build failure");
+        }
+      });
+      log("OK: launcherObfuscation requires cObfuscator");
+    }
 
     log("Building thin-split with integrity enabled...");
     const resA = await withTimeout("buildRelease(integrity)", buildTimeoutMs, () =>
@@ -416,9 +433,9 @@ async function main() {
     );
     log("OK: integrity enabled (runtime ok)");
 
-    log("Testing denyEnv (LD_PRELOAD)...");
+    log("Testing denyEnv (NODE_OPTIONS)...");
     await withTimeout("denyEnv fail", testTimeoutMs, () =>
-      runReleaseExpectFail({ releaseDir: resA.releaseDir, runTimeoutMs, env: { LD_PRELOAD: "1" }, expectStderr: "[thin] runtime invalid" })
+      runReleaseExpectFail({ releaseDir: resA.releaseDir, runTimeoutMs, env: { NODE_OPTIONS: "--trace-warnings" }, expectStderr: "[thin] runtime invalid" })
     );
     log("OK: denyEnv triggers failure");
 

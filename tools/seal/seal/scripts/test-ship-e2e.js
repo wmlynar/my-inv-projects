@@ -13,7 +13,7 @@ const { uninstallSsh } = require("../src/lib/deploySsh");
 const { sshExec } = require("../src/lib/ssh");
 const { writeJson5, readJson5 } = require("../src/lib/json5io");
 
-const EXAMPLE_ROOT = path.resolve(__dirname, "..", "..", "example");
+const EXAMPLE_ROOT = process.env.SEAL_E2E_EXAMPLE_ROOT || path.resolve(__dirname, "..", "..", "example");
 
 function log(msg) {
   process.stdout.write(`[ship-e2e] ${msg}\n`);
@@ -51,6 +51,26 @@ function readFileMaybe(p) {
     return fs.readFileSync(p, "utf-8");
   } catch {
     return null;
+  }
+}
+
+function disableSentinelOnDisk() {
+  const sealPath = path.join(EXAMPLE_ROOT, "seal.json5");
+  if (!fs.existsSync(sealPath)) return null;
+  const backup = readFileMaybe(sealPath);
+  const cfg = readJson5(sealPath) || {};
+  cfg.build = cfg.build || {};
+  cfg.build.sentinel = Object.assign({}, cfg.build.sentinel || {}, {
+    enabled: false,
+  });
+  writeJson5(sealPath, cfg);
+  return backup;
+}
+
+function restoreSentinelOnDisk(backup) {
+  const sealPath = path.join(EXAMPLE_ROOT, "seal.json5");
+  if (backup !== null && backup !== undefined) {
+    fs.writeFileSync(sealPath, backup, "utf-8");
   }
 }
 
@@ -293,6 +313,7 @@ async function main() {
     log("SKIP: set SEAL_SHIP_E2E=1 to run ship E2E tests");
     process.exit(0);
   }
+  const sentinelBackup = disableSentinelOnDisk();
   try {
     if (systemctlUserReady()) {
       await testShipThinBootstrapReuse();
@@ -302,6 +323,8 @@ async function main() {
   } catch (e) {
     fail(e.stack || e.message || String(e));
     process.exit(1);
+  } finally {
+    restoreSentinelOnDisk(sentinelBackup);
   }
 }
 

@@ -6,6 +6,14 @@ if [ "$(id -u)" -ne 0 ]; then
   SUDO="sudo"
 fi
 
+run_sudo() {
+  if [ -n "$SUDO" ]; then
+    "$SUDO" -E "$@"
+  else
+    "$@"
+  fi
+}
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SEAL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
@@ -46,8 +54,8 @@ if [ "$INSTALL_APT" = "1" ]; then
     exit 2
   fi
   log "Installing core apt dependencies..."
-  $SUDO apt-get update
-  $SUDO apt-get install -y "${APT_DEPS[@]}"
+  run_sudo apt-get update
+  run_sudo apt-get install -y "${APT_DEPS[@]}"
 fi
 
 if [ "$INSTALL_NODE" = "1" ]; then
@@ -67,8 +75,8 @@ if [ "$INSTALL_NODE" = "1" ]; then
       exit 3
     fi
     log "Installing Node.js >= ${NODE_MAJOR} (NodeSource)..."
-    $SUDO -E bash -c "curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash -"
-    $SUDO apt-get install -y nodejs
+    run_sudo bash -c "curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash -"
+    run_sudo apt-get install -y nodejs
   else
     log "Node.js OK: $(node -v)"
   fi

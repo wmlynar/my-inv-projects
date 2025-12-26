@@ -16,7 +16,7 @@ const { readJson5, writeJson5 } = require("../src/lib/json5io");
 const { buildAnchor, deriveOpaqueDir, deriveOpaqueFile, packBlob } = require("../src/lib/sentinelCore");
 const { buildFingerprintHash } = require("../src/lib/sentinelConfig");
 
-const EXAMPLE_ROOT = path.resolve(__dirname, "..", "..", "example");
+const EXAMPLE_ROOT = process.env.SEAL_E2E_EXAMPLE_ROOT || path.resolve(__dirname, "..", "..", "example");
 
 function log(msg) {
   process.stdout.write(`[sentinel-e2e] ${msg}\n`);

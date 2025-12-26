@@ -2171,6 +2171,76 @@ static char *dup_env_value(const char *name) {
   return copy;
 }
 
+typedef struct {
+  char *name;
+  char *value;
+} env_pair;
+
+static void free_env_pairs(env_pair *list, size_t len) {
+  if (!list) return;
+  for (size_t i = 0; i < len; i++) {
+    free(list[i].name);
+    free(list[i].value);
+  }
+  free(list);
+}
+
+static int save_seal_env(env_pair **out_list, size_t *out_len) {
+  env_pair *list = NULL;
+  size_t len = 0;
+  size_t cap = 0;
+  if (out_list) *out_list = NULL;
+  if (out_len) *out_len = 0;
+
+  for (char **e = environ; e && *e; e++) {
+    if (strncmp(*e, "SEAL_", 5) != 0) continue;
+    const char *eq = strchr(*e, '=');
+    if (!eq) continue;
+    size_t name_len = (size_t)(eq - *e);
+    size_t val_len = strlen(eq + 1);
+    char *name = (char *)malloc(name_len + 1);
+    char *value = (char *)malloc(val_len + 1);
+    if (!name || !value) {
+      free(name);
+      free(value);
+      free_env_pairs(list, len);
+      return -1;
+    }
+    memcpy(name, *e, name_len);
+    name[name_len] = 0;
+    memcpy(value, eq + 1, val_len + 1);
+
+    if (len == cap) {
+      size_t next_cap = cap ? cap * 2 : 8;
+      env_pair *next = (env_pair *)realloc(list, next_cap * sizeof(env_pair));
+      if (!next) {
+        free(name);
+        free(value);
+        free_env_pairs(list, len);
+        return -1;
+      }
+      list = next;
+      cap = next_cap;
+    }
+    list[len].name = name;
+    list[len].value = value;
+    len++;
+  }
+
+  if (out_list) *out_list = list;
+  if (out_len) *out_len = len;
+  return 0;
+}
+
+static void restore_seal_env(env_pair *list, size_t len) {
+  if (!list) return;
+  for (size_t i = 0; i < len; i++) {
+    if (!list[i].name || !list[i].value) continue;
+    setenv(list[i].name, list[i].value, 1);
+  }
+  free_env_pairs(list, len);
+}
+
 static void set_env_paths(const char *root) {
   char buf[PATH_MAX + 64];
   setenv("SEAL_APP_DIR", root, 1);
@@ -2573,6 +2643,18 @@ static int harden_env(void) {
   const char *existing_path = getenv("PATH");
 
   if (strict_mode) {
+    env_pair *seal_env = NULL;
+    size_t seal_env_len = 0;
+    int keep_seal_env = 0;
+    const char *e2e_ad = getenv("SEAL_THIN_ANTI_DEBUG_E2E");
+    const char *e2e_sentinel = getenv("SEAL_SENTINEL_E2E");
+    if ((e2e_ad && strcmp(e2e_ad, "1") == 0) || (e2e_sentinel && strcmp(e2e_sentinel, "1") == 0)) {
+      keep_seal_env = 1;
+      if (save_seal_env(&seal_env, &seal_env_len) != 0) {
+        return fail_msg("[thin] runtime invalid", 74);
+      }
+    }
+
     char *lang = dup_env_value("LANG");
     char *lc_all = dup_env_value("LC_ALL");
     char *lc_ctype = dup_env_value("LC_CTYPE");
@@ -2585,6 +2667,9 @@ static int harden_env(void) {
     char *ssl_dir = dup_env_value("SSL_CERT_DIR");
 
     if (clearenv() != 0) {
+      if (keep_seal_env) {
+        free_env_pairs(seal_env, seal_env_len);
+      }
       free(lang);
       free(lc_all);
       free(lc_ctype);
@@ -2596,6 +2681,9 @@ static int harden_env(void) {
       free(ssl_file);
       free(ssl_dir);
       return fail_msg("[thin] runtime invalid", 74);
+    }
+    if (keep_seal_env) {
+      restore_seal_env(seal_env, seal_env_len);
     }
     if (lang) setenv("LANG", lang, 1);
     if (lc_all) setenv("LC_ALL", lc_all, 1);
