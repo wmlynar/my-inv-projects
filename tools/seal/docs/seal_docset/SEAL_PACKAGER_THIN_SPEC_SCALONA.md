@@ -123,6 +123,7 @@ npx seal release prod --packager thin-single
 - `build.thin.integrity`:
   - `enabled` (domyślnie `false`) — weryfikuje self‑hash launchera (`b/a`) w `thin-split`.
   - **Tylko `thin-split`**; dla `thin-single` build kończy się błędem.
+  - Hash jest osadzany inline w launcherze **po** wszystkich operacjach post‑pack (hardening/obfuscation). Każda modyfikacja binarki po tym kroku unieważnia hash.
 
 **Błędy runtime (bez sentinel):**
 - brak `memfd` przy `runtimeStore=memfd` → `[thin] runtime fd failed` (27) / `[thin] payload fd failed` (29),
