@@ -59,6 +59,19 @@
   - Wymaganie: jezeli `elfPacker.tool="upx"` jest wlaczony i sie nie powiedzie, build **musi** sie przerwac z bledem.
   - Wymaganie: `elfPacker.tool="upx"` domyslnie wylaczony dla SEA; wlaczaj tylko po potwierdzeniu `upx -t` na binarce.
 
+- Blad: UPX byl osobna opcja obok `elfPacker`, co tworzylo sprzeczne konfiguracje i dwie sciezki w kodzie.
+  - Wymaganie: **jedno zrodlo prawdy** dla packerow (tylko `protection.elfPacker`); duplikaty/konflikty = twardy blad.
+  - Wymaganie: template/init, przyklady i dokumentacja uzywaja tylko kanonicznych pol.
+
+- Blad: zmiana schematu `seal.json5` (np. `bundleFallback` -> `packagerFallback`, `stripSymbols/upxPack` -> `strip/elfPacker`) nie byla zaktualizowana we wszystkich projektach, docs i testach.
+  - Wymaganie: migracja schematu = aktualizacja **wszystkich** `seal.json5` w repo + init template + docs + testy.
+  - Wymaganie: parser musi fail‑fast na nieznanych/starych kluczach z jasnym hintem migracji.
+  - Wymaganie: CI/skript sprawdza brak starych kluczy w repo (scan).
+
+- Blad: lista dozwolonych wartosci (packagery, `thin.level`) rozjechala sie miedzy kodem, dokumentacja i komunikatami CLI.
+  - Wymaganie: lista dozwolonych wartosci pochodzi z jednego zrodla (konstanta) i jest uzywana w kodzie/CLI/completion.
+  - Wymaganie: testy/CI sprawdzaja zgodnosc docs z kodem.
+
 - Blad: rozjazd wykrywania narzedzi i opcji miedzy `check` i `build` (postject/cc/packager).
   - Wymaganie: **jedno zrodlo prawdy** dla wykrywania narzedzi (resolver binarki).
   - Wymaganie: `check` i `build` uzywaja tego samego PATH, targetu i packagera.
@@ -291,6 +304,9 @@
 
 - Blad: `seal check` uruchomiony poza projektem nadal tworzyl pliki i generowal mylace warningi.
   - Wymaganie: brak `seal.json5` = fail-fast **bez efektow ubocznych**.
+
+- Blad: `seal check` ostrzegal o brakujacych narzedziach (np. `upx`), mimo ze nie byly wymagane przez aktualna konfiguracje.
+  - Wymaganie: preflight ostrzega **tylko** o narzedziach faktycznie wymaganych przez wybrany packager/protection.
 
 - Blad: `seal config diff <sciezka>` zwracal `Missing target`.
   - Wymaganie: `config diff` przyjmuje **nazwe targetu**; nowe targety dodaj `seal target add <target> <config>`.

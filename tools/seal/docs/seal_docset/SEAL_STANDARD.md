@@ -133,6 +133,11 @@ Przykład:
 - STD-022 (SHOULD): `seal check` podaje dokladne kroki naprawcze (np. nazwy pakietow apt-get) i wskazuje brakujace narzedzia wprost.
 - STD-023 (SHOULD): po zmianach w CLI aktualizuj dokumentacje, completion i wizard jednoczesnie, zeby uniknac rozjazdow UX.
 - STD-037 (SHOULD): nazwy komend i semantyka sa spójne w CLI i dokumentacji.
+- STD-070 (SHOULD): zmiana schematu `seal.json5` wymaga jednoczesnej aktualizacji template/init, przykladow, docs i testow; parser musi fail‑fast na starych kluczach z jasnym hintem migracji.
+- STD-071 (SHOULD): nie dubluj opcji sterujacych tym samym zachowaniem (jedno pole = jedna semantyka). Sprzeczne ustawienia musza byc odrzucane z jasnym bledem.
+- STD-072 (SHOULD): `seal check` ostrzega tylko o narzedziach rzeczywiscie wymaganych przez wybrany packager/protection (bez szumu).
+- STD-073 (SHOULD): lista dozwolonych wartosci (packagery, poziomy) pochodzi z jednego zrodla i jest wspoldzielona przez CLI, completion i docs; CI ma test zgodnosci.
+- STD-074 (SHOULD): przykladowe `seal.json5` w repo musza przechodzic walidacje schematu (test/CI).
 
 #### Logowanie (skrót)
 - STD-042 (SHOULD): logi sa minimalne i bez payloadow; tylko dane potrzebne do diagnozy.
