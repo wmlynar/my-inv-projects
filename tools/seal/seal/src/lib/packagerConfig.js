@@ -89,6 +89,17 @@ function normalizeThinSnapshotGuard(raw) {
   };
 }
 
+function normalizeThinNativeBootstrap(raw) {
+  if (raw === undefined || raw === null) return { enabled: false };
+  if (typeof raw === "boolean") return { enabled: raw };
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("Invalid thin.nativeBootstrap: expected boolean or object");
+  }
+  return {
+    enabled: raw.enabled !== undefined ? !!raw.enabled : true,
+  };
+}
+
 function normalizeThinLauncherHardening(raw) {
   if (raw === undefined || raw === null) return true;
   if (typeof raw !== "boolean") {
@@ -325,6 +336,12 @@ function resolveThinConfig(targetCfg, projectCfg) {
     null;
   const snapshotGuard = normalizeThinSnapshotGuard(snapshotRaw);
 
+  const nativeBootstrapRaw =
+    tThin.nativeBootstrap ??
+    pThin.nativeBootstrap ??
+    null;
+  const nativeBootstrap = normalizeThinNativeBootstrap(nativeBootstrapRaw);
+
   const launcherHardeningRaw =
     tThin.launcherHardening ??
     pThin.launcherHardening ??
@@ -355,6 +372,7 @@ function resolveThinConfig(targetCfg, projectCfg) {
     integrity,
     appBind,
     snapshotGuard,
+    nativeBootstrap,
     launcherHardening,
     launcherHardeningCET,
     launcherObfuscation,

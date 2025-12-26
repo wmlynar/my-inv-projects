@@ -112,6 +112,10 @@ npx seal release prod --packager thin-split
   - `targets.<target>.thin.runtimeStore` może nadpisać.
   - `memfd` wymaga wsparcia jądra; brak wsparcia = błąd uruchomienia.
   - `tmpfile` używa `mkstemp` i usuwa plik z dysku (unlink), ale nie używa memfd; pliki tymczasowe są tworzone z `umask(077)`.
+- Native bootstrap (opcjonalny, tylko thin-split):
+  - `build.thin.nativeBootstrap: { enabled: false }`.
+  - Buduje natywny addon, który czyta bundle z FD 4 do zewnętrznego stringa (MADV_DONTDUMP + mlock) i minimalizuje czas plaintextu w heapie V8.
+  - Wymaga nagłówków Node (np. `/usr/include/node` lub `SEAL_NODE_INCLUDE_DIR`) oraz kompilatora C++ z obsługą C++20.
 
 **Anti‑debug / integrity (opcjonalne):**
 - `build.thin.antiDebug`:

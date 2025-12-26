@@ -32,6 +32,42 @@ function hasCommand(cmd) {
   return res.status === 0;
 }
 
+function hasCxx() {
+  return hasCommand("c++") || hasCommand("g++") || hasCommand("clang++");
+}
+
+function resolveCxx() {
+  if (process.env.CXX) return process.env.CXX;
+  if (hasCommand("c++")) return "c++";
+  if (hasCommand("g++")) return "g++";
+  if (hasCommand("clang++")) return "clang++";
+  return null;
+}
+
+function supportsCxx20(cxx) {
+  if (!cxx) return false;
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-cxx20-"));
+  const srcPath = path.join(tmpDir, "cxx20.cc");
+  const outPath = path.join(tmpDir, "cxx20.o");
+  fs.writeFileSync(srcPath, "int main(){return 0;}\n", "utf-8");
+  const res = spawnSync(cxx, ["-std=c++20", "-c", srcPath, "-o", outPath], { stdio: "ignore" });
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+  return res.status === 0;
+}
+
+function resolveNodeIncludeDir() {
+  const candidates = [];
+  if (process.env.SEAL_NODE_INCLUDE_DIR) candidates.push(process.env.SEAL_NODE_INCLUDE_DIR);
+  if (process.env.NODE_INCLUDE_DIR) candidates.push(process.env.NODE_INCLUDE_DIR);
+  const execDir = path.dirname(process.execPath);
+  candidates.push(path.join(execDir, "..", "include", "node"));
+  candidates.push("/usr/include/node");
+  for (const dir of candidates) {
+    if (dir && fs.existsSync(dir)) return dir;
+  }
+  return null;
+}
+
 function checkPrereqs() {
   if (process.platform !== "linux") {
     log(`SKIP: thin packager test is linux-only (platform=${process.platform})`);
@@ -49,6 +85,21 @@ function checkPrereqs() {
   if (zstdCheck.status !== 0) {
     fail("libzstd not found via pkg-config");
     return { ok: false, skip: false };
+  }
+  return { ok: true, skip: false };
+}
+
+function checkNativePrereqs() {
+  if (!hasCxx()) {
+    return { ok: false, skip: true, reason: "Missing C++ compiler (c++/g++/clang++)" };
+  }
+  const cxx = resolveCxx();
+  if (!supportsCxx20(cxx)) {
+    return { ok: false, skip: true, reason: "C++20 support missing (native bootstrap requires C++20)" };
+  }
+  const nodeInc = resolveNodeIncludeDir();
+  if (!nodeInc) {
+    return { ok: false, skip: true, reason: "Missing Node headers (set SEAL_NODE_INCLUDE_DIR)" };
   }
   return { ok: true, skip: false };
 }
@@ -127,15 +178,19 @@ function getFreePort() {
   });
 }
 
-async function buildThinRelease(buildTimeoutMs) {
+async function buildThinRelease(buildTimeoutMs, opts = {}) {
   const projectCfg = loadProjectConfig(EXAMPLE_ROOT);
   projectCfg.build = projectCfg.build || {};
   projectCfg.build.sentinel = Object.assign({}, projectCfg.build.sentinel || {}, {
     enabled: false,
   });
-  projectCfg.build.thin = Object.assign({}, projectCfg.build.thin || {}, {
+  const thinCfg = Object.assign({}, projectCfg.build.thin || {}, {
     launcherObfuscation: false,
   });
+  if (opts.nativeBootstrap === true) {
+    thinCfg.nativeBootstrap = { enabled: true };
+  }
+  projectCfg.build.thin = thinCfg;
   if (projectCfg.build.protection?.elfPacker?.tool && !hasCommand(projectCfg.build.protection.elfPacker.cmd || projectCfg.build.protection.elfPacker.tool)) {
     log("ELF packer not available; disabling elfPacker for test");
     projectCfg.build.protection.elfPacker = {};
@@ -226,7 +281,7 @@ async function runRelease({ releaseDir, buildId, runTimeoutMs, env }) {
   assert.strictEqual(status.http.port, port);
 }
 
-async function runReleaseExpectFailure({ releaseDir, env, runTimeoutMs, expectSubstring }) {
+async function runReleaseExpectFailure({ releaseDir, env, runTimeoutMs, expectSubstring, expectExitCode }) {
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
 
@@ -238,16 +293,20 @@ async function runReleaseExpectFailure({ releaseDir, env, runTimeoutMs, expectSu
   child.stderr.on("data", (c) => errChunks.push(c));
 
   const exit = await withTimeout("expectFailure", runTimeoutMs, () =>
-    new Promise((resolve) => child.on("exit", (code, signal) => resolve({ code, signal })))
+    new Promise((resolve) => child.on("close", (code, signal) => resolve({ code, signal })))
   );
 
   const stdout = Buffer.concat(outChunks).toString("utf8");
   const stderr = Buffer.concat(errChunks).toString("utf8");
+  const combined = `${stdout}${stderr}`;
   if (exit.code === 0) {
     throw new Error(`expected failure but exit code was 0 (stdout=${stdout.slice(0, 200)}, stderr=${stderr.slice(0, 200)})`);
   }
-  if (expectSubstring && !stderr.includes(expectSubstring)) {
-    throw new Error(`expected stderr to include "${expectSubstring}" (stderr=${stderr.slice(0, 200)})`);
+  if (typeof expectExitCode === "number" && exit.code !== expectExitCode) {
+    throw new Error(`expected exit code ${expectExitCode} but got ${exit.code} (stdout=${stdout.slice(0, 200)}, stderr=${stderr.slice(0, 200)})`);
+  }
+  if (expectSubstring && !combined.includes(expectSubstring)) {
+    throw new Error(`expected output to include "${expectSubstring}" (stdout=${stdout.slice(0, 200)}, stderr=${stderr.slice(0, 200)})`);
   }
 }
 
@@ -290,6 +349,39 @@ async function testThinSplit(ctx) {
   fs.rmSync(outRoot, { recursive: true, force: true });
 }
 
+async function testThinSplitNativeBootstrap(ctx) {
+  const prereq = checkNativePrereqs();
+  if (!prereq.ok) {
+    log(`SKIP: native bootstrap prerequisites not met (${prereq.reason || "unknown"})`);
+    return;
+  }
+
+  log("Building thin SPLIT (bootstrap) with native bootstrap...");
+  const res = await buildThinRelease(ctx.buildTimeoutMs, { nativeBootstrap: true });
+  const { releaseDir, buildId, outRoot } = res;
+
+  const nb = path.join(releaseDir, "r", "nb.node");
+  assert.ok(fs.existsSync(nb), "BOOTSTRAP release missing r/nb.node");
+
+  log("Running thin SPLIT with native bootstrap...");
+  await runRelease({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs });
+
+  log("Running thin SPLIT with native bootstrap (missing addon -> expect failure)...");
+  const nbBak = `${nb}.bak`;
+  fs.renameSync(nb, nbBak);
+  try {
+    await runReleaseExpectFailure({
+      releaseDir,
+      runTimeoutMs: ctx.runTimeoutMs,
+      expectExitCode: 82,
+    });
+  } finally {
+    if (fs.existsSync(nbBak)) fs.renameSync(nbBak, nb);
+  }
+
+  fs.rmSync(outRoot, { recursive: true, force: true });
+}
+
 async function main() {
   if (process.env.SEAL_THIN_E2E !== "1") {
     log("SKIP: set SEAL_THIN_E2E=1 to run thin E2E tests");
@@ -323,7 +415,7 @@ async function main() {
     }
   }
 
-  const tests = [testThinSplit];
+  const tests = [testThinSplit, testThinSplitNativeBootstrap];
   let failures = 0;
   try {
     for (const t of tests) {

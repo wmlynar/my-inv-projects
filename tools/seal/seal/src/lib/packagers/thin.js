@@ -581,6 +581,15 @@ function resolveCc(cObfuscator) {
   return null;
 }
 
+function resolveCxx() {
+  const envCxx = process.env.CXX;
+  if (envCxx) return envCxx;
+  if (hasCommand("c++")) return "c++";
+  if (hasCommand("g++")) return "g++";
+  if (hasCommand("clang++")) return "clang++";
+  return null;
+}
+
 function getZstdFlags() {
   if (!hasCommand("pkg-config")) return [];
   const res = spawnSyncSafe("pkg-config", ["--cflags", "--libs", "libzstd"], { stdio: "pipe" });
@@ -599,6 +608,25 @@ function getSystemIncludeDirs() {
     const dir = String(res.stdout || "").trim();
     if (!dir || dir === name) continue;
     if (fileExists(dir)) out.push(dir);
+  }
+  return out;
+}
+
+function resolveNodeIncludeDirs() {
+  const candidates = [];
+  const envDir = process.env.SEAL_NODE_INCLUDE_DIR || process.env.NODE_INCLUDE_DIR;
+  if (envDir) candidates.push(envDir);
+  const execDir = path.dirname(process.execPath);
+  candidates.push(path.join(execDir, "..", "include", "node"));
+  candidates.push("/usr/include/node");
+  const seen = new Set();
+  const out = [];
+  for (const dir of candidates) {
+    if (!dir) continue;
+    const full = path.resolve(dir);
+    if (seen.has(full)) continue;
+    seen.add(full);
+    if (fileExists(full)) out.push(full);
   }
   return out;
 }
@@ -1200,7 +1228,8 @@ function renderLauncherSource(
   integrityCfg,
   appBindValue,
   appBindEnabled,
-  snapshotGuardCfg
+  snapshotGuardCfg,
+  nativeBootstrapEnabled
 ) {
   const sentinelDefs = renderSentinelDefs(sentinelCfg);
   const sentinelCode = renderSentinelCode();
@@ -1287,6 +1316,9 @@ Error.stackTraceLimit = 0;
 if (typeof process.setSourceMapsEnabled === "function") {
   process.setSourceMapsEnabled(false);
 }
+
+const NATIVE_BOOTSTRAP_ENABLED = ${nativeBootstrapEnabled ? 1 : 0};
+const NATIVE_BOOTSTRAP_PATH = process.env.SEAL_THIN_NATIVE || path.join(process.cwd(), "r", "nb.node");
 
 const SENTINEL_ENABLED = ${sentinelEnabled ? 1 : 0};
 const SENTINEL_EXIT_CODE = ${sentinelExitCode};
@@ -1658,11 +1690,34 @@ if (SNAPSHOT_ENABLED) {
 const fd = Number(process.env.SEAL_BUNDLE_FD || 4);
 const entry = process.env.SEAL_VIRTUAL_ENTRY || path.join(process.cwd(), "app.bundle.cjs");
 
-let buf = fs.readFileSync(fd);
-try { fs.closeSync(fd); } catch {}
-let code = buf.toString("utf8");
-buf.fill(0);
-buf = null;
+function nativeFail() {
+  try { process.stderr.write("[thin] runtime invalid\\n"); } catch {}
+  process.exit(82);
+}
+
+let code = null;
+let usedNative = false;
+if (NATIVE_BOOTSTRAP_ENABLED) {
+  try {
+    const native = require(NATIVE_BOOTSTRAP_PATH);
+    if (native && typeof native.readExternalStringFromFd === "function") {
+      code = native.readExternalStringFromFd(fd);
+      usedNative = true;
+    } else {
+      nativeFail();
+    }
+  } catch {
+    nativeFail();
+  }
+}
+
+if (!usedNative) {
+  let buf = fs.readFileSync(fd);
+  try { fs.closeSync(fd); } catch {}
+  code = buf.toString("utf8");
+  buf.fill(0);
+  buf = null;
+}
 process.argv[1] = entry;
 
 const m = new Module(entry, module);
@@ -3154,7 +3209,8 @@ function buildLauncher(
   appBindEnabled,
   snapshotGuardCfg,
   launcherHardening,
-  launcherHardeningCET
+  launcherHardeningCET,
+  nativeBootstrapEnabled
 ) {
   const limits = DEFAULT_LIMITS;
   if (cObfuscator && cObfuscator.kind) {
@@ -3198,7 +3254,8 @@ function buildLauncher(
       integrityCfg,
       appBindValue,
       appBindEnabled,
-      snapshotGuardCfg
+      snapshotGuardCfg,
+      nativeBootstrapEnabled
     ),
     "utf-8"
   );
@@ -3265,6 +3322,49 @@ function buildLauncher(
   return { ok: true, path: outPath };
 }
 
+function buildNativeBootstrap(stageDir) {
+  const cxx = resolveCxx();
+  if (!cxx) {
+    return { ok: false, errorShort: "C++ compiler not found (c++/g++/clang++)", error: "missing_cxx" };
+  }
+  const includeDirs = resolveNodeIncludeDirs();
+  if (!includeDirs.length) {
+    return {
+      ok: false,
+      errorShort: "Node headers not found (set SEAL_NODE_INCLUDE_DIR)",
+      error: "missing_node_headers",
+    };
+  }
+  const srcPath = path.join(__dirname, "thin-native-addon.cc");
+  if (!fileExists(srcPath)) {
+    return { ok: false, errorShort: "thin native addon source missing", error: "missing_native_source" };
+  }
+  const outPath = path.join(stageDir, "thin-native.node");
+  const includeFlags = includeDirs.flatMap((dir) => ["-I", dir]);
+  const args = [
+    "-shared",
+    "-fPIC",
+    "-O2",
+    "-s",
+    "-std=c++20",
+    "-pthread",
+    "-DNODE_GYP_MODULE_NAME=seal_thin_native",
+    ...includeFlags,
+    "-o",
+    outPath,
+    srcPath,
+  ];
+
+  const res = spawnSyncSafe(cxx, args, { stdio: "pipe" });
+  if (!res.ok) {
+    const msg = (res.stderr || res.stdout || res.error || "compile_failed").trim();
+    const lines = msg.split(/\r?\n/).filter(Boolean);
+    const short = lines.slice(0, 3).join(" | ") || "compile_failed";
+    return { ok: false, errorShort: `native bootstrap build failed: ${short}`, error: msg };
+  }
+  return { ok: true, path: outPath };
+}
+
 async function packThin({
   stageDir,
   releaseDir,
@@ -3284,6 +3384,7 @@ async function packThin({
   integrity,
   appBind,
   snapshotGuard,
+  nativeBootstrap,
   projectRoot,
   targetName,
   sentinel,
@@ -3303,8 +3404,17 @@ async function packThin({
     const zstdLevel = resolveZstdLevel(thinLevel, zstdLevelOverride);
     const zstdTimeout = resolveZstdTimeout(zstdTimeoutMs);
     const integrityCfg = integrity && typeof integrity === "object" ? integrity : {};
+    const nativeBootstrapCfg = nativeBootstrap && typeof nativeBootstrap === "object" ? nativeBootstrap : {};
+    const nativeBootstrapEnabled = nativeBootstrapCfg.enabled === true;
     if (integrityCfg.enabled && thinMode !== "bootstrap") {
       return { ok: false, errorShort: "thin.integrity requires thin-split", error: "integrity_requires_bootstrap" };
+    }
+    if (nativeBootstrapEnabled && thinMode !== "bootstrap") {
+      return {
+        ok: false,
+        errorShort: "thin.nativeBootstrap requires thin-split",
+        error: "native_bootstrap_requires_bootstrap",
+      };
     }
     let codecState = null;
     if (thinMode === "bootstrap") {
@@ -3366,9 +3476,17 @@ async function packThin({
       appBindEnabled,
       snapshotGuard,
       launcherHardening,
-      launcherHardeningCET
+      launcherHardeningCET,
+      nativeBootstrapEnabled
     );
     if (!launcherRes.ok) return launcherRes;
+
+    let nativeRes = null;
+    if (nativeBootstrapEnabled) {
+      info("Thin: building native bootstrap addon...");
+      nativeRes = buildNativeBootstrap(stageDir);
+      if (!nativeRes.ok) return nativeRes;
+    }
 
     const outBin = path.join(releaseDir, appName);
 
@@ -3384,6 +3502,11 @@ async function packThin({
       ensureDir(rDir);
       fs.writeFileSync(path.join(rDir, "rt"), runtimeContainer);
       fs.writeFileSync(path.join(rDir, "pl"), payloadContainer);
+      if (nativeRes && nativeRes.path) {
+        const nativeOut = path.join(rDir, "nb.node");
+        fs.copyFileSync(nativeRes.path, nativeOut);
+        fs.chmodSync(nativeOut, 0o755);
+      }
       writeCodecBin(rDir, codecState);
 
       const wrapper = `#!/bin/bash

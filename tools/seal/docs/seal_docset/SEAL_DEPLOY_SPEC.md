@@ -1748,6 +1748,7 @@ Przykład (aktualny dla v0.5):
       zstdTimeoutMs: 120000,
       envMode: "denylist",    // denylist | allowlist
       runtimeStore: "memfd",  // memfd | tmpfile
+      nativeBootstrap: { enabled: false }, // thin-split only: native addon (MADV_DONTDUMP + mlock, requires C++20)
       appBind: { enabled: true }, // bind launcher to runtime/payload (use value for stable project ID)
       launcherHardening: true,    // CET/RELRO/PIE/stack-protector/fortify
       launcherHardeningCET: true, // CET only; disable for older clang (e.g., O-LLVM)
@@ -1816,6 +1817,7 @@ Przykład (aktualny dla v0.5):
 - `build.thin.mode`: `split`.
 - `build.thin.level`: `low` | `medium` | `high`.
 - `build.thin.appBind`: domyślnie `{ enabled: true }`.
+- `build.thin.nativeBootstrap`: domyślnie `{ enabled: false }` (tylko thin-split).
 - `build.thin.launcherHardening`: domyślnie `true`.
 - `build.thin.launcherHardeningCET`: domyślnie `true` (jeśli compiler nie wspiera `-fcf-protection=full`, build fail‑fast; wyłącz ręcznie).
 - `build.thin.launcherObfuscation`: domyślnie `true` (wymaga `build.protection.cObfuscator`).

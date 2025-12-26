@@ -855,6 +855,7 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
       integrity: thinCfg.integrity,
       appBind: thinCfg.appBind,
       snapshotGuard: thinCfg.snapshotGuard,
+      nativeBootstrap: thinCfg.nativeBootstrap,
       projectRoot,
       targetName: targetCfg.target || targetCfg.config || "default",
       sentinel: sentinelCfg,
