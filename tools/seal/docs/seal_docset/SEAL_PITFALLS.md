@@ -434,6 +434,12 @@
 - Blad: `strip` byl uruchamiany na pliku, ktory nie byl ELF (np. skrypt), co powodowalo bledy.
   - Wymaganie: przed uruchomieniem `strip` sprawdz typ pliku (ELF magic lub `file`) i w razie niezgodnosci SKIP z powodem.
 
+- Blad: w `thin-split` `strip`/ELF packer byl uruchamiany na wrapperze (`<app>`), a nie na faktycznym launcherze (`b/a`), przez co ochrona nie dzialala lub dawla falszywe wyniki.
+  - Wymaganie: dla `thin-split` targetuj realny ELF launchera (`b/a`) i zapisuj w metadanych/logach, ze celem byl `launcher`.
+
+- Blad: w `thin-single` (AIO) probowano `strip`/ELF packer na pliku z doklejonym payloadem, co psulo runtime.
+  - Wymaganie: `strip`/packer dla `thin-single` musza byc jawnie SKIP z powodem; dokumentacja ma wyraznie wskazywac `thin-single` jako tryb dev/MVP.
+
 - Blad: pliki binarne byly czytane/zapisywane z `utf8`, co uszkadzalo dane (codec/payload).
   - Wymaganie: binarki czytaj/zapisuj jako `Buffer` (bez encoding), a tekst jawnie jako `utf8`.
 
