@@ -32,6 +32,14 @@ function hasCommand(cmd) {
   return res.status === 0;
 }
 
+function runGdbAttach(pid, timeoutMs = 5000) {
+  return spawnSync(
+    "gdb",
+    ["-q", "-batch", "-p", String(pid), "-ex", "detach", "-ex", "quit"],
+    { stdio: "pipe", timeout: timeoutMs }
+  );
+}
+
 function checkPrereqs() {
   if (process.platform !== "linux") {
     log(`SKIP: thin anti-debug E2E is linux-only (platform=${process.platform})`);
@@ -228,6 +236,78 @@ async function runReleaseExpectFail({ releaseDir, runTimeoutMs, env, expectStder
       if (!ok) {
         throw new Error(`stderr did not match expected pattern: ${expectStderr}`);
       }
+    }
+  } finally {
+    child.kill("SIGTERM");
+    await new Promise((resolve) => {
+      const t = setTimeout(() => {
+        child.kill("SIGKILL");
+        resolve();
+      }, 4000);
+      child.on("exit", () => {
+        clearTimeout(t);
+        resolve();
+      });
+    });
+  }
+}
+
+async function runReleaseGdbAttachFail({ releaseDir, runTimeoutMs, env }) {
+  if (runReleaseOk.skipListen) {
+    log("SKIP: listen not permitted; gdb attach test disabled");
+    return;
+  }
+  if (!hasCommand("gdb")) {
+    log("SKIP: gdb not installed; gdb attach test disabled");
+    return;
+  }
+
+  const port = await getFreePort();
+  writeRuntimeConfig(releaseDir, port);
+
+  const binPath = path.join(releaseDir, "seal-example");
+  assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
+
+  const childEnv = Object.assign({}, process.env, env || {});
+  const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe", env: childEnv });
+  const outChunks = [];
+  const errChunks = [];
+  child.stdout.on("data", (c) => outChunks.push(c));
+  child.stderr.on("data", (c) => errChunks.push(c));
+
+  const exitPromise = new Promise((_, reject) => {
+    child.on("exit", (code, signal) => {
+      const stdout = Buffer.concat(outChunks).toString("utf8").trim();
+      const stderr = Buffer.concat(errChunks).toString("utf8").trim();
+      const detail = [
+        code !== null ? `code=${code}` : null,
+        signal ? `signal=${signal}` : null,
+        stdout ? `stdout: ${stdout.slice(0, 400)}` : null,
+        stderr ? `stderr: ${stderr.slice(0, 400)}` : null,
+      ].filter(Boolean).join("; ");
+      reject(new Error(`process exited early (${detail || "no output"})`));
+    });
+  });
+
+  try {
+    await withTimeout("waitForStatus", runTimeoutMs, () => Promise.race([waitForStatus(port), exitPromise]));
+    const gdbRes = runGdbAttach(child.pid, 5000);
+    if (gdbRes.error && gdbRes.error.code === "ETIMEDOUT") {
+      throw new Error("gdb attach timed out (unexpected)");
+    }
+    const out = `${gdbRes.stdout || ""}${gdbRes.stderr || ""}`.trim();
+    const failMarkers = [
+      /could not attach/i,
+      /operation not permitted/i,
+      /permission denied/i,
+      /ptrace:/i,
+      /not being run/i,
+      /no such process/i,
+      /inappropriate ioctl/i,
+    ];
+    const isFailure = gdbRes.status !== 0 || failMarkers.some((re) => re.test(out));
+    if (!isFailure) {
+      throw new Error(`gdb attach succeeded (unexpected)${out ? `; output=${out.slice(0, 400)}` : ""}`);
     }
   } finally {
     child.kill("SIGTERM");
@@ -448,6 +528,12 @@ async function main() {
       })
     );
     log("OK: ptrace/core probes ok");
+
+    log("Testing gdb attach (expect failure)...");
+    await withTimeout("gdb attach fail", testTimeoutMs, () =>
+      runReleaseGdbAttachFail({ releaseDir: resA.releaseDir, runTimeoutMs })
+    );
+    log("OK: gdb attach blocked");
 
     log("Testing ptrace force (expect failure)...");
     await withTimeout("ptrace force fail", testTimeoutMs, () =>
