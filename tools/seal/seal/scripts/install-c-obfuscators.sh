@@ -21,11 +21,13 @@ $SUDO apt-get install -y \
 
 if [ "${SEAL_INSTALL_OBFUSCATORS:-0}" != "1" ]; then
   echo "[install-c-obfuscators] Dependencies installed."
-  echo "[install-c-obfuscators] Set SEAL_INSTALL_OBFUSCATORS=1 to clone/build obfuscators."
+  echo "[install-c-obfuscators] Set SEAL_INSTALL_OBFUSCATORS=1 to clone obfuscators."
+  echo "[install-c-obfuscators] Set SEAL_BUILD_OBFUSCATORS=1 to build obfuscating clang."
   exit 0
 fi
 
 ROOT="${SEAL_OBFUSCATOR_DIR:-$HOME/.cache/seal/obfuscators}"
+CLANG_BRANCH="${SEAL_CLANG_BRANCH:-release_40}"
 mkdir -p "$ROOT"
 cd "$ROOT"
 
@@ -38,6 +40,55 @@ if [ ! -d hikari ]; then
   git clone https://github.com/HikariObfuscator/Hikari.git hikari
 fi
 
-echo "[install-c-obfuscators] NOTE: Build steps are tool-specific."
-echo "[install-c-obfuscators] Follow README in each repo to build an obfuscating clang."
-echo "[install-c-obfuscators] Then point SEAL to it via build.protection.cObfuscatorCmd."
+if [ ! -d clang ]; then
+  echo "[install-c-obfuscators] Cloning clang (${CLANG_BRANCH})..."
+  git clone --depth 1 --branch "${CLANG_BRANCH}" https://github.com/llvm-mirror/clang clang
+fi
+
+if [ "${SEAL_BUILD_OBFUSCATORS:-0}" != "1" ]; then
+  echo "[install-c-obfuscators] Obfuscator sources are ready."
+  echo "[install-c-obfuscators] Set SEAL_BUILD_OBFUSCATORS=1 to build obfuscating clang."
+  exit 0
+fi
+
+echo "[install-c-obfuscators] Building Obfuscator-LLVM (LLVM 4.0)..."
+(
+  set -euo pipefail
+  cd "$ROOT/obfuscator-llvm"
+  if git show-ref --verify --quiet refs/heads/llvm-4.0; then
+    git checkout -q llvm-4.0
+  else
+    git checkout -q -b llvm-4.0 origin/llvm-4.0
+  fi
+
+  # GCC 13 compatibility: avoid lambda capture shadowing.
+  patch_lambda_capture() {
+    local file="$1"
+    [ -f "$file" ] || return 0
+    if grep -q "auto &&BeginThenGen = \\[&D, &CGF, Device" "$file"; then
+      sed -i \
+        -e 's/auto &&BeginThenGen = \\[&D, &CGF, Device,/auto &&BeginThenGen = \\[&D, Device,/' \
+        -e 's/auto &&EndThenGen = \\[&CGF, Device,/auto &&EndThenGen = \\[Device,/' \
+        -e 's/auto &&ThenGen = \\[&D, &CGF, Device/auto &&ThenGen = \\[&D, Device/' \
+        "$file"
+    fi
+  }
+
+  patch_lambda_capture "$ROOT/obfuscator-llvm/tools/clang/lib/CodeGen/CGOpenMPRuntime.cpp"
+  patch_lambda_capture "$ROOT/clang/lib/CodeGen/CGOpenMPRuntime.cpp"
+
+  mkdir -p build
+  cd build
+  cmake -G Ninja \
+    -DLLVM_ENABLE_PROJECTS=clang \
+    -DLLVM_INCLUDE_TESTS=OFF \
+    -DLLVM_BUILD_TESTS=OFF \
+    -DLLVM_BUILD_EXAMPLES=OFF \
+    -DLLVM_TARGETS_TO_BUILD=X86 \
+    -DCMAKE_BUILD_TYPE=Release \
+    ..
+  ninja clang
+)
+
+echo "[install-c-obfuscators] Done."
+echo "[install-c-obfuscators] Obfuscating clang: $ROOT/obfuscator-llvm/build/bin/clang"
