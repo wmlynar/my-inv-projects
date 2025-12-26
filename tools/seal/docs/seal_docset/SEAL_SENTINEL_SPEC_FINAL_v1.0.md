@@ -165,7 +165,7 @@ MUST:
 - kolejne deploy/build używają tej samej wartości.
 
 Rekomendowany store (deployer, gitignored):
-- `seal-config/.private/targets/<target>.json5`  
+- `seal-out/cache/private/targets/<target>.json5`  
 albo w systemie CI jako secret (np. env var) z mapowaniem na target.
 
 **Nie używamy** przykładowych ścieżek typu `.seal/...` (żeby nie sugerować takiej nazwy na serwerze).

@@ -34,7 +34,6 @@ tmp/
 !.env.example
 config.runtime.json5
 seal-out/
-seal-config/.private/
 backup/third-party/*.zip
 .obfuscators/
 

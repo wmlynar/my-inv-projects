@@ -32,7 +32,24 @@ function normalizeTargetKey(value) {
 
 function sentinelPrivatePath(projectRoot, targetName) {
   const safe = normalizeTargetKey(targetName);
+  return path.join(projectRoot, "seal-out", "cache", "private", "targets", `${safe}.json5`);
+}
+
+function sentinelLegacyPrivatePath(projectRoot, targetName) {
+  const safe = normalizeTargetKey(targetName);
   return path.join(projectRoot, "seal-config", ".private", "targets", `${safe}.json5`);
+}
+
+function cleanupLegacyPrivatePath(filePath) {
+  try {
+    fs.rmSync(filePath, { force: true });
+  } catch {}
+  try {
+    fs.rmdirSync(path.dirname(filePath));
+  } catch {}
+  try {
+    fs.rmdirSync(path.dirname(path.dirname(filePath)));
+  } catch {}
 }
 
 function writePrivateJson(filePath, data) {
@@ -53,6 +70,20 @@ function getOrCreateNamespaceId(projectRoot, targetName) {
       const data = readJson5(file);
       if (data && typeof data.namespaceId === "string") {
         parseNamespaceId(data.namespaceId);
+        return data.namespaceId.toLowerCase();
+      }
+    } catch {
+      // ignore and regenerate
+    }
+  }
+  const legacy = sentinelLegacyPrivatePath(projectRoot, targetName);
+  if (fileExists(legacy)) {
+    try {
+      const data = readJson5(legacy);
+      if (data && typeof data.namespaceId === "string") {
+        parseNamespaceId(data.namespaceId);
+        writePrivateJson(file, { namespaceId: data.namespaceId.toLowerCase() });
+        cleanupLegacyPrivatePath(legacy);
         return data.namespaceId.toLowerCase();
       }
     } catch {
