@@ -574,6 +574,20 @@ function getZstdFlags() {
   return out ? out.split(/\s+/).filter(Boolean) : [];
 }
 
+function getSystemIncludeDirs() {
+  const compiler = hasCommand("cc") ? "cc" : (hasCommand("gcc") ? "gcc" : null);
+  if (!compiler) return [];
+  const out = [];
+  for (const name of ["include", "include-fixed"]) {
+    const res = spawnSyncSafe(compiler, [`-print-file-name=${name}`], { stdio: "pipe" });
+    if (!res.ok) continue;
+    const dir = String(res.stdout || "").trim();
+    if (!dir || dir === name) continue;
+    if (fileExists(dir)) out.push(dir);
+  }
+  return out;
+}
+
 function toCString(value) {
   const escaped = String(value)
     .replace(/\\/g, "\\\\")
@@ -855,6 +869,11 @@ static int get_cpuid_proc(char *out, size_t out_len) {
 
 static int get_cpuid_asm(char *out, size_t out_len) {
 #if defined(__x86_64__) || defined(__i386__)
+#if !defined(SEAL_HAS_CPUID_H) || SEAL_HAS_CPUID_H == 0
+  (void)out;
+  (void)out_len;
+  return -1;
+#else
   unsigned int eax = 0, ebx = 0, ecx = 0, edx = 0;
   if (!__get_cpuid(0, &eax, &ebx, &ecx, &edx)) return -1;
   char vendor[13];
@@ -876,6 +895,7 @@ static int get_cpuid_asm(char *out, size_t out_len) {
   int n = snprintf(out, out_len, "%s:%u:%u:%u", vendor, family, model, stepping);
   if (n < 0 || (size_t)n >= out_len) return -1;
   return 0;
+#endif
 #else
   (void)out;
   (void)out_len;
@@ -1335,10 +1355,19 @@ m._compile(code, entry);
     .map((line) => `"${line}\\n"`)
     .join("\n");
 
-  return `#include <errno.h>
+return `#include <errno.h>
 #include <ctype.h>
 #if defined(__x86_64__) || defined(__i386__)
+#if defined(__has_include)
+#if __has_include(<cpuid.h>)
 #include <cpuid.h>
+#define SEAL_HAS_CPUID_H 1
+#else
+#define SEAL_HAS_CPUID_H 0
+#endif
+#else
+#define SEAL_HAS_CPUID_H 0
+#endif
 #endif
 #include <dirent.h>
 #include <fcntl.h>
@@ -2700,6 +2729,8 @@ function buildLauncher(
   const obfArgs = (cObfuscator && Array.isArray(cObfuscator.args))
     ? cObfuscator.args.map((v) => String(v))
     : [];
+  const systemIncludeDirs = cObfuscator ? getSystemIncludeDirs() : [];
+  const systemIncludeFlags = systemIncludeDirs.flatMap((dir) => ["-isystem", dir]);
   const hardeningEnabled = launcherHardening !== false;
   const cetEnabled = launcherHardeningCET !== false;
   const hardeningArgs = hardeningEnabled ? [
@@ -2738,6 +2769,7 @@ function buildLauncher(
     "-D_GNU_SOURCE",
     ...hardeningArgs,
     ...obfArgs,
+    ...systemIncludeFlags,
     "-o", outPath,
     cPath,
     ...zstdFlags,

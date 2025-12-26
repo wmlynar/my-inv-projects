@@ -32,6 +32,16 @@ function hasCommand(cmd) {
   return res.status === 0;
 }
 
+function probeCompilerFlag(cmd, flag) {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-cc-flag-"));
+  const srcPath = path.join(tmpDir, "flag-test.c");
+  const outPath = path.join(tmpDir, "flag-test.o");
+  fs.writeFileSync(srcPath, "int main(void){return 0;}\n", "utf-8");
+  const res = runCmd(cmd, [flag, "-c", srcPath, "-o", outPath], 8000);
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+  return res;
+}
+
 function checkPrereqs() {
   if (process.platform !== "linux") {
     log(`SKIP: thin packager test is linux-only (platform=${process.platform})`);
@@ -123,17 +133,57 @@ function getFreePort() {
   });
 }
 
+function resolveCompilerCmd(projectCfg, launcherObfuscation) {
+  const cObf = projectCfg.build?.protection?.cObfuscator;
+  if (launcherObfuscation && cObf && cObf.cmd) return String(cObf.cmd);
+  if (hasCommand("cc")) return "cc";
+  if (hasCommand("gcc")) return "gcc";
+  return null;
+}
+
 async function buildThinRelease(mode, buildTimeoutMs) {
   const projectCfg = loadProjectConfig(EXAMPLE_ROOT);
   projectCfg.build = projectCfg.build || {};
-  projectCfg.build.thin = Object.assign({}, projectCfg.build.thin || {}, {
-    launcherObfuscation: false,
+  projectCfg.build.thin = Object.assign({}, projectCfg.build.thin || {});
+  projectCfg.build.sentinel = Object.assign({}, projectCfg.build.sentinel || {}, {
+    enabled: false,
   });
+
+  const launcherObfuscation = projectCfg.build.thin.launcherObfuscation !== false;
+  const compilerCmd = resolveCompilerCmd(projectCfg, launcherObfuscation);
+  if (!compilerCmd) {
+    throw new Error("Missing C compiler (cc/gcc) or cObfuscator cmd");
+  }
+
+  if (projectCfg.build.thin.launcherHardeningCET !== false) {
+    const probe = probeCompilerFlag(compilerCmd, "-fcf-protection=full");
+    if (probe.status !== 0) {
+      const msg = (probe.stderr || probe.stdout || "").toString().trim();
+      const short = msg.split(/\r?\n/).filter(Boolean).slice(0, 2).join(" | ");
+      if (process.env.SEAL_UI_E2E_REQUIRE_CET === "1") {
+        throw new Error(`CET flag unsupported by ${compilerCmd}: ${short || "unknown error"}`);
+      }
+      log(`CET unsupported by ${compilerCmd}; disabling build.thin.launcherHardeningCET for test`);
+      projectCfg.build.thin.launcherHardeningCET = false;
+    }
+  }
+
+  if (projectCfg.build.thin?.integrity?.enabled && projectCfg.build.protection?.elfPacker?.tool) {
+    log("Integrity + ELF packer is incompatible; disabling elfPacker for test");
+    projectCfg.build.protection.elfPacker = {};
+  }
   const targetCfg = loadTargetConfig(EXAMPLE_ROOT, "local").cfg;
   const configName = resolveConfigName(targetCfg, "local");
 
-  const packager = mode === "bootstrap" ? "thin-split" : "thin-single";
+  const packager = mode === "single" ? "thin-single" : "thin-split";
   targetCfg.packager = packager;
+
+  if (packager === "thin-single") {
+    projectCfg.build.protection = Object.assign({}, projectCfg.build.protection || {}, {
+      strip: Object.assign({}, projectCfg.build.protection?.strip || {}, { enabled: false }),
+      elfPacker: Object.assign({}, projectCfg.build.protection?.elfPacker || {}, { tool: null, cmd: null, args: null }),
+    });
+  }
 
   const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), `seal-ui-${mode}-`));
   const outDir = path.join(outRoot, "seal-out");
@@ -249,8 +299,8 @@ async function runUiTest({ url, buildId, headless }) {
 }
 
 async function testUi(ctx) {
-  log("Building thin SINGLE (AIO)...");
-  const res = await buildThinRelease("aio", ctx.buildTimeoutMs);
+  log(`Building thin ${ctx.mode.toUpperCase()}...`);
+  const res = await buildThinRelease(ctx.mode, ctx.buildTimeoutMs);
   const { releaseDir, buildId, outRoot } = res;
 
   log("Running sealed binary...");
@@ -312,8 +362,10 @@ async function main() {
   const testTimeoutMs = Number(process.env.SEAL_UI_E2E_TIMEOUT_MS || "240000");
   const headless = process.env.SEAL_UI_E2E_HEADLESS !== "0";
   const keepArtifacts = process.env.SEAL_UI_E2E_KEEP === "1";
+  const modeRaw = String(process.env.SEAL_UI_E2E_MODE || "split").toLowerCase();
+  const mode = modeRaw === "single" ? "single" : "split";
 
-  const ctx = { buildTimeoutMs, runTimeoutMs, uiTimeoutMs, headless, keepArtifacts };
+  const ctx = { buildTimeoutMs, runTimeoutMs, uiTimeoutMs, headless, keepArtifacts, mode };
 
   await withTimeout("testUi", testTimeoutMs, () => testUi(ctx));
   log("OK: ui-e2e");

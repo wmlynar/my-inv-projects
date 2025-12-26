@@ -915,6 +915,11 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   }
 
 
+const thinIntegrityEnabled = !!(thinCfg.integrity && thinCfg.integrity.enabled);
+if (thinIntegrityEnabled && packagerUsed === "thin-split" && protectionCfg.elfPacker) {
+  throw new Error("thin.integrity is not compatible with protection.elfPacker; disable one of them");
+}
+
 // Protection (post-pack): make it harder to recover code by casually viewing files.
 // Default: enabled (can be disabled in seal.json5 -> build.protection.enabled=false)
 const hardPost = applyHardeningPost(releaseDir, appName, packagerUsed, protectionCfg);
@@ -942,7 +947,6 @@ if (!hardEnabled) {
   ok(`Protection OK (${bits.length ? bits.join(' + ') : 'no_steps'})`);
 }
 
-const thinIntegrityEnabled = !!(thinCfg.integrity && thinCfg.integrity.enabled);
 let thinIntegrity = { enabled: false };
 if (thinIntegrityEnabled) {
   if (packagerUsed !== "thin-split") {

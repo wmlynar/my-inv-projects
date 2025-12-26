@@ -1782,6 +1782,7 @@ Przykład (aktualny dla v0.5):
     // Protection (anti-peek) – domyślnie włączone
     // - SEA/thin-single: strip/elfPacker NIE są wspierane (build musi fail-fast)
     // - thin-split: strip/elfPacker możliwe (target: launcher b/a)
+    // - thin.integrity + elfPacker: NIEkompatybilne (build fail-fast; wybierz jedno)
     // - bundle: bundle.pack = gzip-pack backend bundle + loader
     protection: {
       enabled: true,

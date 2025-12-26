@@ -92,10 +92,7 @@
           "--strip-all"
         ]
       },
-      "elfPacker": {
-        "tool": "upx",
-        "cmd": "upx"
-      },
+      // elfPacker: { tool: "upx", cmd: "upx" }, // incompatible with thin.integrity
       "strings": {
         "obfuscation": [
           "xorstr",

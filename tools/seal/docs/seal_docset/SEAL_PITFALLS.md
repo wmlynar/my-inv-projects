@@ -270,6 +270,21 @@
 - Blad: `launcherObfuscation` wlaczone bez skonfigurowanego obfuscatora C powodowalo niejasne fail w buildzie.
   - Wymaganie: brak `protection.cObfuscator` = twardy blad z jasnym komunikatem (fail‑fast, bez fallbacku).
 
+- Blad: hardening CET (`-fcf-protection=full`) nie dzialal na starszym clangu (np. O‑LLVM), co wywalalo build.
+  - Wymaganie: CET musi miec osobny toggle + pre‑probe kompilatora, a brak wsparcia ma dawac jasny blad z instrukcja wylaczenia lub zmiany toolchaina.
+
+- Blad: obfuscating clang (O‑LLVM) nie widzial systemowych naglowkow (`stddef.h`) i kompilacja launchera failowala.
+  - Wymaganie: przy uzyciu obfuscatora C dodaj include paths z toolchaina systemowego (np. `gcc -print-file-name=include`), albo jasno dokumentuj wymagany `--gcc-toolchain`.
+
+- Blad: `thin.integrity` wlaczony razem z `protection.elfPacker` powodowal brak markera i fail weryfikacji.
+  - Wymaganie: `thin.integrity` i `protection.elfPacker` sa wzajemnie wykluczajace; build ma fail‑fast z jasnym komunikatem.
+
+- Blad: test UI E2E uruchamial `thin-single` przy wlaczonym `strip`/`elfPacker`, co jest niewspierane i konczy sie bledem.
+  - Wymaganie: testy UI używaja `thin-split` albo jawnie wylaczaja `strip`/`elfPacker` dla `thin-single`.
+
+- Blad: lokalne testy E2E failowaly, bo `sentinel` byl wlaczony i brakowalo sentinel blob na hoście.
+  - Wymaganie: lokalne E2E musza jawnie wylaczac `build.sentinel.enabled` albo instalowac sentinel przed uruchomieniem.
+
 - Blad: `snapshotGuard` uruchomiony domyslnie generowal falszywe blokady (przerwy, resume VM).
   - Wymaganie: `snapshotGuard` jest opt‑in, ma jasne progi (`intervalMs`, `maxJumpMs`, `maxBackMs`) i nie trzyma event‑loop (timer `unref`).
   - Wymaganie: testy wymuszaja trigger tylko przez dedykowane ENV i nie uzywaja tego w produkcji.
