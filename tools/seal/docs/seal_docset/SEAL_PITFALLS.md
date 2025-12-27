@@ -417,6 +417,9 @@
 - Blad: narzedzia zachowywaly sie inaczej poza trybem CI (np. interaktywne prompt‑y, spinner), co psulo logi.
   - Wymaganie: w testach/CI ustaw `CI=1` (oraz `FORCE_COLOR=0`) aby wymusic nieinteraktywny tryb narzedzi.
 
+- Blad: `npm` update‑notifier kontaktowal sie z siecia i wieszal CI.
+  - Wymaganie: w CI/E2E ustaw `NPM_CONFIG_UPDATE_NOTIFIER=false`.
+
 - Blad: uruchomienie testow przez `sudo` uzywalo innej wersji Node (np. systemowej) niz wymaganej, co konczylo sie `MODULE_NOT_FOUND` lub regresjami.
   - Wymaganie: testy loguja `node -v` + `which node` na starcie i fail‑fast, gdy wersja < wymaganej.
   - Wymaganie: przy `sudo` uzywaj `sudo -E` lub absolutnej sciezki do `node`, aby nie tracic wersji z nvm/asdf.
