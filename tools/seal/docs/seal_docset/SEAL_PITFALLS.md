@@ -89,6 +89,10 @@
 - Blad: `~` i sciezki relatywne w komendach `sudo` wskazywaly na niewlasciwe HOME (root), co psulo deploy.
   - Wymaganie: uzywaj sciezek absolutnych; nie polegaj na `~` pod `sudo`. Jawnie ustawiaj `HOME`/`cwd` gdy potrzeba.
 
+- Blad: operacje SSH uruchamiane przez `sudo` tracily `SSH_AUTH_SOCK` i klucze z agenta, co konczylo sie promptem lub bledem.
+  - Wymaganie: przy `sudo` zachowuj `SSH_AUTH_SOCK` (`sudo -E`) albo przekazuj `IdentityFile`/`IdentitiesOnly=yes`.
+  - Wymaganie: jawnie ustaw `HOME`/`known_hosts` dla procesu `ssh` uruchamianego jako root.
+
 - Blad: skrypty polegaly na `ls`/globbingu (`for f in *`) i psuly sie na spacjach lub pustych katalogach.
   - Wymaganie: nie parsuj `ls`; uzywaj `find -print0` + `xargs -0` lub `glob` z `nullglob`.
   - Wymaganie: wszystkie operacje na plikach w shellu musza byc odporne na spacje i puste katalogi.
