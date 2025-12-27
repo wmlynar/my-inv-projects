@@ -1397,3 +1397,16 @@
   - Wymaganie: resolve do absolutnych sciezek na starcie i używaj tylko ich.
 - Blad: lockfile nie zawieral hosta, przez co w środowiskach współdzielonych mylono procesy.
   - Wymaganie: zapisuj w locku `hostname`/`pid`/`startTime` i weryfikuj zgodnosc.
+
+## Dodatkowe wnioski (batch 196-200)
+
+- Blad: `systemctl`/`journalctl` uruchamialy pager i wisialy w trybie nieinteraktywnym.
+  - Wymaganie: uzywaj `--no-pager` lub `SYSTEMD_PAGER=cat`.
+- Blad: `sudo` wymagalo TTY (`requiretty`) i komendy failowaly bez czytelnej informacji.
+  - Wymaganie: wykrywaj ten blad i podawaj instrukcje (sudoers/ssh -t).
+- Blad: `rsync` zostawial `.*.partial` po przerwanym transferze.
+  - Wymaganie: uzywaj `--partial-dir` w temp i sprzataj przy failu.
+- Blad: `scp` w nowych OpenSSH domyslnie uzywa SFTP i nie dziala z niektorymi serwerami.
+  - Wymaganie: pozwol wymusic `scp -O` lub preferuj `rsync`/`sftp`.
+- Blad: logi z narzedzi mialy ANSI/pager i psuly parse.
+  - Wymaganie: ustaw `NO_COLOR=1`/`--no-ansi`/`--no-pager` tam gdzie to mozliwe.

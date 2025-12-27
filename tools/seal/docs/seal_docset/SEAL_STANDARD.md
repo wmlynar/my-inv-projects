@@ -774,6 +774,11 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-390 (SHOULD): input z ENV jest sanitizowany (brak kontrolnych znakow).
 - STD-391 (SHOULD): ścieżki relatywne sa resolve do absolutnych na starcie.
 - STD-392 (SHOULD): lockfile zawiera `hostname`/`pid`/`startTime` i jest weryfikowany.
+- STD-393 (SHOULD): `systemctl`/`journalctl` uruchamiaj z `--no-pager` lub `SYSTEMD_PAGER=cat`.
+- STD-394 (SHOULD): wykrywaj `sudo: sorry, you must have a tty` i zwracaj instrukcje naprawy.
+- STD-395 (SHOULD): `rsync` uzywa `--partial-dir` i cleanup po przerwaniu.
+- STD-396 (SHOULD): konfiguracja pozwala wymusic `scp -O` lub preferuje `rsync`/`sftp` dla kompatybilnosci.
+- STD-397 (SHOULD): narzedzia uruchamiaj w trybie bez ANSI/pagera (NO_COLOR/--no-ansi).
 
 ## 10. Moduł `testing` (SHOULD)
 
