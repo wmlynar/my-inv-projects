@@ -2,6 +2,7 @@
 "use strict";
 
 const assert = require("assert");
+const crypto = require("crypto");
 const fs = require("fs");
 const http = require("http");
 const net = require("net");
@@ -12,6 +13,8 @@ const { spawn, spawnSync } = require("child_process");
 const { buildRelease } = require("../src/lib/build");
 const { loadProjectConfig, loadTargetConfig, resolveConfigName } = require("../src/lib/project");
 const { readJson5, writeJson5 } = require("../src/lib/json5io");
+const { buildAnchor, deriveOpaqueDir, deriveOpaqueFile, packBlob } = require("../src/lib/sentinelCore");
+const { buildFingerprintHash } = require("../src/lib/sentinelConfig");
 
 const EXAMPLE_ROOT = process.env.SEAL_E2E_EXAMPLE_ROOT || path.resolve(__dirname, "..", "..", "example");
 
@@ -30,6 +33,112 @@ function runCmd(cmd, args, timeoutMs = 5000) {
 function hasCommand(cmd) {
   const res = runCmd("bash", ["-lc", `command -v ${cmd} >/dev/null 2>&1`]);
   return res.status === 0;
+}
+
+function readFileTrim(p) {
+  try {
+    return fs.readFileSync(p, "utf8").trim();
+  } catch {
+    return "";
+  }
+}
+
+function readCpuInfoValue(key) {
+  const content = readFileTrim("/proc/cpuinfo");
+  if (!content) return "";
+  const lines = content.split(/\r?\n/);
+  for (const line of lines) {
+    const idx = line.indexOf(":");
+    if (idx <= 0) continue;
+    const k = line.slice(0, idx).trim();
+    if (k !== key) continue;
+    return line.slice(idx + 1).trim();
+  }
+  return "";
+}
+
+function getCpuIdProc() {
+  const vendor = readCpuInfoValue("vendor_id");
+  const family = readCpuInfoValue("cpu family");
+  const model = readCpuInfoValue("model");
+  const stepping = readCpuInfoValue("stepping");
+  if (!vendor || !family || !model || !stepping) return "";
+  return `${vendor}:${family}:${model}:${stepping}`.toLowerCase();
+}
+
+function resolveCc() {
+  if (hasCommand("cc")) return "cc";
+  if (hasCommand("gcc")) return "gcc";
+  return null;
+}
+
+function getCpuIdAsm() {
+  const arch = process.arch;
+  if (arch !== "x64" && arch !== "ia32") {
+    return { value: "", unsupported: true };
+  }
+  const cc = resolveCc();
+  if (!cc) return { value: "", error: "Missing C compiler" };
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-cpuid-"));
+  const srcPath = path.join(tmpDir, "cpuid.c");
+  const outPath = path.join(tmpDir, "cpuid");
+  const src = `#include <stdio.h>
+#include <stdint.h>
+#include <string.h>
+#include <ctype.h>
+#if !defined(__x86_64__) && !defined(__i386__)
+int main(void) { return 2; }
+#else
+#include <cpuid.h>
+static void to_lower(char *s) { for (; *s; s++) *s = (char)tolower((unsigned char)*s); }
+int main(void) {
+  unsigned int eax = 0, ebx = 0, ecx = 0, edx = 0;
+  if (!__get_cpuid(0, &eax, &ebx, &ecx, &edx)) return 3;
+  char vendor[13];
+  memcpy(vendor + 0, &ebx, 4);
+  memcpy(vendor + 4, &edx, 4);
+  memcpy(vendor + 8, &ecx, 4);
+  vendor[12] = 0;
+  if (!__get_cpuid(1, &eax, &ebx, &ecx, &edx)) return 4;
+  unsigned int family = (eax >> 8) & 0x0f;
+  unsigned int model = (eax >> 4) & 0x0f;
+  unsigned int stepping = eax & 0x0f;
+  unsigned int ext_family = (eax >> 20) & 0xff;
+  unsigned int ext_model = (eax >> 16) & 0x0f;
+  if (family == 0x0f) family += ext_family;
+  if (family == 0x06 || family == 0x0f) model |= (ext_model << 4);
+  to_lower(vendor);
+  printf("%s:%u:%u:%u\\n", vendor, family, model, stepping);
+  return 0;
+}
+#endif
+`;
+  fs.writeFileSync(srcPath, src, "utf8");
+  const build = runCmd(cc, ["-O2", srcPath, "-o", outPath], 8000);
+  if (build.status !== 0) {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    return { value: "", error: "C compile failed" };
+  }
+  const run = runCmd(outPath, [], 5000);
+  const out = (run.stdout || "").toString("utf8").trim();
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+  if (run.status === 2) {
+    return { value: "", unsupported: true };
+  }
+  if (run.status !== 0 || !out) {
+    return { value: "", error: "cpuid asm failed" };
+  }
+  return { value: out, unsupported: false };
+}
+
+function computeCpuIdBoth() {
+  const proc = getCpuIdProc();
+  const asmRes = getCpuIdAsm();
+  if (proc && asmRes.value) return `proc:${proc}|asm:${asmRes.value}`;
+  if (proc) return `proc:${proc}`;
+  if (asmRes.value) return `asm:${asmRes.value}`;
+  return "";
 }
 
 function ensureLauncherObfuscation(projectCfg) {
@@ -196,7 +305,41 @@ cp "$in" "$out"
   return scriptPath;
 }
 
-async function buildWithProtection({ protection, outRoot, packager }) {
+function ensureBaseDirOwned(baseDir, mode) {
+  fs.mkdirSync(baseDir, { recursive: true, mode });
+  fs.chmodSync(baseDir, mode);
+  fs.chownSync(baseDir, 0, 0);
+}
+
+function installSentinelBlob({ baseDir, namespaceId, appId, cpuid, expiresAtSec }) {
+  ensureBaseDirOwned(baseDir, 0o711);
+  const opaqueDir = deriveOpaqueDir(namespaceId);
+  const opaqueFile = deriveOpaqueFile(namespaceId, appId);
+  const dirPath = path.join(baseDir, opaqueDir);
+  fs.mkdirSync(dirPath, { recursive: true, mode: 0o710 });
+  fs.chmodSync(dirPath, 0o710);
+  fs.chownSync(dirPath, 0, 0);
+
+  const anchor = buildAnchor(namespaceId, appId);
+  const installId = crypto.randomBytes(32);
+  const includeCpuId = !!cpuid;
+  const fpHash = buildFingerprintHash(1, {
+    mid: readFileTrim("/etc/machine-id"),
+    rid: "",
+    puid: "",
+    cpuid,
+  }, { includePuid: false, includeCpuId });
+
+  const flags = includeCpuId ? 1 : 0;
+  const blob = packBlob({ level: 1, flags, installId, fpHash, expiresAtSec }, anchor);
+  const blobPath = path.join(dirPath, opaqueFile);
+  fs.writeFileSync(blobPath, blob, { mode: 0o600 });
+  fs.chmodSync(blobPath, 0o600);
+  fs.chownSync(blobPath, 0, 0);
+  return blobPath;
+}
+
+async function buildWithProtection({ protection, outRoot, packager, build }) {
   const projectCfg = loadProjectConfig(EXAMPLE_ROOT);
   projectCfg.build = projectCfg.build || {};
   projectCfg.build.sentinel = Object.assign({}, projectCfg.build.sentinel || {}, {
@@ -204,6 +347,15 @@ async function buildWithProtection({ protection, outRoot, packager }) {
   });
   projectCfg.build.thin = Object.assign({}, projectCfg.build.thin || {});
   projectCfg.build.protection = Object.assign({}, projectCfg.build.protection || {}, protection || {});
+  if (build && typeof build === "object") {
+    projectCfg.build = Object.assign({}, projectCfg.build, build);
+    if (build.thin && typeof build.thin === "object") {
+      projectCfg.build.thin = Object.assign({}, projectCfg.build.thin || {}, build.thin);
+    }
+    if (build.protection && typeof build.protection === "object") {
+      projectCfg.build.protection = Object.assign({}, projectCfg.build.protection || {}, build.protection);
+    }
+  }
   ensureLauncherObfuscation(projectCfg);
 
   const targetCfg = loadTargetConfig(EXAMPLE_ROOT, "local").cfg;
@@ -243,6 +395,30 @@ async function testStringObfuscationMeta(ctx) {
   }
 }
 
+async function testBackendTerser(ctx) {
+  log("Building thin-split with backend terser...");
+  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-protection-terser-"));
+  try {
+    const res = await withTimeout("buildRelease(terser)", ctx.buildTimeoutMs, () =>
+      buildWithProtection({
+        protection: {},
+        build: {
+          obfuscationProfile: "prod-strict",
+          backendTerser: { enabled: true, passes: 2 },
+        },
+        outRoot,
+        packager: "thin-split",
+      })
+    );
+    const terser = res.meta?.backendTerser;
+    assert.ok(terser && terser.enabled, "Expected backendTerser enabled");
+    assert.strictEqual(terser.ok, true, "Expected backendTerser to be ok");
+    assert.strictEqual(terser.passes, 2, "Expected backendTerser passes=2");
+  } finally {
+    fs.rmSync(outRoot, { recursive: true, force: true });
+  }
+}
+
 async function testElfPacker(ctx) {
   log("Building thin-split with ELF packer...");
   const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-protection-elf-"));
@@ -273,6 +449,95 @@ async function testElfPacker(ctx) {
   } finally {
     fs.rmSync(outRoot, { recursive: true, force: true });
     fs.rmSync(toolRoot, { recursive: true, force: true });
+  }
+}
+
+async function testFullProtection(ctx) {
+  const requireFull = process.env.SEAL_PROTECTION_E2E_REQUIRE_FULL === "1";
+  if (typeof process.getuid === "function" && process.getuid() !== 0) {
+    const msg = "full protection test requires root (sentinel baseDir ownership)";
+    if (requireFull) throw new Error(msg);
+    log(`SKIP: ${msg}`);
+    return;
+  }
+
+  const baseCfg = loadProjectConfig(EXAMPLE_ROOT);
+  const protectionCfg = baseCfg.build && baseCfg.build.protection ? baseCfg.build.protection : {};
+  const cObfCmd = protectionCfg.cObfuscator ? (protectionCfg.cObfuscator.cmd || protectionCfg.cObfuscator.tool) : null;
+  const packerCmd = protectionCfg.elfPacker ? (protectionCfg.elfPacker.cmd || protectionCfg.elfPacker.tool) : null;
+  const stripCmd = protectionCfg.strip && protectionCfg.strip.cmd ? protectionCfg.strip.cmd : "strip";
+
+  const missing = [];
+  if (stripCmd && !hasCommand(stripCmd)) missing.push(`strip:${stripCmd}`);
+  if (packerCmd && !hasCommand(packerCmd)) missing.push(`elfPacker:${packerCmd}`);
+  if (cObfCmd && !hasCommand(cObfCmd)) missing.push(`cObfuscator:${cObfCmd}`);
+  if (missing.length) {
+    const msg = `missing tools: ${missing.join(", ")}`;
+    if (requireFull) throw new Error(msg);
+    log(`SKIP: full protection (${msg})`);
+    return;
+  }
+
+  const cpuid = computeCpuIdBoth();
+  if (!cpuid) {
+    const msg = "cpuid unavailable for full protection sentinel";
+    if (requireFull) throw new Error(msg);
+    log(`SKIP: ${msg}`);
+    return;
+  }
+
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-full-guard-"));
+  const namespaceId = "00112233445566778899aabbccddeeff";
+  const appId = baseCfg.appName || "seal-example";
+
+  const projectCfg = JSON.parse(JSON.stringify(baseCfg));
+  projectCfg.build = projectCfg.build || {};
+  projectCfg.build.sentinel = {
+    enabled: true,
+    level: 1,
+    appId,
+    namespaceId,
+    storage: { baseDir, mode: "file" },
+    cpuIdSource: "both",
+    exitCodeBlock: 222,
+    checkIntervalMs: 0,
+    timeLimit: { mode: "off" },
+  };
+  projectCfg.build.thin = Object.assign({}, projectCfg.build.thin || {});
+  ensureLauncherObfuscation(projectCfg);
+
+  const targetCfg = loadTargetConfig(EXAMPLE_ROOT, "local").cfg;
+  const configName = resolveConfigName(targetCfg, "local");
+  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-full-protection-"));
+  const outDir = path.join(outRoot, "seal-out");
+
+  try {
+    installSentinelBlob({ baseDir, namespaceId, appId, cpuid, expiresAtSec: 0 });
+    const res = await withTimeout("buildRelease(full)", ctx.buildTimeoutMs, () =>
+      buildRelease({
+        projectRoot: EXAMPLE_ROOT,
+        projectCfg,
+        targetCfg,
+        configName,
+        packagerOverride: "thin-split",
+        outDirOverride: outDir,
+      })
+    );
+
+    const steps = (res.meta?.protection?.post?.steps || []);
+    const stripStep = steps.find((s) => s && s.step === "strip");
+    const packStep = steps.find((s) => s && s.step === "elf_packer");
+    assert.ok(stripStep && stripStep.ok, "Expected strip step OK in full protection build");
+    assert.ok(packStep && packStep.ok, "Expected elf_packer step OK in full protection build");
+
+    const strObs = res.meta?.protection?.stringObfuscation || [];
+    assert.ok(Array.isArray(strObs) && strObs.length > 0, "Expected string obfuscation enabled");
+    assert.ok(res.meta?.protection?.cObfuscator, "Expected cObfuscator enabled");
+
+    await runRelease({ releaseDir: res.releaseDir, buildId: res.buildId, runTimeoutMs: ctx.runTimeoutMs });
+  } finally {
+    fs.rmSync(outRoot, { recursive: true, force: true });
+    fs.rmSync(baseDir, { recursive: true, force: true });
   }
 }
 
@@ -309,7 +574,7 @@ async function main() {
     }
   }
 
-  const tests = [testStringObfuscationMeta, testElfPacker];
+  const tests = [testStringObfuscationMeta, testBackendTerser, testElfPacker, testFullProtection];
   let failures = 0;
   try {
     for (const t of tests) {

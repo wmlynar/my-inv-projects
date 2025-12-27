@@ -130,9 +130,9 @@ $DOCKER run --rm \
   -v "$SSH_DIR:/root/.ssh" \
   -v "$CACHE_DIR:/root/.cache/seal" \
   -w /workspace \
-  -e SEAL_E2E_INSTALL_DEPS=1 \
-  -e SEAL_E2E_INSTALL_PACKERS=1 \
-  -e SEAL_E2E_INSTALL_OBFUSCATORS=1 \
+  -e SEAL_E2E_INSTALL_DEPS="${SEAL_E2E_INSTALL_DEPS:-1}" \
+  -e SEAL_E2E_INSTALL_PACKERS="${SEAL_E2E_INSTALL_PACKERS:-1}" \
+  -e SEAL_E2E_INSTALL_OBFUSCATORS="${SEAL_E2E_INSTALL_OBFUSCATORS:-1}" \
   -e SEAL_SHIP_SSH_HOST="$SERVER_NAME" \
   "$BUILDER_IMAGE" \
   bash -lc "tools/seal/seal/scripts/run-e2e-suite.sh"

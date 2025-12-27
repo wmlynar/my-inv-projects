@@ -40,6 +40,14 @@ function runGdbAttach(pid, timeoutMs = 5000) {
   );
 }
 
+function runStraceAttach(pid, logPath, timeoutMs = 5000) {
+  return spawnSync(
+    "strace",
+    ["-p", String(pid), "-f", "-qq", "-o", logPath, "-e", "trace=memfd_create,execveat,execve", "-c"],
+    { stdio: "pipe", timeout: timeoutMs }
+  );
+}
+
 function checkPrereqs() {
   if (process.platform !== "linux") {
     log(`SKIP: thin anti-debug E2E is linux-only (platform=${process.platform})`);
@@ -324,6 +332,162 @@ async function runReleaseGdbAttachFail({ releaseDir, runTimeoutMs, env }) {
   }
 }
 
+async function runReleaseStraceAttachFail({ releaseDir, runTimeoutMs, env }) {
+  if (runReleaseOk.skipListen) {
+    log("SKIP: listen not permitted; strace attach test disabled");
+    return;
+  }
+  if (!hasCommand("strace")) {
+    log("SKIP: strace not installed; strace attach test disabled");
+    return;
+  }
+
+  const port = await getFreePort();
+  writeRuntimeConfig(releaseDir, port);
+
+  const binPath = path.join(releaseDir, "seal-example");
+  assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
+
+  const childEnv = Object.assign({}, process.env, env || {});
+  const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe", env: childEnv });
+  const outChunks = [];
+  const errChunks = [];
+  child.stdout.on("data", (c) => outChunks.push(c));
+  child.stderr.on("data", (c) => errChunks.push(c));
+
+  const exitPromise = new Promise((_, reject) => {
+    child.on("exit", (code, signal) => {
+      const stdout = Buffer.concat(outChunks).toString("utf8").trim();
+      const stderr = Buffer.concat(errChunks).toString("utf8").trim();
+      const detail = [
+        code !== null ? `code=${code}` : null,
+        signal ? `signal=${signal}` : null,
+        stdout ? `stdout: ${stdout.slice(0, 400)}` : null,
+        stderr ? `stderr: ${stderr.slice(0, 400)}` : null,
+      ].filter(Boolean).join("; ");
+      reject(new Error(`process exited early (${detail || "no output"})`));
+    });
+  });
+
+  try {
+    await withTimeout("waitForStatus", runTimeoutMs, () => Promise.race([waitForStatus(port), exitPromise]));
+    const logPath = path.join(os.tmpdir(), `seal-strace-attach-${Date.now()}.log`);
+    const res = runStraceAttach(child.pid, logPath, 5000);
+    if (res.error && res.error.code === "ETIMEDOUT") {
+      throw new Error("strace attach timed out (unexpected)");
+    }
+    const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+    const failMarkers = [
+      /operation not permitted/i,
+      /permission denied/i,
+      /ptrace/i,
+      /not being run/i,
+      /inappropriate ioctl/i,
+    ];
+    const isFailure = res.status !== 0 || failMarkers.some((re) => re.test(out));
+    if (!isFailure) {
+      const trace = fs.existsSync(logPath) ? fs.readFileSync(logPath, "utf8").slice(0, 800) : "";
+      throw new Error(`strace attach succeeded (unexpected)${trace ? `; trace=${trace}` : ""}`);
+    }
+  } finally {
+    child.kill("SIGTERM");
+    await new Promise((resolve) => {
+      const t = setTimeout(() => {
+        child.kill("SIGKILL");
+        resolve();
+      }, 4000);
+      child.on("exit", () => {
+        clearTimeout(t);
+        resolve();
+      });
+    });
+  }
+}
+
+async function runReleaseStraceCapture({ releaseDir, runTimeoutMs, env }) {
+  if (runReleaseOk.skipListen) {
+    log("SKIP: listen not permitted; strace capture disabled");
+    return;
+  }
+  if (!hasCommand("strace")) {
+    log("SKIP: strace not installed; strace capture disabled");
+    return;
+  }
+
+  const port = await getFreePort();
+  writeRuntimeConfig(releaseDir, port);
+
+  const binPath = path.join(releaseDir, "seal-example");
+  assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
+
+  const logPath = path.join(os.tmpdir(), `seal-strace-run-${Date.now()}.log`);
+  const childEnv = Object.assign({}, process.env, env || {});
+  const child = spawn(
+    "strace",
+    ["-f", "-qq", "-o", logPath, binPath],
+    { cwd: releaseDir, stdio: "pipe", env: childEnv, detached: true }
+  );
+  const outChunks = [];
+  const errChunks = [];
+  child.stdout.on("data", (c) => outChunks.push(c));
+  child.stderr.on("data", (c) => errChunks.push(c));
+
+  const exitPromise = new Promise((resolve) => {
+    child.on("exit", (code, signal) => resolve({
+      code,
+      signal,
+      stdout: Buffer.concat(outChunks).toString("utf8"),
+      stderr: Buffer.concat(errChunks).toString("utf8"),
+    }));
+  });
+
+  try {
+    await withTimeout("strace run", runTimeoutMs, async () => {
+      await delay(1500);
+    });
+  } finally {
+    try { process.kill(-child.pid, "SIGTERM"); } catch {}
+    await new Promise((resolve) => {
+      const t = setTimeout(() => {
+        try { process.kill(-child.pid, "SIGKILL"); } catch {}
+        resolve();
+      }, 4000);
+      child.on("exit", () => {
+        clearTimeout(t);
+        resolve();
+      });
+    });
+  }
+
+  const exit = await exitPromise;
+  const out = `${exit.stdout || ""}${exit.stderr || ""}`;
+  if (/operation not permitted/i.test(out) || /permission denied/i.test(out) || /ptrace/i.test(out)) {
+    log("SKIP: strace capture blocked by ptrace policy");
+    return;
+  }
+  await delay(200);
+  const trace = fs.existsSync(logPath) ? fs.readFileSync(logPath, "utf8") : "";
+  const hasMemfd = /memfd_create\(/.test(trace);
+  const hasExec = /(execveat|execve|fexecve)\(/.test(trace);
+  if (!hasExec) {
+    throw new Error(`strace capture missing exec syscall (out=${out.slice(0, 200)})`);
+  }
+  const lines = trace.split(/\r?\n/);
+  const memfdLine = lines.find((line) => line.includes("memfd_create("));
+  const execLine = lines.find((line) => /(execveat|execve|fexecve)\(/.test(line));
+  if (memfdLine) {
+    log(`strace memfd: ${memfdLine.trim().slice(0, 300)}`);
+  }
+  if (execLine) {
+    log(`strace exec: ${execLine.trim().slice(0, 300)}`);
+  }
+  if (!hasMemfd) {
+    log("SKIP: memfd_create not visible in strace output (strace too old or syscall unnamed)");
+    return;
+  }
+  log("OK: strace captured memfd_create + exec (antiDebug=off)");
+}
+
 async function runReleaseExpectFailAfterReady({ releaseDir, readyTimeoutMs, failTimeoutMs, env, expectStderr }) {
   if (runReleaseOk.skipListen) {
     log("SKIP: listen not permitted; runtime check disabled");
@@ -535,6 +699,12 @@ async function main() {
     );
     log("OK: gdb attach blocked");
 
+    log("Testing strace attach (expect failure)...");
+    await withTimeout("strace attach fail", testTimeoutMs, () =>
+      runReleaseStraceAttachFail({ releaseDir: resA.releaseDir, runTimeoutMs })
+    );
+    log("OK: strace attach blocked");
+
     log("Testing ptrace force (expect failure)...");
     await withTimeout("ptrace force fail", testTimeoutMs, () =>
       runReleaseExpectFail({
@@ -586,6 +756,11 @@ async function main() {
       runReleaseOk({ releaseDir: resB.releaseDir, runTimeoutMs, env: { LD_PRELOAD: "1" } })
     );
     log("OK: antiDebug disabled allows LD_PRELOAD");
+
+    log("Testing syscall logger (strace) on antiDebug=off...");
+    await withTimeout("strace capture", testTimeoutMs, () =>
+      runReleaseStraceCapture({ releaseDir: resB.releaseDir, runTimeoutMs })
+    );
 
     log("Building thin-split with launcher hardening disabled...");
     const resHard = await withTimeout("buildRelease(hardening off)", buildTimeoutMs, () =>

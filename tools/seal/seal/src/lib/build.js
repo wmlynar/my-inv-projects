@@ -103,10 +103,75 @@ function obfuscationOptions(profile) {
   };
 }
 
-async function buildBundle({ projectRoot, entryRel, stageDir, buildId, appName, minify }) {
+function resolveBackendTerser(raw, profile) {
+  if (raw === undefined || raw === null) {
+    return { enabled: profile === "prod-strict" };
+  }
+  if (typeof raw === "boolean") return { enabled: raw };
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error(`Invalid build.backendTerser: expected boolean or object`);
+  }
+  const enabled = raw.enabled !== undefined ? !!raw.enabled : true;
+  const passes = raw.passes !== undefined ? Number(raw.passes) : 3;
+  if (!Number.isFinite(passes) || passes < 1 || passes > 10) {
+    throw new Error(`Invalid build.backendTerser.passes: ${raw.passes}`);
+  }
+  const toplevel = raw.toplevel !== undefined ? !!raw.toplevel : true;
+  const compress = raw.compress !== undefined ? raw.compress : { passes, inline: 3 };
+  const mangle = raw.mangle !== undefined ? raw.mangle : { toplevel: true };
+  const format = raw.format !== undefined ? raw.format : { comments: false };
+  return {
+    enabled,
+    passes,
+    toplevel,
+    compress,
+    mangle,
+    format,
+  };
+}
+
+function loadTerser() {
+  try {
+    return require("terser");
+  } catch (e) {
+    const msg = (e && e.message) ? e.message : String(e);
+    throw new Error(`terser not installed (npm i --workspace tools/seal/seal terser). ${msg}`);
+  }
+}
+
+async function applyTerser(bundlePath, stageDir, terserCfg) {
+  const terser = loadTerser();
+  const src = fs.readFileSync(bundlePath, "utf-8");
+  const opts = {
+    compress: terserCfg.compress,
+    mangle: terserCfg.mangle,
+    toplevel: terserCfg.toplevel,
+    format: terserCfg.format,
+    sourceMap: false,
+  };
+  const result = await terser.minify(src, opts);
+  if (!result || result.error || !result.code) {
+    const errMsg = result && result.error ? String(result.error) : "terser failed";
+    throw new Error(`Terser failed: ${errMsg}`);
+  }
+  const outPath = path.join(stageDir, "bundle.terser.cjs");
+  fs.writeFileSync(outPath, result.code, "utf-8");
+  return {
+    enabled: true,
+    ok: true,
+    outPath,
+    passes: terserCfg.passes,
+    bytesIn: src.length,
+    bytesOut: result.code.length,
+  };
+}
+
+async function buildBundle({ projectRoot, entryRel, stageDir, buildId, appName, minify, stripConsole }) {
   const entryAbs = path.join(projectRoot, entryRel);
   const outFile = path.join(stageDir, "bundle.cjs");
   const doMinify = !!minify;
+  // Strip non-error console calls (and their args) to reduce semantic cues.
+  const pureConsole = stripConsole ? ["console.log", "console.info", "console.debug", "console.warn"] : undefined;
 
   await esbuild.build({
     entryPoints: [entryAbs],
@@ -116,6 +181,7 @@ async function buildBundle({ projectRoot, entryRel, stageDir, buildId, appName, 
     format: "cjs",
     sourcemap: false,
     minify: doMinify,
+    pure: pureConsole,
     outfile: outFile,
     define: {
       "__SEAL_BUILD_ID__": JSON.stringify(buildId),
@@ -796,16 +862,27 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   const backendMinify = projectCfg.build.backendMinify !== undefined
     ? !!projectCfg.build.backendMinify
     : obfProfile === "prod-strict";
+  const stripConsole = obfProfile === "prod-strict";
+  const backendTerserCfg = resolveBackendTerser(projectCfg.build.backendTerser, obfProfile);
   info("Bundling (esbuild)...");
-  const bundlePath = await buildBundle({
+  let bundlePath = await buildBundle({
     projectRoot,
     entryRel: projectCfg.entry,
     stageDir,
     buildId,
     appName,
     minify: backendMinify,
+    stripConsole,
   });
   ok(`Bundle OK (esbuild${backendMinify ? ", minify" : ""})`);
+  let backendTerser = { enabled: !!backendTerserCfg.enabled, ok: false, skipped: true, reason: "disabled" };
+  if (backendTerserCfg.enabled) {
+    info("Backend terser...");
+    const terserResult = await applyTerser(bundlePath, stageDir, backendTerserCfg);
+    backendTerser = { ...terserResult, skipped: false };
+    bundlePath = terserResult.outPath;
+    ok(`Backend terser OK (passes:${backendTerserCfg.passes}, saved:${terserResult.bytesIn - terserResult.bytesOut} bytes)`);
+  }
   info("Obfuscating bundle...");
   const obfPath = obfuscateBundle(bundlePath, stageDir, obfProfile);
   ok(`Obfuscation OK (${obfProfile})`);
@@ -1080,6 +1157,8 @@ protection.integrity = thinIntegrity;
     config: configName,
     packager: packagerUsed,
     obfuscationProfile: obfProfile,
+    backendMinify,
+    backendTerser,
     frontendObfuscation: frontendResult,
     frontendMinify: minifyResult,
     protection,
