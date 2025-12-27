@@ -847,11 +847,12 @@ SEA w Node (Single Executable Application) ma twarde ograniczenia, które determ
    - wynik: `seal-out/stage/bundle.cjs` (pojedynczy plik, `format=cjs`).
    - sourcemapy: generowane jako plik zewnętrzny wyłącznie do użytku lokalnego (nie trafiają na serwer).
 
-2) **Agresywna obfuskacja zbundlowanego pliku:**
+2) **Obfuskacja zbundlowanego pliku:**
    - wejście: `seal-out/stage/bundle.cjs` → wyjście: `seal-out/stage/bundle.obf.cjs`.
    - Seal definiuje profile obfuskacji (co najmniej):
-     - `safe` (najbardziej kompatybilny),
-     - `aggressive` (domyślny „aggressive-but-stable”),
+     - `minimal` (najbardziej kompatybilny),
+     - `balanced` (domyślny „balanced-but-stable”),
+     - `strict` (wysoka ochrona, po E2E),
      - `max` (najsilniejszy, opcjonalny – może wpływać na wydajność/rozmiar).
 
 3) **Przygotowanie blobu SEA (Single Executable Application):**
@@ -894,7 +895,7 @@ SEA w Node (Single Executable Application) ma twarde ograniczenia, które determ
   - zwiększać rozmiar binarki,
   - pogarszać czas startu,
   - czasem obniżać kompatybilność.
-  Dlatego profil `aggressive` jest domyślny, a `max` jest świadomą opcją.
+  Dlatego profil `balanced` jest domyślny, a `strict`/`max` są świadomymi opcjami.
 - „Niemożliwe do odczytania” nie jest gwarantowalne przy pełnym dostępie do hosta; celem jest maksymalne utrudnienie i podniesienie kosztu ataku.
 
 #### 14.5.5. Tryby alternatywne (bundle)
@@ -2095,7 +2096,7 @@ Ta sekcja zbiera tematy „do decyzji” lub „do dopięcia” – żeby nie ro
    MVP jest „build na platformie docelowej”. Jeśli potrzebujemy cross‑build, trzeba dopiąć zasady i testy dla SEA per OS/arch.
 
 4) **Profile obfuskacji i testy regresji**  
-   Jak mierzymy „aggressive‑but‑stable”? Jakie testy E2E są wymagane przed `deploy`?
+   Jak mierzymy „strict‑but‑stable”? Jakie testy E2E są wymagane przed `deploy`?
 
 5) **Hardening systemd – gdzie jest granica**  
    Baseline jest bezpieczny i mało inwazyjny, ale opcje typu `ProtectSystem=strict` mogą łamać integracje. Jakie presety udostępniamy (np. `baseline`, `strict`)?

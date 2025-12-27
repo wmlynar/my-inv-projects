@@ -274,10 +274,9 @@ build: {
 Dobór profilu obfuskacji (skrót):
 - `minimal`: kod dynamiczny (eval/Function), dużo refleksji/metaprogramowania.
 - `balanced`: domyślny, bezpieczny dla większości aplikacji.
-- `aggressive`: więcej tarcia (DCI + minify), bez renameGlobals i bez Tersera.
 - `strict`: produkcja po pełnych E2E, renameGlobals + Terser + DCI.
 - `max`: maksymalne utrudnienie (wyższy DCI + Terser passes=4), tylko po E2E.
-Alias: `prod-strict`/`prod-max` są nadal akceptowane, ale emitują warning.
+Alias: `aggressive` → `strict`, `prod-strict`/`prod-max` → `strict`/`max` (emitują warning).
 
 ## Frontend minifikacja HTML/CSS (domyślnie włączona)
 

@@ -79,7 +79,7 @@ Seal powinien mieć interfejs packagera, aby można było podmieniać metodę pa
 **B) Obfuskacja**
 - wejście: `bundle.cjs`
 - wyjście: `bundle.obf.cjs`
-- profile: `safe`, `aggressive` (domyślny), `max` (opcjonalny)
+- profile: `minimal`, `balanced` (domyślny), `strict`, `max` (opcjonalny)
 - zasada: obfuskacja działa na **pojedynczym** zbundlowanym pliku.
 
 **C) Generacja blobu SEA**
@@ -244,7 +244,7 @@ seal-out/run.last_failed/
   },
   "resolvedConfig": {
     "packager": "sea",
-    "obfuscation": "aggressive",
+    "obfuscation": "strict",
     "frontendObfuscation": {"enabled": true},
     "frontendMinify": {"enabled": true, "level": "safe"},
     "protection": {
