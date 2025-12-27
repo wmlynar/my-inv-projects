@@ -132,6 +132,7 @@ Przykład:
 - STD-106c (SHOULD): hostkey prompts eliminuje sie przez pre‑seed `known_hosts` albo jawny `StrictHostKeyChecking=accept-new` (gdy dozwolone); brak wpisu = fail‑fast z instrukcja.
 - STD-106d (SHOULD): w testach/CI uzywaj tymczasowego `UserKnownHostsFile`, aby uniknac konfliktow hostkey miedzy uruchomieniami.
 - STD-106e (SHOULD): ustawiaj prawidlowe permissje kluczy SSH (private key `0600`, `authorized_keys`/`known_hosts` `0644`), inaczej ssh je zignoruje.
+- STD-106f (SHOULD): gdy `git` uzywa SSH, ustaw `GIT_SSH_COMMAND` z `BatchMode=yes`, `UserKnownHostsFile=...`, `StrictHostKeyChecking=...`; git nie dziedziczy opcji ssh z innych wywolan, więc brak tego moze blokowac CI.
 - STD-107 (SHOULD): parsowanie outputu narzedzi systemowych powinno wymuszac `LC_ALL=C` (lub `LANG=C`) albo uzywac trybu `--json`/`--output`, aby uniknac roznic locale.
 - STD-108 (SHOULD): unikaj `exec()` z domyslnym `maxBuffer`; uzywaj `spawn`/`execFile` lub ustaw `maxBuffer` i loguj przycinki outputu.
 - STD-109 (SHOULD): zawsze stosuj `--` przed listą sciezek w komendach zewnetrznych (rm/cp/rsync/scp), aby sciezki zaczynajace sie od `-` nie byly traktowane jako opcje.
