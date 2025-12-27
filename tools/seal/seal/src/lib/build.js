@@ -17,7 +17,15 @@ const { applyDecoy } = require("./decoy");
 const { packSea } = require("./packagers/sea");
 const { packFallback } = require("./packagers/fallback");
 const { packThin, applyLauncherSelfHash } = require("./packagers/thin");
-const { normalizePackager, resolveBundleFallback, resolveThinConfig, resolveProtectionConfig } = require("./packagerConfig");
+const {
+  normalizePackager,
+  resolveBundleFallback,
+  resolveThinConfig,
+  resolveProtectionConfig,
+  applyThinCompatibility,
+  applyProtectionCompatibility,
+  packagerSupportsHardening,
+} = require("./packagerConfig");
 const { resolveSentinelConfig } = require("./sentinelConfig");
 
 function makeBuildId() {
@@ -789,8 +797,8 @@ function applyHardeningPost(releaseDir, appName, packagerUsed, hardCfg) {
     steps.push({ step: 'bundle_pack_gzip', ...r });
   }
 
-  // 2) SEA binary repacking (strip/ELF packer) is EXPERIMENTAL.
-  // There are real-world cases where postject-ed binaries break after strip/packing.
+  // 2) Binary hardening (strip/ELF packer) is EXPERIMENTAL.
+  // SEA/thin-single ignore strip/ELF packer because repacking can break embedded payloads.
   // Therefore it is OFF by default and must be enabled explicitly.
   const exePath = path.join(releaseDir, appName);
   const thinSplitLauncher = packagerUsed === "thin-split"
@@ -802,21 +810,16 @@ function applyHardeningPost(releaseDir, appName, packagerUsed, hardCfg) {
   const hardTargetLabel = hardTargetPath === exePath ? "app" : "launcher";
   const isScript = isShebangScript(hardTargetPath);
   const isThin = typeof packagerUsed === "string" && packagerUsed.startsWith("thin");
-  const isThinSingle = packagerUsed === "thin-single";
-  const isSea = packagerUsed === "sea";
+  const hardeningSupported = packagerSupportsHardening(packagerUsed);
 
-  const stripEnabled = cfg.stripSymbols === true; // default false
+  let stripEnabled = cfg.stripSymbols === true; // default false
   const stripTool = cfg.stripTool || "strip";
   const stripArgs = cfg.stripArgs || null;
-  const packerEnabled = !!cfg.elfPacker;
+  let packerEnabled = !!cfg.elfPacker;
 
-  if (!isScript && (stripEnabled || packerEnabled)) {
-    if (isThinSingle) {
-      throw new Error("Hardening not supported for thin-single (AIO): strip/ELF packer would corrupt embedded payload. Use thin-split.");
-    }
-    if (isSea) {
-      throw new Error("Hardening not supported for SEA: strip/ELF packer may break postject binary. Use thin-split or disable hardening.");
-    }
+  if (!hardeningSupported) {
+    stripEnabled = false;
+    packerEnabled = false;
   }
 
   if (!isScript && stripEnabled) {
@@ -832,7 +835,7 @@ function applyHardeningPost(releaseDir, appName, packagerUsed, hardCfg) {
         });
       }
     }
-  } else if (!isScript && !isThin) {
+  } else if (!isScript && !isThin && hardeningSupported) {
     steps.push({ step: "strip", ok: false, skipped: true, reason: stripEnabled ? "strip_failed" : "disabled_by_default", target: hardTargetLabel });
   }
   if (packerEnabled && isScript) {
@@ -845,7 +848,7 @@ function applyHardeningPost(releaseDir, appName, packagerUsed, hardCfg) {
       throw new Error(`ELF packer failed${tool}: ${reason}`);
     }
     steps.push({ step: "elf_packer", target: hardTargetLabel, ...r });
-  } else if (!isScript && !isThin) {
+  } else if (!isScript && !isThin && hardeningSupported) {
     steps.push({ step: "elf_packer", ok: false, skipped: true, reason: "disabled_by_default" });
   }
 
@@ -917,8 +920,14 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
 
   info(`Build: appName=${appName} buildId=${buildId}`);
   info(`Entry: ${projectCfg.entry}`);
-  const thinCfg = resolveThinConfig(targetCfg, projectCfg);
+  let thinCfg = resolveThinConfig(targetCfg, projectCfg);
   const packagerSpec = normalizePackager(packagerOverride || targetCfg.packager || projectCfg.build.packager || "auto");
+  const compatNotes = new Set();
+  if (packagerSpec.kind === "thin") {
+    const thinCompat = applyThinCompatibility(packagerSpec.label, thinCfg);
+    thinCfg = thinCompat.thinCfg;
+    for (const note of thinCompat.notes) compatNotes.add(note);
+  }
 
   info(`Target: ${targetCfg.target} (packager=${packagerSpec.label}) config=${configName}`);
 
@@ -980,9 +989,8 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   const thinChunkSize = thinCfg.chunkSizeBytes;
   const thinZstdLevel = thinCfg.zstdLevel;
   const thinZstdTimeoutMs = thinCfg.zstdTimeoutMs;
-
   // Normalize protection config early (used for SEA main packing)
-  const protectionCfg = resolveProtectionConfig(projectCfg);
+  let protectionCfg = resolveProtectionConfig(projectCfg);
   const hardEnabled = protectionCfg.enabled !== false;
   const hardCfg = protectionCfg;
 
@@ -1108,59 +1116,67 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
     ok("Packager bundle OK (node + obfuscated bundle)");
   }
 
-
-const thinIntegrityCfg = thinCfg.integrity || {};
-const thinIntegrityEnabled = !!thinIntegrityCfg.enabled;
-const thinIntegrityMode = thinIntegrityCfg.mode || "inline";
-const thinIntegrityFile = thinIntegrityCfg.file || "ih";
-if (thinIntegrityEnabled && packagerUsed === "thin-split" && protectionCfg.elfPacker && thinIntegrityMode === "inline") {
-  throw new Error("thin.integrity (inline) is not compatible with protection.elfPacker; set thin.integrity.mode=sidecar or disable the packer");
-}
-
-// Protection (post-pack): make it harder to recover code by casually viewing files.
-// Default: enabled (can be disabled in seal.json5 -> build.protection.enabled=false)
-const hardPost = applyHardeningPost(releaseDir, appName, packagerUsed, protectionCfg);
-const protection = {
-  enabled: hardEnabled,
-  seaMainPacking,
-  post: hardPost,
-  stringObfuscation: protectionCfg.stringObfuscation || null,
-  cObfuscator: protectionCfg.cObfuscator || null,
-};
-
-if (!hardEnabled) {
-  info('Protection disabled');
-} else {
-  const stepsOk = (hardPost.steps || []).filter(s => s.ok).map(s => s.step);
-  const stepsSkip = (hardPost.steps || []).filter(s => s.skipped).map(s => s.step + ':' + s.reason);
-
-  if (stepsSkip.length) {
-    warn(`Protection partial: ${stepsSkip.join(', ')}`);
+  if (packagerSpec.kind !== "thin") {
+    const thinCompat = applyThinCompatibility(packagerUsed, thinCfg);
+    thinCfg = thinCompat.thinCfg;
+    for (const note of thinCompat.notes) compatNotes.add(note);
+  }
+  const protectionCompat = applyProtectionCompatibility(packagerUsed, protectionCfg);
+  protectionCfg = protectionCompat.protectionCfg;
+  for (const note of protectionCompat.notes) compatNotes.add(note);
+  if (compatNotes.size) {
+    for (const note of compatNotes) warn(`Compatibility: ${note}`);
   }
 
-  const bits = [];
-  if (seaMainPacking && seaMainPacking.ok) bits.push(`seaMainPack:${seaMainPacking.method}`);
-  bits.push(...stepsOk);
-  ok(`Protection OK (${bits.length ? bits.join(' + ') : 'no_steps'})`);
-}
+  const thinIntegrityCfg = thinCfg.integrity || {};
+  const thinIntegrityEnabled = !!thinIntegrityCfg.enabled;
+  const thinIntegrityMode = thinIntegrityCfg.mode || "inline";
+  const thinIntegrityFile = thinIntegrityCfg.file || "ih";
+  if (thinIntegrityEnabled && packagerUsed === "thin-split" && protectionCfg.elfPacker && thinIntegrityMode === "inline") {
+    throw new Error("thin.integrity (inline) is not compatible with protection.elfPacker; set thin.integrity.mode=sidecar or disable the packer");
+  }
 
-let thinIntegrity = { enabled: false };
-if (thinIntegrityEnabled) {
-  if (packagerUsed !== "thin-split") {
-    throw new Error("thin.integrity requires packager thin-split");
+  // Protection (post-pack): make it harder to recover code by casually viewing files.
+  // Default: enabled (can be disabled in seal.json5 -> build.protection.enabled=false)
+  const hardPost = applyHardeningPost(releaseDir, appName, packagerUsed, protectionCfg);
+  const protection = {
+    enabled: hardEnabled,
+    seaMainPacking,
+    post: hardPost,
+    stringObfuscation: protectionCfg.stringObfuscation || null,
+    cObfuscator: protectionCfg.cObfuscator || null,
+  };
+
+  if (!hardEnabled) {
+    info('Protection disabled');
+  } else {
+    const stepsOk = (hardPost.steps || []).filter(s => s.ok).map(s => s.step);
+    const stepsSkip = (hardPost.steps || []).filter(s => s.skipped).map(s => s.step + ':' + s.reason);
+
+    if (stepsSkip.length) {
+      warn(`Protection partial: ${stepsSkip.join(', ')}`);
+    }
+
+    const bits = [];
+    if (seaMainPacking && seaMainPacking.ok) bits.push(`seaMainPack:${seaMainPacking.method}`);
+    bits.push(...stepsOk);
+    ok(`Protection OK (${bits.length ? bits.join(' + ') : 'no_steps'})`);
   }
-  const launcherPath = path.join(releaseDir, "b", "a");
-  const sidecarPath = thinIntegrityMode === "sidecar"
-    ? path.join(releaseDir, "r", thinIntegrityFile)
-    : null;
-  const res = applyLauncherSelfHash(launcherPath, sidecarPath ? { mode: "sidecar", sidecarPath } : { mode: "inline" });
-  if (!res.ok) {
-    throw new Error(`Thin integrity failed: ${res.errorShort}`);
+
+  let thinIntegrity = { enabled: false };
+  if (thinIntegrityEnabled && packagerUsed === "thin-split") {
+    const launcherPath = path.join(releaseDir, "b", "a");
+    const sidecarPath = thinIntegrityMode === "sidecar"
+      ? path.join(releaseDir, "r", thinIntegrityFile)
+      : null;
+    const res = applyLauncherSelfHash(launcherPath, sidecarPath ? { mode: "sidecar", sidecarPath } : { mode: "inline" });
+    if (!res.ok) {
+      throw new Error(`Thin integrity failed: ${res.errorShort}`);
+    }
+    thinIntegrity = { enabled: true, ok: true, target: "launcher", mode: thinIntegrityMode, file: thinIntegrityFile };
+    ok(`Thin integrity OK (${thinIntegrityMode === "sidecar" ? "sidecar" : "inline"})`);
   }
-  thinIntegrity = { enabled: true, ok: true, target: "launcher", mode: thinIntegrityMode, file: thinIntegrityFile };
-  ok(`Thin integrity OK (${thinIntegrityMode === "sidecar" ? "sidecar" : "inline"})`);
-}
-protection.integrity = thinIntegrity;
+  protection.integrity = thinIntegrity;
 
   // Includes: public/, data/ etc
   copyIncludes(projectRoot, releaseDir, projectCfg.build.includeDirs);

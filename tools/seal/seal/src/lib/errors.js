@@ -35,12 +35,6 @@ function guessHint(message) {
   if (/Missing appctl/i.test(msg)) {
     return "Run: seal deploy <target> --bootstrap (installs runner + unit)";
   }
-  if (/thin\.integrity requires packager thin-split/i.test(msg)) {
-    return "Set build.packager=thin-split or disable build.thin.integrity";
-  }
-  if (/not supported for SEA/i.test(msg)) {
-    return "Disable build.protection.strip/elfPacker or switch to thin-split";
-  }
   if (/ELF packer failed/i.test(msg)) {
     return "Install the packer or disable build.protection.elfPacker";
   }

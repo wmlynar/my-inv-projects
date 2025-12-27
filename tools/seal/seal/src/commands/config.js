@@ -6,7 +6,14 @@ const path = require("path");
 const { findProjectRoot } = require("../lib/paths");
 const { getSealPaths, loadProjectConfig, loadTargetConfig, resolveTargetName, resolveConfigName, getConfigFile } = require("../lib/project");
 const { ensureDir, fileExists, safeWriteFile } = require("../lib/fsextra");
-const { normalizePackager, resolveThinConfig, resolveProtectionConfig, resolveBundleFallback } = require("../lib/packagerConfig");
+const {
+  normalizePackager,
+  resolveThinConfig,
+  resolveProtectionConfig,
+  resolveBundleFallback,
+  applyThinCompatibility,
+  applyProtectionCompatibility,
+} = require("../lib/packagerConfig");
 const { resolveSentinelConfig } = require("../lib/sentinelConfig");
 const { readJson5 } = require("../lib/json5io");
 const { info, ok, warn } = require("../lib/ui");
@@ -242,8 +249,12 @@ async function cmdConfigExplain(cwd, targetNameOrConfig) {
 
   const packagerRaw = targetCfg.packager || proj.build.packager || "auto";
   const packagerSpec = normalizePackager(packagerRaw);
-  const thinCfg = resolveThinConfig(targetCfg, proj);
-  const protectionCfg = resolveProtectionConfig(proj);
+  const thinCfgRaw = resolveThinConfig(targetCfg, proj);
+  const protectionRaw = resolveProtectionConfig(proj);
+  const thinCompat = applyThinCompatibility(packagerSpec.label, thinCfgRaw);
+  const protectionCompat = applyProtectionCompatibility(packagerSpec.label, protectionRaw);
+  const thinCfg = thinCompat.thinCfg;
+  const protectionCfg = protectionCompat.protectionCfg;
   const allowBundleFallback = resolveBundleFallback(targetCfg, proj);
   const sentinelCfg = resolveSentinelConfig({
     projectRoot,
@@ -325,8 +336,14 @@ async function cmdConfigExplain(cwd, targetNameOrConfig) {
   console.log(`  envMode: ${thinCfg.envMode || "auto"}`);
   console.log(`  runtimeStore: ${thinCfg.runtimeStore || "auto"}`);
   console.log(`  snapshotGuard: ${thinCfg.snapshotGuard.enabled ? "enabled" : "disabled"}`);
-  console.log(`  integrity: ${thinCfg.integrity.enabled ? `enabled (${thinCfg.integrity.mode})` : "disabled"}`);
-  console.log(`  nativeBootstrap: ${thinCfg.nativeBootstrap.enabled ? "enabled" : "disabled"}`);
+  const integrityLabel = thinCfg.integrity.enabled
+    ? `enabled (${thinCfg.integrity.mode})`
+    : (thinCompat.disabled.integrity ? "disabled (auto)" : "disabled");
+  console.log(`  integrity: ${integrityLabel}`);
+  const nativeBootstrapLabel = thinCfg.nativeBootstrap.enabled
+    ? "enabled"
+    : (thinCompat.disabled.nativeBootstrap ? "disabled (auto)" : "disabled");
+  console.log(`  nativeBootstrap: ${nativeBootstrapLabel}`);
   console.log(`  antiDebug: ${thinCfg.antiDebug.enabled ? "enabled" : "disabled"}`);
   if (thinCfg.antiDebug.enabled) {
     console.log(`    mapsDenylist: ${thinCfg.antiDebug.mapsDenylist.length ? thinCfg.antiDebug.mapsDenylist.join(", ") : "none"}`);
@@ -335,8 +352,14 @@ async function cmdConfigExplain(cwd, targetNameOrConfig) {
   console.log("");
 
   console.log("Protection:");
-  console.log(`  strip: ${protectionCfg.stripSymbols ? "enabled" : "disabled"}`);
-  console.log(`  elfPacker: ${protectionCfg.elfPacker || "disabled"}`);
+  const stripLabel = protectionCfg.stripSymbols
+    ? "enabled"
+    : (protectionCompat.disabled.strip ? "disabled (auto)" : "disabled");
+  const elfPackerLabel = protectionCfg.elfPacker
+    ? protectionCfg.elfPacker
+    : (protectionCompat.disabled.elfPacker ? "disabled (auto)" : "disabled");
+  console.log(`  strip: ${stripLabel}`);
+  console.log(`  elfPacker: ${elfPackerLabel}`);
   console.log(`  cObfuscator: ${protectionCfg.cObfuscator || "disabled"}`);
   console.log("");
 
@@ -350,21 +373,9 @@ async function cmdConfigExplain(cwd, targetNameOrConfig) {
   }
   console.log("");
 
-  const notes = [];
-  if (packagerSpec.label === "sea" && (protectionCfg.stripSymbols || protectionCfg.elfPacker)) {
-    notes.push("SEA does not support strip/ELF packer (build will fail-fast)");
-  }
-  if (packagerSpec.label === "thin-single" && (protectionCfg.stripSymbols || protectionCfg.elfPacker)) {
-    notes.push("thin-single does not support strip/ELF packer (build will fail-fast)");
-  }
-  if (thinCfg.integrity.enabled && packagerSpec.label !== "thin-split") {
-    notes.push("thin.integrity requires packager thin-split");
-  }
+  const notes = [...thinCompat.notes, ...protectionCompat.notes];
   if (thinCfg.integrity.enabled && thinCfg.integrity.mode === "inline" && protectionCfg.elfPacker) {
     notes.push("thin.integrity inline is incompatible with elfPacker (use sidecar)");
-  }
-  if (thinCfg.nativeBootstrap.enabled && packagerSpec.label !== "thin-split") {
-    notes.push("nativeBootstrap requires packager thin-split");
   }
   if (notes.length) {
     console.log("Notes:");

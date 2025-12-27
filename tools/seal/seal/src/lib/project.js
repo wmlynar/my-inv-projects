@@ -343,7 +343,7 @@ function loadProjectConfig(projectRoot) {
   // Protection: enabled by default. Attempts to reduce "casual" inspection of executables/bundles.
   // - SEA: packs the main bundle into a compressed loader (so the SEA blob has no plaintext JS)
   // - bundle: gzip-pack backend bundle + loader
-  // - ELF packer defaults to kiteshield (-n) for thin-split; SEA packer/strip remain unsupported
+  // - ELF packer defaults to kiteshield (-n) for thin-split; SEA/thin-single ignore strip/ELF packer
   if (cfg.build.protection === undefined) {
     cfg.build.protection = {
       enabled: true,

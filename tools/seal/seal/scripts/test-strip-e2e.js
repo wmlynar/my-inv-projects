@@ -673,6 +673,14 @@ function extractStripStep(res) {
   return stripStep;
 }
 
+function assertStripIgnored(res) {
+  const steps = ((res.meta || {}).protection || {}).post?.steps || [];
+  const stripStep = steps.find((s) => s.step === "strip");
+  if (stripStep) {
+    throw new Error(`Expected strip to be ignored, but step present: ${JSON.stringify(stripStep)}`);
+  }
+}
+
 async function testStripMetadataThinSplit(res) {
   const stripStep = extractStripStep(res);
   if (!stripStep.ok) {
@@ -722,19 +730,6 @@ async function testStripMetadataThinSplit(res) {
 
 async function testStripRuntime(res, ctx) {
   await runRelease({ releaseDir: res.releaseDir, runTimeoutMs: ctx.runTimeoutMs });
-}
-
-async function expectBuildFailure(label, fn, match) {
-  try {
-    await fn();
-  } catch (err) {
-    const msg = err && err.message ? err.message : String(err);
-    if (match && !msg.includes(match)) {
-      throw new Error(`${label}: expected error to include "${match}", got: ${msg}`);
-    }
-    return;
-  }
-  throw new Error(`${label}: expected build to fail`);
 }
 
 async function main() {
@@ -804,15 +799,12 @@ async function main() {
       if (!hasCommand("postject")) {
         log("SKIP: postject not available; SEA strip test disabled");
       } else {
-        log("Building SEA with strip enabled (expect error)...");
-        await withTimeout("buildRelease(strip-sea)", buildTimeoutMs, () =>
-          expectBuildFailure(
-            "sea",
-            () => buildWithStrip({ outRoot, packager: "sea" }),
-            "SEA"
-          )
+        log("Building SEA with strip enabled (expect ignore)...");
+        const seaRes = await withTimeout("buildRelease(strip-sea)", buildTimeoutMs, () =>
+          buildWithStrip({ outRoot, packager: "sea" })
         );
-        log("OK: SEA strip rejected");
+        await withTimeout("testStripIgnored(SEA)", testTimeoutMs, () => assertStripIgnored(seaRes));
+        log("OK: SEA strip ignored");
       }
     } else {
       log("SKIP: SEA strip test disabled (set SEAL_STRIP_E2E_TEST_SEA=1 to enable)");

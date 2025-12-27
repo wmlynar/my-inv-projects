@@ -6,7 +6,14 @@ const os = require("os");
 
 const { findProjectRoot } = require("../lib/paths");
 const { getSealPaths, loadProjectConfig, loadTargetConfig, resolveTargetName, resolveConfigName, getConfigFile } = require("../lib/project");
-const { normalizePackager, resolveBundleFallback, resolveThinConfig, resolveProtectionConfig } = require("../lib/packagerConfig");
+const {
+  normalizePackager,
+  resolveBundleFallback,
+  resolveThinConfig,
+  resolveProtectionConfig,
+  applyThinCompatibility,
+  applyProtectionCompatibility,
+} = require("../lib/packagerConfig");
 const { info, warn, err, ok, hr } = require("../lib/ui");
 const { spawnSyncSafe } = require("../lib/spawn");
 const { fileExists } = require("../lib/fsextra");
@@ -224,7 +231,7 @@ async function cmdCheck(cwd, targetArg, opts) {
   }
 
   // Toolchain checks
-  const thinCfg = resolveThinConfig(targetCfg, proj);
+  const thinCfgRaw = resolveThinConfig(targetCfg, proj);
   const packagerSpec = normalizePackager(opts.packager || targetCfg?.packager || proj?.build?.packager || "auto");
   const allowBundleFallback = resolveBundleFallback(targetCfg, proj);
   if (packagerSpec.kind === "unknown") {
@@ -232,6 +239,14 @@ async function cmdCheck(cwd, targetArg, opts) {
   }
   const seaNeeded = packagerSpec.kind === "sea";
   const thinNeeded = packagerSpec.kind === "thin";
+  const thinCompat = applyThinCompatibility(packagerSpec.label, thinCfgRaw);
+  const protectionRaw = resolveProtectionConfig(proj);
+  const protectionCompat = applyProtectionCompatibility(packagerSpec.label, protectionRaw);
+  const protectionCfg = protectionCompat.protectionCfg;
+  const hardEnabled = protectionCfg.enabled !== false;
+  for (const note of [...thinCompat.notes, ...protectionCompat.notes]) {
+    warnings.push(note);
+  }
   const verbose = !!opts.verbose || process.env.SEAL_CHECK_VERBOSE === "1";
   let thinToolchainIssue = false;
   const major = nodeMajor();
@@ -373,17 +388,15 @@ async function cmdCheck(cwd, targetArg, opts) {
   }
 
   // Protection tools (ELF packer is default for thin-split)
-  const protectionCfg = resolveProtectionConfig(proj);
-  const hardEnabled = protectionCfg.enabled !== false;
   if (hardEnabled) {
-    if (hasCommand('strip')) ok('strip: OK (symbol stripping)');
-    else warnings.push('strip not installed – binaries will be easier to inspect (install binutils)');
+    if (protectionCfg.stripSymbols) {
+      if (hasCommand('strip')) ok('strip: OK (symbol stripping)');
+      else warnings.push('strip not installed – binaries will be easier to inspect (install binutils)');
+    }
 
     if (protectionCfg.elfPacker) {
       const packerCmd = protectionCfg.elfPackerCmd || protectionCfg.elfPacker;
-      if (packagerSpec.kind === "sea") {
-        errors.push("ELF packer configured but SEA does not support strip/packer. Use thin-split or disable protection.elfPacker.");
-      } else if (hasCommand(packerCmd)) {
+      if (hasCommand(packerCmd)) {
         ok(`${packerCmd}: OK (ELF packer)`);
       } else {
         errors.push(`ELF packer not found (${packerCmd}) – protection.elfPacker will fail`);

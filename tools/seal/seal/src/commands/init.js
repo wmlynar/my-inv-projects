@@ -19,7 +19,7 @@ function templateProjectJson5(appName, entry) {
       packagerFallback: false,
       securityProfile: "strict",
       frontendMinify: { enabled: true, level: "safe", html: true, css: true },
-      // NOTE: SEA does not support strip/ELF packer (fail-fast). thin-split uses kiteshield by default.
+      // NOTE: SEA/thin-single ignore strip/ELF packer. thin-split uses kiteshield by default.
       protection: {
         enabled: true,
         seaMain: { pack: true, method: "brotli", chunkSize: 8000 },

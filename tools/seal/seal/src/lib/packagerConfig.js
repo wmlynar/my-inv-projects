@@ -553,6 +553,75 @@ function normalizeArgList(raw) {
   return null;
 }
 
+function packagerLabelDisplay(label) {
+  return label === "sea" ? "SEA" : label;
+}
+
+function packagerSupportsHardening(label) {
+  return label !== "sea" && label !== "thin-single";
+}
+
+function packagerSupportsNativeBootstrap(label) {
+  return label === "thin-split";
+}
+
+function packagerSupportsIntegrity(label) {
+  return label === "thin-split";
+}
+
+function applyThinCompatibility(packagerLabel, thinCfg) {
+  const next = {
+    ...thinCfg,
+    integrity: { ...(thinCfg && thinCfg.integrity ? thinCfg.integrity : { enabled: false }) },
+    nativeBootstrap: { ...(thinCfg && thinCfg.nativeBootstrap ? thinCfg.nativeBootstrap : { enabled: false }) },
+  };
+  const notes = [];
+  const disabled = {};
+  const label = packagerLabelDisplay(packagerLabel);
+
+  if (next.nativeBootstrap.enabled && !packagerSupportsNativeBootstrap(packagerLabel)) {
+    next.nativeBootstrap.enabled = false;
+    disabled.nativeBootstrap = true;
+    notes.push(`${label} ignores thin.nativeBootstrap (requires thin-split)`);
+  }
+  if (next.integrity.enabled && !packagerSupportsIntegrity(packagerLabel)) {
+    next.integrity.enabled = false;
+    disabled.integrity = true;
+    notes.push(`${label} ignores thin.integrity (requires thin-split)`);
+  }
+
+  return { thinCfg: next, notes, disabled };
+}
+
+function applyProtectionCompatibility(packagerLabel, protectionCfg) {
+  const next = { ...protectionCfg };
+  const notes = [];
+  const disabled = {};
+  const label = packagerLabelDisplay(packagerLabel);
+
+  if (next.enabled === false) {
+    return { protectionCfg: next, notes, disabled };
+  }
+
+  if (!packagerSupportsHardening(packagerLabel)) {
+    if (next.stripSymbols) {
+      next.stripSymbols = false;
+      disabled.strip = true;
+      notes.push(`${label} ignores protection.strip (symbol stripping)`);
+    }
+    if (next.elfPacker) {
+      const tool = next.elfPackerCmd || next.elfPacker;
+      next.elfPacker = null;
+      next.elfPackerCmd = null;
+      next.elfPackerArgs = null;
+      disabled.elfPacker = true;
+      notes.push(`${label} ignores protection.elfPacker${tool ? ` (${tool})` : ""}`);
+    }
+  }
+
+  return { protectionCfg: next, notes, disabled };
+}
+
 module.exports = {
   normalizeThinMode,
   normalizeThinEnvMode,
@@ -564,4 +633,9 @@ module.exports = {
   normalizeStringObfuscation,
   normalizeCObfuscator,
   normalizeArgList,
+  packagerSupportsHardening,
+  packagerSupportsNativeBootstrap,
+  packagerSupportsIntegrity,
+  applyThinCompatibility,
+  applyProtectionCompatibility,
 };

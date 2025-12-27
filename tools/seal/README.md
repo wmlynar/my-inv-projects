@@ -400,7 +400,7 @@ SEAL domyślnie dokłada dodatkową warstwę "anti-peek" (utrudnia proste podgl�
 - **Bundle** (opcja jawna): backendowy bundle jest pakowany do `app.bundle.cjs.gz` + mały loader (`seal.loader.cjs`), żeby nie leżał obok czytelny plik JS.
 
 Domyślnie, dla `thin-split` uruchamiany jest **ELF packer** (kiteshield) – to podnosi koszt disassembly.
-`SEA` nie wspiera `strip`/ELF packera (build fail‑fast).
+`SEA` i `thin-single` ignorują `strip`/ELF packera (auto-disabled); użyj `thin-split`, jeśli chcesz hardening binarki.
 
 To nie jest kryptografia – celem jest utrudnienie "zobaczę od razu po otwarciu pliku" i podniesienie kosztu analizy.
 

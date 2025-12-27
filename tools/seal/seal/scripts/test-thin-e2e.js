@@ -214,7 +214,6 @@ async function buildThinRelease(buildTimeoutMs, opts = {}) {
     thinCfg.integrity = { enabled: false };
     thinCfg.launcherObfuscation = false;
     thinCfg.nativeBootstrap = { enabled: false };
-    projectCfg.build.protection = Object.assign({}, projectCfg.build.protection || {}, { enabled: false });
   } else {
     thinCfg.mode = "split";
   }
@@ -223,7 +222,9 @@ async function buildThinRelease(buildTimeoutMs, opts = {}) {
   }
   projectCfg.build.thin = thinCfg;
   ensureLauncherObfuscation(projectCfg);
-  if (projectCfg.build.protection?.elfPacker?.tool && !hasCommand(projectCfg.build.protection.elfPacker.cmd || projectCfg.build.protection.elfPacker.tool)) {
+  if (packager !== "thin-single"
+    && projectCfg.build.protection?.elfPacker?.tool
+    && !hasCommand(projectCfg.build.protection.elfPacker.cmd || projectCfg.build.protection.elfPacker.tool)) {
     log("ELF packer not available; disabling elfPacker for test");
     projectCfg.build.protection.elfPacker = {};
   }
