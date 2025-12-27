@@ -95,6 +95,7 @@ Przykład:
 - STD-030 (SHOULD): build/deploy/clean uzywaja lockfile; kolizje maja czytelny komunikat i nie niszcza stanu.
 - STD-030a (SHOULD): systemd `ExecStart` uzywa absolutnych sciezek; brak `WorkingDirectory` wymaga pelnych sciezek do binarki i configu.
 - STD-030b (SHOULD): po aktualizacji pliku unit zawsze wykonaj `systemctl daemon-reload` (lub `--user`), aby uniknac starej konfiguracji.
+- STD-030c (SHOULD): wywolania `systemctl` maja timeout i obsługę braku systemd/DBus (SKIP z powodem w testach).
 - STD-031 (SHOULD): brak sudo domyslnie; eskalacja tylko jawnie. Waliduj owner/perms/umask w punktach krytycznych.
 - STD-031a (SHOULD): komendy wymagajace `sudo` w trybie nieinteraktywnym uzywaja `sudo -n` i fail‑fast z instrukcja (brak wiszenia na promptach).
 - STD-033 (SHOULD): operacje zewnetrzne (ssh/scp/rsync/http) maja timeout i komunikat "co dalej".

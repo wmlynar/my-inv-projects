@@ -586,6 +586,9 @@
 - Blad: po zmianie pliku unit systemd brakowalo `daemon-reload`, przez co systemd uzywal starej konfiguracji.
   - Wymaganie: po zapisie/aktualizacji unitu zawsze wykonaj `systemctl daemon-reload` (lub `--user` odpowiednio do scope).
 
+- Blad: `systemctl` potrafil wisiec (np. brak dbus/systemd w kontenerze), blokujac deploy/testy.
+  - Wymaganie: wywolania `systemctl` maja timeout i czytelny SKIP/blad, gdy systemd nie jest dostepny.
+
 - Blad: stare releasy rosly bez limitu (brak cleanup).
   - Wymaganie: retention (np. ostatnie N release) + usuwanie starych katalogow.
   - Wymaganie: cleanup dotyczy takze `*-fast`.
