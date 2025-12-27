@@ -274,6 +274,7 @@ Przykład:
 - STD-089l (SHOULD): w CI/E2E ustaw `NPM_CONFIG_FETCH_*` (retries/timeout) aby uniknac wiszenia npm przy problemach sieciowych.
 - STD-089m (SHOULD): gdy npm działa jako root w CI/containers, ustaw `NPM_CONFIG_UNSAFE_PERM=true` lub uruchom npm jako nie‑root.
 - STD-089n (SHOULD): w CI/E2E wyłącz `npm audit`/`fund` i progress (`NPM_CONFIG_AUDIT=false`, `NPM_CONFIG_FUND=false`, `NPM_CONFIG_PROGRESS=false`).
+- STD-089o (SHOULD): w testach/CI ustaw `CI=1`, aby wymusic nieinteraktywny tryb narzedzi (brak promptow/spinnerow).
 - STD-090 (SHOULD): preflight sprawdza **narzedzia CLI** (np. `postject` w `node_modules/.bin`/PATH), nie tylko obecność modulu.
 - STD-091 (SHOULD): funkcje zalezne od architektury (np. CPUID) musza degradująco dzialac na platformach bez wsparcia (pusty/neutralny ID zamiast twardego bledu).
 - STD-092 (SHOULD): `--skip-check` jest wyraznie oznaczony jako ryzykowny i zawsze wypisuje ostrzezenie; krytyczne braki toolchaina nie powinny byc maskowane.
