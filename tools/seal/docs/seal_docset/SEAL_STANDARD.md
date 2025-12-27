@@ -714,6 +714,11 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-330 (SHOULD): logi/raporty maja limit rozmiaru lub rotacje.
 - STD-331 (SHOULD): generowane manifesty plikow zapisuj z jawnym `mode` (nie polegaj na umask).
 - STD-332 (SHOULD): walidacja sciezek uzywa `realpath` i wymusza, by sciezka byla w dozwolonym root.
+- STD-333 (SHOULD): operacje `rm -rf` ogranicz do jednego FS (`--one-file-system`) lub jawnie sprawdz mount point.
+- STD-334 (SHOULD): zapisy JSON/manifestow sa deterministyczne (sort kluczy).
+- STD-335 (SHOULD): rozpakowanie tar nie zachowuje luznych perms (`--no-same-permissions`) i/lub jawny `chmod`.
+- STD-336 (SHOULD): synchronizacja zdalna wymusza oczekiwane perms (`--chmod` lub `--no-perms` + `chmod`).
+- STD-337 (SHOULD): po kopiowaniu katalogow ustawiaj jawne perms dla katalogow docelowych.
 
 ## 10. Moduł `testing` (SHOULD)
 

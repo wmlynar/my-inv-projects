@@ -1242,3 +1242,16 @@
   - Wymaganie: ustawiaj `mode` przy `fs.open` (np. `0o600/0o644`) zamiast polegac na umask.
 - Blad: walidacja sciezek dopuszczala `..` po normalizacji (np. `path.join` z absolutnym segmentem).
   - Wymaganie: zawsze sprawdz `realpath` i wymagaj, by sciezka byla w dozwolonym root.
+
+## Dodatkowe wnioski (batch 136-140)
+
+- Blad: `rm -rf` przekraczal granice mount pointow i usuwal za duzo.
+  - Wymaganie: stosuj `--one-file-system` lub jawne sprawdzenie mount pointu.
+- Blad: zapisy JSON/manifestow byly niestabilne (kolejnosc kluczy losowa).
+  - Wymaganie: sortuj klucze i zapisuj stabilnie (deterministyczny stringify).
+- Blad: rozpakowanie tar zachowywalo zbyt szerokie perms z archiwum.
+  - Wymaganie: uzywaj `--no-same-permissions` i/lub jawnego `chmod` po rozpakowaniu.
+- Blad: `rsync` zachowywal perms, ktore nie pasowaly do wymaganego modelu uprawnien.
+  - Wymaganie: wymusz perms przez `--chmod=...` albo `--no-perms` + jawny `chmod`.
+- Blad: narzedzia ignorowaly `umask` przy tworzeniu katalogow przez `cp -a`/`tar`.
+  - Wymaganie: po kopiowaniu jawnie ustaw perms na katalogach docelowych.
