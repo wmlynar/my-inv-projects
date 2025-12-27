@@ -69,6 +69,9 @@
 - Blad: polecenia z `sudo` w trybie nieinteraktywnym wisialy na promptach hasla.
   - Wymaganie: uzywaj `sudo -n` (fail‑fast bez promptu) i wypisz instrukcje, gdy brak uprawnien.
 
+- Blad: `curl`/`wget` bez timeoutow i `--fail` potrafil wisiec lub ignorowac HTTP error.
+  - Wymaganie: pobieranie z sieci musi miec timeout (`--connect-timeout`, `--max-time`) i `--fail`/`--show-error`, plus ograniczone retry.
+
 - Blad: prompt o zaufanie hosta SSH blokowal deploy (brak wpisu w `known_hosts`).
   - Wymaganie: pre‑seed `known_hosts` lub uzyj jawnego `StrictHostKeyChecking=accept-new` (tylko gdy zaakceptowane); bez tego fail‑fast z instrukcja.
 
