@@ -744,6 +744,11 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-360 (SHOULD): weryfikacja checksum ma fallback gdy brak `sha256sum` (`shasum`/`openssl`).
 - STD-361 (SHOULD): skrypty wymagajace GNU tar wykrywaja `tar --version` i fail‑fast z instrukcja.
 - STD-362 (SHOULD): pipeline z `-print0` nie zaklada `sort -z` bez checka wsparcia.
+- STD-363 (SHOULD): hosty `localhost`/IPv6 są jawnie ustawiane; unikaj niejawnego dual‑stack.
+- STD-364 (SHOULD): porty testowe wybieraj przez bind na `0`, a nie przez losowanie z wyprzedzeniem.
+- STD-365 (SHOULD): po starcie serwera loguj `host:port` (debuggability).
+- STD-366 (SHOULD): domyslny bind to `127.0.0.1`; publiczny bind tylko jawnie.
+- STD-367 (SHOULD): przy `EADDRINUSE` wypisz PID/komende i sugestie zmiany portu.
 
 ## 10. Moduł `testing` (SHOULD)
 

@@ -1295,6 +1295,18 @@
 - Blad: `sort -z` nie bylo dostepne, przez co pipeline z `-print0` sie psul.
   - Wymaganie: unikaj `sort -z` lub sprawdzaj wsparcie i przechodz na alternatywę.
 
+## Dodatkowe wnioski (batch 166-170)
+
+- Blad: `localhost` rozwiązywal sie do IPv6, a serwis nasluchiwal tylko na IPv4 (lub odwrotnie).
+  - Wymaganie: uzywaj jawnego hosta (`127.0.0.1`/`::1`) albo wymuszaj dual‑stack.
+- Blad: losowanie portu przed startem serwera dawalo race i `EADDRINUSE`.
+  - Wymaganie: binduj na porcie `0` i odczytuj faktycznie przydzielony port.
+- Blad: testy/diagnostyka nie logowaly docelowego host/port, utrudniajac debug.
+  - Wymaganie: zawsze loguj `host:port` po starcie serwera.
+- Blad: domyslnie bindowano na `0.0.0.0`, co wystawialo serwis publicznie w dev/test.
+  - Wymaganie: domyslny bind to `127.0.0.1`, a publiczny bind tylko jawnie.
+- Blad: przy `EADDRINUSE` brakowalo czytelnej sugestii kolejnego kroku.
+  - Wymaganie: przy kolizji portu wypisz PID/komende i zasugeruj inny port.
 ## Dodatkowe wnioski (batch 131-135)
 
 - Blad: rekurencyjne skanowanie katalogow bralo `.git`, `node_modules`, `seal-out`, co powodowalo spowolnienia i przypadkowe artefakty.
