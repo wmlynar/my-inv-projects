@@ -1436,3 +1436,16 @@
   - Wymaganie: przy `EEXIST` sprawdz, czy to katalog; inaczej fail‑fast.
 - Blad: `writeFile`/`appendFile` bez `fsync` powodowal utrate danych po crashu.
   - Wymaganie: dla krytycznych plikow uzywaj `fsync` po zapisie.
+
+## Dodatkowe wnioski (batch 211-215)
+
+- Blad: testy sprawdzaly narzedzia przez `bash -lc command -v`, co failowalo na minimalnych obrazach bez bash.
+  - Wymaganie: wykrywaj narzedzia przez PATH (bez bash) lub uzyj POSIX `/bin/sh` z jasnym SKIP.
+- Blad: env override przyjmowal tylko wąski zestaw wartosci i ignorowal `true/false/1/0`.
+  - Wymaganie: parsuj boolean‑like stringi (`true/false/1/0/yes/no/on/off`).
+- Blad: detekcja komendy sprawdzala tylko istnienie pliku, bez `X_OK`, co dawalo false‑positive.
+  - Wymaganie: sprawdz `X_OK`/wykonywalnosc przy detekcji narzedzi.
+- Blad: niepoprawne wartosci w ENV byly ignorowane bez ostrzezenia.
+  - Wymaganie: loguj ostrzezenie i pokazuj przyjeta wartosc domyslna.
+- Blad: helpery E2E duplikowaly logike wykrywania narzedzi, co prowadzilo do niespojnosci.
+  - Wymaganie: uzywaj wspolnego helpera do detekcji narzedzi.

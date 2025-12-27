@@ -789,6 +789,11 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-405 (SHOULD): deskryptory plikow sa zamykane w `finally` (brak wyciekow FD).
 - STD-406 (SHOULD): przy `EEXIST` sprawdz, czy sciezka jest katalogiem; inaczej fail‑fast.
 - STD-407 (SHOULD): krytyczne zapisy sa `fsync`owane po `writeFile`/`appendFile`.
+- STD-408 (SHOULD): detekcja narzedzi nie wymaga bash; uzywaj PATH‑based resolvera lub POSIX sh.
+- STD-409 (SHOULD): parsuj boolean‑like stringi (`true/false/1/0/yes/no/on/off`) z ENV.
+- STD-410 (SHOULD): detekcja narzedzi sprawdza `X_OK` (wykonywalnosc), nie tylko istnienie.
+- STD-411 (SHOULD): niepoprawne wartosci z ENV loguja ostrzezenie + wartosc domyslna.
+- STD-412 (SHOULD): helpery E2E uzywaja wspolnego modułu do detekcji narzedzi.
 
 ## 10. Moduł `testing` (SHOULD)
 

@@ -8,6 +8,7 @@ const net = require("net");
 const os = require("os");
 const path = require("path");
 const { spawn, spawnSync } = require("child_process");
+const { hasCommand } = require("./e2e-utils");
 
 const { buildRelease } = require("../src/lib/build");
 const { loadProjectConfig, loadTargetConfig, resolveConfigName } = require("../src/lib/project");
@@ -25,11 +26,6 @@ function fail(msg) {
 
 function runCmd(cmd, args, timeoutMs = 5000) {
   return spawnSync(cmd, args, { stdio: "pipe", timeout: timeoutMs });
-}
-
-function hasCommand(cmd) {
-  const res = runCmd("bash", ["-lc", `command -v ${cmd} >/dev/null 2>&1`]);
-  return res.status === 0;
 }
 
 function probeCompilerFlag(cmd, flag) {

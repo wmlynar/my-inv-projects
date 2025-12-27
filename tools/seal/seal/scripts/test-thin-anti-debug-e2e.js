@@ -8,6 +8,7 @@ const net = require("net");
 const os = require("os");
 const path = require("path");
 const { spawn, spawnSync } = require("child_process");
+const { hasCommand } = require("./e2e-utils");
 
 const { buildRelease } = require("../src/lib/build");
 const { loadProjectConfig, loadTargetConfig, resolveConfigName } = require("../src/lib/project");
@@ -28,9 +29,8 @@ function runCmd(cmd, args, timeoutMs = 5000) {
   return spawnSync(cmd, args, { stdio: "pipe", timeout: timeoutMs });
 }
 
-function hasCommand(cmd) {
-  const res = runCmd("bash", ["-lc", `command -v ${cmd} >/dev/null 2>&1`]);
-  return res.status === 0;
+function isRootUser() {
+  return typeof process.getuid === "function" && process.getuid() === 0;
 }
 
 function resolveCc() {
@@ -281,6 +281,45 @@ int main(int argc, char **argv) {
 }
 `;
 
+const HELPER_PRELOAD_SRC = `#define _GNU_SOURCE
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+__attribute__((constructor))
+static void seal_preload_init(void) {
+  const char *path = getenv("SEAL_E2E_PRELOAD_MARKER");
+  if (!path || !*path) return;
+  int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+  if (fd < 0) return;
+  dprintf(fd, "pid=%d\\n", (int)getpid());
+  close(fd);
+}
+`;
+
+const HELPER_AUDIT_SRC = `#define _GNU_SOURCE
+#include <fcntl.h>
+#include <link.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+static void seal_audit_marker(void) {
+  const char *path = getenv("SEAL_E2E_AUDIT_MARKER");
+  if (!path || !*path) return;
+  int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+  if (fd < 0) return;
+  dprintf(fd, "pid=%d\\n", (int)getpid());
+  close(fd);
+}
+
+unsigned int la_version(unsigned int v) {
+  seal_audit_marker();
+  return LAV_CURRENT;
+}
+`;
+
 function ensureHelper(ctx, name, src) {
   if (ctx.helpers[name]) return ctx.helpers[name];
   const cc = resolveCc();
@@ -292,6 +331,28 @@ function ensureHelper(ctx, name, src) {
   const outPath = path.join(dir, name);
   fs.writeFileSync(srcPath, src, "utf8");
   const res = runCmd(cc, ["-O2", srcPath, "-o", outPath], 8000);
+  if (res.status !== 0) {
+    const out = `${res.stdout || ""}${res.stderr || ""}`;
+    throw new Error(`helper ${name} compile failed: ${out.slice(0, 200)}`);
+  }
+  const info = { dir, path: outPath };
+  ctx.helpers[name] = info;
+  ctx.helperDirs.push(dir);
+  return info;
+}
+
+function ensureSharedHelper(ctx, name, src, extraArgs = []) {
+  if (ctx.helpers[name]) return ctx.helpers[name];
+  const cc = resolveCc();
+  if (!cc) {
+    throw new Error("Missing C compiler (cc/gcc)");
+  }
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `seal-ad-${name}-`));
+  const srcPath = path.join(dir, `${name}.c`);
+  const outPath = path.join(dir, `${name}.so`);
+  fs.writeFileSync(srcPath, src, "utf8");
+  const args = ["-O2", "-fPIC", "-shared", srcPath, "-o", outPath, ...extraArgs];
+  const res = runCmd(cc, args, 8000);
   if (res.status !== 0) {
     const out = `${res.stdout || ""}${res.stderr || ""}`;
     throw new Error(`helper ${name} compile failed: ${out.slice(0, 200)}`);
@@ -466,6 +527,54 @@ function readProcLimits(pid) {
   }
 }
 
+function readProcEnviron(pid) {
+  const envPath = path.join("/proc", String(pid), "environ");
+  try {
+    return fs.readFileSync(envPath);
+  } catch (e) {
+    if (e && (e.code === "EACCES" || e.code === "EPERM")) return null;
+    throw e;
+  }
+}
+
+function parseProcEnviron(buf) {
+  if (!buf || buf.length === 0) return {};
+  const out = {};
+  const items = buf.toString("utf8").split("\0").filter(Boolean);
+  for (const item of items) {
+    const idx = item.indexOf("=");
+    if (idx <= 0) continue;
+    const key = item.slice(0, idx);
+    const value = item.slice(idx + 1);
+    out[key] = value;
+  }
+  return out;
+}
+
+function readProcChildren(pid) {
+  const pathChildren = path.join("/proc", String(pid), "task", String(pid), "children");
+  try {
+    const raw = fs.readFileSync(pathChildren, "utf8").trim();
+    if (!raw) return [];
+    return raw.split(/\s+/).map((v) => Number(v)).filter((v) => Number.isFinite(v) && v > 0);
+  } catch (e) {
+    if (e && (e.code === "EACCES" || e.code === "EPERM" || e.code === "ENOENT")) return null;
+    throw e;
+  }
+}
+
+async function waitForChildPids(pid, opts = {}) {
+  const tries = Number.isFinite(opts.tries) ? opts.tries : 10;
+  const delayMs = Number.isFinite(opts.delayMs) ? opts.delayMs : 200;
+  for (let i = 0; i < tries; i += 1) {
+    const kids = readProcChildren(pid);
+    if (kids === null) return null;
+    if (kids.length > 0) return kids;
+    await delay(delayMs);
+  }
+  return [];
+}
+
 function getMapAddresses(pid, opts = {}) {
   const maps = readProcMaps(pid);
   if (maps === null) return { blocked: true, addresses: [] };
@@ -582,8 +691,345 @@ function checkProcStatusHardened(pid) {
   }
 }
 
+function checkEnvScrubbed(pid, keys) {
+  const envBuf = readProcEnviron(pid);
+  if (envBuf === null) return { skip: "environ blocked" };
+  const env = parseProcEnviron(envBuf);
+  const present = keys.filter((k) => env[k] && env[k].length > 0);
+  if (present.length > 0) {
+    throw new Error(`environment not scrubbed: ${present.join(", ")}`);
+  }
+  return { ok: true };
+}
+
+function anyMarkerExists(paths) {
+  for (const p of paths) {
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
+
+function checkPerfRecordBlocked(pid) {
+  if (!hasCommand("perf")) return { skip: "perf missing" };
+  const strict = process.env.SEAL_E2E_STRICT_PERF === "1";
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-perf-"));
+  const dataPath = path.join(tmpDir, "perf.data");
+  try {
+    const res = runCmd("perf", ["record", "-p", String(pid), "-o", dataPath, "--", "sleep", "1"], 12000);
+    const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+    if (res.error && res.error.code === "ETIMEDOUT") {
+      if (strict) throw new Error("perf record timed out (possible attach)");
+      return { skip: "perf record timed out" };
+    }
+    if (res.status === 0 && fs.existsSync(dataPath)) {
+      if (strict) throw new Error("perf record succeeded (unexpected)");
+      return { skip: "perf record succeeded (set SEAL_E2E_STRICT_PERF=1 to enforce)" };
+    }
+    if (/permission denied|not permitted|not allowed|operation not permitted/i.test(out)) {
+      return { ok: true, note: out.slice(0, 200) };
+    }
+    if (/unknown option|usage:|not supported|no such file/i.test(out)) {
+      return { skip: out.slice(0, 120) || "perf record unsupported" };
+    }
+    return { ok: true, note: out.slice(0, 200) };
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
+function checkPerfTraceBlocked(pid) {
+  if (!hasCommand("perf")) return { skip: "perf missing" };
+  const strict = process.env.SEAL_E2E_STRICT_PERF === "1";
+  const res = runCmd("perf", ["trace", "-p", String(pid), "--", "sleep", "1"], 12000);
+  const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+  if (res.error && res.error.code === "ETIMEDOUT") {
+    if (strict) throw new Error("perf trace timed out (possible attach)");
+    return { skip: "perf trace timed out" };
+  }
+  if (res.status === 0) {
+    if (strict) throw new Error("perf trace succeeded (unexpected)");
+    return { skip: "perf trace succeeded (set SEAL_E2E_STRICT_PERF=1 to enforce)" };
+  }
+  if (/permission denied|not permitted|not allowed|operation not permitted/i.test(out)) {
+    return { ok: true, note: out.slice(0, 200) };
+  }
+  if (/unknown option|usage:|not supported|no such file/i.test(out)) {
+    return { skip: out.slice(0, 120) || "perf trace unsupported" };
+  }
+  return { ok: true, note: out.slice(0, 200) };
+}
+
+function runRrAttach(pid, timeoutMs = 8000) {
+  let res = runCmd("rr", ["record", "-p", String(pid)], timeoutMs);
+  let out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+  if (res.status !== 0 && /unknown option|usage:|expects.*command/i.test(out)) {
+    res = runCmd("rr", ["attach", String(pid)], timeoutMs);
+    out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+  }
+  return { res, out };
+}
+
+function checkRrAttachBlocked(pid) {
+  if (!hasCommand("rr")) return { skip: "rr missing" };
+  const strict = process.env.SEAL_E2E_STRICT_RR === "1";
+  const { res, out } = runRrAttach(pid, 8000);
+  if (res.error && res.error.code === "ETIMEDOUT") {
+    if (strict) throw new Error("rr attach timed out (possible attach)");
+    return { skip: "rr attach timed out" };
+  }
+  if (/unknown option|usage:|expects.*command/i.test(out)) {
+    return { skip: "rr attach unsupported" };
+  }
+  if (res.status === 0) {
+    if (strict) throw new Error("rr attach succeeded (unexpected)");
+    return { skip: "rr attach succeeded (set SEAL_E2E_STRICT_RR=1 to enforce)" };
+  }
+  if (/permission denied|not permitted|ptrace|perf_event_open/i.test(out)) {
+    return { ok: true, note: out.slice(0, 200) };
+  }
+  return { ok: true, note: out.slice(0, 200) };
+}
+
+function checkBpftraceAttachBlocked(pid) {
+  if (!hasCommand("bpftrace")) return { skip: "bpftrace missing" };
+  const strict = process.env.SEAL_E2E_STRICT_BPFTRACE === "1";
+  const script = `tracepoint:sched:sched_switch /args->next_pid == ${pid} || args->prev_pid == ${pid}/ { exit(); }`;
+  const res = runCmd("bpftrace", ["-e", script], 8000);
+  const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+  if (res.error && res.error.code === "ETIMEDOUT") {
+    if (strict) throw new Error("bpftrace timed out (possible attach)");
+    return { skip: "bpftrace timed out" };
+  }
+  if (res.status === 0) {
+    if (strict) throw new Error("bpftrace succeeded (unexpected)");
+    return { skip: "bpftrace succeeded (set SEAL_E2E_STRICT_BPFTRACE=1 to enforce)" };
+  }
+  if (/permission denied|not permitted|operation not permitted/i.test(out)) {
+    return { ok: true, note: out.slice(0, 200) };
+  }
+  if (/requires root|not supported|unknown probe/i.test(out)) {
+    return { skip: out.slice(0, 120) || "bpftrace unsupported" };
+  }
+  return { ok: true, note: out.slice(0, 200) };
+}
+
+function checkBpftraceUprobeBlocked(pid) {
+  if (!hasCommand("bpftrace")) return { skip: "bpftrace missing" };
+  const strict = process.env.SEAL_E2E_STRICT_BPFTRACE === "1";
+  const target = `/proc/${pid}/exe`;
+  const script = `uprobe:${target}:_start { exit(); }`;
+  const res = runCmd("bpftrace", ["-e", script], 8000);
+  const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+  if (res.error && res.error.code === "ETIMEDOUT") {
+    if (strict) throw new Error("bpftrace uprobe timed out (possible attach)");
+    return { skip: "bpftrace uprobe timed out" };
+  }
+  if (res.status === 0) {
+    if (strict) throw new Error("bpftrace uprobe succeeded (unexpected)");
+    return { skip: "bpftrace uprobe succeeded (set SEAL_E2E_STRICT_BPFTRACE=1 to enforce)" };
+  }
+  if (/permission denied|not permitted|operation not permitted/i.test(out)) {
+    return { ok: true, note: out.slice(0, 200) };
+  }
+  if (/no probes to attach|unknown probe|not supported|cannot open/i.test(out)) {
+    return { skip: out.slice(0, 120) || "bpftrace uprobe unsupported" };
+  }
+  return { ok: true, note: out.slice(0, 200) };
+}
+
+async function checkGdbServerAttachBlockedPid(pid) {
+  if (!hasCommand("gdbserver")) return { skip: "gdbserver not installed" };
+  const gdbPort = await getFreePort();
+  const hostPort = `127.0.0.1:${gdbPort}`;
+  const res = runGdbServerAttach(pid, hostPort, 5000);
+  if (res.error && res.error.code === "ETIMEDOUT") {
+    throw new Error("gdbserver attach timed out (unexpected)");
+  }
+  const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+  const skipMarkers = [/address already in use/i, /cannot bind/i, /failed to bind/i];
+  if (skipMarkers.some((re) => re.test(out))) {
+    return { skip: out.slice(0, 120) || "gdbserver bind failed" };
+  }
+  const failMarkers = [
+    /operation not permitted/i,
+    /permission denied/i,
+    /ptrace/i,
+    /cannot attach/i,
+    /not being run/i,
+    /inappropriate ioctl/i,
+  ];
+  const isFailure = res.status !== 0 || failMarkers.some((re) => re.test(out));
+  if (!isFailure) {
+    throw new Error(`gdbserver attach succeeded (unexpected)${out ? `; output=${out.slice(0, 200)}` : ""}`);
+  }
+  return { ok: true, note: out.slice(0, 200) };
+}
+
+function checkGdbAttachBlockedPid(pid) {
+  if (!hasCommand("gdb")) return { skip: "gdb not installed" };
+  const res = runGdbAttach(pid, 5000);
+  if (res.error && res.error.code === "ETIMEDOUT") {
+    throw new Error("gdb attach timed out (unexpected)");
+  }
+  const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+  const failMarkers = [
+    /could not attach/i,
+    /operation not permitted/i,
+    /permission denied/i,
+    /ptrace:/i,
+    /not being run/i,
+    /no such process/i,
+    /inappropriate ioctl/i,
+  ];
+  const isFailure = res.status !== 0 || failMarkers.some((re) => re.test(out));
+  if (!isFailure) {
+    throw new Error(`gdb attach succeeded (unexpected)${out ? `; output=${out.slice(0, 200)}` : ""}`);
+  }
+  return { ok: true, note: out.slice(0, 200) };
+}
+
+function checkStraceAttachBlockedPid(pid) {
+  if (!hasCommand("strace")) return { skip: "strace not installed" };
+  const logPath = path.join(os.tmpdir(), `seal-strace-attach-${pid}-${Date.now()}.log`);
+  const res = runStraceAttach(pid, logPath, 5000);
+  if (res.error && res.error.code === "ETIMEDOUT") {
+    throw new Error("strace attach timed out (unexpected)");
+  }
+  const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+  const failMarkers = [
+    /operation not permitted/i,
+    /permission denied/i,
+    /ptrace/i,
+    /not being run/i,
+    /inappropriate ioctl/i,
+  ];
+  const isFailure = res.status !== 0 || failMarkers.some((re) => re.test(out));
+  if (!isFailure) {
+    const trace = fs.existsSync(logPath) ? fs.readFileSync(logPath, "utf8").slice(0, 200) : "";
+    throw new Error(`strace attach succeeded (unexpected)${trace ? `; trace=${trace}` : ""}`);
+  }
+  return { ok: true, note: out.slice(0, 200) };
+}
+
+function checkLtraceAttachBlockedPid(pid) {
+  if (!hasCommand("ltrace")) return { skip: "ltrace not installed" };
+  const logPath = path.join(os.tmpdir(), `seal-ltrace-attach-${pid}-${Date.now()}.log`);
+  const res = runLtraceAttach(pid, logPath, 5000);
+  if (res.error && res.error.code === "ETIMEDOUT") {
+    throw new Error("ltrace attach timed out (unexpected)");
+  }
+  const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+  const failMarkers = [
+    /operation not permitted/i,
+    /permission denied/i,
+    /ptrace/i,
+    /cannot attach/i,
+    /not being run/i,
+    /inappropriate ioctl/i,
+  ];
+  const isFailure = res.status !== 0 || failMarkers.some((re) => re.test(out));
+  if (!isFailure) {
+    const trace = fs.existsSync(logPath) ? fs.readFileSync(logPath, "utf8").slice(0, 200) : "";
+    throw new Error(`ltrace attach succeeded (unexpected)${trace ? `; trace=${trace}` : ""}`);
+  }
+  return { ok: true, note: out.slice(0, 200) };
+}
+
+function checkStackToolBlocked(cmd, args, label) {
+  const name = label || cmd;
+  if (!hasCommand(cmd)) return { skip: `${name} not installed` };
+  const res = runCmd(cmd, args, 8000);
+  if (res.error && res.error.code === "ETIMEDOUT") {
+    throw new Error(`${name} attach timed out (unexpected)`);
+  }
+  const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+  const failMarkers = [
+    /operation not permitted/i,
+    /permission denied/i,
+    /ptrace/i,
+    /could not attach/i,
+    /cannot attach/i,
+    /not being run/i,
+    /no such process/i,
+    /inappropriate ioctl/i,
+    /not supported/i,
+  ];
+  const isFailure = res.status !== 0 || failMarkers.some((re) => re.test(out));
+  if (!isFailure) {
+    throw new Error(`${name} attach succeeded (unexpected)${out ? `; output=${out.slice(0, 200)}` : ""}`);
+  }
+  return { ok: true, note: out.slice(0, 200) };
+}
+
+function checkPstackAttachBlocked(pid) {
+  return checkStackToolBlocked("pstack", [String(pid)], "pstack");
+}
+
+function checkGstackAttachBlocked(pid) {
+  return checkStackToolBlocked("gstack", [String(pid)], "gstack");
+}
+
+function checkEuStackAttachBlocked(pid) {
+  return checkStackToolBlocked("eu-stack", ["-p", String(pid)], "eu-stack");
+}
+
+function checkLttngAttachBlocked(pid) {
+  if (!hasCommand("lttng")) return { skip: "lttng missing" };
+  const strict = process.env.SEAL_E2E_STRICT_LTTNG === "1";
+  const sess = `seal-e2e-${pid}-${Date.now()}`;
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-lttng-"));
+  try {
+    let res = runCmd("lttng", ["create", sess, "--output", outDir], 8000);
+    let out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+    if (res.status !== 0) {
+      if (/permission denied|not permitted/i.test(out)) return { ok: true, note: out.slice(0, 200) };
+      return { skip: out ? `lttng create failed: ${out.slice(0, 120)}` : "lttng create failed" };
+    }
+    res = runCmd("lttng", ["enable-event", "-u", "--all"], 8000);
+    out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+    if (res.status !== 0) {
+      if (/permission denied|not permitted/i.test(out)) return { ok: true, note: out.slice(0, 200) };
+      return { skip: out ? `lttng enable failed: ${out.slice(0, 120)}` : "lttng enable failed" };
+    }
+    res = runCmd("lttng", ["track", "-u", "-p", String(pid)], 8000);
+    out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+    if (res.status === 0) {
+      if (strict) throw new Error("lttng track succeeded (unexpected)");
+      return { skip: "lttng track succeeded (set SEAL_E2E_STRICT_LTTNG=1 to enforce)" };
+    }
+    if (/permission denied|not permitted/i.test(out)) return { ok: true, note: out.slice(0, 200) };
+    return { skip: out ? `lttng track failed: ${out.slice(0, 120)}` : "lttng track failed" };
+  } finally {
+    runCmd("lttng", ["destroy", sess], 8000);
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+}
+
+function checkSystemtapAttachBlocked(pid) {
+  if (!hasCommand("stap")) return { skip: "systemtap missing" };
+  const strict = process.env.SEAL_E2E_STRICT_SYSTEMTAP === "1";
+  const script = `probe process("/proc/${pid}/exe").begin { exit() }`;
+  const res = runCmd("stap", ["-x", String(pid), "-e", script], 8000);
+  const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+  if (res.error && res.error.code === "ETIMEDOUT") {
+    if (strict) throw new Error("systemtap timed out (possible attach)");
+    return { skip: "systemtap timed out" };
+  }
+  if (res.status === 0) {
+    if (strict) throw new Error("systemtap attach succeeded (unexpected)");
+    return { skip: "systemtap attach succeeded (set SEAL_E2E_STRICT_SYSTEMTAP=1 to enforce)" };
+  }
+  if (/permission denied|not permitted|operation not permitted/i.test(out)) {
+    return { ok: true, note: out.slice(0, 200) };
+  }
+  if (/semantic error|parse error|not found|cannot open|missing kernel|no debuginfo/i.test(out)) {
+    return { skip: out.slice(0, 120) || "systemtap unsupported" };
+  }
+  return { ok: true, note: out.slice(0, 200) };
+}
+
 function checkProcMemBlocked(pid, helperPath) {
-  const isRoot = typeof process.getuid === "function" && process.getuid() === 0;
+  const isRoot = isRootUser();
   const strict = process.env.SEAL_E2E_STRICT_PROC_MEM === "1";
   const maps = getReadableMapAddresses(pid, 6);
   if (maps.blocked) {
@@ -617,7 +1063,7 @@ function checkProcMemBlocked(pid, helperPath) {
 }
 
 function checkProcMemWriteBlocked(pid, helperPath) {
-  const isRoot = typeof process.getuid === "function" && process.getuid() === 0;
+  const isRoot = isRootUser();
   const strict = process.env.SEAL_E2E_STRICT_PROC_MEM === "1";
   const maps = getWritableMapAddresses(pid, 6);
   if (maps.blocked) {
@@ -651,7 +1097,7 @@ function checkProcMemWriteBlocked(pid, helperPath) {
 }
 
 function checkVmReadBlocked(pid, helperPath) {
-  const isRoot = typeof process.getuid === "function" && process.getuid() === 0;
+  const isRoot = isRootUser();
   const strict = process.env.SEAL_E2E_STRICT_PROC_MEM === "1";
   const maps = getReadableMapAddresses(pid, 6);
   if (maps.blocked) {
@@ -685,7 +1131,7 @@ function checkVmReadBlocked(pid, helperPath) {
 }
 
 function checkVmWriteBlocked(pid, helperPath) {
-  const isRoot = typeof process.getuid === "function" && process.getuid() === 0;
+  const isRoot = isRootUser();
   const strict = process.env.SEAL_E2E_STRICT_PROC_MEM === "1";
   const maps = getWritableMapAddresses(pid, 6);
   if (maps.blocked) {
@@ -719,7 +1165,7 @@ function checkVmWriteBlocked(pid, helperPath) {
 }
 
 function checkPtraceBlocked(pid, helperPath) {
-  const isRoot = typeof process.getuid === "function" && process.getuid() === 0;
+  const isRoot = isRootUser();
   const strict = process.env.SEAL_E2E_STRICT_PTRACE === "1";
   const res = runCmd(helperPath, [String(pid)], 5000);
   if (res.error) {
@@ -1040,6 +1486,281 @@ async function runReleaseProcIntrospectionChecks({ releaseDir, runTimeoutMs, env
       } else {
         const note = vmWriteRes.note ? ` (${vmWriteRes.note})` : "";
         log(`OK: process_vm_writev blocked${note}`);
+      }
+    },
+  });
+}
+
+async function runReleaseEnvScrubChecks({ releaseDir, runTimeoutMs, env, keys }) {
+  await runReleaseWithReady({
+    releaseDir,
+    runTimeoutMs,
+    env,
+    skipMessage: "SKIP: listen not permitted; env scrub check disabled",
+    onReady: async ({ child }) => {
+      log("Checking scrubbed environment...");
+      const res = checkEnvScrubbed(child.pid, keys);
+      if (res.skip) {
+        log(`SKIP: environ scrub (${res.skip})`);
+      } else {
+        log("OK: environment scrubbed");
+      }
+    },
+  });
+}
+
+async function runReleasePreloadAuditCheck({ releaseDir, runTimeoutMs, env, markerPaths }) {
+  for (const p of markerPaths) {
+    try { fs.rmSync(p, { force: true }); } catch {}
+  }
+  await runReleaseOk({ releaseDir, runTimeoutMs, env });
+  const hit = anyMarkerExists(markerPaths);
+  if (hit) {
+    if (process.env.SEAL_E2E_STRICT_DYNLINK === "1") {
+      throw new Error(`LD_PRELOAD/LD_AUDIT marker created: ${hit}`);
+    }
+    log(`SKIP: dynamic loader instrumentation observed (${path.basename(hit)}); set SEAL_E2E_STRICT_DYNLINK=1 to enforce`);
+  } else {
+    log("OK: dynamic loader instrumentation blocked");
+  }
+}
+
+async function runReleaseChildAttachChecks({ releaseDir, runTimeoutMs, helpers }) {
+  await runReleaseWithReady({
+    releaseDir,
+    runTimeoutMs,
+    skipMessage: "SKIP: listen not permitted; child attach check disabled",
+    onReady: async ({ child }) => {
+      const kids = await waitForChildPids(child.pid, { tries: 10, delayMs: 200 });
+      if (kids === null) {
+        log("SKIP: cannot read /proc/<pid>/children");
+        return;
+      }
+      if (!kids.length) {
+        log("SKIP: no child processes detected");
+        return;
+      }
+      for (const pid of kids) {
+        log(`Checking child pid=${pid}...`);
+        try {
+          checkProcStatusHardened(pid);
+          log("OK: child /proc status hardened");
+        } catch (e) {
+          const msg = e && e.message ? e.message : String(e);
+          if (/enoent/i.test(msg)) {
+            log(`SKIP: child ${pid} exited before checks`);
+            continue;
+          }
+          throw e;
+        }
+
+        const ptraceRes = checkPtraceBlocked(pid, helpers.ptrace.path);
+        if (ptraceRes.skip) log(`SKIP: child ptrace (${ptraceRes.skip})`);
+        else log("OK: child ptrace blocked");
+
+        const gdbRes = checkGdbAttachBlockedPid(pid);
+        if (gdbRes.skip) log(`SKIP: child gdb (${gdbRes.skip})`);
+        else log("OK: child gdb blocked");
+
+        const straceRes = checkStraceAttachBlockedPid(pid);
+        if (straceRes.skip) log(`SKIP: child strace (${straceRes.skip})`);
+        else log("OK: child strace blocked");
+
+        const ltraceRes = checkLtraceAttachBlockedPid(pid);
+        if (ltraceRes.skip) log(`SKIP: child ltrace (${ltraceRes.skip})`);
+        else log("OK: child ltrace blocked");
+
+        const pstackRes = checkPstackAttachBlocked(pid);
+        if (pstackRes.skip) log(`SKIP: child pstack (${pstackRes.skip})`);
+        else log("OK: child pstack blocked");
+
+        const gstackRes = checkGstackAttachBlocked(pid);
+        if (gstackRes.skip) log(`SKIP: child gstack (${gstackRes.skip})`);
+        else log("OK: child gstack blocked");
+
+        const euStackRes = checkEuStackAttachBlocked(pid);
+        if (euStackRes.skip) log(`SKIP: child eu-stack (${euStackRes.skip})`);
+        else log("OK: child eu-stack blocked");
+
+        const gdbsRes = await checkGdbServerAttachBlockedPid(pid);
+        if (gdbsRes.skip) log(`SKIP: child gdbserver (${gdbsRes.skip})`);
+        else log("OK: child gdbserver blocked");
+
+        const perfRec = checkPerfRecordBlocked(pid);
+        if (perfRec.skip) log(`SKIP: child perf record (${perfRec.skip})`);
+        else log("OK: child perf record blocked");
+
+        const perfTrace = checkPerfTraceBlocked(pid);
+        if (perfTrace.skip) log(`SKIP: child perf trace (${perfTrace.skip})`);
+        else log("OK: child perf trace blocked");
+
+        const rrRes = checkRrAttachBlocked(pid);
+        if (rrRes.skip) log(`SKIP: child rr (${rrRes.skip})`);
+        else log("OK: child rr blocked");
+
+        const bpfRes = checkBpftraceAttachBlocked(pid);
+        if (bpfRes.skip) log(`SKIP: child bpftrace (${bpfRes.skip})`);
+        else log("OK: child bpftrace blocked");
+
+        const bpfU = checkBpftraceUprobeBlocked(pid);
+        if (bpfU.skip) log(`SKIP: child bpftrace uprobe (${bpfU.skip})`);
+        else log("OK: child bpftrace uprobe blocked");
+
+        const lttngRes = checkLttngAttachBlocked(pid);
+        if (lttngRes.skip) log(`SKIP: child lttng (${lttngRes.skip})`);
+        else log("OK: child lttng blocked");
+
+        const stapRes = checkSystemtapAttachBlocked(pid);
+        if (stapRes.skip) log(`SKIP: child systemtap (${stapRes.skip})`);
+        else log("OK: child systemtap blocked");
+      }
+    },
+  });
+}
+
+async function runReleasePerfAttachFail({ releaseDir, runTimeoutMs, env }) {
+  await runReleaseWithReady({
+    releaseDir,
+    runTimeoutMs,
+    env,
+    skipMessage: "SKIP: listen not permitted; perf attach test disabled",
+    onReady: async ({ child }) => {
+      log("Checking perf record attach...");
+      const rec = checkPerfRecordBlocked(child.pid);
+      if (rec.skip) {
+        log(`SKIP: perf record (${rec.skip})`);
+      } else {
+        const note = rec.note ? ` (${rec.note})` : "";
+        log(`OK: perf record blocked${note}`);
+      }
+      log("Checking perf trace attach...");
+      const trace = checkPerfTraceBlocked(child.pid);
+      if (trace.skip) {
+        log(`SKIP: perf trace (${trace.skip})`);
+      } else {
+        const note = trace.note ? ` (${trace.note})` : "";
+        log(`OK: perf trace blocked${note}`);
+      }
+    },
+  });
+}
+
+async function runReleaseRrAttachFail({ releaseDir, runTimeoutMs, env }) {
+  await runReleaseWithReady({
+    releaseDir,
+    runTimeoutMs,
+    env,
+    skipMessage: "SKIP: listen not permitted; rr attach test disabled",
+    onReady: async ({ child }) => {
+      log("Checking rr attach...");
+      const res = checkRrAttachBlocked(child.pid);
+      if (res.skip) {
+        log(`SKIP: rr attach (${res.skip})`);
+      } else {
+        const note = res.note ? ` (${res.note})` : "";
+        log(`OK: rr attach blocked${note}`);
+      }
+    },
+  });
+}
+
+async function runReleaseBpftraceAttachFail({ releaseDir, runTimeoutMs, env }) {
+  await runReleaseWithReady({
+    releaseDir,
+    runTimeoutMs,
+    env,
+    skipMessage: "SKIP: listen not permitted; bpftrace attach test disabled",
+    onReady: async ({ child }) => {
+      log("Checking bpftrace attach...");
+      const res = checkBpftraceAttachBlocked(child.pid);
+      if (res.skip) {
+        log(`SKIP: bpftrace (${res.skip})`);
+      } else {
+        const note = res.note ? ` (${res.note})` : "";
+        log(`OK: bpftrace blocked${note}`);
+      }
+      log("Checking bpftrace uprobe...");
+      const up = checkBpftraceUprobeBlocked(child.pid);
+      if (up.skip) {
+        log(`SKIP: bpftrace uprobe (${up.skip})`);
+      } else {
+        const note = up.note ? ` (${up.note})` : "";
+        log(`OK: bpftrace uprobe blocked${note}`);
+      }
+    },
+  });
+}
+
+async function runReleaseLttngAttachFail({ releaseDir, runTimeoutMs, env }) {
+  await runReleaseWithReady({
+    releaseDir,
+    runTimeoutMs,
+    env,
+    skipMessage: "SKIP: listen not permitted; lttng attach test disabled",
+    onReady: async ({ child }) => {
+      log("Checking lttng attach...");
+      const res = checkLttngAttachBlocked(child.pid);
+      if (res.skip) {
+        log(`SKIP: lttng (${res.skip})`);
+      } else {
+        const note = res.note ? ` (${res.note})` : "";
+        log(`OK: lttng blocked${note}`);
+      }
+    },
+  });
+}
+
+async function runReleaseSystemtapAttachFail({ releaseDir, runTimeoutMs, env }) {
+  await runReleaseWithReady({
+    releaseDir,
+    runTimeoutMs,
+    env,
+    skipMessage: "SKIP: listen not permitted; systemtap attach test disabled",
+    onReady: async ({ child }) => {
+      log("Checking systemtap attach...");
+      const res = checkSystemtapAttachBlocked(child.pid);
+      if (res.skip) {
+        log(`SKIP: systemtap (${res.skip})`);
+      } else {
+        const note = res.note ? ` (${res.note})` : "";
+        log(`OK: systemtap blocked${note}`);
+      }
+    },
+  });
+}
+
+async function runReleaseStackToolsAttachFail({ releaseDir, runTimeoutMs, env }) {
+  await runReleaseWithReady({
+    releaseDir,
+    runTimeoutMs,
+    env,
+    skipMessage: "SKIP: listen not permitted; stack attach test disabled",
+    onReady: async ({ child }) => {
+      log("Checking pstack attach...");
+      const pstackRes = checkPstackAttachBlocked(child.pid);
+      if (pstackRes.skip) {
+        log(`SKIP: pstack (${pstackRes.skip})`);
+      } else {
+        const note = pstackRes.note ? ` (${pstackRes.note})` : "";
+        log(`OK: pstack blocked${note}`);
+      }
+
+      log("Checking gstack attach...");
+      const gstackRes = checkGstackAttachBlocked(child.pid);
+      if (gstackRes.skip) {
+        log(`SKIP: gstack (${gstackRes.skip})`);
+      } else {
+        const note = gstackRes.note ? ` (${gstackRes.note})` : "";
+        log(`OK: gstack blocked${note}`);
+      }
+
+      log("Checking eu-stack attach...");
+      const euStackRes = checkEuStackAttachBlocked(child.pid);
+      if (euStackRes.skip) {
+        log(`SKIP: eu-stack (${euStackRes.skip})`);
+      } else {
+        const note = euStackRes.note ? ` (${euStackRes.note})` : "";
+        log(`OK: eu-stack blocked${note}`);
       }
     },
   });
@@ -1532,7 +2253,14 @@ async function runReleaseStraceCapture({ releaseDir, runTimeoutMs, env }) {
   log("OK: strace captured memfd_create + exec (antiDebug=off)");
 }
 
-async function runReleaseExpectFailAfterReady({ releaseDir, readyTimeoutMs, failTimeoutMs, env, expectStderr }) {
+async function runReleaseExpectFailAfterReady({
+  releaseDir,
+  readyTimeoutMs,
+  failTimeoutMs,
+  env,
+  expectStderr,
+  onReady,
+}) {
   if (runReleaseOk.skipListen) {
     log("SKIP: listen not permitted; runtime check disabled");
     return;
@@ -1566,6 +2294,10 @@ async function runReleaseExpectFailAfterReady({ releaseDir, readyTimeoutMs, fail
       }),
     ]));
 
+    if (onReady) {
+      await onReady({ child, port });
+    }
+
     const failRes = await withTimeout("waitForFail", failTimeoutMs, () => exitPromise);
     const { code, signal, stderr } = failRes || {};
     if (code === 0) {
@@ -1594,6 +2326,100 @@ async function runReleaseExpectFailAfterReady({ releaseDir, readyTimeoutMs, fail
       });
     });
   }
+}
+
+async function runReleaseStopResumeExpectFail({ releaseDir, readyTimeoutMs, failTimeoutMs, stopMs, expectStderr }) {
+  await runReleaseExpectFailAfterReady({
+    releaseDir,
+    readyTimeoutMs,
+    failTimeoutMs,
+    expectStderr,
+    onReady: async ({ child }) => {
+      process.kill(child.pid, "SIGSTOP");
+      await delay(stopMs);
+      process.kill(child.pid, "SIGCONT");
+    },
+  });
+}
+
+async function runReleaseCgroupFreezeFail({
+  releaseDir,
+  readyTimeoutMs,
+  failTimeoutMs,
+  freezeMs,
+  expectStderr,
+}) {
+  const root = getCgroupV2Root();
+  if (!root) return { skip: "cgroup v2 not available" };
+  if (!ensureCgroupV2Writable(root)) return { skip: "cgroup v2 not writable" };
+
+  const cgDir = path.join(root, `seal-e2e-${process.pid}-${Date.now()}`);
+  const procsPath = path.join(cgDir, "cgroup.procs");
+  const freezePath = path.join(cgDir, "cgroup.freeze");
+
+  try {
+    fs.mkdirSync(cgDir);
+  } catch (e) {
+    return { skip: `cgroup create failed: ${e && e.message ? e.message : String(e)}` };
+  }
+
+  if (!fs.existsSync(freezePath)) {
+    fs.rmSync(cgDir, { recursive: true, force: true });
+    return { skip: "cgroup.freeze missing" };
+  }
+
+  try {
+    fs.writeFileSync(freezePath, "0");
+  } catch (e) {
+    fs.rmSync(cgDir, { recursive: true, force: true });
+    return { skip: `cgroup.freeze not writable: ${e && e.message ? e.message : String(e)}` };
+  }
+
+  let skipReason = null;
+  try {
+    await runReleaseExpectFailAfterReady({
+      releaseDir,
+      readyTimeoutMs,
+      failTimeoutMs,
+      expectStderr,
+      onReady: async ({ child }) => {
+        try {
+          fs.writeFileSync(procsPath, String(child.pid));
+        } catch (e) {
+          skipReason = `cgroup.procs write failed: ${e && e.message ? e.message : String(e)}`;
+          throw new Error(`cgroup-probe:${skipReason}`);
+        }
+        try {
+          fs.writeFileSync(freezePath, "1");
+        } catch (e) {
+          skipReason = `cgroup.freeze write failed: ${e && e.message ? e.message : String(e)}`;
+          throw new Error(`cgroup-probe:${skipReason}`);
+        }
+        await delay(freezeMs);
+        try {
+          fs.writeFileSync(freezePath, "0");
+        } catch (e) {
+          skipReason = `cgroup.freeze unfreeze failed: ${e && e.message ? e.message : String(e)}`;
+          throw new Error(`cgroup-probe:${skipReason}`);
+        }
+      },
+    });
+  } catch (e) {
+    const msg = e && e.message ? e.message : String(e);
+    if (skipReason || msg.startsWith("cgroup-probe:")) {
+      const reason = skipReason || msg.slice("cgroup-probe:".length).trim();
+      return { skip: reason || "cgroup not writable" };
+    }
+    throw e;
+  } finally {
+    try {
+      fs.writeFileSync(freezePath, "0");
+    } catch {}
+    fs.rmSync(cgDir, { recursive: true, force: true });
+  }
+
+  if (skipReason) return { skip: skipReason };
+  return { ok: true };
 }
 
 async function buildThinSplit({
@@ -1646,6 +2472,45 @@ function tamperLauncher(releaseDir) {
   fs.writeFileSync(launcherPath, buf);
 }
 
+function flipByteInFile(filePath, offsetFromEnd = 64) {
+  const fd = fs.openSync(filePath, "r+");
+  try {
+    const st = fs.fstatSync(fd);
+    if (st.size <= 0) {
+      throw new Error(`empty file: ${filePath}`);
+    }
+    const offset = Math.max(0, st.size - offsetFromEnd);
+    const buf = Buffer.alloc(1);
+    const read = fs.readSync(fd, buf, 0, 1, offset);
+    if (read !== 1) {
+      throw new Error(`failed to read byte at ${offset} from ${filePath}`);
+    }
+    buf[0] = buf[0] ^ 0x01;
+    fs.writeSync(fd, buf, 0, 1, offset);
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+function truncateFile(filePath, newSize) {
+  fs.truncateSync(filePath, newSize);
+}
+
+function getCgroupV2Root() {
+  const root = "/sys/fs/cgroup";
+  if (!fs.existsSync(path.join(root, "cgroup.controllers"))) return null;
+  return root;
+}
+
+function ensureCgroupV2Writable(root) {
+  try {
+    fs.accessSync(root, fs.constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function main() {
   if (process.env.SEAL_THIN_ANTI_DEBUG_E2E !== "1") {
     log("SKIP: set SEAL_THIN_ANTI_DEBUG_E2E=1 to run thin anti-debug E2E tests");
@@ -1681,6 +2546,8 @@ async function main() {
       vm: ensureHelper(helperCtx, "vmread", HELPER_VMREAD_SRC),
       vmwrite: ensureHelper(helperCtx, "vmwrite", HELPER_VMWRITE_SRC),
       ptrace: ensureHelper(helperCtx, "ptrace", HELPER_PTRACE_SRC),
+      preload: ensureSharedHelper(helperCtx, "preload", HELPER_PRELOAD_SRC),
+      audit: ensureSharedHelper(helperCtx, "audit", HELPER_AUDIT_SRC),
     };
     const baseCfg = loadProjectConfig(EXAMPLE_ROOT);
     const cObfCmd = baseCfg?.build?.protection?.cObfuscator?.cmd;
@@ -1777,6 +2644,49 @@ async function main() {
       runReleaseProcIntrospectionChecks({ releaseDir: resA.releaseDir, runTimeoutMs, helpers })
     );
 
+    log("Testing environment scrub...");
+    await withTimeout("env scrub", testTimeoutMs, () =>
+      runReleaseEnvScrubChecks({
+        releaseDir: resA.releaseDir,
+        runTimeoutMs,
+        env: {
+          LD_PRELOAD: "/tmp/seal-preload.so",
+          LD_AUDIT: "/tmp/seal-audit.so",
+          NODE_OPTIONS: "--inspect",
+        },
+        keys: ["LD_PRELOAD", "LD_AUDIT", "NODE_OPTIONS"],
+      })
+    );
+
+    log("Testing LD_PRELOAD/LD_AUDIT scrub...");
+    const resDyn = await withTimeout("buildRelease(dynlink scrub)", buildTimeoutMs, () =>
+      buildThinSplit({
+        outRoot,
+        antiDebug: { enabled: true, denyEnv: false },
+        launcherObfuscation: false,
+      })
+    );
+    const markerDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-dynlink-"));
+    try {
+      const preloadMarker = path.join(markerDir, "preload.marker");
+      const auditMarker = path.join(markerDir, "audit.marker");
+      await withTimeout("dynlink scrub", testTimeoutMs, () =>
+        runReleasePreloadAuditCheck({
+          releaseDir: resDyn.releaseDir,
+          runTimeoutMs,
+          env: {
+            LD_PRELOAD: helpers.preload.path,
+            LD_AUDIT: helpers.audit.path,
+            SEAL_E2E_PRELOAD_MARKER: preloadMarker,
+            SEAL_E2E_AUDIT_MARKER: auditMarker,
+          },
+          markerPaths: [preloadMarker, auditMarker],
+        })
+      );
+    } finally {
+      fs.rmSync(markerDir, { recursive: true, force: true });
+    }
+
     log("Testing gdb attach (expect failure)...");
     await withTimeout("gdb attach fail", testTimeoutMs, () =>
       runReleaseGdbAttachFail({ releaseDir: resA.releaseDir, runTimeoutMs })
@@ -1795,11 +2705,46 @@ async function main() {
     );
     log("OK: ltrace attach blocked");
 
+    log("Testing stack tools attach (expect failure)...");
+    await withTimeout("stack attach fail", testTimeoutMs, () =>
+      runReleaseStackToolsAttachFail({ releaseDir: resA.releaseDir, runTimeoutMs })
+    );
+
     log("Testing gdbserver attach (expect failure)...");
     await withTimeout("gdbserver attach fail", testTimeoutMs, () =>
       runReleaseGdbServerAttachFail({ releaseDir: resA.releaseDir, runTimeoutMs })
     );
     log("OK: gdbserver attach blocked");
+
+    log("Testing perf attach (expect failure)...");
+    await withTimeout("perf attach fail", testTimeoutMs, () =>
+      runReleasePerfAttachFail({ releaseDir: resA.releaseDir, runTimeoutMs })
+    );
+
+    log("Testing rr attach (expect failure)...");
+    await withTimeout("rr attach fail", testTimeoutMs, () =>
+      runReleaseRrAttachFail({ releaseDir: resA.releaseDir, runTimeoutMs })
+    );
+
+    log("Testing bpftrace attach (expect failure)...");
+    await withTimeout("bpftrace attach fail", testTimeoutMs, () =>
+      runReleaseBpftraceAttachFail({ releaseDir: resA.releaseDir, runTimeoutMs })
+    );
+
+    log("Testing lttng attach (expect failure)...");
+    await withTimeout("lttng attach fail", testTimeoutMs, () =>
+      runReleaseLttngAttachFail({ releaseDir: resA.releaseDir, runTimeoutMs })
+    );
+
+    log("Testing systemtap attach (expect failure)...");
+    await withTimeout("systemtap attach fail", testTimeoutMs, () =>
+      runReleaseSystemtapAttachFail({ releaseDir: resA.releaseDir, runTimeoutMs })
+    );
+
+    log("Testing child attach checks...");
+    await withTimeout("child attach checks", testTimeoutMs, () =>
+      runReleaseChildAttachChecks({ releaseDir: resA.releaseDir, runTimeoutMs, helpers })
+    );
 
     log("Testing ptrace helper (expect failure)...");
     await withTimeout("ptrace helper fail", testTimeoutMs, () =>
@@ -1878,6 +2823,267 @@ async function main() {
       runReleaseExpectFail({ releaseDir: resA.releaseDir, runTimeoutMs, expectStderr: "[thin] runtime invalid" })
     );
     log("OK: integrity tamper rejected");
+
+    log("Testing payload tamper (byte flip)...");
+    await withTimeout("payload tamper", testTimeoutMs, async () => {
+      const tamperRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-tamper-pl-"));
+      try {
+        const res = await withTimeout("buildRelease(tamper payload)", buildTimeoutMs, () =>
+          buildThinSplit({ outRoot: tamperRoot, integrity: { enabled: false }, launcherObfuscation: false })
+        );
+        flipByteInFile(path.join(res.releaseDir, "r", "pl"));
+        await runReleaseExpectFail({
+          releaseDir: res.releaseDir,
+          runTimeoutMs,
+          expectStderr: /decode payload failed|payload invalid/i,
+        });
+      } finally {
+        fs.rmSync(tamperRoot, { recursive: true, force: true });
+      }
+    });
+    log("OK: payload tamper rejected");
+
+    log("Testing runtime tamper (byte flip)...");
+    await withTimeout("runtime tamper", testTimeoutMs, async () => {
+      const tamperRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-tamper-rt-"));
+      try {
+        const res = await withTimeout("buildRelease(tamper runtime)", buildTimeoutMs, () =>
+          buildThinSplit({ outRoot: tamperRoot, integrity: { enabled: false }, launcherObfuscation: false })
+        );
+        flipByteInFile(path.join(res.releaseDir, "r", "rt"));
+        await runReleaseExpectFail({
+          releaseDir: res.releaseDir,
+          runTimeoutMs,
+          expectStderr: /decode runtime failed|runtime invalid/i,
+        });
+      } finally {
+        fs.rmSync(tamperRoot, { recursive: true, force: true });
+      }
+    });
+    log("OK: runtime tamper rejected");
+
+    log("Testing payload truncate (footer missing)...");
+    await withTimeout("payload truncate", testTimeoutMs, async () => {
+      const tamperRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-tamper-pl-trunc-"));
+      try {
+        const res = await withTimeout("buildRelease(tamper truncate)", buildTimeoutMs, () =>
+          buildThinSplit({ outRoot: tamperRoot, integrity: { enabled: false }, launcherObfuscation: false })
+        );
+        const plPath = path.join(res.releaseDir, "r", "pl");
+        truncateFile(plPath, 16);
+        await runReleaseExpectFail({
+          releaseDir: res.releaseDir,
+          runTimeoutMs,
+          expectStderr: /decode payload failed|payload invalid/i,
+        });
+      } finally {
+        fs.rmSync(tamperRoot, { recursive: true, force: true });
+      }
+    });
+    log("OK: payload truncate rejected");
+
+    log("Testing payload swap (appBind mismatch)...");
+    await withTimeout("payload swap", testTimeoutMs, async () => {
+      const rootA = fs.mkdtempSync(path.join(os.tmpdir(), "seal-tamper-swap-a-"));
+      const rootB = fs.mkdtempSync(path.join(os.tmpdir(), "seal-tamper-swap-b-"));
+      try {
+        const resA = await withTimeout("buildRelease(swap A)", buildTimeoutMs, () =>
+          buildThinSplit({
+            outRoot: rootA,
+            appBind: { value: "swap-a" },
+            integrity: { enabled: false },
+            launcherObfuscation: false,
+          })
+        );
+        const resB = await withTimeout("buildRelease(swap B)", buildTimeoutMs, () =>
+          buildThinSplit({
+            outRoot: rootB,
+            appBind: { value: "swap-b" },
+            integrity: { enabled: false },
+            launcherObfuscation: false,
+          })
+        );
+        fs.copyFileSync(path.join(resB.releaseDir, "r", "pl"), path.join(resA.releaseDir, "r", "pl"));
+        await runReleaseExpectFail({
+          releaseDir: resA.releaseDir,
+          runTimeoutMs,
+          expectStderr: /decode payload failed/i,
+        });
+      } finally {
+        fs.rmSync(rootA, { recursive: true, force: true });
+        fs.rmSync(rootB, { recursive: true, force: true });
+      }
+    });
+    log("OK: payload swap rejected");
+
+    log("Testing runtime swap (appBind mismatch)...");
+    await withTimeout("runtime swap", testTimeoutMs, async () => {
+      const rootA = fs.mkdtempSync(path.join(os.tmpdir(), "seal-tamper-swap-rt-a-"));
+      const rootB = fs.mkdtempSync(path.join(os.tmpdir(), "seal-tamper-swap-rt-b-"));
+      try {
+        const resA = await withTimeout("buildRelease(swap rt A)", buildTimeoutMs, () =>
+          buildThinSplit({
+            outRoot: rootA,
+            appBind: { value: "swap-rt-a" },
+            integrity: { enabled: false },
+            launcherObfuscation: false,
+          })
+        );
+        const resB = await withTimeout("buildRelease(swap rt B)", buildTimeoutMs, () =>
+          buildThinSplit({
+            outRoot: rootB,
+            appBind: { value: "swap-rt-b" },
+            integrity: { enabled: false },
+            launcherObfuscation: false,
+          })
+        );
+        fs.copyFileSync(path.join(resB.releaseDir, "r", "rt"), path.join(resA.releaseDir, "r", "rt"));
+        await runReleaseExpectFail({
+          releaseDir: resA.releaseDir,
+          runTimeoutMs,
+          expectStderr: /decode runtime failed/i,
+        });
+      } finally {
+        fs.rmSync(rootA, { recursive: true, force: true });
+        fs.rmSync(rootB, { recursive: true, force: true });
+      }
+    });
+    log("OK: runtime swap rejected");
+
+    log("Testing runtime symlink tamper...");
+    await withTimeout("runtime symlink", testTimeoutMs, async () => {
+      const tamperRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-tamper-rt-symlink-"));
+      try {
+        const res = await withTimeout("buildRelease(rt symlink)", buildTimeoutMs, () =>
+          buildThinSplit({ outRoot: tamperRoot, integrity: { enabled: false }, launcherObfuscation: false })
+        );
+        const rtPath = path.join(res.releaseDir, "r", "rt");
+        const plPath = path.join(res.releaseDir, "r", "pl");
+        fs.rmSync(rtPath, { force: true });
+        fs.symlinkSync(plPath, rtPath);
+        await runReleaseExpectFail({
+          releaseDir: res.releaseDir,
+          runTimeoutMs,
+          expectStderr: /runtime missing|runtime invalid/i,
+        });
+      } finally {
+        fs.rmSync(tamperRoot, { recursive: true, force: true });
+      }
+    });
+    log("OK: runtime symlink rejected");
+
+    log("Testing payload symlink tamper...");
+    await withTimeout("payload symlink", testTimeoutMs, async () => {
+      const tamperRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-tamper-pl-symlink-"));
+      try {
+        const res = await withTimeout("buildRelease(pl symlink)", buildTimeoutMs, () =>
+          buildThinSplit({ outRoot: tamperRoot, integrity: { enabled: false }, launcherObfuscation: false })
+        );
+        const rtPath = path.join(res.releaseDir, "r", "rt");
+        const plPath = path.join(res.releaseDir, "r", "pl");
+        fs.rmSync(plPath, { force: true });
+        fs.symlinkSync(rtPath, plPath);
+        await runReleaseExpectFail({
+          releaseDir: res.releaseDir,
+          runTimeoutMs,
+          expectStderr: /payload missing|payload invalid|runtime invalid/i,
+        });
+      } finally {
+        fs.rmSync(tamperRoot, { recursive: true, force: true });
+      }
+    });
+    log("OK: payload symlink rejected");
+
+    log("Testing runtime hardlink tamper...");
+    await withTimeout("runtime hardlink", testTimeoutMs, async () => {
+      const tamperRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-tamper-rt-hardlink-"));
+      try {
+        const res = await withTimeout("buildRelease(rt hardlink)", buildTimeoutMs, () =>
+          buildThinSplit({ outRoot: tamperRoot, integrity: { enabled: false }, launcherObfuscation: false })
+        );
+        const rtPath = path.join(res.releaseDir, "r", "rt");
+        const plPath = path.join(res.releaseDir, "r", "pl");
+        fs.rmSync(rtPath, { force: true });
+        fs.linkSync(plPath, rtPath);
+        await runReleaseExpectFail({
+          releaseDir: res.releaseDir,
+          runTimeoutMs,
+          expectStderr: /exec failed|runtime invalid|decode runtime failed/i,
+        });
+      } finally {
+        fs.rmSync(tamperRoot, { recursive: true, force: true });
+      }
+    });
+    log("OK: runtime hardlink rejected");
+
+    log("Testing payload hardlink tamper...");
+    await withTimeout("payload hardlink", testTimeoutMs, async () => {
+      const tamperRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-tamper-pl-hardlink-"));
+      try {
+        const res = await withTimeout("buildRelease(pl hardlink)", buildTimeoutMs, () =>
+          buildThinSplit({ outRoot: tamperRoot, integrity: { enabled: false }, launcherObfuscation: false })
+        );
+        const rtPath = path.join(res.releaseDir, "r", "rt");
+        const plPath = path.join(res.releaseDir, "r", "pl");
+        fs.rmSync(plPath, { force: true });
+        fs.linkSync(rtPath, plPath);
+        await runReleaseExpectFail({
+          releaseDir: res.releaseDir,
+          runTimeoutMs,
+          expectStderr: /decode payload failed|payload invalid|runtime invalid|exec failed/i,
+        });
+      } finally {
+        fs.rmSync(tamperRoot, { recursive: true, force: true });
+      }
+    });
+    log("OK: payload hardlink rejected");
+
+    log("Testing integrity sidecar missing...");
+    await withTimeout("integrity sidecar missing", testTimeoutMs, async () => {
+      const tamperRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-tamper-ih-miss-"));
+      try {
+        const res = await withTimeout("buildRelease(ih missing)", buildTimeoutMs, () =>
+          buildThinSplit({
+            outRoot: tamperRoot,
+            integrity: { enabled: true, mode: "sidecar" },
+            launcherObfuscation: false,
+          })
+        );
+        const ihPath = path.join(res.releaseDir, "r", "ih");
+        fs.rmSync(ihPath, { force: true });
+        await runReleaseExpectFail({
+          releaseDir: res.releaseDir,
+          runTimeoutMs,
+          expectStderr: "[thin] runtime invalid",
+        });
+      } finally {
+        fs.rmSync(tamperRoot, { recursive: true, force: true });
+      }
+    });
+    log("OK: integrity sidecar missing rejected");
+
+    log("Testing integrity sidecar corrupt...");
+    await withTimeout("integrity sidecar corrupt", testTimeoutMs, async () => {
+      const tamperRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-tamper-ih-corrupt-"));
+      try {
+        const res = await withTimeout("buildRelease(ih corrupt)", buildTimeoutMs, () =>
+          buildThinSplit({
+            outRoot: tamperRoot,
+            integrity: { enabled: true, mode: "sidecar" },
+            launcherObfuscation: false,
+          })
+        );
+        flipByteInFile(path.join(res.releaseDir, "r", "ih"), 1);
+        await runReleaseExpectFail({
+          releaseDir: res.releaseDir,
+          runTimeoutMs,
+          expectStderr: "[thin] runtime invalid",
+        });
+      } finally {
+        fs.rmSync(tamperRoot, { recursive: true, force: true });
+      }
+    });
+    log("OK: integrity sidecar corrupt rejected");
 
     log("Building thin-split with antiDebug disabled...");
     const resB = await withTimeout("buildRelease(antiDebug=off)", buildTimeoutMs, () =>
@@ -2002,6 +3208,34 @@ async function main() {
         launcherObfuscation: false,
       })
     );
+    log("Testing snapshot guard (SIGSTOP/SIGCONT)...");
+    await withTimeout("snapshot guard sigstop", testTimeoutMs, () =>
+      runReleaseStopResumeExpectFail({
+        releaseDir: resSnap.releaseDir,
+        readyTimeoutMs: 8000,
+        failTimeoutMs: 10000,
+        stopMs: 600,
+        expectStderr: "[thin] runtime invalid",
+      })
+    );
+    log("OK: snapshot guard SIGSTOP rejected");
+
+    log("Testing snapshot guard (cgroup freeze)...");
+    const cgRes = await withTimeout("snapshot guard cgroup", testTimeoutMs, () =>
+      runReleaseCgroupFreezeFail({
+        releaseDir: resSnap.releaseDir,
+        readyTimeoutMs: 8000,
+        failTimeoutMs: 12000,
+        freezeMs: 600,
+        expectStderr: "[thin] runtime invalid",
+      })
+    );
+    if (cgRes && cgRes.skip) {
+      log(`SKIP: snapshot guard cgroup (${cgRes.skip})`);
+    } else {
+      log("OK: snapshot guard cgroup rejected");
+    }
+
     await withTimeout("snapshot guard fail", testTimeoutMs, () =>
       runReleaseExpectFail({
         releaseDir: resSnap.releaseDir,

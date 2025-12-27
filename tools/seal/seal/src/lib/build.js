@@ -72,6 +72,29 @@ function normalizeObfuscationProfile(raw) {
   return { profile, warning: null };
 }
 
+function resolveConsoleMode(raw) {
+  if (raw === undefined || raw === null) {
+    return { mode: "full", warning: null };
+  }
+  if (typeof raw === "boolean") {
+    return { mode: raw ? "errors-only" : "full", warning: null };
+  }
+  const val = String(raw).toLowerCase();
+  if (val === "1" || val === "true" || val === "yes" || val === "on") {
+    return { mode: "errors-only", warning: null };
+  }
+  if (val === "0" || val === "false" || val === "no" || val === "off") {
+    return { mode: "full", warning: null };
+  }
+  if (val === "full" || val === "all" || val === "debug") {
+    return { mode: "full", warning: null };
+  }
+  if (val === "errors-only" || val === "errors" || val === "error" || val === "error-only") {
+    return { mode: "errors-only", warning: null };
+  }
+  return { mode: "full", warning: `Unknown build.consoleMode "${raw}", using "full"` };
+}
+
 function obfuscationOptions(profile) {
   const normalized = normalizeObfuscationProfile(profile).profile;
   // Keep logs readable: do NOT hide string literals.
@@ -134,17 +157,22 @@ function obfuscationOptions(profile) {
 }
 
 function resolveBackendTerser(raw, profile) {
-  const isProd = profile === "strict" || profile === "max";
-  const defaultPasses = profile === "max" ? 4 : 3;
+  const isStrong = profile === "strict" || profile === "max";
+  const defaultPasses = profile === "max" ? 4 : (isStrong ? 3 : 2);
+  const defaultToplevel = isStrong;
+  const defaultCompress = isStrong
+    ? { passes: defaultPasses, inline: 3 }
+    : { passes: defaultPasses, inline: 1 };
+  const defaultMangle = isStrong ? { toplevel: true } : false;
   const defaults = {
     passes: defaultPasses,
-    toplevel: true,
-    compress: { passes: defaultPasses, inline: 3 },
-    mangle: { toplevel: true },
+    toplevel: defaultToplevel,
+    compress: defaultCompress,
+    mangle: defaultMangle,
     format: { comments: false },
   };
   if (raw === undefined || raw === null) {
-    return { enabled: isProd, ...defaults };
+    return { enabled: true, ...defaults };
   }
   if (typeof raw === "boolean") {
     return raw ? { enabled: true, ...defaults } : { enabled: false };
@@ -903,10 +931,21 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   if (obfNorm.warning) warn(obfNorm.warning);
   const obfProfile = obfNorm.profile;
   const isStrictObf = obfProfile === "strict" || obfProfile === "max";
+  const consoleEnv = process.env.SEAL_CONSOLE_MODE;
+  const consoleRaw = consoleEnv !== undefined
+    ? consoleEnv
+    : (projectCfg.build.consoleMode !== undefined ? projectCfg.build.consoleMode : projectCfg.build.stripConsole);
+  if (consoleEnv !== undefined) info(`Console mode override: ${consoleEnv}`);
+  if (projectCfg.build.stripConsole !== undefined && projectCfg.build.consoleMode === undefined) {
+    warn('build.stripConsole is deprecated; use build.consoleMode');
+  }
+  const consoleRes = resolveConsoleMode(consoleRaw);
+  if (consoleRes.warning) warn(consoleRes.warning);
+  const consoleMode = consoleRes.mode;
   const backendMinify = projectCfg.build.backendMinify !== undefined
     ? !!projectCfg.build.backendMinify
-    : isStrictObf;
-  const stripConsole = isStrictObf;
+    : true;
+  const stripConsole = consoleMode === "errors-only";
   const backendTerserCfg = resolveBackendTerser(projectCfg.build.backendTerser, obfProfile);
   info("Bundling (esbuild)...");
   let bundlePath = await buildBundle({
@@ -1206,6 +1245,7 @@ protection.integrity = thinIntegrity;
     obfuscationProfile: obfProfile,
     backendMinify,
     backendTerser,
+    consoleMode,
     frontendObfuscation: frontendResult,
     frontendMinify: minifyResult,
     protection,

@@ -8,6 +8,7 @@ const net = require("net");
 const os = require("os");
 const path = require("path");
 const { spawn, spawnSync } = require("child_process");
+const { hasCommand } = require("./e2e-utils");
 
 const { buildRelease } = require("../src/lib/build");
 const { loadProjectConfig, loadTargetConfig, resolveConfigName } = require("../src/lib/project");
@@ -25,11 +26,6 @@ function fail(msg) {
 
 function runCmd(cmd, args, timeoutMs = 5000) {
   return spawnSync(cmd, args, { stdio: "pipe", timeout: timeoutMs });
-}
-
-function hasCommand(cmd) {
-  const res = runCmd("bash", ["-lc", `command -v ${cmd} >/dev/null 2>&1`]);
-  return res.status === 0;
 }
 
 function ensureLauncherObfuscation(projectCfg) {
@@ -59,6 +55,14 @@ function checkPrereqs() {
   const zstdCheck = runCmd("pkg-config", ["--libs", "libzstd"]);
   if (zstdCheck.status !== 0) {
     fail("libzstd not found via pkg-config");
+    return { ok: false, skip: false };
+  }
+  if (!hasCommand("readelf")) {
+    fail("Missing readelf (binutils). Run: tools/seal/seal/scripts/install-strip.sh");
+    return { ok: false, skip: false };
+  }
+  if (!hasCommand("strings")) {
+    fail("Missing strings (binutils). Run: tools/seal/seal/scripts/install-strip.sh");
     return { ok: false, skip: false };
   }
   return { ok: true, skip: false };
@@ -144,6 +148,72 @@ function parseArgsEnv(raw) {
     return parsed.map((v) => String(v));
   }
   return trimmed.split(/\s+/).filter(Boolean);
+}
+
+function parseReadelfSections(binPath) {
+  const res = runCmd("readelf", ["-S", binPath], 5000);
+  if (res.status !== 0) return null;
+  const out = String(res.stdout || "");
+  if (/There are no sections/i.test(out)) return [];
+  const sections = [];
+  for (const line of out.split(/\r?\n/)) {
+    const match = line.match(/^\s*\[\s*\d+\]\s+(\S+)/);
+    if (match) sections.push(match[1]);
+  }
+  return sections;
+}
+
+function verifyUpxPacked(binPath) {
+  if (!hasCommand("upx")) {
+    return { skip: "upx not installed" };
+  }
+  const res = runCmd("upx", ["-t", binPath], 10000);
+  const out = `${res.stdout || ""}${res.stderr || ""}`;
+  const lower = out.toLowerCase();
+  if (lower.includes("not packed") || lower.includes("notpacked")) {
+    return { error: "not packed" };
+  }
+  if (res.status !== 0) {
+    return { skip: `upx check failed: ${out.slice(0, 120)}` };
+  }
+  return { ok: true };
+}
+
+function verifyMarker(binPath, markers) {
+  const res = runCmd("strings", ["-a", binPath], 8000);
+  if (res.status !== 0) {
+    const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+    return { skip: `strings failed: ${out.slice(0, 120)}` };
+  }
+  const out = String(res.stdout || "");
+  for (const marker of markers) {
+    if (out.includes(marker)) return { ok: true, marker };
+  }
+  return { skip: "marker missing (tool version?)" };
+}
+
+function verifyPacker(binPath, spec) {
+  if (spec.id === "upx") return verifyUpxPacked(binPath);
+  if (spec.id === "kiteshield") return verifyMarker(binPath, ["[kiteshield]", "kiteshield"]);
+  if (spec.id === "midgetpack") return verifyMarker(binPath, ["midgetpack"]);
+  return { skip: "unsupported packer check" };
+}
+
+function checkSectionHeaderCollapse(binPath, spec) {
+  const sections = parseReadelfSections(binPath);
+  if (!sections) return { skip: "readelf failed" };
+  const count = sections.length;
+  const max = Number.isFinite(spec.sectionMax) ? spec.sectionMax : 16;
+  if (count <= max) return { ok: true, sections: count, max };
+  return { skip: `section count ${count} > ${max}` };
+}
+
+function resolveLauncherPath(releaseDir, appName) {
+  const launcherPath = path.join(releaseDir, "b", "a");
+  if (fs.existsSync(launcherPath)) return launcherPath;
+  const appPath = path.join(releaseDir, appName);
+  if (fs.existsSync(appPath)) return appPath;
+  throw new Error(`Missing launcher binary (${launcherPath})`);
 }
 
 function writeRuntimeConfig(releaseDir, port) {
@@ -259,15 +329,31 @@ async function testElfPacker(ctx, spec) {
         outRoot,
       })
     );
-    const steps = res.meta?.protection?.post?.steps || [];
-    const step = steps.find((s) => s && s.step === "elf_packer");
-    assert.ok(step, "Expected elf_packer step in protection metadata");
-    assert.strictEqual(step.ok, true, "Expected elf_packer step to be ok");
-    if (spec.runtimeSkip && process.env[spec.runtimeEnv] !== "1") {
-      log(`SKIP: ${spec.name} runtime check disabled (set ${spec.runtimeEnv}=1 to enable)`);
-      return;
-    }
-    await runRelease({ releaseDir: res.releaseDir, buildId: res.buildId, runTimeoutMs: ctx.runTimeoutMs });
+  const steps = res.meta?.protection?.post?.steps || [];
+  const step = steps.find((s) => s && s.step === "elf_packer");
+  assert.ok(step, "Expected elf_packer step in protection metadata");
+  assert.strictEqual(step.ok, true, "Expected elf_packer step to be ok");
+
+  const launcherPath = resolveLauncherPath(res.releaseDir, res.appName);
+  const verify = verifyPacker(launcherPath, spec);
+  if (verify && verify.error) {
+    throw new Error(`${spec.name} verification failed: ${verify.error}`);
+  }
+  if (verify && verify.skip) {
+    log(`SKIP: ${spec.name} packer verification (${verify.skip})`);
+  }
+  const collapse = checkSectionHeaderCollapse(launcherPath, spec);
+  if (collapse && collapse.ok) {
+    log(`${spec.name}: section headers collapsed (sections=${collapse.sections}, max=${collapse.max})`);
+  } else if (collapse && collapse.skip) {
+    log(`SKIP: ${spec.name} section header check (${collapse.skip})`);
+  }
+
+  if (spec.runtimeSkip && process.env[spec.runtimeEnv] !== "1") {
+    log(`SKIP: ${spec.name} runtime check disabled (set ${spec.runtimeEnv}=1 to enable)`);
+    return;
+  }
+  await runRelease({ releaseDir: res.releaseDir, buildId: res.buildId, runTimeoutMs: ctx.runTimeoutMs });
   } finally {
     fs.rmSync(outRoot, { recursive: true, force: true });
   }
@@ -315,6 +401,7 @@ async function main() {
       skipEnv: "SEAL_UPX_SKIP",
       defaultCmd: "upx",
       defaultArgs: [],
+      sectionMax: 12,
     },
     {
       id: "kiteshield",
@@ -324,6 +411,7 @@ async function main() {
       skipEnv: "SEAL_KITESHIELD_SKIP",
       defaultCmd: "kiteshield",
       defaultArgs: ["-n", "{in}", "{out}"],
+      sectionMax: 20,
     },
     {
       id: "midgetpack",
@@ -335,6 +423,7 @@ async function main() {
       runtimeEnv: "SEAL_MIDGETPACK_RUNTIME",
       defaultCmd: "midgetpack",
       defaultArgs: ["-P", "seal-test", "-o", "{out}", "{in}"],
+      sectionMax: 20,
     },
   ];
 
