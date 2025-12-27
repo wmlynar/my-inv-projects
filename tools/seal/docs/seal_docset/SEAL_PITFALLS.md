@@ -392,6 +392,9 @@
 - Blad: testy E2E auto‑modyfikowaly konfiguracje (np. wylaczenie ochron/packerow) bez jawnego logu, przez co maskowaly regresje.
   - Wymaganie: kazda automatyczna zmiana configu w testach musi byc logowana i uzasadniona.
 
+- Blad: testy/skrypty pomijaly kroki (np. instalacje narzedzi, runtime checki) bez jasnej informacji.
+  - Wymaganie: kazdy SKIP musi wypisac powód i instrukcje jak wymusic pelny test.
+
 - Blad: testy E2E uruchamialy build z wlaczona obfuskacja C, ale bez zainstalowanego obfuscating clang, co konczylo sie nieczytelnym bledem.
   - Wymaganie: testy wykrywaja brak obfuscatora i **jawnie** wylaczaja launcherObfuscation (lub robia SKIP), z jasnym logiem.
 
