@@ -1157,3 +1157,26 @@
   - Wymaganie: ustaw keep‑alive z timeoutem lub zamykaj sockety.
 - Blad: brak heartbeat dla polaczen dlugich (ws/long‑poll).
   - Wymaganie: heartbeat/ping + timeout.
+
+## Dodatkowe wnioski (batch 101-110)
+
+- Blad: uzycie `sed -i` bez uwzglednienia roznic GNU/BSD powodowalo awarie skryptow.
+  - Wymaganie: stosuj wrapper `sed_inplace` z detekcja platformy albo `perl -pi`/`python -i`.
+- Blad: archiwa (`.tgz/.gz`) zawieraly timestampy i byly niedeterministyczne.
+  - Wymaganie: dla gzip uzywaj `-n`, a dla tar ustaw `--sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner`.
+- Blad: brak preflight wolnego miejsca lokalnie powodowal fail podczas builda.
+  - Wymaganie: sprawdz `df`/wolne miejsce lokalnie przed ciezkimi operacjami.
+- Blad: tymczasowe pliki byly tworzone w katalogu world‑writable bez zabezpieczen przed symlink attack.
+  - Wymaganie: tworz tmp przez `mkstemp`/`O_EXCL` + `lstat` (brak symlink/hardlink).
+- Blad: `read` bez `IFS=` i `-r` tracil biale znaki/backslashe w liniach.
+  - Wymaganie: uzywaj `IFS= read -r` dla wierszy z plikow.
+- Blad: archiwizacja dereferowala symlinki i mogla wyciagnac pliki spoza root.
+  - Wymaganie: blokuj/detekuj symlinki przed archiwizacja (lub archiwizuj linki jako linki).
+- Blad: `PATH` zawieral `.` i uruchamial zly binarny (hijack).
+  - Wymaganie: ustaw bezpieczny `PATH` bez `.` i loguj go.
+- Blad: zbyt niski limit `ulimit -n` powodowal losowe bledy I/O.
+  - Wymaganie: sprawdz `ulimit -n` i ostrzegaj/ustaw minimalny limit.
+- Blad: transfery nie zachowywaly `mtime`/perms, co psulo diff/rollback.
+  - Wymaganie: przy synchronizacji uzywaj odpowiednich flag (`rsync -a`, `scp -p`).
+- Blad: rozpakowanie archiwum bez limitu rozmiaru/liczby plikow moglo zrobic „zip bomb”.
+  - Wymaganie: narzuc limity (max size/entries) i fail‑fast po przekroczeniu.

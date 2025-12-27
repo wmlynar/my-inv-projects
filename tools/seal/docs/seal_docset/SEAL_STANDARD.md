@@ -679,6 +679,16 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-295 (SHOULD): limituj redirecty i loguj finalny URL.
 - STD-296 (SHOULD): sockety HTTP maja timeout/cleanup (brak wyciekow).
 - STD-297 (SHOULD): polaczenia dlugie maja heartbeat/ping + timeout.
+- STD-298 (SHOULD): skrypty używają portable `sed_inplace` (GNU/BSD) lub `perl -pi`/`python -i`; brak `sed -i` na ślepo.
+- STD-299 (SHOULD): archiwa są deterministyczne (`gzip -n`, `tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner`).
+- STD-300 (SHOULD): przed ciężkimi operacjami sprawdzaj lokalne wolne miejsce (preflight).
+- STD-301 (SHOULD): tmp w world‑writable używa `mkstemp`/`O_EXCL` + `lstat` (blokada symlink/hardlink).
+- STD-302 (SHOULD): czytanie linii z plików przez `IFS= read -r` (bez utraty spacji/backslash).
+- STD-303 (SHOULD): archiwizacja nie dereferuje symlinków (lub jawna walidacja).
+- STD-304 (SHOULD): `PATH` jest jawnie ustawiony i nie zawiera `.`.
+- STD-305 (SHOULD): sprawdzaj `ulimit -n` i ustaw minimalny limit dla procesu.
+- STD-306 (SHOULD): transfery zachowują perms/mtime (`rsync -a`, `scp -p`) gdy jest to wymagane.
+- STD-307 (SHOULD): rozpakowanie archiwów ma limity rozmiaru i liczby plików (anti zip‑bomb).
 
 ## 10. Moduł `testing` (SHOULD)
 
