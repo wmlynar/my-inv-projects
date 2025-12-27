@@ -372,7 +372,7 @@ async function cmdCheck(cwd, targetArg, opts) {
     if (!warnings.includes(hint)) warnings.push(hint);
   }
 
-  // Optional protection tools (recommended; SEAL will still work without them)
+  // Protection tools (ELF packer is default for thin-split)
   const protectionCfg = resolveProtectionConfig(proj);
   const hardEnabled = protectionCfg.enabled !== false;
   if (hardEnabled) {
@@ -381,8 +381,13 @@ async function cmdCheck(cwd, targetArg, opts) {
 
     if (protectionCfg.elfPacker) {
       const packerCmd = protectionCfg.elfPackerCmd || protectionCfg.elfPacker;
-      if (hasCommand(packerCmd)) ok(`${packerCmd}: OK (ELF packer)`);
-      else warnings.push(`ELF packer not found (${packerCmd}) – protection.elfPacker will fail`);
+      if (packagerSpec.kind === "sea") {
+        errors.push("ELF packer configured but SEA does not support strip/packer. Use thin-split or disable protection.elfPacker.");
+      } else if (hasCommand(packerCmd)) {
+        ok(`${packerCmd}: OK (ELF packer)`);
+      } else {
+        errors.push(`ELF packer not found (${packerCmd}) – protection.elfPacker will fail`);
+      }
     }
   }
 

@@ -20,12 +20,13 @@ function templateProjectJson5(appName, entry) {
       obfuscationProfile: "balanced",
       frontendObfuscation: { enabled: true, profile: "balanced" },
       frontendMinify: { enabled: true, level: "safe", html: true, css: true },
-      // NOTE: strip/ELF packer are experimental for SEA binaries; keep them OFF by default.
+      // NOTE: SEA does not support strip/ELF packer (fail-fast). thin-split uses kiteshield by default.
       protection: {
         enabled: true,
         seaMain: { pack: true, method: "brotli", chunkSize: 8000 },
         bundle: { pack: true },
         strip: { enabled: false, cmd: "strip" },
+        elfPacker: { tool: "kiteshield", cmd: "kiteshield", args: ["-n", "{in}", "{out}"] },
       },
       thin: { mode: "split", level: "low" },
       includeDirs: ["public", "data"],

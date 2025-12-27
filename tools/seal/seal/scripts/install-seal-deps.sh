@@ -23,6 +23,7 @@ INSTALL_APT="${SEAL_INSTALL_APT:-1}"
 INSTALL_NODE="${SEAL_INSTALL_NODE:-1}"
 INSTALL_NPM="${SEAL_INSTALL_NPM:-1}"
 INSTALL_E2E_TOOLS="${SEAL_INSTALL_E2E_TOOLS:-1}"
+INSTALL_KITESHIELD="${SEAL_INSTALL_KITESHIELD:-1}"
 
 APT_DEPS=(
   build-essential
@@ -166,6 +167,17 @@ if [ "$INSTALL_NPM" = "1" ]; then
   fi
 else
   log "Skipping npm install (SEAL_INSTALL_NPM=0)"
+fi
+
+if [ "$INSTALL_KITESHIELD" = "1" ]; then
+  if has_cmd kiteshield; then
+    log "kiteshield OK: $(command -v kiteshield)"
+  else
+    log "Installing kiteshield (ELF packer)..."
+    "$SCRIPT_DIR/install-kiteshield.sh"
+  fi
+else
+  log "Skipping kiteshield install (SEAL_INSTALL_KITESHIELD=0)"
 fi
 
 log "Done."
