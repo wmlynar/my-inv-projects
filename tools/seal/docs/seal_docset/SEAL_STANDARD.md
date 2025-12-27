@@ -77,6 +77,7 @@ Przykład:
 - STD-026 (SHOULD): preflight i build uzywaja tych samych opcji i resolvera narzedzi, zeby uniknac rozjazdow.
 - STD-032 (SHOULD): preflight sprawdza OS/arch i wersje toolchaina; mismatch = fail-fast.
 - STD-032a (SHOULD): `esbuild` target nie moze byc wyzszy niz runtime Node na hoście; preflight loguje target + wykryta wersje Node i fail‑fast przy mismatch.
+- STD-032b (SHOULD): buildId musi zawierac komponent losowy lub monotoniczny, aby uniknac kolizji przy rownoleglych buildach.
 - STD-035 (SHOULD): build zapisuje wersje narzedzi/zaleznosci; build nie pobiera rzeczy z internetu.
 - STD-040 (SHOULD): preflight uzywa tych samych argumentow i srodowiska co runtime.
 - STD-041 (SHOULD): release nie moze polegac na toolchainie builda na serwerze.
