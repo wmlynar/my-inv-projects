@@ -425,6 +425,9 @@
 - Blad: testy „expect fail” nie drenowaly stdout/stderr child procesu, co moglo blokowac proces i zafalszowac timeout.
   - Wymaganie: drenaż stdout/stderr jest wymagany **we wszystkich** sciezkach testu (takze przy spodziewanej porazce).
 
+- Blad: testy ignorowaly `signal` z `child.on('exit')`, przez co crash SIGKILL/SIGSEGV byl raportowany jako "ok".
+  - Wymaganie: testy loguja i failuja na `signal` (i rozrozniaja `code` vs `signal`), aby nie maskowac crashy.
+
 - Blad: testy „expect fail” akceptowaly dowolny błąd (np. brak configu) zamiast tego konkretnego, ktory mial byc wykryty.
   - Wymaganie: negatywne testy musza asercyjnie weryfikowac **konkretny** sygnal (kod wyjscia lub wzorzec stderr); inne bledy = FAIL.
 
