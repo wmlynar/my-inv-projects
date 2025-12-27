@@ -759,6 +759,11 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-375 (SHOULD): uzywaj `printf` zamiast `echo -e` dla przenosnego outputu.
 - STD-376 (SHOULD): `trap` cleanup ustawiaj na poczatku skryptu.
 - STD-377 (SHOULD): pętle `while read` obsługują ostatnią linię bez `\\n`.
+- STD-378 (SHOULD): skrypty uzywajace bash‑owych funkcji maja shebang bash albo sa POSIX‑sh.
+- STD-379 (SHOULD): przekazywanie argumentow w bash uzywa `\"$@\"`, nie `$*`.
+- STD-380 (SHOULD): tmp katalogi tworz przez `mktemp -d` (unikaj statycznych nazw).
+- STD-381 (SHOULD): `pushd/popd` wymaga bash; w sh uzywaj `cd` + `pwd`.
+- STD-382 (SHOULD): dla danych uzywaj `printf '%s\\n'`, nie `echo`.
 
 ## 10. Moduł `testing` (SHOULD)
 

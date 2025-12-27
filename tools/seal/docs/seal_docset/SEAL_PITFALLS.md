@@ -1358,3 +1358,16 @@
   - Wymaganie: wymusz perms przez `--chmod=...` albo `--no-perms` + jawny `chmod`.
 - Blad: narzedzia ignorowaly `umask` przy tworzeniu katalogow przez `cp -a`/`tar`.
   - Wymaganie: po kopiowaniu jawnie ustaw perms na katalogach docelowych.
+
+## Dodatkowe wnioski (batch 181-185)
+
+- Blad: skrypt uzywal bash‑owych funkcji pod `/bin/sh`, co psulo wykonanie.
+  - Wymaganie: ustaw poprawny shebang (`#!/usr/bin/env bash`) lub pisz czysty POSIX sh.
+- Blad: uzycie `$*` gubilo rozdzielenie argumentow.
+  - Wymaganie: przekazuj parametry jako `"$@"`.
+- Blad: tmp katalog byl tworzony recznie (`/tmp/foo`), co prowadzilo do kolizji i race.
+  - Wymaganie: uzywaj `mktemp -d` z losowym sufiksem.
+- Blad: `pushd/popd` w /bin/sh nie dzialalo i psulo skrypty.
+  - Wymaganie: w sh uzywaj `cd` + `pwd` lub wymagaj bash.
+- Blad: `echo` interpretowal `-n`/`-e` w danych i psul output.
+  - Wymaganie: do danych uzywaj `printf '%s\n'`.
