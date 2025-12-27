@@ -75,6 +75,9 @@
 - Blad: prompt o zaufanie hosta SSH blokowal deploy (brak wpisu w `known_hosts`).
   - Wymaganie: pre‑seed `known_hosts` lub uzyj jawnego `StrictHostKeyChecking=accept-new` (tylko gdy zaakceptowane); bez tego fail‑fast z instrukcja.
 
+- Blad: reuzycie globalnego `known_hosts` w testach powodowalo flakey wyniki (hostkey mismatch po przebudowie kontenera).
+  - Wymaganie: testy/CI uzywaja tymczasowego `UserKnownHostsFile` (per run), aby uniknac kolizji host key.
+
 - Blad: skrypty uzywaly niecytowanych zmiennych (`$VAR`), co powodowalo word‑splitting i globbing.
   - Wymaganie: kazda zmienna w shellu jest widocznie cytowana (`"$VAR"`), chyba ze jawnie potrzebny jest splitting.
 
