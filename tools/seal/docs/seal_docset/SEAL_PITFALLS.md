@@ -72,6 +72,9 @@
 - Blad: `curl`/`wget` bez timeoutow i `--fail` potrafil wisiec lub ignorowac HTTP error.
   - Wymaganie: pobieranie z sieci musi miec timeout (`--connect-timeout`, `--max-time`) i `--fail`/`--show-error`, plus ograniczone retry.
 
+- Blad: `rsync` bez timeoutu potrafil wisiec na zerwanym polaczeniu.
+  - Wymaganie: uzywaj `--timeout` w `rsync` (sekundy bez aktywnosci) oraz jawny limit czasu calkowitego.
+
 - Blad: prompt o zaufanie hosta SSH blokowal deploy (brak wpisu w `known_hosts`).
   - Wymaganie: pre‑seed `known_hosts` lub uzyj jawnego `StrictHostKeyChecking=accept-new` (tylko gdy zaakceptowane); bez tego fail‑fast z instrukcja.
 

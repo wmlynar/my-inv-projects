@@ -98,6 +98,7 @@ Przykład:
 - STD-031a (SHOULD): komendy wymagajace `sudo` w trybie nieinteraktywnym uzywaja `sudo -n` i fail‑fast z instrukcja (brak wiszenia na promptach).
 - STD-033 (SHOULD): operacje zewnetrzne (ssh/scp/rsync/http) maja timeout i komunikat "co dalej".
 - STD-033a (SHOULD): pobieranie przez `curl`/`wget` uzywa `--fail` + timeoutów (`--connect-timeout`, `--max-time`) i limitu retry; brak odpowiedzi = fail‑fast.
+- STD-033b (SHOULD): `rsync` uruchamiaj z `--timeout` (limit bez aktywnosci) oraz globalnym timeoutem procesu.
 - STD-038 (SHOULD): operacje destrukcyjne oferuja `--dry-run`.
 - STD-039 (SHOULD): SIGINT/SIGTERM sprzataja procesy i pliki tymczasowe.
 - STD-043 (SHOULD): waliduj wymagania **warunkowo** od poziomu/trybu (np. level 0/1/2), nie wymuszaj danych dla wyzszych poziomow.
