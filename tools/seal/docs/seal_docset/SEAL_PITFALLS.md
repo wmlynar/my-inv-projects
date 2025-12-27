@@ -493,6 +493,9 @@
 - Blad: testy zapisywaly do `HOME`/`XDG_*`, zostawiajac smieci w profilu uzytkownika.
   - Wymaganie: ustaw `HOME`/`XDG_*` na temp w testach E2E.
 
+- Blad: cache npm byl współdzielony miedzy testami i powodowal flakey wyniki (stare artefakty).
+  - Wymaganie: w testach ustaw `NPM_CONFIG_CACHE` na temp (per run) lub czyść cache deterministycznie.
+
 - Blad: testy uruchamialy komendy, ktore prosily o interaktywny input (git/ssh), przez co CI wisial.
   - Wymaganie: testy maja ustawione `GIT_TERMINAL_PROMPT=0` i nie wywolują interaktywnych narzedzi bez jawnego flag/sekretow.
   - Wymaganie: testy integracyjne/remote sa jawnie gated env‑flaga i bez niej zawsze SKIP.

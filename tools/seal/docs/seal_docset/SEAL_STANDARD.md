@@ -281,6 +281,7 @@ Przykład:
 - STD-099 (SHOULD): testy E2E izolują cache (osobny temp project root lub `SEAL_THIN_CACHE_LIMIT=0`), aby uniknac cross‑test contamination.
 - STD-100 (SHOULD): testy E2E zawsze binduja do `127.0.0.1` (nie `localhost`), aby uniknac problemow IPv6/DNS.
 - STD-101 (SHOULD): testy E2E ustawiają `HOME`/`XDG_*` na temp, by nie brudzic profilu uzytkownika.
+- STD-101a (SHOULD): testy ustawiają `NPM_CONFIG_CACHE` na temp (per run) lub czyszcza cache npm deterministycznie.
 
 #### Logowanie (skrót)
 - STD-042 (SHOULD): logi sa minimalne i bez payloadow; tylko dane potrzebne do diagnozy.
