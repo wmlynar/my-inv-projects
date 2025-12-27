@@ -192,7 +192,9 @@ function normalizeThinAntiDebug(raw) {
     if (typeof raw.seccompNoDebug === "boolean") {
       seccompNoDebug = { enabled: raw.seccompNoDebug, mode: "errno", aggressive: false };
     } else if (typeof raw.seccompNoDebug === "object" && !Array.isArray(raw.seccompNoDebug)) {
-      const modeRaw = raw.seccompNoDebug.mode !== undefined ? String(raw.seccompNoDebug.mode) : "errno";
+      const modeRaw = raw.seccompNoDebug.mode !== undefined
+        ? String(raw.seccompNoDebug.mode).toLowerCase()
+        : "errno";
       const mode = modeRaw === "kill" ? "kill" : "errno";
       if (raw.seccompNoDebug.aggressive !== undefined && typeof raw.seccompNoDebug.aggressive !== "boolean") {
         throw new Error(`Invalid thin.antiDebug.seccompNoDebug.aggressive: ${raw.seccompNoDebug.aggressive} (expected boolean)`);
@@ -476,7 +478,15 @@ function resolveProtectionConfig(projectCfg) {
     throw new Error(`Invalid protection.strings.obfuscation: ${stringObfuscationRaw}`);
   }
 
-  const cObfCfg = (cfg.cObfuscator && typeof cfg.cObfuscator === "object") ? cfg.cObfuscator : null;
+  const defaultCObfuscator = {
+    tool: "obfuscator-llvm",
+    cmd: "ollvm-clang",
+    args: ["-mllvm", "-fla", "-mllvm", "-sub"],
+  };
+  const hasCObfuscator = Object.prototype.hasOwnProperty.call(cfg, "cObfuscator");
+  const cObfCfg = hasCObfuscator
+    ? ((cfg.cObfuscator && typeof cfg.cObfuscator === "object") ? cfg.cObfuscator : null)
+    : (enabled ? defaultCObfuscator : null);
   const cObfuscatorRaw = (cObfCfg && cObfCfg.tool) ?? null;
   const cObfuscator = normalizeCObfuscator(cObfuscatorRaw);
   if (cObfuscatorRaw !== null && cObfuscator === null) {
