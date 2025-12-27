@@ -739,6 +739,11 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-355 (SHOULD): duze dane przekazuj przez plik/STDIN, nie przez argumenty CLI (`E2BIG`).
 - STD-356 (SHOULD): po rozpakowaniu/kopiowaniu ustawiaj jawne perms dla binarek i nie‑binarek.
 - STD-357 (SHOULD): loguj sciezki do narzedzi i pozwol je wymusic w configu.
+- STD-358 (SHOULD): nie uzywaj nieportowalnych opcji (`grep -P`, `sed -r`); wykrywaj wariant lub stosuj alternatywy.
+- STD-359 (SHOULD): `realpath` musi byc portable (python/node) lub z detekcja platformy.
+- STD-360 (SHOULD): weryfikacja checksum ma fallback gdy brak `sha256sum` (`shasum`/`openssl`).
+- STD-361 (SHOULD): skrypty wymagajace GNU tar wykrywaja `tar --version` i fail‑fast z instrukcja.
+- STD-362 (SHOULD): pipeline z `-print0` nie zaklada `sort -z` bez checka wsparcia.
 
 ## 10. Moduł `testing` (SHOULD)
 

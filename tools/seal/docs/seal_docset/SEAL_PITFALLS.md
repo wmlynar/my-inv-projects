@@ -1282,6 +1282,19 @@
 - Blad: `PATH` wybieral narzedzia z nieoczekiwanych lokalizacji (np. snap), co dawalo inne zachowanie.
   - Wymaganie: loguj sciezki i pozwol wymusic konkretne binarki w configu.
 
+## Dodatkowe wnioski (batch 161-165)
+
+- Blad: skrypty uzywaly `grep -P`/`sed -r`, ktore nie dzialaja na busybox/bsd.
+  - Wymaganie: unikaj nieportowalnych opcji lub wykrywaj wariant i stosuj alternatywy.
+- Blad: `readlink -f` nie dzialal na macOS, co psulo realpath.
+  - Wymaganie: uzywaj portable `realpath` (python/node) albo wykrywaj platforme.
+- Blad: brak `sha256sum` powodowal awarie w weryfikacji checksum.
+  - Wymaganie: sprawdz dostepnosc hashera i zapewnij fallback (`shasum -a 256`/`openssl dgst`).
+- Blad: skrypty zakladaly GNU tar, a na busybox brakowalo flag.
+  - Wymaganie: wykrywaj `tar --version` i fail‑fast z instrukcja, gdy brakuje wymaganych opcji.
+- Blad: `sort -z` nie bylo dostepne, przez co pipeline z `-print0` sie psul.
+  - Wymaganie: unikaj `sort -z` lub sprawdzaj wsparcie i przechodz na alternatywę.
+
 ## Dodatkowe wnioski (batch 131-135)
 
 - Blad: rekurencyjne skanowanie katalogow bralo `.git`, `node_modules`, `seal-out`, co powodowalo spowolnienia i przypadkowe artefakty.
