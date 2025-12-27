@@ -790,13 +790,17 @@ Poniżej presety praktyczne. Klucz: wskazujemy, co da się zrobić **bez dodatko
 ### 9.1 Bez instalacji dodatkowych narzędzi (zmiany w SEAL / build config)
 **Generator / build**
 1) Utrzymuj i testuj DoD jako „kontrakt”: brak forbidden globs, brak sourcemapów, brak wycieków w `strings`.  
-2) Dodaj „prod‑strict” profil obfuskacji JS:
-   - selektywne ukrywanie wrażliwych stringów,
-   - mocniejsze transformacje tylko dla krytycznych modułów (żeby utrzymanie nie umarło).
-3) Włącz minifikację bundla jako opcję (esbuild ma ją wbudowaną) — dodatkowe tarcie dla czytelności.  
-4) Bundle/SEA: maskowanie payloadów (anti‑casual extraction; spójność z thin).  
-5) THIN: dopracowanie Poziomu A do „twardego standardu” (regresje + kompatybilność).  
-6) systemd: utrzymuj dwa presety (`baseline`, `strict`) + metryka `systemd-analyze security`.
+2) Dodaj „prod‑strict” / „prod‑max” profil obfuskacji JS:
+   - mocniejsze transformacje struktury (CFF/DeadCode) i agresywne manglowanie nazw,
+   - (opcjonalnie) ukrywanie wrażliwych stringów tylko tam, gdzie nie psuje kontraktów.
+3) Backend Terser (minify + inline) przed obfuskacją: `build.backendTerser` (domyślnie włączony dla `prod‑strict`/`prod‑max`; dla `prod‑max` rekomendowane `passes=4`, `toplevel=true`).  
+   Uwaga: `prod‑max` podnosi ryzyko regresji runtime i utrudnia diagnostykę — stosuj po testach E2E.  
+   E2E: `SEAL_PROTECTION_E2E=1 node tools/seal/seal/scripts/test-protection-e2e.js` (zawiera check `prod‑max`).  
+   Dodatkowo: `SEAL_OBFUSCATION_E2E=1 node tools/seal/seal/scripts/test-obfuscation-e2e.js` (sprawdza logikę JS pod `prod‑strict`/`prod‑max`).  
+4) Włącz minifikację bundla jako opcję (esbuild ma ją wbudowaną) — dodatkowe tarcie dla czytelności.  
+5) Bundle/SEA: maskowanie payloadów (anti‑casual extraction; spójność z thin).  
+6) THIN: dopracowanie Poziomu A do „twardego standardu” (regresje + kompatybilność).  
+7) systemd: utrzymuj dwa presety (`baseline`, `strict`) + metryka `systemd-analyze security`.
 
 **Launcher / runtime**
 7) Launcher: `-fno-ident`, opcjonalnie `--build-id=none`, opcjonalnie wyłączenie unwind tables.  

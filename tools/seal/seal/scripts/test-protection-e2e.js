@@ -330,7 +330,7 @@ function installSentinelBlob({ baseDir, namespaceId, appId, cpuid, expiresAtSec 
     cpuid,
   }, { includePuid: false, includeCpuId });
 
-  const flags = includeCpuId ? 1 : 0;
+  const flags = includeCpuId ? 0x0004 : 0x0000;
   const blob = packBlob({ level: 1, flags, installId, fpHash, expiresAtSec }, anchor);
   const blobPath = path.join(dirPath, opaqueFile);
   fs.writeFileSync(blobPath, blob, { mode: 0o600 });
@@ -414,6 +414,32 @@ async function testBackendTerser(ctx) {
     assert.ok(terser && terser.enabled, "Expected backendTerser enabled");
     assert.strictEqual(terser.ok, true, "Expected backendTerser to be ok");
     assert.strictEqual(terser.passes, 2, "Expected backendTerser passes=2");
+  } finally {
+    fs.rmSync(outRoot, { recursive: true, force: true });
+  }
+}
+
+async function testProdMaxRuntime(ctx) {
+  log("Building thin-split with prod-max obfuscation...");
+  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-protection-prodmax-"));
+  try {
+    const res = await withTimeout("buildRelease(prod-max)", ctx.buildTimeoutMs, () =>
+      buildWithProtection({
+        protection: {},
+        build: {
+          obfuscationProfile: "prod-max",
+          backendTerser: { enabled: true, passes: 4 },
+        },
+        outRoot,
+        packager: "thin-split",
+      })
+    );
+    assert.strictEqual(res.meta?.obfuscationProfile, "prod-max", "Expected prod-max profile");
+    const terser = res.meta?.backendTerser;
+    assert.ok(terser && terser.enabled, "Expected backendTerser enabled");
+    assert.strictEqual(terser.ok, true, "Expected backendTerser to be ok");
+    assert.strictEqual(terser.passes, 4, "Expected backendTerser passes=4");
+    await runRelease({ releaseDir: res.releaseDir, buildId: res.buildId, runTimeoutMs: ctx.runTimeoutMs });
   } finally {
     fs.rmSync(outRoot, { recursive: true, force: true });
   }
@@ -574,7 +600,7 @@ async function main() {
     }
   }
 
-  const tests = [testStringObfuscationMeta, testBackendTerser, testElfPacker, testFullProtection];
+  const tests = [testStringObfuscationMeta, testBackendTerser, testProdMaxRuntime, testElfPacker, testFullProtection];
   let failures = 0;
   try {
     for (const t of tests) {

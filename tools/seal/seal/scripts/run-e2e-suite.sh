@@ -87,6 +87,7 @@ export SEAL_THIN_E2E=1
 export SEAL_THIN_ANTI_DEBUG_E2E=1
 export SEAL_SENTINEL_E2E=1
 export SEAL_PROTECTION_E2E=1
+export SEAL_OBFUSCATION_E2E=1
 export SEAL_STRIP_E2E=1
 export SEAL_ELF_PACKERS_E2E=1
 export SEAL_C_OBF_E2E=1
@@ -133,6 +134,7 @@ run_test "thin" node tools/seal/seal/scripts/test-thin-e2e.js
 run_test "thin-anti-debug" node tools/seal/seal/scripts/test-thin-anti-debug-e2e.js
 run_test "sentinel" node tools/seal/seal/scripts/test-sentinel-e2e.js
 run_test "protection" node tools/seal/seal/scripts/test-protection-e2e.js
+run_test "obfuscation" node tools/seal/seal/scripts/test-obfuscation-e2e.js
 run_test "strip" node tools/seal/seal/scripts/test-strip-e2e.js
 run_test "elf-packers" node tools/seal/seal/scripts/test-elf-packers-e2e.js
 run_test "c-obfuscators" node tools/seal/seal/scripts/test-c-obfuscators-e2e.js

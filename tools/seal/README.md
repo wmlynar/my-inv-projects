@@ -184,6 +184,57 @@ build: {
 }
 ```
 
+## Backend terser (opcjonalnie, domyślnie włączony dla prod-strict)
+
+SEAL może przepuścić backendowy bundle przez **Terser** (agresywny minifier/optimizer),
+żeby mocniej spłaszczyć strukturę kodu (inline + compress) przed obfuskacją.
+
+Konfiguracja (w `seal.json5`):
+
+```json5
+build: {
+  obfuscationProfile: "prod-strict", // lub "prod-max"
+  backendTerser: { enabled: true, passes: 3 }
+}
+```
+
+Profil bardziej agresywny (maksymalny inline/flatten):
+
+```json5
+build: {
+  obfuscationProfile: "prod-max",
+  backendTerser: {
+    enabled: true,
+    passes: 4,
+    toplevel: true,
+    compress: { passes: 4, inline: 3 },
+    mangle: { toplevel: true }
+  }
+}
+```
+
+Uwaga: `prod-max` zwiększa ryzyko regresji i utrudnia diagnostykę runtime. Używaj po testach E2E.
+
+Test E2E (obejmuje `prod-max`):
+
+```bash
+SEAL_PROTECTION_E2E=1 node tools/seal/seal/scripts/test-protection-e2e.js
+```
+
+Test E2E obfuskacji logiki (`prod-strict` + `prod-max`):
+
+```bash
+SEAL_OBFUSCATION_E2E=1 node tools/seal/seal/scripts/test-obfuscation-e2e.js
+```
+
+Wyłączenie:
+
+```json5
+build: {
+  backendTerser: false
+}
+```
+
 ## Frontend minifikacja HTML/CSS (domyślnie włączona)
 
 Podczas `seal release` SEAL **bezpiecznie minifikuje** `public/**/*.html` i `public/**/*.css` (pomija `*.min.html` oraz `*.min.css`).

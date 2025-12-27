@@ -1,0 +1,258 @@
+#!/usr/bin/env node
+"use strict";
+
+const assert = require("assert");
+const crypto = require("crypto");
+const fs = require("fs");
+const http = require("http");
+const net = require("net");
+const os = require("os");
+const path = require("path");
+const { spawn, spawnSync } = require("child_process");
+
+const { buildRelease } = require("../src/lib/build");
+const { loadProjectConfig, loadTargetConfig, resolveConfigName } = require("../src/lib/project");
+const { readJson5, writeJson5 } = require("../src/lib/json5io");
+
+const EXAMPLE_ROOT = process.env.SEAL_E2E_EXAMPLE_ROOT || path.resolve(__dirname, "..", "..", "example");
+
+function log(msg) {
+  process.stdout.write(`[obfuscation-e2e] ${msg}\n`);
+}
+
+function fail(msg) {
+  process.stderr.write(`[obfuscation-e2e] ERROR: ${msg}\n`);
+}
+
+function runCmd(cmd, args, timeoutMs = 5000) {
+  return spawnSync(cmd, args, { stdio: "pipe", timeout: timeoutMs });
+}
+
+function hasCommand(cmd) {
+  const res = runCmd("bash", ["-lc", `command -v ${cmd} >/dev/null 2>&1`]);
+  return res.status === 0;
+}
+
+function checkPrereqs() {
+  if (process.platform !== "linux") {
+    log(`SKIP: obfuscation E2E is linux-only (platform=${process.platform})`);
+    return { ok: false, skip: true };
+  }
+  if (!hasCommand("cc") && !hasCommand("gcc")) {
+    fail("Missing C compiler (cc/gcc)");
+    return { ok: false, skip: false };
+  }
+  if (!hasCommand("pkg-config")) {
+    fail("Missing pkg-config (required for libzstd)");
+    return { ok: false, skip: false };
+  }
+  const zstdCheck = runCmd("pkg-config", ["--libs", "libzstd"]);
+  if (zstdCheck.status !== 0) {
+    fail("libzstd not found via pkg-config");
+    return { ok: false, skip: false };
+  }
+  return { ok: true, skip: false };
+}
+
+function withTimeout(label, ms, fn) {
+  let timer = null;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([fn(), timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
+function httpJson({ port, path: reqPath, method, body, timeoutMs }) {
+  return new Promise((resolve, reject) => {
+    const payload = body ? Buffer.from(JSON.stringify(body)) : null;
+    const req = http.request(
+      {
+        host: "127.0.0.1",
+        port,
+        path: reqPath,
+        method: method || "GET",
+        timeout: timeoutMs,
+        headers: payload ? { "content-type": "application/json", "content-length": payload.length } : undefined,
+      },
+      (res) => {
+        const chunks = [];
+        res.on("data", (chunk) => chunks.push(chunk));
+        res.on("end", () => {
+          const raw = Buffer.concat(chunks).toString("utf8");
+          let json = null;
+          try {
+            json = JSON.parse(raw);
+          } catch {
+            json = { raw };
+          }
+          resolve({ ok: res.statusCode && res.statusCode < 300, status: res.statusCode || 0, json });
+        });
+      }
+    );
+    req.on("error", reject);
+    if (payload) req.write(payload);
+    req.end();
+  });
+}
+
+async function waitForStatus(port) {
+  const started = Date.now();
+  const timeoutMs = 10000;
+  while (Date.now() - started < timeoutMs) {
+    try {
+      const res = await httpJson({ port, path: "/api/status", timeoutMs: 1000 });
+      if (res.ok && res.json && res.json.ok) return res.json;
+    } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  throw new Error(`Timeout waiting for /api/status on port ${port}`);
+}
+
+function getFreePort() {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.on("error", reject);
+    srv.listen(0, "127.0.0.1", () => {
+      const addr = srv.address();
+      const port = typeof addr === "object" && addr ? addr.port : null;
+      srv.close(() => resolve(port));
+    });
+  });
+}
+
+function writeRuntimeConfig(releaseDir, port) {
+  const cfgPath = path.join(EXAMPLE_ROOT, "seal-config", "configs", "local.json5");
+  const cfg = readJson5(cfgPath);
+  cfg.http = cfg.http || {};
+  cfg.http.host = "127.0.0.1";
+  cfg.http.port = port;
+  writeJson5(path.join(releaseDir, "config.runtime.json5"), cfg);
+}
+
+async function runReleaseAndCheck({ releaseDir, runTimeoutMs }) {
+  const port = await getFreePort();
+  writeRuntimeConfig(releaseDir, port);
+
+  const binPath = path.join(releaseDir, "seal-example");
+  assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
+
+  const child = spawn(binPath, [], { cwd: releaseDir, stdio: ["ignore", "pipe", "pipe"] });
+  child.stdout.on("data", () => {});
+  child.stderr.on("data", () => {});
+  let exitErr = null;
+  child.on("exit", (code, signal) => {
+    if (code && code !== 0) {
+      exitErr = new Error(`app exited (code=${code}, signal=${signal || "none"})`);
+    }
+  });
+
+  try {
+    const status = await withTimeout("waitForStatus", runTimeoutMs, () => waitForStatus(port));
+    if (exitErr) throw exitErr;
+    assert.strictEqual(status.ok, true, "Expected /api/status ok=true");
+    assert.ok(status.appName, "Expected appName in status");
+    assert.ok(status.features && status.features.notes, "Expected features in status");
+    const notes = String(status.features.notes || "");
+    assert.ok(notes.includes("read at runtime"), "Expected runtime features note");
+
+    const text = "seal-e2e-test";
+    const expected = crypto.createHash("md5").update(text).digest("hex");
+    const md5Res = await httpJson({ port, path: "/api/md5", method: "POST", body: { text }, timeoutMs: 2000 });
+    assert.ok(md5Res.ok, "Expected /api/md5 OK");
+    assert.strictEqual(md5Res.json.md5, expected, "Expected MD5 to match");
+    assert.strictEqual(md5Res.json.textLength, text.length, "Expected MD5 textLength to match");
+  } finally {
+    child.kill("SIGTERM");
+    await new Promise((resolve) => {
+      const t = setTimeout(() => {
+        child.kill("SIGKILL");
+        resolve();
+      }, 4000);
+      child.on("exit", () => {
+        clearTimeout(t);
+        resolve();
+      });
+    });
+  }
+}
+
+async function buildProfile({ profile, passes, outRoot, ctx }) {
+  const projectCfg = loadProjectConfig(EXAMPLE_ROOT);
+  projectCfg.build = projectCfg.build || {};
+  projectCfg.build.sentinel = Object.assign({}, projectCfg.build.sentinel || {}, { enabled: false });
+  projectCfg.build.thin = Object.assign({}, projectCfg.build.thin || {}, { level: "low" });
+  projectCfg.build.obfuscationProfile = profile;
+  projectCfg.build.backendTerser = { enabled: true, passes };
+
+  const targetCfg = loadTargetConfig(EXAMPLE_ROOT, "local").cfg;
+  const configName = resolveConfigName(targetCfg, "local");
+  const outDir = path.join(outRoot, "seal-out");
+
+  const res = await withTimeout(`buildRelease(${profile})`, ctx.buildTimeoutMs, () =>
+    buildRelease({
+      projectRoot: EXAMPLE_ROOT,
+      projectCfg,
+      targetCfg,
+      configName,
+      packagerOverride: "thin-split",
+      outDirOverride: outDir,
+      skipArtifact: true,
+    })
+  );
+  assert.strictEqual(res.meta?.obfuscationProfile, profile, `Expected obfuscationProfile=${profile}`);
+  return res;
+}
+
+async function testProfile(profile, passes, ctx) {
+  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), `seal-obf-${profile}-`));
+  try {
+    const res = await buildProfile({ profile, passes, outRoot, ctx });
+    const terser = res.meta?.backendTerser;
+    assert.ok(terser && terser.enabled, "Expected backendTerser enabled");
+    assert.strictEqual(terser.ok, true, "Expected backendTerser ok");
+    assert.strictEqual(terser.passes, passes, "Expected backendTerser passes");
+    await runReleaseAndCheck({ releaseDir: res.releaseDir, runTimeoutMs: ctx.runTimeoutMs });
+  } finally {
+    fs.rmSync(outRoot, { recursive: true, force: true });
+  }
+}
+
+async function main() {
+  if (process.env.SEAL_OBFUSCATION_E2E !== "1") {
+    log("SKIP: set SEAL_OBFUSCATION_E2E=1 to run obfuscation E2E tests");
+    process.exit(0);
+  }
+  const prereq = checkPrereqs();
+  if (!prereq.ok) {
+    process.exit(prereq.skip ? 0 : 1);
+  }
+
+  const buildTimeoutMs = Number(process.env.SEAL_OBFUSCATION_E2E_BUILD_TIMEOUT_MS || "180000");
+  const runTimeoutMs = Number(process.env.SEAL_OBFUSCATION_E2E_RUN_TIMEOUT_MS || "15000");
+  const testTimeoutMs = Number(process.env.SEAL_OBFUSCATION_E2E_TIMEOUT_MS || "240000");
+  const ctx = { buildTimeoutMs, runTimeoutMs };
+
+  const tests = [
+    { profile: "prod-strict", passes: 3 },
+    { profile: "prod-max", passes: 4 },
+  ];
+  let failures = 0;
+  for (const t of tests) {
+    try {
+      await withTimeout(`testProfile(${t.profile})`, testTimeoutMs, () => testProfile(t.profile, t.passes, ctx));
+      log(`OK: ${t.profile}`);
+    } catch (e) {
+      failures += 1;
+      fail(`${t.profile}: ${e.message || e}`);
+    }
+  }
+
+  if (failures > 0) process.exit(1);
+}
+
+main().catch((err) => {
+  fail(err.stack || err.message || String(err));
+  process.exit(1);
+});

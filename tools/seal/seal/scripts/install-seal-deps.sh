@@ -118,6 +118,28 @@ if [ "$INSTALL_NPM" = "1" ]; then
     log "WARN: postject not found after npm install."
     log "      Run npm install again or check network/proxy settings."
   fi
+
+  TERSER_CANDIDATES=(
+    "$SEAL_DIR/node_modules/.bin/terser"
+    "$(dirname "$SEAL_DIR")/node_modules/.bin/terser"
+    "$REPO_ROOT/node_modules/.bin/terser"
+  )
+  FOUND_TERSER=""
+  for p in "${TERSER_CANDIDATES[@]}"; do
+    if [ -x "$p" ]; then
+      FOUND_TERSER="$p"
+      break
+    fi
+  done
+
+  if [ -n "$FOUND_TERSER" ]; then
+    log "terser OK: $FOUND_TERSER"
+  elif has_cmd terser; then
+    log "terser OK: $(command -v terser)"
+  else
+    log "WARN: terser not found after npm install."
+    log "      Backend terser pass will be unavailable until dependencies are installed."
+  fi
 else
   log "Skipping npm install (SEAL_INSTALL_NPM=0)"
 fi

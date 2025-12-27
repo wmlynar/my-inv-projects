@@ -81,6 +81,26 @@ function obfuscationOptions(profile) {
     };
   }
 
+  if (profile === "prod-max") {
+    return {
+      ...base,
+      simplify: false,
+      numbersToExpressions: true,
+      controlFlowFlattening: true,
+      controlFlowFlatteningThreshold: 0.85,
+      deadCodeInjection: true,
+      deadCodeInjectionThreshold: 0.4,
+      identifierNamesGenerator: "mangled-shuffled",
+      renameGlobals: true,
+      renameProperties: false,
+      transformObjectKeys: false,
+      unicodeEscapeSequence: false,
+      debugProtection: false,
+      selfDefending: false,
+      target: "node",
+    };
+  }
+
   if (profile === "aggressive") {
     return {
       ...base,
@@ -104,22 +124,33 @@ function obfuscationOptions(profile) {
 }
 
 function resolveBackendTerser(raw, profile) {
+  const isProd = profile === "prod-strict" || profile === "prod-max";
+  const defaultPasses = profile === "prod-max" ? 4 : 3;
+  const defaults = {
+    passes: defaultPasses,
+    toplevel: true,
+    compress: { passes: defaultPasses, inline: 3 },
+    mangle: { toplevel: true },
+    format: { comments: false },
+  };
   if (raw === undefined || raw === null) {
-    return { enabled: profile === "prod-strict" };
+    return { enabled: isProd, ...defaults };
   }
-  if (typeof raw === "boolean") return { enabled: raw };
+  if (typeof raw === "boolean") {
+    return raw ? { enabled: true, ...defaults } : { enabled: false };
+  }
   if (typeof raw !== "object" || Array.isArray(raw)) {
     throw new Error(`Invalid build.backendTerser: expected boolean or object`);
   }
   const enabled = raw.enabled !== undefined ? !!raw.enabled : true;
-  const passes = raw.passes !== undefined ? Number(raw.passes) : 3;
+  const passes = raw.passes !== undefined ? Number(raw.passes) : defaultPasses;
   if (!Number.isFinite(passes) || passes < 1 || passes > 10) {
     throw new Error(`Invalid build.backendTerser.passes: ${raw.passes}`);
   }
-  const toplevel = raw.toplevel !== undefined ? !!raw.toplevel : true;
+  const toplevel = raw.toplevel !== undefined ? !!raw.toplevel : defaults.toplevel;
   const compress = raw.compress !== undefined ? raw.compress : { passes, inline: 3 };
-  const mangle = raw.mangle !== undefined ? raw.mangle : { toplevel: true };
-  const format = raw.format !== undefined ? raw.format : { comments: false };
+  const mangle = raw.mangle !== undefined ? raw.mangle : defaults.mangle;
+  const format = raw.format !== undefined ? raw.format : defaults.format;
   return {
     enabled,
     passes,
@@ -859,10 +890,11 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   });
 
   const obfProfile = projectCfg.build.obfuscationProfile || "balanced";
+  const isProdObf = obfProfile === "prod-strict" || obfProfile === "prod-max";
   const backendMinify = projectCfg.build.backendMinify !== undefined
     ? !!projectCfg.build.backendMinify
-    : obfProfile === "prod-strict";
-  const stripConsole = obfProfile === "prod-strict";
+    : isProdObf;
+  const stripConsole = isProdObf;
   const backendTerserCfg = resolveBackendTerser(projectCfg.build.backendTerser, obfProfile);
   info("Bundling (esbuild)...");
   let bundlePath = await buildBundle({
