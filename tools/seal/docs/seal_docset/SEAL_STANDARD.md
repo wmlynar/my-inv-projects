@@ -220,6 +220,7 @@ Przykład:
 - STD-072 (SHOULD): `seal check` ostrzega tylko o narzedziach rzeczywiscie wymaganych przez wybrany packager/protection (bez szumu).
 - STD-073 (SHOULD): lista dozwolonych wartosci (packagery, poziomy) pochodzi z jednego zrodla i jest wspoldzielona przez CLI, completion i docs; CI ma test zgodnosci.
 - STD-074 (SHOULD): przykladowe `seal.json5` w repo musza przechodzic walidacje schematu (test/CI).
+- STD-074a (SHOULD): w CI/testach narzedzia uruchamiane przez `npx` musza uzywac `--no-install` (brak pobierania z sieci); preferuj lokalne `node_modules/.bin`.
 - STD-075 (SHOULD): generowany kod C nie moze redefiniowac makr (np. `_GNU_SOURCE`) ani duplikowac identyfikatorow; stosuj `#ifndef` i unikalne prefiksy.
 - STD-076 (SHOULD): bledy toolchaina musza pokazywac pelne stderr/stdout i kod wyjscia; nie traktuj ostrzezen jako bledow, chyba ze jawnie uzywasz `-Werror`.
 - STD-077 (SHOULD): dlugie kroki builda/testow loguja postep (co kilka sekund) i w trybie verbose przepuszczaja stdout/stderr narzedzi.

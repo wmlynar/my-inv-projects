@@ -744,6 +744,9 @@
 - Blad: `npx seal` z podfolderu monorepo nie widzial CLI.
   - Wymaganie: zapewnij globalny link (`tools/seal/scripts/link-global-seal.sh`) albo uzywaj `npx --prefix <repo-root>`.
 
+- Blad: `npx` bez `--no-install` probowal pobierac pakiety z sieci i wieszal testy/CI bez internetu.
+  - Wymaganie: w CI/testach uzywaj `npx --no-install` lub bezposrednio `./node_modules/.bin/<tool>`.
+
 - Blad: uruchomienie komendy w monorepo rekurencyjnie (workspace) uzywalo relatywnej sciezki CLI i padalo w podprojektach.
   - Wymaganie: rekurencyjne uruchomienia CLI musza uzywac **absolutnej** sciezki do binarki/JS.
 
