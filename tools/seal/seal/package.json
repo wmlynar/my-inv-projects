@@ -8,7 +8,9 @@
   "type": "commonjs",
   "scripts": {
     "test:thin": "node scripts/test-thin-e2e.js",
-    "test:thin-anti-debug": "node scripts/test-thin-anti-debug-e2e.js",
+    "test:thin-anti-debug": "SEAL_THIN_ANTI_DEBUG_E2E=1 node scripts/test-thin-anti-debug-e2e.js",
+    "test:thin-anti-debug:strict": "SEAL_THIN_ANTI_DEBUG_E2E=1 SEAL_E2E_STRICT_PROC_MEM=1 SEAL_E2E_STRICT_PTRACE=1 SEAL_E2E_STRICT_DENY_ENV=1 node scripts/test-thin-anti-debug-e2e.js",
+    "test:anti-disassembly": "SEAL_ELF_PACKERS_E2E=1 node scripts/test-elf-packers-e2e.js",
     "test:obfuscation": "node scripts/test-obfuscation-e2e.js",
     "test:ship": "node scripts/test-ship-e2e.js",
     "test:ui": "node scripts/test-example-ui-e2e.js",

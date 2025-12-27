@@ -1,0 +1,405 @@
+#!/usr/bin/env node
+"use strict";
+
+const assert = require("assert");
+const fs = require("fs");
+const http = require("http");
+const net = require("net");
+const os = require("os");
+const path = require("path");
+const { spawn, spawnSync } = require("child_process");
+
+const { hasCommand } = require("./e2e-utils");
+const { readJson5, writeJson5 } = require("../src/lib/json5io");
+
+const EXAMPLE_ROOT = process.env.SEAL_E2E_EXAMPLE_ROOT || path.resolve(__dirname, "..", "..", "example");
+const SEAL_BIN = path.resolve(__dirname, "..", "bin", "seal.js");
+
+function log(msg) {
+  process.stdout.write(`[user-flow-e2e] ${msg}\n`);
+}
+
+function fail(msg) {
+  process.stderr.write(`[user-flow-e2e] ERROR: ${msg}\n`);
+  process.exit(1);
+}
+
+function stripAnsi(input) {
+  return String(input || "").replace(/\u001b\[[0-9;]*m/g, "");
+}
+
+function truncate(input, max = 2500) {
+  const str = String(input || "");
+  if (str.length <= max) return str;
+  return `${str.slice(0, max)}\n...truncated (${str.length - max} chars)`;
+}
+
+function parsePort(raw) {
+  if (raw === undefined || raw === null || raw === "") return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return null;
+  const port = Math.trunc(n);
+  if (port < 1 || port > 65535) return null;
+  return port;
+}
+
+function shellQuote(value) {
+  const str = String(value);
+  return "'" + str.replace(/'/g, "'\\''") + "'";
+}
+
+function systemctlUserReady() {
+  const res = spawnSync("systemctl", ["--user", "show-environment"], { stdio: "pipe", encoding: "utf-8" });
+  if (res.status === 0) return true;
+  const out = `${res.stdout || ""}\n${res.stderr || ""}`.trim();
+  log(`SKIP: systemctl --user unavailable (${out || "status=" + res.status})`);
+  return false;
+}
+
+function sshExec(user, host, cmd, sshPort) {
+  const args = [
+    "-o", "BatchMode=yes",
+    "-o", "PreferredAuthentications=publickey",
+    "-o", "PasswordAuthentication=no",
+    "-o", "KbdInteractiveAuthentication=no",
+    "-o", "ChallengeResponseAuthentication=no",
+    "-o", "NumberOfPasswordPrompts=0",
+    "-o", "StrictHostKeyChecking=accept-new",
+    "-o", "ConnectTimeout=10",
+    "-o", "ServerAliveInterval=10",
+    "-o", "ServerAliveCountMax=2",
+  ];
+  if (sshPort) args.push("-p", String(sshPort));
+  args.push(`${user}@${host}`, `bash -lc ${shellQuote(cmd)}`);
+  const res = spawnSync("ssh", args, { stdio: "pipe", encoding: "utf-8" });
+  const out = `${res.stdout || ""}\n${res.stderr || ""}`.trim();
+  return { ok: res.status === 0, status: res.status, out };
+}
+
+function runSeal(cwd, args, opts = {}) {
+  const res = spawnSync(process.execPath, [SEAL_BIN, ...args], {
+    cwd,
+    env: {
+      ...process.env,
+      SEAL_BATCH_SKIP: "1",
+      ...(opts.env || {}),
+    },
+    stdio: "pipe",
+    encoding: "utf-8",
+    timeout: opts.timeoutMs || 120000,
+  });
+  const stdout = res.stdout || "";
+  const stderr = res.stderr || "";
+  if (res.error && res.error.code === "ETIMEDOUT") {
+    throw new Error(`seal ${args.join(" ")} timed out`);
+  }
+  if (res.status !== 0) {
+    const out = stripAnsi(`${stdout}\n${stderr}`.trim());
+    throw new Error(`seal ${args.join(" ")} failed (status=${res.status})\n${truncate(out)}`);
+  }
+  return { stdout, stderr, out: stripAnsi(`${stdout}\n${stderr}`) };
+}
+
+function copyExampleSkeleton(src, dst) {
+  const skipRoots = new Set(["seal-config", "seal-out", "node_modules"]);
+  fs.cpSync(src, dst, {
+    recursive: true,
+    filter: (p) => {
+      if (p === src) return true;
+      const rel = path.relative(src, p);
+      if (!rel) return true;
+      if (rel === "seal.json5" || rel === "config.runtime.json5") return false;
+      const first = rel.split(path.sep)[0];
+      if (skipRoots.has(first)) return false;
+      return true;
+    },
+  });
+}
+
+function ensureNodeModules(srcRoot, dstRoot) {
+  const srcModules = path.join(srcRoot, "node_modules");
+  const dstModules = path.join(dstRoot, "node_modules");
+  if (!fs.existsSync(srcModules)) {
+    return { ok: false, reason: "node_modules missing in example root" };
+  }
+  try {
+    fs.symlinkSync(srcModules, dstModules, "dir");
+    return { ok: true, linked: true };
+  } catch (e) {
+    log(`WARN: symlink node_modules failed (${e.message}); copying instead`);
+    fs.cpSync(srcModules, dstModules, { recursive: true });
+    return { ok: true, linked: false };
+  }
+}
+
+function getFreePort() {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.on("error", reject);
+    srv.listen(0, "127.0.0.1", () => {
+      const addr = srv.address();
+      const port = typeof addr === "object" && addr ? addr.port : null;
+      srv.close(() => resolve(port));
+    });
+  });
+}
+
+function httpJson({ port, path: reqPath, timeoutMs }) {
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      {
+        host: "127.0.0.1",
+        port,
+        path: reqPath,
+        method: "GET",
+        timeout: timeoutMs,
+      },
+      (res) => {
+        const chunks = [];
+        res.on("data", (c) => chunks.push(c));
+        res.on("end", () => {
+          const raw = Buffer.concat(chunks).toString("utf8");
+          try {
+            const json = JSON.parse(raw);
+            resolve({ status: res.statusCode, json });
+          } catch (e) {
+            reject(new Error(`Invalid JSON response: ${raw.slice(0, 200)}`));
+          }
+        });
+      }
+    );
+    req.on("timeout", () => req.destroy(new Error("HTTP timeout")));
+    req.on("error", (err) => reject(err));
+    req.end();
+  });
+}
+
+async function waitForStatus(port, timeoutMs = 12000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const { status, json } = await httpJson({ port, path: "/api/status", timeoutMs: 800 });
+      if (status === 200 && json && json.ok) return json;
+    } catch {
+      // retry
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  throw new Error(`Timeout waiting for /api/status on port ${port}`);
+}
+
+async function stopChild(child, timeoutMs = 5000) {
+  if (!child || child.killed) return;
+  child.kill("SIGTERM");
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (child.exitCode !== null || child.killed) return;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  child.kill("SIGKILL");
+}
+
+async function runSealed(releaseDir, appName, port) {
+  const cfgPath = path.join(releaseDir, "config.runtime.json5");
+  assert.ok(fs.existsSync(cfgPath), `Missing runtime config: ${cfgPath}`);
+
+  const appctl = path.join(releaseDir, "appctl");
+  const useAppctl = fs.existsSync(appctl);
+  const bin = useAppctl ? appctl : path.join(releaseDir, appName);
+  assert.ok(fs.existsSync(bin), `Missing runtime entry: ${bin}`);
+
+  const args = useAppctl ? ["run"] : [];
+  const child = spawn(bin, args, { cwd: releaseDir, stdio: ["ignore", "pipe", "pipe"] });
+  let exitErr = null;
+  child.on("exit", (code, signal) => {
+    if (code && code !== 0) {
+      exitErr = new Error(`app exited early (code=${code}, signal=${signal || "none"})`);
+    }
+  });
+
+  try {
+    const status = await waitForStatus(port, 12000);
+    if (exitErr) throw exitErr;
+    if (status.buildId === "DEV") {
+      throw new Error("unexpected buildId=DEV in sealed run");
+    }
+  } finally {
+    await stopChild(child, 5000);
+  }
+}
+
+async function runRemoteFlow({ tmpRoot, appName }) {
+  if (process.env.SEAL_USER_FLOW_SSH_E2E !== "1") {
+    log("SKIP: remote user flow disabled (SEAL_USER_FLOW_SSH_E2E!=1)");
+    return;
+  }
+  if (!hasCommand("ssh") || !hasCommand("scp")) {
+    throw new Error("ssh/scp not found (required for remote user flow)");
+  }
+
+  const host = process.env.SEAL_SHIP_SSH_HOST;
+  if (!host) {
+    throw new Error("Missing SEAL_SHIP_SSH_HOST for remote user flow");
+  }
+  const user = process.env.SEAL_SHIP_SSH_USER || "admin";
+  const sshPort = parsePort(process.env.SEAL_SHIP_SSH_PORT);
+  const installDir = process.env.SEAL_SHIP_SSH_INSTALL_DIR || `/home/${user}/apps/${appName}`;
+  const serviceName = process.env.SEAL_SHIP_SSH_SERVICE_NAME || appName;
+  const httpPort = parsePort(process.env.SEAL_SHIP_SSH_HTTP_PORT) || 3333;
+
+  const ping = sshExec(user, host, "echo __SEAL_OK__", sshPort);
+  if (!ping.ok || !ping.out.includes("__SEAL_OK__")) {
+    throw new Error(`SSH not ready (${ping.out || "no output"})`);
+  }
+  const sudoCheck = sshExec(user, host, "sudo -n true", sshPort);
+  if (!sudoCheck.ok) {
+    throw new Error(`Passwordless sudo not available (${sudoCheck.out || "no output"})`);
+  }
+
+  runSeal(tmpRoot, ["config", "add", "remote"]);
+  const remoteCfgPath = path.join(tmpRoot, "seal-config", "configs", "remote.json5");
+  const remoteCfg = readJson5(remoteCfgPath);
+  remoteCfg.http = remoteCfg.http || {};
+  remoteCfg.http.host = "127.0.0.1";
+  remoteCfg.http.port = httpPort;
+  writeJson5(remoteCfgPath, remoteCfg);
+
+  runSeal(tmpRoot, ["target", "add", "remote"]);
+  const remoteTargetPath = path.join(tmpRoot, "seal-config", "targets", "remote.json5");
+  const remoteTargetCfg = readJson5(remoteTargetPath);
+  remoteTargetCfg.kind = "ssh";
+  remoteTargetCfg.host = host;
+  remoteTargetCfg.user = user;
+  remoteTargetCfg.serviceScope = "system";
+  remoteTargetCfg.installDir = installDir;
+  remoteTargetCfg.serviceName = serviceName;
+  remoteTargetCfg.packager = "bundle";
+  remoteTargetCfg.config = "remote";
+  if (sshPort) remoteTargetCfg.sshPort = sshPort;
+  writeJson5(remoteTargetPath, remoteTargetCfg);
+
+  const waitUrl = `http://127.0.0.1:${httpPort}/healthz`;
+  log(`Remote ship -> ${user}@${host} (${installDir})`);
+  runSeal(tmpRoot, ["ship", "remote", "--bootstrap", "--skip-check", "--wait-mode", "both", "--wait-url", waitUrl], {
+    timeoutMs: 240000,
+  });
+  runSeal(tmpRoot, ["uninstall", "remote"]);
+}
+
+async function main() {
+  if (process.env.SEAL_USER_FLOW_E2E !== "1") {
+    log("SKIP: set SEAL_USER_FLOW_E2E=1 to run user-flow E2E");
+    process.exit(0);
+  }
+  if (process.platform !== "linux") {
+    log(`SKIP: user-flow E2E is linux-only (platform=${process.platform})`);
+    process.exit(0);
+  }
+  if (!fs.existsSync(EXAMPLE_ROOT)) {
+    fail(`Missing example root: ${EXAMPLE_ROOT}`);
+  }
+
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-user-flow-"));
+  try {
+    copyExampleSkeleton(EXAMPLE_ROOT, tmpRoot);
+    const nm = ensureNodeModules(EXAMPLE_ROOT, tmpRoot);
+    if (!nm.ok) {
+      log(`SKIP: ${nm.reason}`);
+      return;
+    }
+
+    const profiles = runSeal(tmpRoot, ["profiles"]);
+    if (!profiles.out.includes("Security profiles:") || !profiles.out.includes("minimal")) {
+      throw new Error("profiles output missing expected sections");
+    }
+
+    runSeal(tmpRoot, ["init"]);
+    const sealPath = path.join(tmpRoot, "seal.json5");
+    const localTarget = path.join(tmpRoot, "seal-config", "targets", "local.json5");
+    const localConfig = path.join(tmpRoot, "seal-config", "configs", "local.json5");
+    const runtimeConfig = path.join(tmpRoot, "config.runtime.json5");
+    assert.ok(fs.existsSync(sealPath), "seal.json5 missing after init");
+    assert.ok(fs.existsSync(localTarget), "local target missing after init");
+    assert.ok(fs.existsSync(localConfig), "local config missing after init");
+    assert.ok(fs.existsSync(runtimeConfig), "config.runtime.json5 missing after init");
+
+    const sealCfg = readJson5(sealPath);
+    sealCfg.build = sealCfg.build || {};
+    sealCfg.build.packager = "bundle";
+    sealCfg.build.thin = sealCfg.build.thin || {};
+    sealCfg.build.thin.mode = "single";
+    if (sealCfg.build.protection && typeof sealCfg.build.protection === "object") {
+      const prot = { ...sealCfg.build.protection };
+      delete prot.elfPacker;
+      sealCfg.build.protection = prot;
+    }
+    writeJson5(sealPath, sealCfg);
+
+    const localTargetCfg = readJson5(localTarget);
+    localTargetCfg.installDir = path.join(tmpRoot, "deploy-root");
+    localTargetCfg.serviceName = `seal-user-flow-${process.pid}-${Date.now()}`;
+    localTargetCfg.serviceScope = "user";
+    localTargetCfg.packager = "bundle";
+    writeJson5(localTarget, localTargetCfg);
+
+    runSeal(tmpRoot, ["config", "add", "staging"]);
+    runSeal(tmpRoot, ["target", "add", "staging"]);
+    assert.ok(fs.existsSync(path.join(tmpRoot, "seal-config", "configs", "staging.json5")), "staging config missing");
+    assert.ok(fs.existsSync(path.join(tmpRoot, "seal-config", "targets", "staging.json5")), "staging target missing");
+
+    const explain = runSeal(tmpRoot, ["config", "explain", "local"]);
+    if (!explain.out.includes("packager: bundle")) {
+      throw new Error("config explain did not report packager=bundle");
+    }
+
+    const check = runSeal(tmpRoot, ["check"]);
+    if (!check.out.includes("Check OK")) {
+      throw new Error("seal check did not report Check OK");
+    }
+
+    runSeal(tmpRoot, ["release", "--skip-check"], { timeoutMs: 180000 });
+    const releaseDir = path.join(tmpRoot, "seal-out", "release");
+    assert.ok(fs.existsSync(releaseDir), "release dir missing after release");
+    const appName = sealCfg.appName || "seal-example";
+    assert.ok(fs.existsSync(path.join(releaseDir, appName)), "release binary missing");
+    assert.ok(fs.existsSync(path.join(releaseDir, "appctl")), "appctl missing in release");
+
+    const verify = runSeal(tmpRoot, ["verify", "--explain"]);
+    if (!verify.out.includes("Artifact looks clean")) {
+      throw new Error("verify did not confirm clean artifact");
+    }
+
+    const port = await getFreePort();
+    const cfg = readJson5(localConfig);
+    cfg.http = cfg.http || {};
+    cfg.http.host = "127.0.0.1";
+    cfg.http.port = port;
+    writeJson5(localConfig, cfg);
+    fs.copyFileSync(localConfig, path.join(releaseDir, "config.runtime.json5"));
+
+    runSeal(tmpRoot, ["deploy", "local"]);
+    const currentBuildId = path.join(localTargetCfg.installDir, "current.buildId");
+    assert.ok(fs.existsSync(currentBuildId), "current.buildId missing after deploy");
+
+    if (systemctlUserReady()) {
+      runSeal(tmpRoot, ["ship", "local", "--bootstrap", "--skip-check", "--wait-mode", "systemd"], { timeoutMs: 240000 });
+      const svcPath = path.join(os.homedir(), ".config", "systemd", "user", `${localTargetCfg.serviceName}.service`);
+      assert.ok(fs.existsSync(svcPath), "systemd user service missing after ship --bootstrap");
+      runSeal(tmpRoot, ["uninstall", "local"]);
+    }
+
+    await runSealed(releaseDir, appName, port);
+    await runRemoteFlow({ tmpRoot, appName });
+
+    runSeal(tmpRoot, ["clean"]);
+    assert.ok(!fs.existsSync(path.join(tmpRoot, "seal-out")), "seal-out still present after clean");
+
+    log("OK: user flow validated");
+  } catch (e) {
+    fail(e && e.stack ? e.stack : String(e));
+  } finally {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+}
+
+main();

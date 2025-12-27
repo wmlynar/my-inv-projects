@@ -262,6 +262,9 @@
   - Wymaganie: identyfikatory w kodzie generowanym maja unikalny prefix i nie koliduja miedzy galeziami warunkowymi.
   - Wymaganie: generator C przechodzi compile‑test z `-Werror`, aby ostrzezenia nie przechodzily do produkcji.
 
+- Blad: w generatorach skryptów (template string) pozostawiono `${...}` bez escapowania, co powodowało SyntaxError w Node (interpolacja JS).
+  - Wymaganie: w template stringach zawsze escapuj `${` jako `\\${}` w treści skryptu (patrz STD‑047).
+
 - Blad: brak `chmod +x` na generowanych binarkach/skryptach (np. launcher, run-current) powodowal `Permission denied` lub `Exec format error`.
   - Wymaganie: kazdy generowany plik wykonywalny ma jawny `chmod 755` (i jest sprawdzony w testach).
 
@@ -492,6 +495,12 @@
 - Blad: testy/skripty zakladaly, ze `/tmp` jest wykonywalny i bezpieczny, ale na niektorych systemach jest `noexec`.
   - Wymaganie: respektuj `TMPDIR` i unikaj uruchamiania binarek z `/tmp` bez sprawdzenia.
 
+- Blad: generowany kod C oraz skrypty helperów miały na sztywno `/tmp`, ignorując `TMPDIR`, co psuło działanie na systemach z restrykcjami lub noexec.
+  - Wymaganie: używaj `TMPDIR` (z fallbackiem do `/tmp`) zarówno w generatorach C, jak i w skryptach shellowych.
+
+- Blad: `TMPDIR` był ustawiony na nieistniejącą lub niewritable/nie‑executable ścieżkę i `mktemp` failował w losowych miejscach.
+  - Wymaganie: waliduj `TMPDIR` (czy katalog istnieje, jest zapisywalny **i** ma `+x`) oraz fallback do `/tmp` lub fail‑fast z instrukcją.
+
 - Blad: testy E2E uruchamialy operacje systemowe (systemd/`installDir` w realnych sciezkach) i psuly srodowisko.
   - Wymaganie: testy uzywaja sandbox `installDir` w temp i unikalnych nazw uslug.
   - Wymaganie: operacje systemowe sa gated env‑flaga i domyslnie SKIP.
@@ -505,6 +514,11 @@
 
 - Blad: `docker build` ukrywal output (domyslny progress UI), co utrudnialo diagnoze w CI.
   - Wymaganie: w trybie CI/logowanie ustaw `--progress=plain` lub `BUILDKIT_PROGRESS=plain`.
+
+- Blad: docker E2E zapisywal klucze/`known_hosts` w repo (np. `tools/.../docker/e2e/ssh`) i montowal je jako `/root/.ssh` (RW), co tworzylo root‑owned pliki i blokowalo cleanup.
+  - Wymaganie: klucze przechowuj poza repo (cache/temp) i montuj **read‑only** (np. `/tmp/seal-ssh`), a do `/root/.ssh` kopiuj **wewnatrz kontenera**; `known_hosts` ma byc w temp kontenera, nie w repo.
+  - Wymaganie: dla docker‑compose `SEAL_DOCKER_E2E_SSH_DIR` wskazuje katalog poza repo (domyslnie `/tmp/seal-ssh`).
+  - Wymaganie: po przypadkowym zapisie w repo wyczysc root‑owned pliki (np. `sudo rm -f tools/seal/seal/docker/e2e/ssh/known_hosts*`).
 
 - Blad: testy dockerowe z systemd/sshd nie startowaly bez `--privileged` i poprawnie zamontowanego cgroup.
   - Wymaganie: testy wymagajace systemd sprawdzaja dostepnosc cgroup (`/sys/fs/cgroup`) i w razie braku robia SKIP z powodem.
@@ -762,9 +776,15 @@
 
 - Blad: w template stringach z bash/script wystapily nie‑escapowane sekwencje `${...}`, co psulo skladnie JS.
   - Wymaganie: w osadzonych skryptach shellowych zawsze escapuj `${` jako `\\${` (lub użyj helpera do here‑doc), zeby uniknac interpolacji JS.
+  - Wymaganie: dotyczy to zwlaszcza bash‑owego `${VAR:-default}` — w JS musi byc `\\${VAR:-default}` albo `String.raw`.
 
 - Blad: generator JS wklejal template literal (backtick + `${...}`) do stringa JS, co psulo skladnie builda.
   - Wymaganie: w kodzie generowanym przez template string unikaj backticków albo escapuj `${` i same backticki.
+
+- Blad: tryb decoy nadpisywal pliki release „po cichu” lub w nieprzewidywalnym zakresie.
+  - Wymaganie: domyślne zachowanie decoya musi być **jawne** (overwrite ON/OFF).
+  - Wymaganie: jeśli `overwrite=false`, każda kolizja (np. `public/`, `src/`, `package.json`) kończy build błędem z listą konfliktów.
+  - Wymaganie: jeśli `overwrite=true`, loguj zakres decoya (`scope=backend|full`) i źródło (`sourceDir`/generated), żeby było jasne co zostało nadpisane.
 
 - Blad: tymczasowe pliki z danymi wrazliwymi byly tworzone w /tmp z przewidywalna nazwa i zbyt luznymi uprawnieniami.
   - Wymaganie: tworz temp‑dir przez `mkdtemp`, pliki z `0600`, a po uzyciu zawsze sprzataj.
@@ -825,6 +845,9 @@
 - Blad: output CLI byl mylacy (duplikaty, niepotrzebne puste linie).
   - Wymaganie: output ma byc zwięzly i bez duplikatow (np. artefakt tylko raz).
   - Wymaganie: kazda linia ma sens (puste linie tylko gdy poprawiaja czytelnosc).
+
+- Blad: w dokumentacji standardow pojawily sie duplikaty identyfikatorow STD, co utrudnialo odniesienia i automatyczne sprawdzanie zgodnosci.
+  - Wymaganie: kazdy identyfikator STD musi byc **unikalny**; gdy dodajesz wariant, uzyj sufiksu (`a/b/...`) i sprawdz duplikaty automatycznie (np. `rg -o "STD-[0-9]+[a-z]?(?:\\.[a-z])?" | sort | uniq -d`).
 
 - Blad: brakowalo jasnych instrukcji instalacji narzedzi (np. libzstd-dev).
   - Wymaganie: `seal check` zwraca **konkretne** instrukcje naprawy (nazwy pakietow, np. `apt-get install ...`).

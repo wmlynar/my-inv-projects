@@ -1,38 +1,7 @@
 {
   "appName": "modbus-sync-worksites",
   "entry": "modbus-sync-worksites.js",
-  "defaultTarget": "local",
   "build": {
-    "packager": "sea",
-    "packagerFallback": false,
-    "obfuscationProfile": "balanced",
-    "frontendObfuscation": {
-      "enabled": true,
-      "profile": "balanced"
-    },
-    "frontendMinify": {
-      "enabled": true,
-      "level": "safe",
-      "html": true,
-      "css": true
-    },
-    "protection": {
-      "enabled": true,
-      "bundle": {
-        "pack": true
-      },
-      "strip": {
-        "enabled": false
-      }
-    },
     "includeDirs": []
-  },
-  "policy": {
-    "retention": {
-      "keepReleases": 1,
-      "cleanupOnSuccess": true,
-      "neverDeleteCurrent": true,
-      "keepAtLeastOneRollback": true
-    }
   }
 }

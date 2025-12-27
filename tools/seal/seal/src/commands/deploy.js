@@ -12,8 +12,8 @@ const { info, warn, ok, hr } = require("../lib/ui");
 
 const { cmdRelease } = require("./release");
 const { buildFastRelease } = require("../lib/fastRelease");
-const { deployLocal, deployLocalFast, bootstrapLocal, statusLocal, logsLocal, enableLocal, startLocal, restartLocal, stopLocal, disableLocalOnly, disableLocal, rollbackLocal, downLocal, uninstallLocal, runLocalForeground, ensureCurrentReleaseLocal, checkConfigDriftLocal } = require("../lib/deploy");
-const { deploySsh, deploySshFast, bootstrapSsh, installServiceSsh, statusSsh, logsSsh, enableSsh, startSsh, restartSsh, stopSsh, disableSshOnly, disableSsh, rollbackSsh, downSsh, uninstallSsh, runSshForeground, ensureCurrentReleaseSsh, checkConfigDriftSsh } = require("../lib/deploySsh");
+const { deployLocal, deployLocalFast, bootstrapLocal, statusLocal, logsLocal, enableLocal, startLocal, restartLocal, stopLocal, disableLocalOnly, disableLocal, rollbackLocal, downLocal, uninstallLocal, runLocalForeground, ensureCurrentReleaseLocal, waitForReadyLocal, checkConfigDriftLocal } = require("../lib/deploy");
+const { deploySsh, deploySshFast, bootstrapSsh, installServiceSsh, statusSsh, logsSsh, enableSsh, startSsh, restartSsh, stopSsh, disableSshOnly, disableSsh, rollbackSsh, downSsh, uninstallSsh, runSshForeground, ensureCurrentReleaseSsh, waitForReadySsh, checkConfigDriftSsh } = require("../lib/deploySsh");
 
 function ensureConfigDriftOk({ targetCfg, targetName, configFile, acceptDrift }) {
   if (acceptDrift) {
@@ -41,6 +41,41 @@ function ensureConfigDriftOk({ targetCfg, targetName, configFile, acceptDrift })
   if (res.status === "error") {
     throw new Error(res.message || "Config drift check failed");
   }
+}
+
+function normalizeWaitMs(raw, fallback) {
+  if (raw === undefined || raw === null || raw === "") return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.floor(n);
+}
+
+function normalizeWaitMode(raw, hasUrl) {
+  if (!raw) return hasUrl ? "both" : "systemd";
+  const mode = String(raw).toLowerCase();
+  if (!["systemd", "http", "both"].includes(mode)) {
+    throw new Error(`Invalid readiness mode: ${raw} (expected systemd|http|both)`);
+  }
+  return mode;
+}
+
+function resolveReadinessOptions(targetCfg, opts, defaults) {
+  const cfg = (targetCfg.readiness && typeof targetCfg.readiness === "object")
+    ? targetCfg.readiness
+    : {};
+  const url = opts.waitUrl ?? cfg.url ?? null;
+  const mode = normalizeWaitMode(opts.waitMode ?? cfg.mode ?? null, !!url);
+  const timeoutMs = normalizeWaitMs(opts.waitTimeout ?? cfg.timeoutMs, defaults.timeoutMs);
+  const intervalMs = normalizeWaitMs(opts.waitInterval ?? cfg.intervalMs, defaults.intervalMs);
+  const httpTimeoutMs = normalizeWaitMs(opts.waitHttpTimeout ?? cfg.httpTimeoutMs, defaults.httpTimeoutMs);
+  return { mode, url, timeoutMs, intervalMs, httpTimeoutMs };
+}
+
+function resolveWaitEnabled(opts, targetCfg, defaultEnabled) {
+  if (opts && typeof opts.wait === "boolean") return opts.wait;
+  const cfg = (targetCfg.readiness && typeof targetCfg.readiness === "object") ? targetCfg.readiness : {};
+  if (typeof cfg.enabled === "boolean") return cfg.enabled;
+  return defaultEnabled;
 }
 
 function resolveTarget(projectRoot, targetArg) {
@@ -140,7 +175,13 @@ async function cmdDeploy(cwd, targetArg, opts) {
     if (opts.bootstrap) {
       installServiceSsh(targetCfg, sentinelCfg);
       if (sentinelCfg.enabled) {
-        installSentinelSsh({ targetCfg, sentinelCfg, force: false, insecure: false });
+        installSentinelSsh({
+          targetCfg,
+          sentinelCfg,
+          force: false,
+          insecure: false,
+          skipVerify: !!opts.skipSentinelVerify,
+        });
       }
     }
   } else {
@@ -170,6 +211,22 @@ async function cmdDeploy(cwd, targetArg, opts) {
     else restartLocal(targetCfg);
   }
 
+  const waitEnabled = resolveWaitEnabled(opts, targetCfg, false);
+  if (waitEnabled) {
+    if (!opts.restart) warn("Readiness wait requested without --restart; checking current service state.");
+    const readiness = resolveReadinessOptions(targetCfg, opts, {
+      timeoutMs: 60000,
+      intervalMs: 1000,
+      httpTimeoutMs: 2000,
+    });
+    hr();
+    if ((targetCfg.kind || "local").toLowerCase() === "ssh") {
+      await waitForReadySsh(targetCfg, readiness);
+    } else {
+      await waitForReadyLocal(targetCfg, readiness);
+    }
+  }
+
   console.log("");
   ok("Done.");
   console.log("Next:");
@@ -186,11 +243,18 @@ async function cmdShip(cwd, targetArg, opts) {
     const deployOpts = {
       bootstrap: !!opts.bootstrap,
       pushConfig: !!opts.pushConfig,
+      skipSentinelVerify: !!opts.skipSentinelVerify,
       restart: true,
       artifact: null,
       fast: true,
       fastNoNodeModules: !!opts.fastNoNodeModules,
       acceptDrift: !!opts.acceptDrift,
+      wait: opts.wait !== false,
+      waitTimeout: opts.waitTimeout,
+      waitInterval: opts.waitInterval,
+      waitUrl: opts.waitUrl,
+      waitMode: opts.waitMode,
+      waitHttpTimeout: opts.waitHttpTimeout,
     };
     await cmdDeploy(cwd, targetArg, deployOpts);
     return;
@@ -213,6 +277,12 @@ async function cmdShip(cwd, targetArg, opts) {
     releaseDir: releaseRes && releaseRes.releaseDir ? releaseRes.releaseDir : null,
     buildId: releaseRes && releaseRes.buildId ? releaseRes.buildId : null,
     acceptDrift: !!opts.acceptDrift,
+    wait: opts.wait !== false,
+    waitTimeout: opts.waitTimeout,
+    waitInterval: opts.waitInterval,
+    waitUrl: opts.waitUrl,
+    waitMode: opts.waitMode,
+    waitHttpTimeout: opts.waitHttpTimeout,
   };
   await cmdDeploy(cwd, targetArg, deployOpts);
 }
@@ -325,7 +395,13 @@ async function cmdRemote(cwd, targetArg, action, opts) {
         ensureCurrentReleaseSsh(targetCfg);
         installServiceSsh(targetCfg, sentinelCfg);
         if (sentinelCfg.enabled) {
-          installSentinelSsh({ targetCfg, sentinelCfg, force: false, insecure: false });
+          installSentinelSsh({
+            targetCfg,
+            sentinelCfg,
+            force: false,
+            insecure: false,
+            skipVerify: !!(opts && opts.skipSentinelVerify),
+          });
         }
         enableSsh(targetCfg);
         startSsh(targetCfg);

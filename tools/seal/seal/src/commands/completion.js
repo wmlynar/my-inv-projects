@@ -132,15 +132,15 @@ _seal_complete() {
     release) opts="--config --skip-check --check-verbose --check-cc --packager" ;;
     run-local) opts="--sealed --config" ;;
     verify) opts="--explain" ;;
-    sentinel) opts="--force --insecure --json" ;;
-    deploy) opts="--bootstrap --push-config --restart --accept-drift --allow-drift --artifact --fast --fast-no-node-modules" ;;
-    ship) opts="--bootstrap --push-config --accept-drift --allow-drift --skip-check --check-verbose --check-cc --packager --fast --fast-no-node-modules" ;;
+    sentinel) opts="--force --insecure --skip-verify --json" ;;
+    deploy) opts="--bootstrap --push-config --skip-sentinel-verify --restart --wait --wait-timeout --wait-interval --wait-url --wait-mode --wait-http-timeout --accept-drift --allow-drift --artifact --fast --fast-no-node-modules" ;;
+    ship) opts="--bootstrap --push-config --skip-sentinel-verify --no-wait --wait-timeout --wait-interval --wait-url --wait-mode --wait-http-timeout --accept-drift --allow-drift --skip-check --check-verbose --check-cc --packager --fast --fast-no-node-modules" ;;
     run) opts="--kill --sudo --accept-drift --allow-drift" ;;
     rollback) opts="--accept-drift --allow-drift" ;;
-    remote) opts="--accept-drift --allow-drift" ;;
+    remote) opts="--accept-drift --allow-drift --skip-sentinel-verify" ;;
     completion) opts="bash" ;;
   esac
-  if [[ "$cmd" == "config" && "${words[2]}" == "pull" ]]; then
+  if [[ "$cmd" == "config" && "\${words[2]}" == "pull" ]]; then
     opts="--apply"
   fi
   if [[ -z "$opts" && "$cur" == -* ]]; then

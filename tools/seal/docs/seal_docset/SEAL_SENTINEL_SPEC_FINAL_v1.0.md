@@ -101,6 +101,9 @@ Na serwerze istnieje tylko:
   build: {
     packager: "thin-split",
     sentinel: {
+      // profile ustawia domyślne wartości (nie nadpisuje jawnych pól)
+      profile: "auto",          // off | auto | required | strict
+
       enabled: "auto",           // auto | true | false
 
       // auto | 0 | 1 | 2 | 3 | 4
@@ -127,6 +130,8 @@ Na serwerze istnieje tylko:
       // okresowa weryfikacja w runtime (JS) + limit czasu działania
       checkIntervalMs: 60000,    // 0 = wyłącz okresową weryfikację
       timeLimit: {
+        // enforce: always (domyślnie) | mismatch (tylko gdy fingerprint nie pasuje)
+        enforce: "always",
         // tylko jeden wariant:
         // 1) absolutna data (ISO lub epoch sec/ms):
         expiresAt: "2026-01-01T00:00:00Z",
@@ -145,21 +150,31 @@ Na serwerze istnieje tylko:
 `seal-config/targets/<target>.json5` MAY nadpisywać `build.sentinel.*` (np. level, storage.mode, externalAnchor).
 
 Uwagi:
+- `profile` jest opcjonalny; jawne pola (`enabled`, `level`, `cpuIdSource`, `timeLimit`, ...) mają **pierwszeństwo**.
+- Znaczenie profili:
+  - `off` → `enabled=false`
+  - `auto` → `enabled=auto` (thin+ssh)
+  - `required` → `enabled=true`, `level=auto`
+  - `strict` → `enabled=true`, `level=2`
+- `timeLimit.enforce="mismatch"` oznacza: czas jest egzekwowany tylko gdy fingerprint nie pasuje; dla poprawnego hosta expiry jest ignorowane.
+- Dla `enforce="mismatch"` brak/uszkodzony blob jest traktowany jak mismatch; expiry jest wtedy liczone wg `expiresAt` (absolutne) lub best‑effort dla `validFor*` (start zapisywany lokalnie w ukrytym pliku).
 - **Tylko jeden** z: `expiresAt` albo `validFor*`.
 - `validFor*` jest liczony **w momencie instalacji** na docelowym hoście (czas środowiska).
 
 ### 4.3 Merge configu (MUST)
 Efektywna konfiguracja:
 
-1) start od `seal.json5`  
-2) nałóż override z `targets/<target>.json5`  
-3) rozwiąż `auto`:
+1) start od domyślnych wartości  
+2) zastosuj `sentinel.profile` (jeśli ustawiony; target może nadpisać projekt)  
+3) nałóż `build.sentinel.*` z `seal.json5`  
+4) nałóż override z `targets/<target>.json5`  
+5) rozwiąż `auto`:
    - `enabled:auto` → `true` tylko gdy builder = `thin`, inaczej `false`
    - `appId:auto` → `serviceName` targetu (po normalizacji)
    - `namespaceId:auto` → patrz §4.5
    - `level:auto` → patrz §8.3
    - `cpuIdSource:auto` → `both`
-4) waliduj i normalizuj `appId` (§4.4)
+6) waliduj i normalizuj `appId` (§4.4)
 
 ### 4.4 Normalizacja `appId` (MUST)
 `appId` MUST spełniać:
@@ -519,7 +534,7 @@ MAY:
 ### 10.1 Komendy (MUST)
 - `seal sentinel probe <target>`
 - `seal sentinel inspect <target> [--json]`
-- `seal sentinel install <target> [--force] [--insecure]`
+- `seal sentinel install <target> [--force] [--insecure] [--skip-verify]`
 - `seal sentinel verify <target> [--json]`
 - `seal sentinel uninstall <target>`
 
@@ -547,6 +562,11 @@ Install jest idempotentny:
 - jeśli blob brak → utwórz
 - jeśli blob istnieje i pasuje → no‑op
 - jeśli nie pasuje → fail, chyba że `--force`
+
+Po install (domyślnie):
+- uruchom weryfikację na hoście **tym samym kodem co runtime** (`thin` launcher z `SEAL_SENTINEL_VERIFY=1`),
+- jeśli launcher jest niedostępny → fail (chyba że `--skip-verify`).
+Uwaga: ten check respektuje `timeLimit.enforce=mismatch` (w okresie grace moze byc OK); do twardej weryfikacji uzyj `seal sentinel verify`.
 
 Atomowość:
 - tmp → fsync → rename
@@ -603,6 +623,7 @@ Sentinel failure (missing/corrupt/mismatch/xattr missing/external anchor missing
 - ten sam exit code: `exitCodeBlock`  
 - brak ścieżek, brak słów-kluczy “sentinel/license/seal”  
 - diagnostyka szczegółowa tylko w `seal sentinel verify`
+- `/healthz` i `/status` MUST NOT ujawniac sentinel/seal; maja wygladac identycznie niezaleznie od tego czy sentinel jest obecny.
 
 Timing side‑channel (SHOULD):
 - unikać bardzo szybkiej ścieżki „blob missing”: np. policzyć fingerprint i wykonać stałą liczbę hashy zanim się zakończy.

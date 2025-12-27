@@ -161,8 +161,8 @@ Przykład:
 - STD-128 (SHOULD): `xargs` uruchamiaj z `-r` (GNU) lub jawnie sprawdzaj, czy input nie jest pusty.
 - STD-129 (SHOULD): limity czasu (expiry/licencja/sentinel) liczymy wg czasu **hosta docelowego**; runtime musi je sprawdzac okresowo (`checkIntervalMs`) i nie blokowac wyjscia (timer `unref`).
 - STD-130 (SHOULD): jesli format bloba ma wiele wersji, runtime akceptuje znane wersje i waliduje spojnosc `version ↔ length`; nie toleruj cichych rozjazdow.
-- STD-129 (SHOULD): rozpakowanie artefaktu odbywa sie w katalogu stagingowym; `current.buildId` aktualizuj dopiero po walidacji.
-- STD-130 (SHOULD): dla krytycznych binarek nie polegaj na niekontrolowanym `PATH`; uzywaj `command -v` + whitelisty lub absolutnych sciezek, szczegolnie przy `sudo`.
+- STD-129a (SHOULD): rozpakowanie artefaktu odbywa sie w katalogu stagingowym; `current.buildId` aktualizuj dopiero po walidacji.
+- STD-130b (SHOULD): dla krytycznych binarek nie polegaj na niekontrolowanym `PATH`; uzywaj `command -v` + whitelisty lub absolutnych sciezek, szczegolnie przy `sudo`.
 - STD-130a (SHOULD): wykrywanie narzedzi z `node_modules/.bin` musi uwzgledniac monorepo/workspaces (sprawdzaj kilka poziomow lub uzyj `npm bin -w`/`npm exec`), inaczej CLI/testy beda false‑negative.
 - STD-131 (SHOULD): przy ekstrakcji archiwow w deploy ustaw `--no-same-owner` i `--no-same-permissions` oraz ustaw jawne perm po rozpakowaniu.
 - STD-132 (SHOULD): masowe operacje na plikach nie moga przekraczac `ARG_MAX`; uzywaj `find ... -exec ... +` lub `xargs -0`.
@@ -227,6 +227,8 @@ Przykład:
 - STD-023 (SHOULD): po zmianach w CLI aktualizuj dokumentacje, completion i wizard jednoczesnie, zeby uniknac rozjazdow UX.
 - STD-037 (SHOULD): nazwy komend i semantyka sa spójne w CLI i dokumentacji.
 - STD-070 (SHOULD): zmiana schematu `seal.json5` wymaga jednoczesnej aktualizacji template/init, przykladow, docs i testow; parser musi fail‑fast na starych kluczach z jasnym hintem migracji.
+- STD-070a (SHOULD): workspace `seal.json5` moze zawierac `defaults` dziedziczone przez projekty; merge jest deterministyczny (od najdalszego parenta do najblizszego), a tablice sa nadpisywane (nie łączone).
+- STD-070b (SHOULD): `defaults` nie moga zawierac `projects`; konfiguracja projektu zawsze ma pierwszenstwo nad `defaults`.
 - STD-071 (SHOULD): nie dubluj opcji sterujacych tym samym zachowaniem (jedno pole = jedna semantyka). Sprzeczne ustawienia musza byc odrzucane z jasnym bledem.
 - STD-072 (SHOULD): `seal check` ostrzega tylko o narzedziach rzeczywiscie wymaganych przez wybrany packager/protection (bez szumu).
 - STD-073 (SHOULD): lista dozwolonych wartosci (packagery, poziomy) pochodzi z jednego zrodla i jest wspoldzielona przez CLI, completion i docs; CI ma test zgodnosci.
@@ -241,9 +243,9 @@ Przykład:
 - STD-090b (SHOULD): przy `thin.integrity.mode=sidecar` plik `r/<integrity.file>` musi byc przenoszony w deploy/rollback/cleanup oraz aktualizowany przy payload‑only; brak pliku = fail‑fast.
 - STD-091 (SHOULD): self‑hash marker musi byc wykrywany bez falszywych trafien (waliduj hex, ignoruj nie‑hex) i obslugiwac wiele wystapien, wymagajac spojnosc hasha.
 - STD-092 (SHOULD): marker/hash placeholder w generowanym C musi byc utrzymany w binarce (np. `volatile`/jawna referencja), aby patcher zawsze go znalazl.
-- STD-157 (SHOULD): jeśli anti‑debug opiera się o `TracerPid`, sama kontrola na starcie nie wystarcza — check powinien być wykonywany okresowo lub w punktach krytycznych (np. przed odszyfrowaniem/uruchomieniem wrażliwego kodu).
-- STD-158 (SHOULD): okresowe kontrole (np. `setInterval`) muszą być `unref()` aby nie blokowały naturalnego zakończenia procesu.
-- STD-159 (SHOULD): jeśli włączono `tracerPidThreads`, sprawdzaj `TracerPid` dla wszystkich tasków (`/proc/self/task/<tid>/status`).
+- STD-157a (SHOULD): jeśli anti‑debug opiera się o `TracerPid`, sama kontrola na starcie nie wystarcza — check powinien być wykonywany okresowo lub w punktach krytycznych (np. przed odszyfrowaniem/uruchomieniem wrażliwego kodu).
+- STD-158a (SHOULD): okresowe kontrole (np. `setInterval`) muszą być `unref()` aby nie blokowały naturalnego zakończenia procesu.
+- STD-159a (SHOULD): jeśli włączono `tracerPidThreads`, sprawdzaj `TracerPid` dla wszystkich tasków (`/proc/self/task/<tid>/status`).
 - STD-078 (SHOULD): skrypty/testy nie zakladaja `bash` – uzywaja `/bin/sh` albo sprawdzaja dostepnosc i robia jawny SKIP.
 - STD-079 (SHOULD): jeden kanoniczny katalog wyjsciowy (`seal-out/`); cache i artefakty trafiaja do podfolderow tego katalogu, bez alternatywnych sciezek.
 - STD-079a (SHOULD): wszystkie pliki generowane (cache/private/metadata/runtime) musza byc zapisywane pod `seal-out/` (np. `seal-out/cache/...`); pojawienie sie nowych katalogow obok projektu (np. `seal-config/.private`) traktuj jako blad i migruj dane do `seal-out/`.
@@ -284,9 +286,9 @@ Przykład:
 - STD-089n (SHOULD): w CI/E2E wyłącz `npm audit`/`fund` i progress (`NPM_CONFIG_AUDIT=false`, `NPM_CONFIG_FUND=false`, `NPM_CONFIG_PROGRESS=false`).
 - STD-089o (SHOULD): w testach/CI ustaw `CI=1`, aby wymusic nieinteraktywny tryb narzedzi (brak promptow/spinnerow).
 - STD-089p (SHOULD): w CI/E2E ustaw `NPM_CONFIG_UPDATE_NOTIFIER=false`, aby uniknac sieciowych promptow npm.
-- STD-090 (SHOULD): preflight sprawdza **narzedzia CLI** (np. `postject` w `node_modules/.bin`/PATH), nie tylko obecność modulu.
-- STD-091 (SHOULD): funkcje zalezne od architektury (np. CPUID) musza degradująco dzialac na platformach bez wsparcia (pusty/neutralny ID zamiast twardego bledu).
-- STD-092 (SHOULD): `--skip-check` jest wyraznie oznaczony jako ryzykowny i zawsze wypisuje ostrzezenie; krytyczne braki toolchaina nie powinny byc maskowane.
+- STD-090c (SHOULD): preflight sprawdza **narzedzia CLI** (np. `postject` w `node_modules/.bin`/PATH), nie tylko obecność modulu.
+- STD-091a (SHOULD): funkcje zalezne od architektury (np. CPUID) musza degradująco dzialac na platformach bez wsparcia (pusty/neutralny ID zamiast twardego bledu).
+- STD-092a (SHOULD): `--skip-check` jest wyraznie oznaczony jako ryzykowny i zawsze wypisuje ostrzezenie; krytyczne braki toolchaina nie powinny byc maskowane.
 - STD-093 (SHOULD): generowane binarki/skrypty maja jawny `chmod +x` i test uruchomienia, aby uniknac `Permission denied`.
 - STD-094 (SHOULD): w razie bledu narzedzi zewnetrznych (cc/rsync/ssh) wypisz komendy i stderr/stdout (z limitem) dla diagnozy.
 - STD-095 (SHOULD): szanuj `TMPDIR` oraz sytuacje `noexec` na `/tmp`; tymczasowe binarki uruchamiaj w bezpiecznym katalogu.
@@ -399,6 +401,7 @@ Jeśli log dotyczy błędu:
 - STA-001 (MUST): `GET /healthz` zwraca `200` jeśli proces żyje.
 - STA-002 (MUST): `/healthz` nie zależy od integracji zewnętrznych (ma być szybki i niezawodny).
 - STA-003 (MAY): odpowiedź może być `text/plain` (`ok`) lub minimalny JSON.
+- STA-004 (MUST): `/healthz` i `/status` MUST NOT expose protection details (seal/sentinel/anti-debug); weryfikacja tylko przez narzedzia deployera (np. `seal sentinel verify`).
 
 ### 4.2. Endpoint `/status`
 - STA-010 (MUST): `GET /status` zwraca JSON.
@@ -577,7 +580,7 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-202 (SHOULD): cache buildow kluczuj po `os+arch` (oraz wersji formatu), aby uniknac niezgodnosci.
 - STD-203 (SHOULD): wspieraj deterministyczne buildy (`SOURCE_DATE_EPOCH`/stale czasy) i loguj tryb.
 - STD-204 (SHOULD): archiwa tworzone w stabilnym porzadku plikow (sort po sciezce).
-- STD-205 (SHOULD): waliduj TMPDIR (noexec/readonly) i dawaj jasna instrukcje zmiany.
+- STD-205 (SHOULD): waliduj TMPDIR (istnieje, `+w` i `+x`, brak `noexec`) i dawaj jasna instrukcje zmiany.
 - STD-206 (SHOULD): umozliwiaj override katalogu temp oraz waliduj zapisywalnosc.
 - STD-207 (SHOULD): ogranicz domyslna rownoleglosc kompilacji; pozwol na jawny override.
 - STD-208 (SHOULD): `CFLAGS/CXXFLAGS/LDFLAGS` z ENV musza byc czyszczone lub jawnie logowane.

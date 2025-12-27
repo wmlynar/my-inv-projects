@@ -156,6 +156,20 @@ sudo seal completion bash > /etc/bash_completion.d/seal
 - `seal-out/` – artefakty generowane (jak `target/`); przy `seal release`/`seal verify`/`seal deploy` czyszczone są katalogi robocze, ale `seal-out/cache/` (thin cache) jest zachowywany; dodaj do `.gitignore`.
 - `seal clean` – usuwa `seal-out/` dla projektu (w monorepo uruchom w root, zadziała dla wszystkich podprojektów).
 
+## Profile i szybkie wyjaśnienia
+
+Lista profili (co włączają):
+
+```bash
+seal profiles
+```
+
+Wyjaśnienie zresolve'owanej konfiguracji (co skąd się wzięło):
+
+```bash
+seal config explain [target]
+```
+
 ---
 
 ## Wiele projektów (monorepo)
@@ -263,6 +277,27 @@ Uruchomienie testu:
 SEAL_THIN_ANTI_DEBUG_E2E=1 node tools/seal/seal/scripts/test-thin-anti-debug-e2e.js
 ```
 
+Podział na części (szybsze uruchomienia):
+
+```bash
+SEAL_THIN_ANTI_DEBUG_E2E=1 SEAL_THIN_ANTI_DEBUG_SUITES=build \
+  node tools/seal/seal/scripts/test-thin-anti-debug-e2e.js
+```
+
+Dostępne suite'y: build, env, leaks, bootstrap, attach, config, tamper (albo `all`).
+
+Skróty per-suite:
+
+```bash
+node tools/seal/seal/scripts/test-thin-anti-debug-build-e2e.js
+node tools/seal/seal/scripts/test-thin-anti-debug-env-e2e.js
+node tools/seal/seal/scripts/test-thin-anti-debug-leaks-e2e.js
+node tools/seal/seal/scripts/test-thin-anti-debug-bootstrap-e2e.js
+node tools/seal/seal/scripts/test-thin-anti-debug-attach-e2e.js
+node tools/seal/seal/scripts/test-thin-anti-debug-config-e2e.js
+node tools/seal/seal/scripts/test-thin-anti-debug-tamper-e2e.js
+```
+
 Opcjonalnie (ostrzej, zwłaszcza jako root):
 
 ```bash
@@ -306,7 +341,6 @@ Dobór profilu obfuskacji (skrót):
 - `balanced`: domyślny, bezpieczny dla większości aplikacji.
 - `strict`: produkcja po pełnych E2E, renameGlobals + Terser + DCI.
 - `max`: maksymalne utrudnienie (wyższy DCI + Terser passes=4), tylko po E2E.
-Alias: `aggressive` → `strict`, `prod-strict`/`prod-max` → `strict`/`max` (emitują warning).
 
 ## Frontend minifikacja HTML/CSS (domyślnie włączona)
 

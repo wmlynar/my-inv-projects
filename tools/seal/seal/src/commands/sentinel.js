@@ -168,6 +168,7 @@ async function cmdSentinelInstall(cwd, targetArg, opts) {
     sentinelCfg: ctx.sentinelCfg,
     force: !!opts.force,
     insecure: !!opts.insecure,
+    skipVerify: !!opts.skipVerify,
   });
   const level = res.level;
   ok(`Sentinel installed (level=${level})`);

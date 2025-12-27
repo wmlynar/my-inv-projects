@@ -4,9 +4,12 @@ const fs = require("fs");
 const path = require("path");
 
 const { findProjectRoot } = require("../lib/paths");
-const { getSealPaths, loadProjectConfig, loadTargetConfig, resolveConfigName, getConfigFile } = require("../lib/project");
+const { getSealPaths, loadProjectConfig, loadTargetConfig, resolveTargetName, resolveConfigName, getConfigFile } = require("../lib/project");
 const { ensureDir, fileExists, safeWriteFile } = require("../lib/fsextra");
-const { ok, warn } = require("../lib/ui");
+const { normalizePackager, resolveThinConfig, resolveProtectionConfig, resolveBundleFallback } = require("../lib/packagerConfig");
+const { resolveSentinelConfig } = require("../lib/sentinelConfig");
+const { readJson5 } = require("../lib/json5io");
+const { info, ok, warn } = require("../lib/ui");
 const { configDiffSsh, configPullSsh, configPushSsh } = require("../lib/deploySsh");
 
 function templateConfig(name, appName) {
@@ -154,6 +157,221 @@ function resolveTargetAndConfig(projectRoot, targetNameOrConfig) {
   throw new Error(msg);
 }
 
+function hasPath(obj, pathParts) {
+  let cur = obj;
+  for (const key of pathParts) {
+    if (!cur || typeof cur !== "object" || Array.isArray(cur)) return false;
+    if (!Object.prototype.hasOwnProperty.call(cur, key)) return false;
+    cur = cur[key];
+  }
+  return true;
+}
+
+function readSentinelProfile(rawCfg) {
+  if (!rawCfg || typeof rawCfg !== "object" || Array.isArray(rawCfg)) return null;
+  if (rawCfg.sentinel && typeof rawCfg.sentinel === "object" && !Array.isArray(rawCfg.sentinel)) {
+    if (Object.prototype.hasOwnProperty.call(rawCfg.sentinel, "profile")) {
+      return rawCfg.sentinel.profile;
+    }
+  }
+  if (rawCfg.build && typeof rawCfg.build === "object" && !Array.isArray(rawCfg.build)) {
+    const buildSentinel = rawCfg.build.sentinel;
+    if (buildSentinel && typeof buildSentinel === "object" && !Array.isArray(buildSentinel)) {
+      if (Object.prototype.hasOwnProperty.call(buildSentinel, "profile")) {
+        return buildSentinel.profile;
+      }
+    }
+  }
+  return null;
+}
+
+function resolveConsoleMode(raw) {
+  if (raw === undefined || raw === null) {
+    return { mode: "full", warning: null };
+  }
+  if (typeof raw === "boolean") {
+    return { mode: raw ? "errors-only" : "full", warning: null };
+  }
+  const val = String(raw).toLowerCase();
+  if (val === "1" || val === "true" || val === "yes" || val === "on") {
+    return { mode: "errors-only", warning: null };
+  }
+  if (val === "0" || val === "false" || val === "no" || val === "off") {
+    return { mode: "full", warning: null };
+  }
+  if (val === "full" || val === "all" || val === "debug") {
+    return { mode: "full", warning: null };
+  }
+  if (val === "errors-only" || val === "errors" || val === "error" || val === "error-only") {
+    return { mode: "errors-only", warning: null };
+  }
+  return { mode: "full", warning: `Unknown build.consoleMode "${raw}", using "full"` };
+}
+
+function sourceTag(source) {
+  return source ? ` (${source})` : "";
+}
+
+function resolveExplainTarget(projectRoot, targetNameOrConfig) {
+  if (targetNameOrConfig) {
+    return resolveTargetAndConfig(projectRoot, targetNameOrConfig);
+  }
+  const proj = loadProjectConfig(projectRoot);
+  if (!proj) throw new Error("Brak seal.json5 (projekt). Zrób: seal init");
+  const targetName = resolveTargetName(projectRoot, null);
+  const t = loadTargetConfig(projectRoot, targetName);
+  if (!t) throw new Error(`Brak targetu ${targetName}. Zrób: seal target add ${targetName}`);
+  t.cfg.appName = t.cfg.appName || proj.appName;
+  t.cfg.serviceName = t.cfg.serviceName || proj.appName;
+  const cfgName = resolveConfigName(t.cfg, null);
+  const localCfg = getConfigFile(projectRoot, cfgName);
+  return { targetName, targetCfg: t.cfg, cfgName, localCfg };
+}
+
+async function cmdConfigExplain(cwd, targetNameOrConfig) {
+  const projectRoot = findProjectRoot(cwd);
+  const paths = getSealPaths(projectRoot);
+  const proj = loadProjectConfig(projectRoot);
+  if (!proj) throw new Error("Brak seal.json5 (projekt). Zrób: seal init");
+
+  const rawProj = fileExists(paths.sealFile) ? readJson5(paths.sealFile) : {};
+  const { targetName, targetCfg, cfgName, localCfg } = resolveExplainTarget(projectRoot, targetNameOrConfig);
+  const rawTarget = targetName
+    ? readJson5(path.join(paths.targetsDir, `${targetName}.json5`))
+    : {};
+
+  const packagerRaw = targetCfg.packager || proj.build.packager || "auto";
+  const packagerSpec = normalizePackager(packagerRaw);
+  const thinCfg = resolveThinConfig(targetCfg, proj);
+  const protectionCfg = resolveProtectionConfig(proj);
+  const allowBundleFallback = resolveBundleFallback(targetCfg, proj);
+  const sentinelCfg = resolveSentinelConfig({
+    projectRoot,
+    projectCfg: proj,
+    targetCfg,
+    targetName: targetCfg.target || targetCfg.config || "default",
+    packagerSpec,
+  });
+
+  const securityProfile = proj.build.securityProfile || null;
+  const securitySource = hasPath(rawProj, ["build", "securityProfile"]) ? "project" : null;
+
+  const obfProfile = proj.build.obfuscationProfile || "balanced";
+  const obfSource = hasPath(rawProj, ["build", "obfuscationProfile"])
+    ? "project"
+    : (securityProfile ? "securityProfile" : "default");
+
+  const consoleEnv = process.env.SEAL_CONSOLE_MODE;
+  const consoleRaw = consoleEnv !== undefined
+    ? consoleEnv
+    : (proj.build.consoleMode !== undefined ? proj.build.consoleMode : proj.build.stripConsole);
+  const consoleRes = resolveConsoleMode(consoleRaw);
+  const consoleSource = consoleEnv !== undefined
+    ? "env"
+    : (hasPath(rawProj, ["build", "consoleMode"]) || hasPath(rawProj, ["build", "stripConsole"])
+        ? "project"
+        : "default");
+
+  const packagerSource = hasPath(rawTarget, ["packager"])
+    ? "target"
+    : (hasPath(rawProj, ["build", "packager"]) ? "project" : "default");
+  const packagerFallbackSource = hasPath(rawTarget, ["packagerFallback"])
+    ? "target"
+    : (hasPath(rawProj, ["build", "packagerFallback"]) ? "project" : "default");
+
+  const frontendCfg = proj.build.frontendObfuscation;
+  const frontendEnabled = frontendCfg === false ? false : !(typeof frontendCfg === "object" && frontendCfg && frontendCfg.enabled === false);
+  const frontendProfile = (typeof frontendCfg === "object" && frontendCfg && frontendCfg.profile) ? frontendCfg.profile : obfProfile;
+  const frontendProfileSource = (typeof frontendCfg === "object" && frontendCfg && frontendCfg.profile)
+    ? "project"
+    : obfSource;
+
+  const rawTargetSentinelProfile = readSentinelProfile(rawTarget);
+  const rawProjSentinelProfile = readSentinelProfile(rawProj);
+  const sentinelProfileRaw = rawTargetSentinelProfile ?? rawProjSentinelProfile;
+  const targetProfilePresent = rawTargetSentinelProfile !== null && rawTargetSentinelProfile !== undefined;
+  const projProfilePresent = rawProjSentinelProfile !== null && rawProjSentinelProfile !== undefined;
+  const sentinelProfileSource = targetProfilePresent
+    ? "target"
+    : (projProfilePresent ? "project" : null);
+  const sentinelProfile = sentinelProfileRaw !== null && sentinelProfileRaw !== undefined
+    ? String(sentinelProfileRaw)
+    : null;
+
+  info("Config explain");
+  console.log(`  project: ${projectRoot}`);
+  console.log(`  seal.json5: ${paths.sealFile}`);
+  console.log(`  target: ${targetName} (kind=${(targetCfg.kind || "local")})`);
+  console.log(`  config: ${cfgName} (${fileExists(localCfg) ? "ok" : "missing"})`);
+  console.log("");
+
+  console.log("Profiles:");
+  console.log(`  securityProfile: ${securityProfile || "none"}${sourceTag(securitySource)}`);
+  console.log(`  obfuscationProfile: ${obfProfile}${sourceTag(obfSource)}`);
+  console.log(`  frontendObfuscation: ${frontendEnabled ? "enabled" : "disabled"} (profile=${frontendProfile}${sourceTag(frontendProfileSource)})`);
+  console.log(`  sentinelProfile: ${sentinelProfile || "none"}${sourceTag(sentinelProfileSource)}`);
+  if (consoleRes.warning) warn(consoleRes.warning);
+  console.log(`  consoleMode: ${consoleRes.mode}${sourceTag(consoleSource)}`);
+  console.log("");
+
+  console.log("Packager:");
+  console.log(`  packager: ${packagerSpec.label}${sourceTag(packagerSource)}`);
+  console.log(`  packagerFallback: ${allowBundleFallback}${sourceTag(packagerFallbackSource)}`);
+  console.log("");
+
+  console.log("Thin:");
+  console.log(`  mode: ${thinCfg.mode}`);
+  console.log(`  level: ${thinCfg.level}`);
+  console.log(`  envMode: ${thinCfg.envMode || "auto"}`);
+  console.log(`  runtimeStore: ${thinCfg.runtimeStore || "auto"}`);
+  console.log(`  snapshotGuard: ${thinCfg.snapshotGuard.enabled ? "enabled" : "disabled"}`);
+  console.log(`  integrity: ${thinCfg.integrity.enabled ? `enabled (${thinCfg.integrity.mode})` : "disabled"}`);
+  console.log(`  nativeBootstrap: ${thinCfg.nativeBootstrap.enabled ? "enabled" : "disabled"}`);
+  console.log(`  antiDebug: ${thinCfg.antiDebug.enabled ? "enabled" : "disabled"}`);
+  if (thinCfg.antiDebug.enabled) {
+    console.log(`    mapsDenylist: ${thinCfg.antiDebug.mapsDenylist.length ? thinCfg.antiDebug.mapsDenylist.join(", ") : "none"}`);
+    console.log(`    seccomp: ${thinCfg.antiDebug.seccompNoDebug.enabled ? thinCfg.antiDebug.seccompNoDebug.mode : "disabled"}${thinCfg.antiDebug.seccompNoDebug.aggressive ? " (aggressive)" : ""}`);
+  }
+  console.log("");
+
+  console.log("Protection:");
+  console.log(`  strip: ${protectionCfg.stripSymbols ? "enabled" : "disabled"}`);
+  console.log(`  elfPacker: ${protectionCfg.elfPacker || "disabled"}`);
+  console.log(`  cObfuscator: ${protectionCfg.cObfuscator || "disabled"}`);
+  console.log("");
+
+  console.log("Sentinel:");
+  console.log(`  enabled: ${sentinelCfg.enabled ? "true" : "false"}`);
+  if (sentinelCfg.enabled) {
+    console.log(`  level: ${sentinelCfg.level}`);
+    const timeLimit = sentinelCfg.timeLimit || { mode: "off", enforce: "always" };
+    const enforce = timeLimit.enforce || "always";
+    console.log(`  timeLimit: ${timeLimit.mode} (${enforce})`);
+  }
+  console.log("");
+
+  const notes = [];
+  if (packagerSpec.label === "sea" && (protectionCfg.stripSymbols || protectionCfg.elfPacker)) {
+    notes.push("SEA does not support strip/ELF packer (build will fail-fast)");
+  }
+  if (packagerSpec.label === "thin-single" && (protectionCfg.stripSymbols || protectionCfg.elfPacker)) {
+    notes.push("thin-single does not support strip/ELF packer (build will fail-fast)");
+  }
+  if (thinCfg.integrity.enabled && packagerSpec.label !== "thin-split") {
+    notes.push("thin.integrity requires packager thin-split");
+  }
+  if (thinCfg.integrity.enabled && thinCfg.integrity.mode === "inline" && protectionCfg.elfPacker) {
+    notes.push("thin.integrity inline is incompatible with elfPacker (use sidecar)");
+  }
+  if (thinCfg.nativeBootstrap.enabled && packagerSpec.label !== "thin-split") {
+    notes.push("nativeBootstrap requires packager thin-split");
+  }
+  if (notes.length) {
+    console.log("Notes:");
+    for (const n of notes) console.log(`  - ${n}`);
+  }
+}
+
 async function cmdConfigDiff(cwd, targetNameOrConfig) {
   const projectRoot = findProjectRoot(cwd);
   const { targetCfg, localCfg } = resolveTargetAndConfig(projectRoot, targetNameOrConfig);
@@ -188,4 +406,4 @@ async function cmdConfigPush(cwd, targetNameOrConfig) {
   configPushSsh({ targetCfg, localConfigPath: localCfg });
 }
 
-module.exports = { cmdConfigAdd, cmdConfigDiff, cmdConfigPull, cmdConfigPush };
+module.exports = { cmdConfigAdd, cmdConfigDiff, cmdConfigPull, cmdConfigPush, cmdConfigExplain };

@@ -28,6 +28,13 @@ OPTIONAL_DEPS=(
   systemtap
   elfutils
   pstack
+  lldb
+  binwalk
+  criu
+  trace-cmd
+  sysdig
+  auditd
+  file
 )
 
 install_if_available() {
@@ -85,7 +92,7 @@ else
   echo "[install-e2e-tools] WARN: coredumpctl not found (core crash E2E will be partially skipped)."
 fi
 
-for tool in rr bpftrace lttng stap eu-readelf eu-stack perf pstack gstack; do
+for tool in rr bpftrace lttng stap eu-readelf eu-stack perf pstack gstack lldb lldb-server binwalk criu trace-cmd sysdig auditctl file; do
   if command -v "$tool" >/dev/null 2>&1; then
     echo "[install-e2e-tools] $tool OK: $(command -v "$tool")"
   else

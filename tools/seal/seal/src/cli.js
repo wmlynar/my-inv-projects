@@ -12,7 +12,8 @@ const { cmdRelease } = require("./commands/release");
 const { cmdVerify } = require("./commands/verify");
 const { cmdRunLocal } = require("./commands/runLocal");
 const { cmdTargetAdd } = require("./commands/targetAdd");
-const { cmdConfigAdd, cmdConfigDiff, cmdConfigPull, cmdConfigPush } = require("./commands/config");
+const { cmdConfigAdd, cmdConfigDiff, cmdConfigPull, cmdConfigPush, cmdConfigExplain } = require("./commands/config");
+const { cmdProfiles } = require("./commands/profiles");
 const { cmdSentinelProbe, cmdSentinelInspect, cmdSentinelInstall, cmdSentinelVerify, cmdSentinelUninstall } = require("./commands/sentinel");
 const { cmdDeploy, cmdShip, cmdRollback, cmdUninstall, cmdRunRemote, cmdRemote } = require("./commands/deploy");
 const { loadSealFile, isWorkspaceConfig } = require("./lib/project");
@@ -110,6 +111,10 @@ async function main(argv) {
     .description("Add config in seal-config/configs")
     .action(async (name) => cmdConfigAdd(process.cwd(), name));
   configCmd
+    .command("explain [targetOrConfig]")
+    .description("Explain resolved config (profiles, packager, thin/protection/sentinel)")
+    .action(async (targetOrConfig) => cmdConfigExplain(process.cwd(), targetOrConfig));
+  configCmd
     .command("diff [targetOrConfig]")
     .description("Show diff between repo seal-config/configs and server shared/config.json5 (requires SSH). Accepts target or config path/name.")
     .action(async (targetOrConfig) => cmdConfigDiff(process.cwd(), targetOrConfig));
@@ -138,6 +143,7 @@ async function main(argv) {
     .description("Install sentinel blob on target (SSH)")
     .option("--force", "Rebind sentinel (regenerate install_id)", false)
     .option("--insecure", "Skip baseDir safety checks (NOT recommended)", false)
+    .option("--skip-verify", "Skip post-install runner verify (NOT recommended)", false)
     .action(async (target, opts) => cmdSentinelInstall(process.cwd(), target, opts));
   sentinelCmd
     .command("verify [target]")
@@ -180,12 +186,24 @@ async function main(argv) {
     .action(async () => cmdClean(process.cwd()));
 
   program
+    .command("profiles")
+    .description("List security + obfuscation profiles and what they do")
+    .action(() => cmdProfiles());
+
+  program
     .command("deploy")
     .description("Deploy artifact to target (copy files; service control is explicit)")
     .argument("[target]", "Target name (default: project defaultTarget)", null)
     .option("--bootstrap", "Install prerequisites on the target (first time)", false)
     .option("--push-config", "Overwrite server runtime config with repo config (explicit)", false)
+    .option("--skip-sentinel-verify", "Skip post-install sentinel verify (runner check)", false)
     .option("--restart", "Restart target service after deploy (explicit)", false)
+    .option("--wait", "Wait for readiness after restart (systemd or HTTP)", false)
+    .option("--wait-timeout <ms>", "Readiness timeout in ms (default: 60000)", null)
+    .option("--wait-interval <ms>", "Readiness poll interval in ms (default: 1000)", null)
+    .option("--wait-url <url>", "HTTP readiness URL (e.g. http://127.0.0.1:3000/healthz)", null)
+    .option("--wait-mode <mode>", "Readiness mode: systemd|http|both (default: auto)", null)
+    .option("--wait-http-timeout <ms>", "HTTP readiness timeout in ms (default: 2000)", null)
     .option("--accept-drift, --allow-drift", "Allow start/restart when repo config differs from target", false)
     .option("--artifact <path>", "Deploy a specific artifact (.tgz) instead of building", null)
     .option("--fast", "Fast deploy from sources (unsafe)", false)
@@ -198,6 +216,13 @@ async function main(argv) {
     .argument("[target]", "Target name (default: project defaultTarget)", null)
     .option("--bootstrap", "Install prerequisites on the target (first time)", false)
     .option("--push-config", "Overwrite server runtime config with repo config (explicit)", false)
+    .option("--skip-sentinel-verify", "Skip post-install sentinel verify (runner check)", false)
+    .option("--no-wait", "Skip readiness wait after restart (default: wait)")
+    .option("--wait-timeout <ms>", "Readiness timeout in ms (default: 60000)", null)
+    .option("--wait-interval <ms>", "Readiness poll interval in ms (default: 1000)", null)
+    .option("--wait-url <url>", "HTTP readiness URL (e.g. http://127.0.0.1:3000/healthz)", null)
+    .option("--wait-mode <mode>", "Readiness mode: systemd|http|both (default: auto)", null)
+    .option("--wait-http-timeout <ms>", "HTTP readiness timeout in ms (default: 2000)", null)
     .option("--accept-drift, --allow-drift", "Allow start/restart when repo config differs from target", false)
     .option("--skip-check", "Skip preflight checks", false)
     .option("--check-verbose", "Show tool output during preflight checks", false)
@@ -235,6 +260,7 @@ async function main(argv) {
     .argument("<target>", "Target name")
     .argument("<action>", "up|enable|start|restart|stop|disable|down|status|logs")
     .option("--accept-drift, --allow-drift", "Allow start/restart when repo config differs from target", false)
+    .option("--skip-sentinel-verify", "Skip post-install sentinel verify (runner check)", false)
     .action(async (target, action, opts) => cmdRemote(process.cwd(), target, action, opts));
 
   await program.parseAsync(argv);

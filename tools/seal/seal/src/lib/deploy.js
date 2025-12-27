@@ -3,6 +3,8 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const http = require("http");
+const https = require("https");
 
 const { spawnSyncSafe } = require("./spawn");
 const { ensureDir, fileExists, rmrf, copyFile, copyDir } = require("./fsextra");
@@ -515,6 +517,126 @@ function restartLocal(targetCfg) {
   if (!res.ok) throw new Error(`restart failed (status=${res.status})`);
 }
 
+function systemctlIsActiveLocal(targetCfg) {
+  const ctl = systemctlArgs(targetCfg);
+  const res = spawnSyncSafe(ctl[0], ctl.slice(1).concat(["is-active", `${targetCfg.serviceName}.service`]), { stdio: "pipe" });
+  const output = `${res.stdout || ""}\n${res.stderr || ""}`.trim();
+  const state = output.split(/\s+/)[0] || "";
+  const lower = output.toLowerCase();
+  if (lower.includes("command not found") && lower.includes("systemctl")) {
+    return { ok: false, fatal: true, state: "systemctl-missing", output };
+  }
+  if (lower.includes("could not be found") || lower.includes("not-found")) {
+    return { ok: false, fatal: true, state: "not-found", output };
+  }
+  if (state === "failed") {
+    return { ok: false, fatal: true, state, output };
+  }
+  return { ok: res.ok && state === "active", state, output };
+}
+
+function systemctlStatusLocal(targetCfg) {
+  const ctl = systemctlArgs(targetCfg);
+  const res = spawnSyncSafe(ctl[0], ctl.slice(1).concat(["status", `${targetCfg.serviceName}.service`, "--no-pager", "-l"]), { stdio: "pipe" });
+  const output = `${res.stdout || ""}\n${res.stderr || ""}`.trim();
+  return { ok: res.ok, output };
+}
+
+function checkHttpLocal(url, timeoutMs) {
+  return new Promise((resolve) => {
+    let parsed = null;
+    try {
+      parsed = new URL(url);
+    } catch (e) {
+      resolve({ ok: false, error: `invalid_url: ${e.message}` });
+      return;
+    }
+    const lib = parsed.protocol === "https:" ? https : http;
+    const req = lib.request(
+      {
+        method: "GET",
+        protocol: parsed.protocol,
+        hostname: parsed.hostname,
+        port: parsed.port || undefined,
+        path: `${parsed.pathname}${parsed.search}`,
+        timeout: timeoutMs,
+        headers: {
+          "User-Agent": "seal-readiness",
+          "Accept": "*/*",
+        },
+      },
+      (res) => {
+        const code = res.statusCode || 0;
+        res.resume();
+        resolve({ ok: code >= 200 && code < 300, status: code });
+      }
+    );
+    req.on("timeout", () => {
+      req.destroy(new Error("timeout"));
+    });
+    req.on("error", (err) => {
+      resolve({ ok: false, error: err.message });
+    });
+    req.end();
+  });
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForReadyLocal(targetCfg, opts = {}) {
+  const mode = opts.mode || (opts.url ? "both" : "systemd");
+  const url = opts.url || null;
+  const timeoutMs = Number.isFinite(opts.timeoutMs) && opts.timeoutMs > 0 ? Math.floor(opts.timeoutMs) : 60000;
+  const intervalMs = Number.isFinite(opts.intervalMs) && opts.intervalMs > 0 ? Math.floor(opts.intervalMs) : 1000;
+  const httpTimeoutMs = Number.isFinite(opts.httpTimeoutMs) && opts.httpTimeoutMs > 0 ? Math.floor(opts.httpTimeoutMs) : 2000;
+
+  if ((mode === "http" || mode === "both") && !url) {
+    throw new Error("readiness http mode requires url");
+  }
+
+  info(`Waiting for readiness (local, mode=${mode}, timeout=${timeoutMs}ms)`);
+  const deadline = Date.now() + timeoutMs;
+  let lastState = "";
+  let lastHttp = "";
+
+  while (Date.now() < deadline) {
+    let systemdOk = true;
+    let httpOk = true;
+
+    if (mode === "systemd" || mode === "both") {
+      const state = systemctlIsActiveLocal(targetCfg);
+      lastState = state.state || state.output || "";
+      if (state.fatal) {
+        const statusOut = systemctlStatusLocal(targetCfg);
+        throw new Error(`readiness failed: systemd ${state.state}${statusOut.output ? `\n${statusOut.output}` : ""}`);
+      }
+      systemdOk = state.ok;
+    }
+
+    if (mode === "http" || mode === "both") {
+      const res = await checkHttpLocal(url, httpTimeoutMs);
+      lastHttp = res.status ? `http:${res.status}` : `http:${res.error || "error"}`;
+      httpOk = res.ok;
+    }
+
+    if (systemdOk && httpOk) {
+      ok("Ready.");
+      return { ok: true };
+    }
+
+    await sleep(intervalMs);
+  }
+
+  const statusOut = (mode === "systemd" || mode === "both") ? systemctlStatusLocal(targetCfg).output : "";
+  const detail = [
+    lastState ? `systemd=${lastState}` : null,
+    lastHttp ? lastHttp : null,
+  ].filter(Boolean).join(", ");
+  throw new Error(`readiness timeout after ${timeoutMs}ms${detail ? ` (${detail})` : ""}${statusOut ? `\n${statusOut}` : ""}`);
+}
+
 function stopLocal(targetCfg) {
   const ctl = systemctlArgs(targetCfg);
   const res = spawnSyncSafe(ctl[0], ctl.slice(1).concat(["stop", `${targetCfg.serviceName}.service`]), { stdio: "inherit" });
@@ -680,5 +802,6 @@ module.exports = {
   uninstallLocal,
   ensureCurrentReleaseLocal,
   runLocalForeground,
+  waitForReadyLocal,
   checkConfigDriftLocal,
 };

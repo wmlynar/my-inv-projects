@@ -17,8 +17,7 @@ function templateProjectJson5(appName, entry) {
     build: {
       packager: "auto",
       packagerFallback: false,
-      obfuscationProfile: "balanced",
-      frontendObfuscation: { enabled: true, profile: "balanced" },
+      securityProfile: "strict",
       frontendMinify: { enabled: true, level: "safe", html: true, css: true },
       // NOTE: SEA does not support strip/ELF packer (fail-fast). thin-split uses kiteshield by default.
       protection: {
@@ -29,6 +28,7 @@ function templateProjectJson5(appName, entry) {
         elfPacker: { tool: "kiteshield", cmd: "kiteshield", args: ["-n", "{in}", "{out}"] },
       },
       thin: { mode: "split", level: "low" },
+      decoy: { mode: "none", scope: "backend", sourceDir: "decoy", overwrite: false },
       includeDirs: ["public", "data"],
     },
   };

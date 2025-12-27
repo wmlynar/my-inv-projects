@@ -67,6 +67,16 @@ function serviceUserGroup(targetCfg, fallbackUser) {
   return { user, group };
 }
 
+function resolveInstallDir(targetCfg) {
+  if (targetCfg && targetCfg.installDir) return targetCfg.installDir;
+  const appName = targetCfg && (targetCfg.appName || targetCfg.serviceName) ? (targetCfg.appName || targetCfg.serviceName) : "app";
+  return `/home/admin/apps/${appName}`;
+}
+
+function resolveLauncherPath(targetCfg) {
+  return path.posix.join(resolveInstallDir(targetCfg), "b", "a");
+}
+
 function parseKeyValueOutput(text) {
   const out = {};
   String(text || "").split(/\r?\n/).forEach((line) => {
@@ -232,7 +242,11 @@ if ! command -v cc >/dev/null 2>&1; then
   exit 3
 fi
 
-TMP="$(mktemp -d /tmp/.seal-cpuid-XXXXXX)"
+TMPDIR_SAFE="\${TMPDIR:-/tmp}"
+if [ ! -d "$TMPDIR_SAFE" ] || [ ! -w "$TMPDIR_SAFE" ] || [ ! -x "$TMPDIR_SAFE" ]; then
+  TMPDIR_SAFE="/tmp"
+fi
+TMP="$(mktemp -d "$TMPDIR_SAFE/.seal-cpuid-XXXXXX")"
 cleanup() { rm -rf "$TMP"; }
 trap cleanup EXIT
 
@@ -540,7 +554,77 @@ echo "BASE_EXEC=$BASE_EXEC"
   };
 }
 
-function installSentinelSsh({ targetCfg, sentinelCfg, force, insecure }) {
+function verifySentinelRuntimeSsh({ targetCfg }) {
+  const { user, host } = sshUserHost(targetCfg);
+  const launcher = resolveLauncherPath(targetCfg);
+  const { user: serviceUser } = serviceUserGroup(targetCfg, user);
+  const script = `
+set -euo pipefail
+BIN=${shQuote(launcher)}
+if [ ! -x "$BIN" ]; then
+  echo "__SEAL_SENTINEL_VERIFY_NO_LAUNCHER__"
+  exit 4
+fi
+SVC_USER=${shQuote(serviceUser)}
+IS_ROOT=0
+if [ "$(id -u)" -eq 0 ]; then
+  IS_ROOT=1
+fi
+run_as() {
+  if [ "$SVC_USER" = "root" ]; then
+    "$@"
+    return $?
+  fi
+  if [ "$IS_ROOT" = "1" ] && command -v runuser >/dev/null 2>&1; then
+    runuser -u "$SVC_USER" -- "$@"
+    return $?
+  fi
+  if [ "$IS_ROOT" = "1" ] && command -v su >/dev/null 2>&1; then
+    su -s /bin/sh -c "$(printf '%q ' "$@")" "$SVC_USER"
+    return $?
+  fi
+  if command -v sudo >/dev/null 2>&1; then
+    sudo -n -u "$SVC_USER" -- "$@"
+    return $?
+  fi
+  return 127
+}
+set +e
+run_as env SEAL_SENTINEL_VERIFY=1 "$BIN" >/dev/null 2>&1
+code=$?
+set -e
+if [ "$code" -eq 0 ]; then
+  echo "__SEAL_SENTINEL_VERIFY_OK__"
+  exit 0
+fi
+if [ "$code" -eq 127 ]; then
+  echo "__SEAL_SENTINEL_VERIFY_RUNAS__"
+  exit 6
+fi
+echo "__SEAL_SENTINEL_VERIFY_FAIL__:$code"
+exit 5
+`;
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-lc", script], stdio: "pipe" });
+  if (!res.ok) {
+    const out = `${res.stdout}\n${res.stderr}`.trim();
+    throw new Error(`sentinel runtime verify failed (status=${res.status})${formatSshFailure(res) || (out ? `: ${out}` : "")}`);
+  }
+  const out = String(res.stdout || "");
+  if (out.includes("__SEAL_SENTINEL_VERIFY_NO_LAUNCHER__")) {
+    return { ok: false, reason: "missing_launcher", launcher };
+  }
+  if (out.includes("__SEAL_SENTINEL_VERIFY_RUNAS__")) {
+    return { ok: false, reason: "runas_unavailable", launcher };
+  }
+  if (out.includes("__SEAL_SENTINEL_VERIFY_OK__")) {
+    return { ok: true, launcher };
+  }
+  const match = out.match(/__SEAL_SENTINEL_VERIFY_FAIL__:(\d+)/);
+  const exitCode = match ? Number(match[1]) : null;
+  return { ok: false, reason: "runtime_invalid", exitCode, launcher };
+}
+
+function installSentinelSsh({ targetCfg, sentinelCfg, force, insecure, skipVerify }) {
   const { user, host } = sshUserHost(targetCfg);
   const hostInfo = getHostInfoSsh(targetCfg);
   const timeLimit = sentinelCfg && sentinelCfg.timeLimit ? sentinelCfg.timeLimit : { mode: "off" };
@@ -720,6 +804,17 @@ echo "__SEAL_SENTINEL_INSTALLED__"
     const hint = describeSentinelInstallError(out, baseDir);
     if (hint) throw new Error(hint);
     throw new Error(`sentinel install failed (status=${res.status})${formatSshFailure(res) || (out ? `: ${out}` : "")}`);
+  }
+  if (!skipVerify) {
+    const verifyRes = verifySentinelRuntimeSsh({ targetCfg });
+    if (!verifyRes.ok) {
+      const detail = verifyRes.reason === "missing_launcher"
+        ? `launcher missing: ${verifyRes.launcher}`
+        : (verifyRes.reason === "runas_unavailable"
+          ? "cannot switch to service user"
+          : `runtime invalid (exit=${verifyRes.exitCode ?? "?"})`);
+      throw new Error(`sentinel verify failed: ${detail} (use --skip-verify or --skip-sentinel-verify to ignore)`);
+    }
   }
   return { hostInfo, level, output: res.stdout };
 }
@@ -1053,6 +1148,10 @@ XATTR_ERR=""
 XATTR_PATH=""
 XATTR_NOTE=""
 XATTR_SUDO=0
+TMPDIR_SAFE="\${TMPDIR:-/tmp}"
+if [ ! -d "$TMPDIR_SAFE" ] || [ ! -w "$TMPDIR_SAFE" ] || [ ! -x "$TMPDIR_SAFE" ]; then
+  TMPDIR_SAFE="/tmp"
+fi
 if [ -n "$BASE_DIR" ] && [ -d "$BASE_DIR" ]; then
   if [ -w "$BASE_DIR" ]; then
     XATTR_PATH="$BASE_DIR"
@@ -1062,12 +1161,12 @@ if [ -n "$BASE_DIR" ] && [ -d "$BASE_DIR" ]; then
       XATTR_SUDO=1
     else
       XATTR_NOTE="baseDir_not_writable"
-      XATTR_PATH="/tmp"
+      XATTR_PATH="$TMPDIR_SAFE"
     fi
   fi
 else
   XATTR_NOTE="baseDir_missing"
-  XATTR_PATH="/tmp"
+  XATTR_PATH="$TMPDIR_SAFE"
 fi
 if command -v python3 >/dev/null 2>&1; then
   if [ "$XATTR_SUDO" = "1" ]; then
@@ -1119,11 +1218,19 @@ PY
   fi
 elif command -v setfattr >/dev/null 2>&1 && command -v getfattr >/dev/null 2>&1; then
   if [ "$XATTR_SUDO" = "1" ]; then
-    sudo -n sh -lc '
+    TMPDIR_SAFE="\${TMPDIR:-/tmp}"
+    if [ ! -d "$TMPDIR_SAFE" ] || [ ! -w "$TMPDIR_SAFE" ] || [ ! -x "$TMPDIR_SAFE" ]; then
+      TMPDIR_SAFE="/tmp"
+    fi
+    sudo -n env TMPDIR="$TMPDIR_SAFE" sh -lc '
 set -e
 XATTR_OK=0
 XATTR_ERR=""
-tmp="$(mktemp "'"$XATTR_PATH"'/.seal-xattr-XXXXXX")" || tmp="$(mktemp /tmp/.seal-xattr-XXXXXX)"
+TMPDIR_SAFE="\${TMPDIR:-/tmp}"
+if [ ! -d "$TMPDIR_SAFE" ] || [ ! -w "$TMPDIR_SAFE" ] || [ ! -x "$TMPDIR_SAFE" ]; then
+  TMPDIR_SAFE="/tmp"
+fi
+tmp="$(mktemp "'"$XATTR_PATH"'/.seal-xattr-XXXXXX")" || tmp="$(mktemp "$TMPDIR_SAFE/.seal-xattr-XXXXXX")"
 if setfattr -n user.seal_test -v 1 "$tmp" 2>/dev/null; then
   if getfattr -n user.seal_test --only-values "$tmp" 2>/dev/null | tr -d "\\r\\n" | grep -qx "1"; then
     XATTR_OK=1
@@ -1141,7 +1248,11 @@ echo "XATTR_PATH='"$XATTR_PATH"'"
 [ -n "$XATTR_ERR" ] && echo "XATTR_ERR=$XATTR_ERR"
 '
   else
-    tmp="$(mktemp "$XATTR_PATH/.seal-xattr-XXXXXX")" || tmp="$(mktemp /tmp/.seal-xattr-XXXXXX)"
+    TMPDIR_SAFE="\${TMPDIR:-/tmp}"
+    if [ ! -d "$TMPDIR_SAFE" ] || [ ! -w "$TMPDIR_SAFE" ] || [ ! -x "$TMPDIR_SAFE" ]; then
+      TMPDIR_SAFE="/tmp"
+    fi
+    tmp="$(mktemp "$XATTR_PATH/.seal-xattr-XXXXXX")" || tmp="$(mktemp "$TMPDIR_SAFE/.seal-xattr-XXXXXX")"
     if setfattr -n user.seal_test -v 1 "$tmp" 2>/dev/null; then
       if getfattr -n user.seal_test --only-values "$tmp" 2>/dev/null | tr -d '\\r\\n' | grep -qx "1"; then
         XATTR_OK=1
@@ -1200,6 +1311,10 @@ LEASE_BODY_B64=""
 LEASE_BODY_LEN=0
 LEASE_BODY_TRUNC=0
 if [ -n "$EXT_LEASE_URL" ]; then
+  TMPDIR_SAFE="\${TMPDIR:-/tmp}"
+  if [ ! -d "$TMPDIR_SAFE" ] || [ ! -w "$TMPDIR_SAFE" ] || [ ! -x "$TMPDIR_SAFE" ]; then
+    TMPDIR_SAFE="/tmp"
+  fi
   tm_ms="$EXT_LEASE_TIMEOUT_MS"
   if [ -z "$tm_ms" ] || [ "$tm_ms" -le 0 ] 2>/dev/null; then
     tm_ms=1500
@@ -1207,7 +1322,7 @@ if [ -n "$EXT_LEASE_URL" ]; then
   tm_s=$(( (tm_ms + 999) / 1000 ))
   if command -v curl >/dev/null 2>&1; then
     LEASE_TOOL="curl"
-    tmp="$(mktemp /tmp/.seal-lease-XXXXXX)"
+    tmp="$(mktemp "$TMPDIR_SAFE/.seal-lease-XXXXXX")"
     code="$(curl -sS -o "$tmp" -w "%{http_code}" --max-time "$tm_s" "$EXT_LEASE_URL" 2>/dev/null || true)"
     if [ -n "$code" ]; then
       LEASE_STATUS="$code"
@@ -1234,7 +1349,7 @@ if [ -n "$EXT_LEASE_URL" ]; then
     rm -f "$tmp"
   elif command -v wget >/dev/null 2>&1; then
     LEASE_TOOL="wget"
-    tmp="$(mktemp /tmp/.seal-lease-XXXXXX)"
+    tmp="$(mktemp "$TMPDIR_SAFE/.seal-lease-XXXXXX")"
     if wget -q -O "$tmp" --timeout="$tm_s" "$EXT_LEASE_URL" 2>/dev/null; then
       LEASE_OK=1
       LEASE_STATUS="ok"

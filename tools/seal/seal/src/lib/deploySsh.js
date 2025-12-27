@@ -979,6 +979,113 @@ function statusSsh(targetCfg) {
   }
 }
 
+function systemctlIsActiveSsh(targetCfg) {
+  const { user, host } = sshUserHost(targetCfg);
+  const unitName = `${targetCfg.serviceName}.service`;
+  const unit = shQuote(unitName);
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash","-lc", `sudo -n systemctl is-active ${unit}`], stdio: "pipe" });
+  const output = `${res.stdout || ""}\n${res.stderr || ""}`.trim();
+  const state = output.split(/\s+/)[0] || "";
+  const lower = output.toLowerCase();
+  if (lower.includes("sudo") && (lower.includes("password") || lower.includes("no tty") || lower.includes("not in the sudoers"))) {
+    return { ok: false, fatal: true, state: "sudo", output };
+  }
+  if (lower.includes("could not be found") || lower.includes("not-found")) {
+    return { ok: false, fatal: true, state: "not-found", output };
+  }
+  if (state === "failed") {
+    return { ok: false, fatal: true, state, output };
+  }
+  return { ok: res.ok && state === "active", state, output };
+}
+
+function systemctlStatusSsh(targetCfg) {
+  const { user, host } = sshUserHost(targetCfg);
+  const unitName = `${targetCfg.serviceName}.service`;
+  const unit = shQuote(unitName);
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash","-lc", `sudo -n systemctl status ${unit} --no-pager -l`], stdio: "pipe" });
+  const output = `${res.stdout || ""}\n${res.stderr || ""}`.trim();
+  return { ok: res.ok, output };
+}
+
+function checkHttpSsh(targetCfg, url, timeoutMs) {
+  const { user, host } = sshUserHost(targetCfg);
+  const tm = Math.max(1, Math.ceil(timeoutMs / 1000));
+  const script = [
+    "set -euo pipefail",
+    `URL=${shQuote(url)}`,
+    `TM=${shQuote(String(tm))}`,
+    "if command -v curl >/dev/null 2>&1; then curl -fsS --max-time \"$TM\" \"$URL\" >/dev/null; exit $?; fi",
+    "if command -v wget >/dev/null 2>&1; then wget -q -O /dev/null --timeout=\"$TM\" \"$URL\"; exit $?; fi",
+    "echo '__SEAL_HTTP_TOOL_MISSING__' >&2; exit 127",
+  ].join("\n");
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-lc", script], stdio: "pipe" });
+  const output = `${res.stdout || ""}\n${res.stderr || ""}`.trim();
+  if (!res.ok && output.includes("__SEAL_HTTP_TOOL_MISSING__")) {
+    return { ok: false, fatal: true, error: "missing_http_tool", output };
+  }
+  return { ok: res.ok, output };
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForReadySsh(targetCfg, opts = {}) {
+  const mode = opts.mode || (opts.url ? "both" : "systemd");
+  const url = opts.url || null;
+  const timeoutMs = Number.isFinite(opts.timeoutMs) && opts.timeoutMs > 0 ? Math.floor(opts.timeoutMs) : 60000;
+  const intervalMs = Number.isFinite(opts.intervalMs) && opts.intervalMs > 0 ? Math.floor(opts.intervalMs) : 1000;
+  const httpTimeoutMs = Number.isFinite(opts.httpTimeoutMs) && opts.httpTimeoutMs > 0 ? Math.floor(opts.httpTimeoutMs) : 2000;
+
+  if ((mode === "http" || mode === "both") && !url) {
+    throw new Error("readiness http mode requires url");
+  }
+
+  info(`Waiting for readiness (${targetCfg.host || "ssh"}, mode=${mode}, timeout=${timeoutMs}ms)`);
+  const deadline = Date.now() + timeoutMs;
+  let lastState = "";
+  let lastHttp = "";
+
+  while (Date.now() < deadline) {
+    let systemdOk = true;
+    let httpOk = true;
+
+    if (mode === "systemd" || mode === "both") {
+      const state = systemctlIsActiveSsh(targetCfg);
+      lastState = state.state || state.output || "";
+      if (state.fatal) {
+        const statusOut = systemctlStatusSsh(targetCfg);
+        throw new Error(`readiness failed: systemd ${state.state}${statusOut.output ? `\n${statusOut.output}` : ""}`);
+      }
+      systemdOk = state.ok;
+    }
+
+    if (mode === "http" || mode === "both") {
+      const res = checkHttpSsh(targetCfg, url, httpTimeoutMs);
+      if (res.fatal && res.error === "missing_http_tool") {
+        throw new Error("readiness failed: curl/wget not found on target (install curl or disable --wait-url)");
+      }
+      lastHttp = res.ok ? "http:ok" : `http:${res.output || "error"}`;
+      httpOk = res.ok;
+    }
+
+    if (systemdOk && httpOk) {
+      ok("Ready.");
+      return { ok: true };
+    }
+
+    await sleep(intervalMs);
+  }
+
+  const statusOut = (mode === "systemd" || mode === "both") ? systemctlStatusSsh(targetCfg).output : "";
+  const detail = [
+    lastState ? `systemd=${lastState}` : null,
+    lastHttp ? lastHttp : null,
+  ].filter(Boolean).join(", ");
+  throw new Error(`readiness timeout after ${timeoutMs}ms${detail ? ` (${detail})` : ""}${statusOut ? `\n${statusOut}` : ""}`);
+}
+
 function logsSsh(targetCfg) {
   const { user, host } = sshUserHost(targetCfg);
   const unit = shQuote(`${targetCfg.serviceName}.service`);
@@ -1320,6 +1427,7 @@ module.exports = {
   rollbackSsh,
   runSshForeground,
   ensureCurrentReleaseSsh,
+  waitForReadySsh,
   uninstallSsh,
   downSsh,
   checkConfigDriftSsh,

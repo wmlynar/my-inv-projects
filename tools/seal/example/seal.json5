@@ -5,6 +5,7 @@
   "build": {
     "packager": "thin-split",
     "packagerFallback": false,
+    "securityProfile": "strict",
     "thin": {
       "mode": "split",
       "level": "low",
@@ -72,10 +73,8 @@
         "type": "none"
       }
     },
-    "obfuscationProfile": "balanced",
     "frontendObfuscation": {
-      "enabled": true,
-      "profile": "balanced"
+      "enabled": true
     },
     "protection": {
       "enabled": true,

@@ -280,6 +280,20 @@ function checkReadelfComment(binPath) {
   return { ok: true };
 }
 
+function checkRpathRunpath(binPath) {
+  const res = runCmd("readelf", ["-d", binPath], 5000);
+  if (res.status !== 0) {
+    const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+    return { skip: out ? `readelf -d failed: ${out.slice(0, 120)}` : "readelf -d failed" };
+  }
+  const out = String(res.stdout || "");
+  const hits = out.split(/\r?\n/).filter((line) => /\b(RPATH|RUNPATH)\b/i.test(line));
+  if (hits.length > 0) {
+    throw new Error(`RPATH/RUNPATH present in ${binPath}: ${hits[0].trim().slice(0, 160)}`);
+  }
+  return { ok: true };
+}
+
 function checkEuReadelfNotes(binPath) {
   if (!hasCommand("eu-readelf")) return { skip: "eu-readelf missing" };
   const res = runCmd("eu-readelf", ["-n", binPath], 5000);
@@ -357,6 +371,153 @@ function walkFiles(rootDir) {
   return out;
 }
 
+function readFileHead(filePath, len) {
+  const fd = fs.openSync(filePath, "r");
+  try {
+    const buf = Buffer.alloc(len);
+    const read = fs.readSync(fd, buf, 0, len, 0);
+    return read > 0 ? buf.slice(0, read) : Buffer.alloc(0);
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+const MAGIC_HEADERS = [
+  { name: "ELF", bytes: Buffer.from([0x7f, 0x45, 0x4c, 0x46]) },
+  { name: "ZSTD", bytes: Buffer.from([0x28, 0xb5, 0x2f, 0xfd]) },
+  { name: "GZIP", bytes: Buffer.from([0x1f, 0x8b]) },
+  { name: "ZIP", bytes: Buffer.from([0x50, 0x4b, 0x03, 0x04]) },
+  { name: "WASM", bytes: Buffer.from([0x00, 0x61, 0x73, 0x6d]) },
+];
+
+function assertNoKnownMagicHeader(filePath) {
+  const head = readFileHead(filePath, 8);
+  for (const entry of MAGIC_HEADERS) {
+    if (head.length >= entry.bytes.length && head.subarray(0, entry.bytes.length).equals(entry.bytes)) {
+      throw new Error(`Unexpected ${entry.name} magic header in ${filePath}`);
+    }
+  }
+}
+
+function checkFileType(filePath) {
+  if (!hasCommand("file")) return { skip: "file missing" };
+  const res = runCmd("file", ["-b", filePath], 5000);
+  const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+  if (res.status !== 0) {
+    return { skip: out ? `file failed: ${out.slice(0, 120)}` : "file failed" };
+  }
+  if (/ELF|zstandard|gzip|zip|compress/i.test(out)) {
+    throw new Error(`file detected packed format for ${filePath}: ${out.slice(0, 120)}`);
+  }
+  return { ok: true };
+}
+
+function checkBinwalk(filePath) {
+  if (!hasCommand("binwalk")) return { skip: "binwalk missing" };
+  const res = runCmd("binwalk", ["-q", filePath], 12000);
+  const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+  if (res.status !== 0) {
+    if (/not found|unknown option|usage/i.test(out)) return { skip: out.slice(0, 120) || "binwalk unsupported" };
+    return { skip: out ? `binwalk failed: ${out.slice(0, 120)}` : "binwalk failed" };
+  }
+  const lines = out.split(/\r?\n/).filter(Boolean);
+  const hits = lines.filter((line) => !/^(DECIMAL|---------)/i.test(line));
+  if (hits.length > 0) {
+    throw new Error(`binwalk detected signatures in ${filePath}: ${hits[0].slice(0, 120)}`);
+  }
+  return { ok: true };
+}
+
+function checkZstdTest(filePath) {
+  if (!hasCommand("zstd")) return { skip: "zstd missing" };
+  const res = runCmd("zstd", ["-t", filePath], 12000);
+  const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+  if (res.status === 0) {
+    throw new Error(`zstd -t succeeded on ${filePath} (unexpected)`);
+  }
+  if (/not in zstd format|unknown frame descriptor|invalid magic|not a valid/i.test(out)) {
+    return { ok: true };
+  }
+  return { ok: true };
+}
+
+function isElfFile(filePath) {
+  let fd = null;
+  try {
+    fd = fs.openSync(filePath, "r");
+    const buf = Buffer.alloc(4);
+    const read = fs.readSync(fd, buf, 0, buf.length, 0);
+    if (read !== 4) return false;
+    return buf[0] === 0x7f && buf[1] === 0x45 && buf[2] === 0x4c && buf[3] === 0x46;
+  } catch {
+    return false;
+  } finally {
+    if (fd !== null) {
+      try { fs.closeSync(fd); } catch {}
+    }
+  }
+}
+
+function listElfFiles(rootDir) {
+  return walkFiles(rootDir).filter((p) => isElfFile(p));
+}
+
+function shannonEntropy(filePath) {
+  const counts = new Array(256).fill(0);
+  let total = 0;
+  const fd = fs.openSync(filePath, "r");
+  try {
+    const buf = Buffer.alloc(1024 * 1024);
+    let bytes = 0;
+    while ((bytes = fs.readSync(fd, buf, 0, buf.length, null)) > 0) {
+      total += bytes;
+      for (let i = 0; i < bytes; i++) {
+        counts[buf[i]] += 1;
+      }
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+  if (total === 0) return 0;
+  let ent = 0;
+  for (let i = 0; i < counts.length; i++) {
+    const n = counts[i];
+    if (!n) continue;
+    const p = n / total;
+    ent -= p * Math.log2(p);
+  }
+  return ent;
+}
+
+function assertHighEntropy(filePath, minBits) {
+  const ent = shannonEntropy(filePath);
+  if (!Number.isFinite(ent)) {
+    throw new Error(`entropy calc failed for ${filePath}`);
+  }
+  if (ent < minBits) {
+    throw new Error(`entropy too low for ${filePath} (entropy=${ent.toFixed(3)} < ${minBits})`);
+  }
+}
+
+function assertNoDebugSectionsAll(releaseDir) {
+  const elfFiles = listElfFiles(releaseDir);
+  for (const filePath of elfFiles) {
+    assertNoDebugSections(filePath);
+  }
+}
+
+function assertNoRpathRunpathAll(releaseDir) {
+  const elfFiles = listElfFiles(releaseDir);
+  let skips = 0;
+  for (const filePath of elfFiles) {
+    const res = checkRpathRunpath(filePath);
+    if (res && res.skip) skips += 1;
+  }
+  if (skips > 0) {
+    log(`SKIP: readelf -d skipped on ${skips} ELF files`);
+  }
+}
+
 function assertNoSourceMaps({ outDir, releaseDir }) {
   const mapFiles = walkFiles(releaseDir).filter((p) => p.endsWith(".map"));
   if (mapFiles.length > 0) {
@@ -391,7 +552,12 @@ const LEAK_DENYLIST = [
   "/api/external/ping",
   "runObfChecks",
   "externalEcho",
+  "function ",
+  "module.exports",
+  "exports.",
   "require(",
+  "import ",
+  "export ",
   "/home/",
   "/root/",
   "/build/",
@@ -506,8 +672,29 @@ async function testStripMetadataThinSplit(res) {
   if (dwarfRes && dwarfRes.skip) log(`SKIP: DWARF check (${dwarfRes.skip})`);
   const objdumpRes = checkObjdumpHeaders(binPath);
   if (objdumpRes && objdumpRes.skip) log(`SKIP: objdump headers (${objdumpRes.skip})`);
+  assertNoDebugSectionsAll(res.releaseDir);
+  assertNoRpathRunpathAll(res.releaseDir);
   assertNoSourceMaps({ outDir: res.outDir, releaseDir: res.releaseDir });
   assertNoStringLeaks({ releaseDir: res.releaseDir, appName: res.appName });
+  const minEntropy = Number(process.env.SEAL_E2E_MIN_ENTROPY || "7.0");
+  const rtPath = path.join(res.releaseDir, "r", "rt");
+  const plPath = path.join(res.releaseDir, "r", "pl");
+  assertHighEntropy(rtPath, minEntropy);
+  assertHighEntropy(plPath, minEntropy);
+  assertNoKnownMagicHeader(rtPath);
+  assertNoKnownMagicHeader(plPath);
+  const fileRt = checkFileType(rtPath);
+  if (fileRt && fileRt.skip) log(`SKIP: file rt (${fileRt.skip})`);
+  const filePl = checkFileType(plPath);
+  if (filePl && filePl.skip) log(`SKIP: file pl (${filePl.skip})`);
+  const binRt = checkBinwalk(rtPath);
+  if (binRt && binRt.skip) log(`SKIP: binwalk rt (${binRt.skip})`);
+  const binPl = checkBinwalk(plPath);
+  if (binPl && binPl.skip) log(`SKIP: binwalk pl (${binPl.skip})`);
+  const zRt = checkZstdTest(rtPath);
+  if (zRt && zRt.skip) log(`SKIP: zstd rt (${zRt.skip})`);
+  const zPl = checkZstdTest(plPath);
+  if (zPl && zPl.skip) log(`SKIP: zstd pl (${zPl.skip})`);
 }
 
 async function testStripRuntime(res, ctx) {

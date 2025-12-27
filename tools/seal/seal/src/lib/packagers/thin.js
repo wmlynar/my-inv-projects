@@ -660,6 +660,8 @@ function renderSentinelDefs(sentinelCfg) {
     return `#define SENTINEL_ENABLED 0
 #define SENTINEL_EXIT_BLOCK 200
 #define SENTINEL_CPUID_MODE 0
+#define SENTINEL_TIME_FALLBACK_ABS 0ull
+#define SENTINEL_TIME_ENFORCE_MISMATCH 0
 `;
   }
   if (!Buffer.isBuffer(sentinelCfg.anchor)) {
@@ -671,9 +673,18 @@ function renderSentinelDefs(sentinelCfg) {
   const baseDir = sentinelCfg.storage && sentinelCfg.storage.baseDir ? sentinelCfg.storage.baseDir : "/var/lib";
   const exitCode = Number(sentinelCfg.exitCodeBlock || 200);
   const cpuIdMode = cpuIdModeFromSource(sentinelCfg.cpuIdSource);
+  const enforceMismatch = !!(sentinelCfg.timeLimit && sentinelCfg.timeLimit.enforce === "mismatch");
+  const fallbackAbsRaw = sentinelCfg.timeLimit && sentinelCfg.timeLimit.mode === "absolute"
+    ? Number(sentinelCfg.timeLimit.expiresAtSec || 0)
+    : 0;
+  const fallbackAbs = Number.isFinite(fallbackAbsRaw) && fallbackAbsRaw > 0
+    ? `${Math.floor(fallbackAbsRaw)}ull`
+    : "0ull";
   return `#define SENTINEL_ENABLED 1
 #define SENTINEL_EXIT_BLOCK ${exitCode}
 #define SENTINEL_CPUID_MODE ${cpuIdMode}
+#define SENTINEL_TIME_FALLBACK_ABS ${fallbackAbs}
+#define SENTINEL_TIME_ENFORCE_MISMATCH ${enforceMismatch ? 1 : 0}
 static const uint8_t SENTINEL_ANCHOR[] = { ${toCBytes(sentinelCfg.anchor)} };
 #define SENTINEL_ANCHOR_LEN ((size_t)sizeof(SENTINEL_ANCHOR))
 static const char SENTINEL_BASE_DIR[] = ${toCString(baseDir)};
@@ -691,6 +702,7 @@ function renderSentinelCode() {
 #define SENTINEL_MASK_LEN_V2 80u
 #define SENTINEL_BLOB_LEN_MAX SENTINEL_BLOB_LEN_V2
 #define FLAG_INCLUDE_CPUID 0x0004u
+#define SENTINEL_PAD_HASHES 2u
 
 typedef struct {
   uint8_t data[64];
@@ -717,6 +729,8 @@ static const uint32_t sha256_k[64] = {
   0x748f82eeu, 0x78a5636fu, 0x84c87814u, 0x8cc70208u,
   0x90befffau, 0xa4506cebu, 0xbef9a3f7u, 0xc67178f2u
 };
+
+static volatile uint8_t sentinel_pad_sink = 0;
 
 static uint32_t rotr32(uint32_t a, uint32_t b) {
   return (a >> b) | (a << (32 - b));
@@ -1055,75 +1069,129 @@ static int build_fingerprint(uint8_t level, const char *mid, const char *rid, co
   return 0;
 }
 
+static void sentinel_pad_work(void) {
+  uint8_t buf[512];
+  uint8_t hash[32];
+  size_t pos = 0;
+
+  char mid[128] = { 0 };
+  char rid[256] = { 0 };
+  char cpuid[128] = { 0 };
+
+  read_text("/etc/machine-id", mid, sizeof(mid));
+  get_root_rid(rid, sizeof(rid));
+
+  if (SENTINEL_CPUID_MODE == 1) {
+    char cpuid_proc[128] = { 0 };
+    if (get_cpuid_proc(cpuid_proc, sizeof(cpuid_proc)) == 0) {
+      snprintf(cpuid, sizeof(cpuid), "proc:%s", cpuid_proc);
+    }
+  } else if (SENTINEL_CPUID_MODE == 2) {
+    char cpuid_asm[128] = { 0 };
+    if (get_cpuid_asm(cpuid_asm, sizeof(cpuid_asm)) == 0) {
+      snprintf(cpuid, sizeof(cpuid), "asm:%s", cpuid_asm);
+    }
+  } else if (SENTINEL_CPUID_MODE == 3) {
+    char cpuid_proc[128] = { 0 };
+    char cpuid_asm[128] = { 0 };
+    int proc_ok = (get_cpuid_proc(cpuid_proc, sizeof(cpuid_proc)) == 0);
+    int asm_ok = (get_cpuid_asm(cpuid_asm, sizeof(cpuid_asm)) == 0);
+    if (proc_ok && asm_ok) {
+      snprintf(cpuid, sizeof(cpuid), "proc:%s|asm:%s", cpuid_proc, cpuid_asm);
+    } else if (proc_ok) {
+      snprintf(cpuid, sizeof(cpuid), "proc:%s", cpuid_proc);
+    } else if (asm_ok) {
+      snprintf(cpuid, sizeof(cpuid), "asm:%s", cpuid_asm);
+    }
+  }
+
+  if (SENTINEL_ANCHOR_LEN > 0) {
+    size_t n = SENTINEL_ANCHOR_LEN;
+    if (n > sizeof(buf) - pos) n = sizeof(buf) - pos;
+    memcpy(buf + pos, SENTINEL_ANCHOR, n);
+    pos += n;
+  }
+  if (mid[0]) {
+    size_t n = strlen(mid);
+    if (n > sizeof(buf) - pos) n = sizeof(buf) - pos;
+    memcpy(buf + pos, mid, n);
+    pos += n;
+  }
+  if (rid[0]) {
+    size_t n = strlen(rid);
+    if (n > sizeof(buf) - pos) n = sizeof(buf) - pos;
+    memcpy(buf + pos, rid, n);
+    pos += n;
+  }
+  if (cpuid[0]) {
+    size_t n = strlen(cpuid);
+    if (n > sizeof(buf) - pos) n = sizeof(buf) - pos;
+    memcpy(buf + pos, cpuid, n);
+    pos += n;
+  }
+
+  if (pos == 0) {
+    buf[0] = 0;
+    pos = 1;
+  }
+
+  sha256_hash(buf, pos, hash);
+  for (uint32_t i = 0; i < SENTINEL_PAD_HASHES; i++) {
+    sha256_hash(hash, sizeof(hash), hash);
+  }
+  sentinel_pad_sink ^= hash[0];
+}
+
 static int sentinel_check(void) {
   struct stat st;
-  if (lstat(SENTINEL_BASE_DIR, &st) != 0) return -1;
-  if (!S_ISDIR(st.st_mode) || S_ISLNK(st.st_mode)) return -1;
-  if (st.st_uid != 0) return -1;
-  if ((st.st_mode & 022) != 0) return -1;
+  int base_fd = -1;
+  int dir_fd = -1;
+  int file_fd = -1;
+  size_t blob_len = 0;
+  size_t mask_len = 0;
+  uint8_t blob[SENTINEL_BLOB_LEN_MAX];
+  uint8_t raw[SENTINEL_MASK_LEN_V2];
+  uint64_t expires_at = 0;
+  int match = 0;
+  int expired = 0;
+  int ok = 0;
+
+  if (lstat(SENTINEL_BASE_DIR, &st) != 0) goto done;
+  if (!S_ISDIR(st.st_mode) || S_ISLNK(st.st_mode)) goto done;
+  if (st.st_uid != 0) goto done;
+  if ((st.st_mode & 022) != 0) goto done;
 
   int base_flags = O_RDONLY | O_DIRECTORY | O_CLOEXEC;
 #ifdef O_NOFOLLOW
   base_flags |= O_NOFOLLOW;
 #endif
-  int base_fd = open(SENTINEL_BASE_DIR, base_flags);
-  if (base_fd < 0) return -1;
+  base_fd = open(SENTINEL_BASE_DIR, base_flags);
+  if (base_fd < 0) goto done;
   int dir_flags = O_RDONLY | O_DIRECTORY | O_CLOEXEC;
 #ifdef O_NOFOLLOW
   dir_flags |= O_NOFOLLOW;
 #endif
-  int dir_fd = openat(base_fd, SENTINEL_DIR, dir_flags);
-  if (dir_fd < 0) {
-    close(base_fd);
-    return -1;
-  }
-  if (fstat(dir_fd, &st) != 0 || !S_ISDIR(st.st_mode) || st.st_uid != 0 || (st.st_mode & 022) != 0) {
-    close(dir_fd);
-    close(base_fd);
-    return -1;
-  }
+  dir_fd = openat(base_fd, SENTINEL_DIR, dir_flags);
+  if (dir_fd < 0) goto done;
+  if (fstat(dir_fd, &st) != 0 || !S_ISDIR(st.st_mode) || st.st_uid != 0 || (st.st_mode & 022) != 0) goto done;
 
   int file_flags = O_RDONLY | O_CLOEXEC;
 #ifdef O_NOFOLLOW
   file_flags |= O_NOFOLLOW;
 #endif
-  int file_fd = openat(dir_fd, SENTINEL_FILE, file_flags);
-  if (file_fd < 0) {
-    close(dir_fd);
-    close(base_fd);
-    return -1;
-  }
-  if (fstat(file_fd, &st) != 0 || !S_ISREG(st.st_mode) || st.st_uid != 0 || (st.st_mode & 022) != 0) {
-    close(file_fd);
-    close(dir_fd);
-    close(base_fd);
-    return -1;
-  }
-  size_t blob_len = (size_t)st.st_size;
-  size_t mask_len = 0;
+  file_fd = openat(dir_fd, SENTINEL_FILE, file_flags);
+  if (file_fd < 0) goto done;
+  if (fstat(file_fd, &st) != 0 || !S_ISREG(st.st_mode) || st.st_uid != 0 || (st.st_mode & 022) != 0) goto done;
+  blob_len = (size_t)st.st_size;
   if (blob_len == SENTINEL_BLOB_LEN_V1) mask_len = SENTINEL_MASK_LEN_V1;
   else if (blob_len == SENTINEL_BLOB_LEN_V2) mask_len = SENTINEL_MASK_LEN_V2;
-  else {
-    close(file_fd);
-    close(dir_fd);
-    close(base_fd);
-    return -1;
-  }
+  else goto done;
 
-  uint8_t blob[SENTINEL_BLOB_LEN_MAX];
-  if (read_exact(file_fd, blob, blob_len, 0) != 0) {
-    close(file_fd);
-    close(dir_fd);
-    close(base_fd);
-    return -1;
-  }
-  close(file_fd);
-  close(dir_fd);
-  close(base_fd);
+  if (read_exact(file_fd, blob, blob_len, 0) != 0) goto done;
 
   uint32_t want = read_u32_le(blob + mask_len);
   uint32_t got = crc32_buf(blob, mask_len);
-  if (want != got) return -1;
+  if (want != got) goto done;
 
   uint8_t mask_src[2 + SENTINEL_ANCHOR_LEN];
   mask_src[0] = 0x6d;
@@ -1132,7 +1200,6 @@ static int sentinel_check(void) {
   uint8_t mask_key[32];
   sha256_hash(mask_src, sizeof(mask_src), mask_key);
 
-  uint8_t raw[SENTINEL_MASK_LEN_V2];
   for (size_t i = 0; i < mask_len; i++) {
     raw[i] = (uint8_t)(blob[i] ^ mask_key[i % 32]);
   }
@@ -1140,74 +1207,97 @@ static int sentinel_check(void) {
   uint8_t version = raw[0];
   uint8_t level = raw[1];
   uint16_t flags = (uint16_t)raw[2] | ((uint16_t)raw[3] << 8);
-  uint64_t expires_at = 0;
   if (version == 1) {
-    if (mask_len != SENTINEL_MASK_LEN_V1) return -1;
+    if (mask_len != SENTINEL_MASK_LEN_V1) goto done;
   } else if (version == 2) {
-    if (mask_len != SENTINEL_MASK_LEN_V2) return -1;
+    if (mask_len != SENTINEL_MASK_LEN_V2) goto done;
     expires_at = read_u64_le(raw + 72);
   } else {
-    return -1;
+    goto done;
   }
-  if (level > 2) return -1;
-  if ((flags & ~FLAG_INCLUDE_CPUID) != 0) return -1;
+  if (level > 2) goto done;
+  if ((flags & ~FLAG_INCLUDE_CPUID) != 0) goto done;
   int include_cpuid = (flags & FLAG_INCLUDE_CPUID) ? 1 : 0;
 
   char mid[128] = { 0 };
   char rid[256] = { 0 };
   if (level >= 1) {
-    if (read_text("/etc/machine-id", mid, sizeof(mid)) != 0) return -1;
+    if (read_text("/etc/machine-id", mid, sizeof(mid)) != 0) goto done;
   }
   if (level >= 2) {
-    if (get_root_rid(rid, sizeof(rid)) != 0) return -1;
+    if (get_root_rid(rid, sizeof(rid)) != 0) goto done;
   }
 
   char cpuid[128] = { 0 };
   if (include_cpuid) {
     if (SENTINEL_CPUID_MODE == 1) {
       char cpuid_proc[128] = { 0 };
-      if (get_cpuid_proc(cpuid_proc, sizeof(cpuid_proc)) != 0) return -1;
+      if (get_cpuid_proc(cpuid_proc, sizeof(cpuid_proc)) != 0) goto done;
       int n = snprintf(cpuid, sizeof(cpuid), "proc:%s", cpuid_proc);
-      if (n < 0 || (size_t)n >= sizeof(cpuid)) return -1;
+      if (n < 0 || (size_t)n >= sizeof(cpuid)) goto done;
     } else if (SENTINEL_CPUID_MODE == 2) {
       char cpuid_asm[128] = { 0 };
-      if (get_cpuid_asm(cpuid_asm, sizeof(cpuid_asm)) != 0) return -1;
+      if (get_cpuid_asm(cpuid_asm, sizeof(cpuid_asm)) != 0) goto done;
       int n = snprintf(cpuid, sizeof(cpuid), "asm:%s", cpuid_asm);
-      if (n < 0 || (size_t)n >= sizeof(cpuid)) return -1;
+      if (n < 0 || (size_t)n >= sizeof(cpuid)) goto done;
     } else if (SENTINEL_CPUID_MODE == 3) {
       char cpuid_proc[128] = { 0 };
       char cpuid_asm[128] = { 0 };
       int proc_ok = (get_cpuid_proc(cpuid_proc, sizeof(cpuid_proc)) == 0);
       int asm_rc = get_cpuid_asm(cpuid_asm, sizeof(cpuid_asm));
       int asm_ok = (asm_rc == 0);
-      if (!proc_ok && !asm_ok) return -1;
+      if (!proc_ok && !asm_ok) goto done;
       if (proc_ok && asm_ok) {
         int n = snprintf(cpuid, sizeof(cpuid), "proc:%s|asm:%s", cpuid_proc, cpuid_asm);
-        if (n < 0 || (size_t)n >= sizeof(cpuid)) return -1;
+        if (n < 0 || (size_t)n >= sizeof(cpuid)) goto done;
       } else if (proc_ok) {
         int n = snprintf(cpuid, sizeof(cpuid), "proc:%s", cpuid_proc);
-        if (n < 0 || (size_t)n >= sizeof(cpuid)) return -1;
+        if (n < 0 || (size_t)n >= sizeof(cpuid)) goto done;
       } else {
         int n = snprintf(cpuid, sizeof(cpuid), "asm:%s", cpuid_asm);
-        if (n < 0 || (size_t)n >= sizeof(cpuid)) return -1;
+        if (n < 0 || (size_t)n >= sizeof(cpuid)) goto done;
       }
     } else {
-      return -1;
+      goto done;
     }
   }
 
   char fp[512];
-  if (build_fingerprint(level, mid, rid, cpuid, include_cpuid, fp, sizeof(fp)) != 0) return -1;
+  if (build_fingerprint(level, mid, rid, cpuid, include_cpuid, fp, sizeof(fp)) != 0) goto done;
   uint8_t fp_now[32];
   sha256_hash((uint8_t *)fp, strlen(fp), fp_now);
 
-  if (!ct_eq(raw + 40, fp_now, 32)) return -1;
+  match = ct_eq(raw + 40, fp_now, 32) ? 1 : 0;
   if (expires_at != 0) {
     time_t now = time(NULL);
-    if (now == (time_t)-1) return -1;
-    if ((uint64_t)now > expires_at) return -1;
+    if (now == (time_t)-1) goto done;
+    if ((uint64_t)now > expires_at) expired = 1;
   }
-  return 0;
+  ok = 1;
+
+done:
+  if (file_fd >= 0) close(file_fd);
+  if (dir_fd >= 0) close(dir_fd);
+  if (base_fd >= 0) close(base_fd);
+
+  if (!ok) sentinel_pad_work();
+
+  if (!SENTINEL_TIME_ENFORCE_MISMATCH) {
+    if (!ok) return -1;
+    if (!match) return -1;
+    if (expired) return -1;
+    return 0;
+  }
+
+  if (ok && match) return 0;
+  if (expires_at == 0) expires_at = SENTINEL_TIME_FALLBACK_ABS;
+  if (expires_at == 0) return 0;
+  if (!expired) {
+    time_t now = time(NULL);
+    if (now == (time_t)-1) return -1;
+    if ((uint64_t)now > expires_at) expired = 1;
+  }
+  return expired ? -1 : 0;
 }
 #else
 static int sentinel_check(void) {
@@ -1305,10 +1395,21 @@ function renderLauncherSource(
   const sentinelDir = sentinelEnabled ? String(sentinelCfg.opaqueDir || "") : "";
   const sentinelFile = sentinelEnabled ? String(sentinelCfg.opaqueFile || "") : "";
   const sentinelAnchorHex = sentinelEnabled && Buffer.isBuffer(sentinelCfg.anchor) ? sentinelCfg.anchor.toString("hex") : "";
+  const sentinelTimeEnforceMismatch = !!(sentinelEnabled && sentinelCfg.timeLimit && sentinelCfg.timeLimit.enforce === "mismatch");
+  const sentinelTimeMode = sentinelEnabled && sentinelCfg.timeLimit
+    ? String(sentinelCfg.timeLimit.mode || "off")
+    : "off";
+  const sentinelTimeExpiresAt = sentinelEnabled && sentinelCfg.timeLimit && Number.isFinite(Number(sentinelCfg.timeLimit.expiresAtSec))
+    ? Math.floor(Number(sentinelCfg.timeLimit.expiresAtSec))
+    : 0;
+  const sentinelTimeDuration = sentinelEnabled && sentinelCfg.timeLimit && Number.isFinite(Number(sentinelCfg.timeLimit.durationSec))
+    ? Math.floor(Number(sentinelCfg.timeLimit.durationSec))
+    : 0;
 
   const bootstrapJs = `"use strict";
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 const Module = require("module");
 const crypto = require("crypto");
 
@@ -1317,8 +1418,951 @@ if (typeof process.setSourceMapsEnabled === "function") {
   process.setSourceMapsEnabled(false);
 }
 
+const ANTI_DEBUG_ENABLED = ${adEnabled ? 1 : 0};
+const E2E_TEST_MODE = process.env.SEAL_THIN_ANTI_DEBUG_E2E === "1";
+const E2E_BOOTSTRAP_STAGE = E2E_TEST_MODE ? String(process.env.SEAL_E2E_BOOTSTRAP_STAGE || "") : "";
+const E2E_BOOTSTRAP_PAUSE_MS = E2E_TEST_MODE ? Math.max(0, Number(process.env.SEAL_E2E_BOOTSTRAP_PAUSE_MS || 0) || 0) : 0;
+const E2E_BOOTSTRAP_MARKER = E2E_TEST_MODE ? process.env.SEAL_E2E_BOOTSTRAP_MARKER : "";
+const E2E_BOOTSTRAP_CRASH_STAGE = E2E_TEST_MODE ? String(process.env.SEAL_E2E_BOOTSTRAP_CRASH_STAGE || "") : "";
+const E2E_BOOTSTRAP_CRASH_SIGNAL = E2E_TEST_MODE ? String(process.env.SEAL_E2E_BOOTSTRAP_CRASH_SIGNAL || "") : "";
+const E2E_SELFTEST = E2E_TEST_MODE && process.env.SEAL_E2E_BOOTSTRAP_SELFTEST === "1";
+const E2E_REPORT_PATH = E2E_SELFTEST ? process.env.SEAL_E2E_REPORT_PATH : "";
+const E2E_HEAP_PATH = E2E_SELFTEST ? process.env.SEAL_E2E_HEAP_PATH : "";
+const E2E_KEY_MARKER_HEX = E2E_TEST_MODE ? process.env.SEAL_E2E_KEY_MARKER_HEX : "";
+const E2E_KEY_MARKER_HEX_LIST = E2E_TEST_MODE ? process.env.SEAL_E2E_KEY_MARKER_HEX_LIST : "";
+const E2E_SELF_SCAN = E2E_TEST_MODE && process.env.SEAL_E2E_BOOTSTRAP_SELF_SCAN === "1";
+const E2E_SELF_SCAN_STAGE = E2E_SELF_SCAN ? String(process.env.SEAL_E2E_BOOTSTRAP_SELF_SCAN_STAGE || "") : "";
+const E2E_SELF_SCAN_EXPECT = E2E_SELF_SCAN ? String(process.env.SEAL_E2E_BOOTSTRAP_SELF_SCAN_EXPECT || "absent") : "";
+const E2E_SELF_SCAN_TARGET = E2E_SELF_SCAN ? String(process.env.SEAL_E2E_BOOTSTRAP_SELF_SCAN_TARGET || "all") : "";
+const E2E_SELF_SCAN_MODE = E2E_SELF_SCAN ? String(process.env.SEAL_E2E_BOOTSTRAP_SELF_SCAN_MODE || "mem") : "";
+const E2E_SELF_SCAN_MAX_BYTES = E2E_SELF_SCAN ? Math.max(0, Number(process.env.SEAL_E2E_BOOTSTRAP_SELF_SCAN_MAX_BYTES || 0) || 0) : 0;
+const E2E_SELF_SCAN_REGION_MAX_BYTES = E2E_SELF_SCAN ? Math.max(0, Number(process.env.SEAL_E2E_BOOTSTRAP_SELF_SCAN_REGION_MAX_BYTES || 0) || 0) : 0;
+const E2E_SELF_SCAN_STRICT = E2E_SELF_SCAN && process.env.SEAL_E2E_BOOTSTRAP_SELF_SCAN_STRICT === "1";
+const E2E_SELF_SCAN_GC_PRESSURE = E2E_SELF_SCAN && process.env.SEAL_E2E_BOOTSTRAP_SELF_SCAN_GC_PRESSURE === "1";
+const E2E_SELF_SCAN_VMFLAGS = E2E_SELF_SCAN && process.env.SEAL_E2E_BOOTSTRAP_SELF_SCAN_VMFLAGS === "1";
+const E2E_SELF_SCAN_VMFLAGS_STRICT = E2E_SELF_SCAN && process.env.SEAL_E2E_BOOTSTRAP_SELF_SCAN_VMFLAGS_STRICT === "1";
+const E2E_BUNDLE_BYTES = E2E_SELF_SCAN ? Math.max(0, Number(process.env.SEAL_E2E_BUNDLE_BYTES || 0) || 0) : 0;
+const E2E_ARGV_ENV_CHECK = E2E_TEST_MODE && process.env.SEAL_E2E_BOOTSTRAP_ARGV_ENV_CHECK === "1";
+const E2E_ARGV_ENV_STAGE = E2E_ARGV_ENV_CHECK ? String(process.env.SEAL_E2E_BOOTSTRAP_ARGV_ENV_STAGE || "") : "";
+const E2E_STACK_SCAN = E2E_TEST_MODE && process.env.SEAL_E2E_BOOTSTRAP_STACK_SCAN === "1";
+const E2E_STACK_SCAN_STAGE = E2E_STACK_SCAN ? String(process.env.SEAL_E2E_BOOTSTRAP_STACK_STAGE || "") : "";
+const E2E_STACK_SCAN_TARGET = E2E_STACK_SCAN ? String(process.env.SEAL_E2E_BOOTSTRAP_STACK_TARGET || "all") : "";
+const E2E_MODULE_SCAN = E2E_TEST_MODE && process.env.SEAL_E2E_BOOTSTRAP_MODULE_SCAN === "1";
+const E2E_MODULE_SCAN_STAGE = E2E_MODULE_SCAN ? String(process.env.SEAL_E2E_BOOTSTRAP_MODULE_STAGE || "") : "";
+const E2E_MODULE_SCAN_TARGET = E2E_MODULE_SCAN ? String(process.env.SEAL_E2E_BOOTSTRAP_MODULE_TARGET || "all") : "";
+const E2E_MODULE_SCAN_MAX_DEPTH = E2E_MODULE_SCAN ? Math.max(1, Number(process.env.SEAL_E2E_BOOTSTRAP_MODULE_MAX_DEPTH || 2) || 2) : 0;
+const E2E_MODULE_SCAN_MAX_KEYS = E2E_MODULE_SCAN ? Math.max(1, Number(process.env.SEAL_E2E_BOOTSTRAP_MODULE_MAX_KEYS || 200) || 200) : 0;
+const E2E_INSPECTOR_TEST = E2E_TEST_MODE && process.env.SEAL_E2E_BOOTSTRAP_INSPECTOR === "1";
+const E2E_INSPECTOR_MODE = E2E_INSPECTOR_TEST ? String(process.env.SEAL_E2E_BOOTSTRAP_INSPECTOR_MODE || "open") : "";
+const E2E_INSPECTOR_STAGE = E2E_INSPECTOR_TEST ? String(process.env.SEAL_E2E_BOOTSTRAP_INSPECTOR_STAGE || "") : "";
+
+function e2eSleep(ms) {
+  if (!ms) return;
+  if (typeof SharedArrayBuffer === "undefined" || typeof Atomics === "undefined") return;
+  const ia = new Int32Array(new SharedArrayBuffer(4));
+  Atomics.wait(ia, 0, 0, ms);
+}
+
+function e2eCheckpoint(stage) {
+  if (!E2E_TEST_MODE) return;
+  if (E2E_BOOTSTRAP_MARKER) {
+    try { fs.writeFileSync(E2E_BOOTSTRAP_MARKER, stage); } catch {}
+  }
+  if (E2E_BOOTSTRAP_STAGE === stage && E2E_BOOTSTRAP_PAUSE_MS > 0) {
+    e2eSleep(E2E_BOOTSTRAP_PAUSE_MS);
+  }
+}
+
+function e2eMaybeCrash(stage) {
+  if (!E2E_TEST_MODE) return;
+  if (!E2E_BOOTSTRAP_CRASH_STAGE || E2E_BOOTSTRAP_CRASH_STAGE !== stage) return;
+  const sig = E2E_BOOTSTRAP_CRASH_SIGNAL || "SIGSEGV";
+  try {
+    process.kill(process.pid, sig);
+  } catch {
+    try { process.abort(); } catch {}
+  }
+  e2eSleep(1000);
+  process.exit(87);
+}
+
+function e2eArgvEnvCheck(stage) {
+  if (!E2E_ARGV_ENV_CHECK) return false;
+  if (E2E_ARGV_ENV_STAGE && E2E_ARGV_ENV_STAGE !== stage) return false;
+  const argv = Array.isArray(process.execArgv) ? process.execArgv : [];
+  const badArgs = [];
+  const exactFlags = [
+    "--require",
+    "-r",
+    "--loader",
+    "--experimental-loader",
+    "--import",
+    "--inspect",
+    "--inspect-brk",
+    "--inspect-port",
+    "--cpu-prof",
+    "--heap-prof",
+    "--diagnostic-report",
+    "--report-on-fatalerror",
+    "--report-on-signal",
+    "--heapsnapshot-signal",
+    "--trace-events-enabled",
+  ];
+  const prefixFlags = [
+    "--require=",
+    "--loader=",
+    "--experimental-loader=",
+    "--import=",
+    "--inspect=",
+    "--inspect-brk=",
+    "--inspect-port=",
+    "--cpu-prof",
+    "--heap-prof",
+    "--diagnostic-report",
+    "--report-",
+    "--trace-events-",
+  ];
+  for (const arg of argv) {
+    if (!arg) continue;
+    if (exactFlags.includes(arg)) {
+      badArgs.push(arg);
+      continue;
+    }
+    for (const pref of prefixFlags) {
+      if (arg.startsWith(pref)) {
+        badArgs.push(arg);
+        break;
+      }
+    }
+  }
+  if (badArgs.length > 0) {
+    e2eFail("argv-env execArgv");
+  }
+
+  const env = process.env || {};
+  const denyEnv = [
+    "NODE_OPTIONS",
+    "NODE_V8_COVERAGE",
+    "LD_PRELOAD",
+    "LD_AUDIT",
+    "LD_DEBUG",
+    "LD_DEBUG_OUTPUT",
+    "LD_PROFILE",
+    "LD_LIBRARY_PATH",
+    "NODE_PATH",
+    "GCONV_PATH",
+    "GLIBC_TUNABLES",
+    "MALLOC_CHECK_",
+    "MALLOC_PERTURB_",
+    "MALLOC_TRACE",
+  ];
+  for (const key of denyEnv) {
+    if (env[key]) {
+      e2eFail("argv-env env");
+    }
+  }
+  process.exit(0);
+  return true;
+}
+
+function e2eFail(reason) {
+  try {
+    if (reason) process.stderr.write("[thin] " + String(reason) + "\\n");
+  } catch {}
+  try { process.stderr.write("[thin] runtime invalid\\n"); } catch {}
+  process.exit(86);
+}
+
+function e2eMaskToken(buf) {
+  if (!buf || !buf.length) return null;
+  let key = 0;
+  try {
+    key = crypto.randomBytes(1)[0];
+  } catch {}
+  if (!key) key = 0x5a;
+  const mask = Buffer.alloc(buf.length);
+  for (let i = 0; i < buf.length; i += 1) {
+    mask[i] = buf[i] ^ key;
+  }
+  return { mask, key, len: buf.length };
+}
+
+function e2eMaskedIncludes(buf, token) {
+  if (!buf || !token || !token.mask || !token.len) return false;
+  const mask = token.mask;
+  const key = token.key;
+  const len = token.len;
+  if (buf.length < len) return false;
+  for (let i = 0; i <= buf.length - len; i += 1) {
+    let ok = true;
+    for (let j = 0; j < len; j += 1) {
+      if ((buf[i + j] ^ key) !== mask[j]) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) return true;
+  }
+  return false;
+}
+
+function e2eHasMaskedTokens(buf, tokens) {
+  if (!buf || !tokens || !tokens.length) return false;
+  for (const token of tokens) {
+    if (e2eMaskedIncludes(buf, token)) return true;
+  }
+  return false;
+}
+
+function e2eReadProcFile(filePath) {
+  try {
+    return fs.readFileSync(filePath, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+function e2eParseMaps(content) {
+  const entries = [];
+  if (!content) return entries;
+  for (const line of content.split(/\\r?\\n/)) {
+    if (!line) continue;
+    const parts = line.trim().split(/\\s+/);
+    if (parts.length < 2) continue;
+    const range = parts[0];
+    const perms = parts[1] || "";
+    const dash = range.indexOf("-");
+    if (dash <= 0) continue;
+    const startStr = range.slice(0, dash);
+    const endStr = range.slice(dash + 1);
+    if (!/^[0-9a-fA-F]+$/.test(startStr) || !/^[0-9a-fA-F]+$/.test(endStr)) continue;
+    const start = Number.parseInt(startStr, 16);
+    const end = Number.parseInt(endStr, 16);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;
+    const pathPart = parts.length > 5 ? parts.slice(5).join(" ") : "";
+    entries.push({ start, end, perms, path: pathPart, startStr });
+  }
+  return entries;
+}
+
+function e2eParseSmaps(content) {
+  const entries = [];
+  let cur = null;
+  for (const line of String(content || "").split(/\\r?\\n/)) {
+    if (!line) continue;
+    const head = /^([0-9a-fA-F]+)-([0-9a-fA-F]+)\\s+([rwxps-]{4})\\s+/.exec(line);
+    if (head) {
+      if (cur) entries.push(cur);
+      const start = Number.parseInt(head[1], 16);
+      const end = Number.parseInt(head[2], 16);
+      const perms = head[3] || "";
+      const rest = line.slice(head[0].length).trim();
+      const parts = rest.split(/\\s+/);
+      const pathPart = parts.length > 4 ? parts.slice(4).join(" ") : "";
+      cur = { start, end, perms, path: pathPart, sizeKb: null, vmFlags: [] };
+      continue;
+    }
+    if (!cur) continue;
+    if (line.startsWith("Size:")) {
+      const match = /Size:\\s+(\\d+)\\s+kB/.exec(line);
+      if (match) cur.sizeKb = Number(match[1]);
+    } else if (line.startsWith("VmFlags:")) {
+      cur.vmFlags = line.slice("VmFlags:".length).trim().split(/\\s+/).filter(Boolean);
+    }
+  }
+  if (cur) entries.push(cur);
+  return entries;
+}
+
+function e2eFindBundleMap(entries, bundleBytes) {
+  if (!bundleBytes) return null;
+  const target = Math.ceil(bundleBytes / 1024);
+  const tolerance = Math.max(16, Math.floor(target * 0.02));
+  let best = null;
+  for (const entry of entries) {
+    if (!entry || !Number.isFinite(entry.sizeKb)) continue;
+    if (!entry.perms || !entry.perms.startsWith("rw")) continue;
+    if (entry.path && entry.path !== "[anon]" && entry.path !== "[heap]") continue;
+    const sizeKb = entry.sizeKb;
+    if (sizeKb < target - tolerance || sizeKb > target + tolerance) continue;
+    if (!best || sizeKb < best.sizeKb) best = entry;
+  }
+  return best;
+}
+
+function e2eCheckVmFlags(bundleBytes) {
+  if (!bundleBytes) return { skip: "bundle bytes missing" };
+  const smaps = e2eReadProcFile("/proc/self/smaps");
+  if (!smaps) return { skip: "smaps blocked" };
+  const entries = e2eParseSmaps(smaps);
+  let candidate = e2eFindBundleMap(entries, bundleBytes);
+  if (!candidate && bundleBytes > 0 && bundleBytes < 1024 * 1024 * 512) {
+    candidate = e2eFindBundleMap(entries, bundleBytes * 2);
+  }
+  if (!candidate) return { skip: "bundle mapping not found" };
+  const flags = candidate.vmFlags || [];
+  const missing = [];
+  if (!flags.includes("dd")) missing.push("dd");
+  if (!flags.includes("wf")) missing.push("wf");
+  if (!flags.includes("dc")) missing.push("dc");
+  if (!flags.includes("um")) missing.push("um");
+  if (missing.length > 0) return { fail: "missing VmFlags: " + missing.join(",") };
+  if (flags.includes("mg")) return { fail: "bundle mapping mergeable (mg)" };
+  return { ok: true };
+}
+
+function e2eCollectScanRanges(bundleBytes) {
+  const maps = e2eReadProcFile("/proc/self/maps");
+  if (!maps) return { skip: "maps blocked", ranges: [] };
+  const entries = e2eParseMaps(maps);
+  const ranges = [];
+  for (const entry of entries) {
+    if (!entry.perms || entry.perms[0] !== "r" || !entry.perms.includes("w")) continue;
+    const p = entry.path || "";
+    if (!p || p === "[anon]" || p === "[heap]" || p.startsWith("[anon:") || p.startsWith("[stack")) {
+      ranges.push(entry);
+    }
+  }
+  if (bundleBytes) {
+    const smaps = e2eReadProcFile("/proc/self/smaps");
+    if (smaps) {
+      const smapsEntries = e2eParseSmaps(smaps);
+      const candidate = e2eFindBundleMap(smapsEntries, bundleBytes);
+      if (candidate) {
+        const already = ranges.some((r) => r.start === candidate.start && r.end === candidate.end);
+        if (!already) ranges.push(candidate);
+      }
+    }
+  }
+  return { ranges };
+}
+
+function e2eScanMemoryForTokens(tokens, opts = {}) {
+  if (!tokens || tokens.length === 0) return { skip: "tokens missing" };
+  const rangesRes = e2eCollectScanRanges(opts.bundleBytes || 0);
+  if (rangesRes.skip) return { skip: rangesRes.skip };
+  const ranges = rangesRes.ranges || [];
+  if (!ranges.length) return { skip: "no ranges" };
+  const defaultMax = E2E_SELF_SCAN_MODE === "dump" ? 67108864 : 16777216;
+  const maxTotal = E2E_SELF_SCAN_MAX_BYTES > 0 ? E2E_SELF_SCAN_MAX_BYTES : (opts.maxTotal || defaultMax);
+  const maxRegion = E2E_SELF_SCAN_REGION_MAX_BYTES > 0 ? E2E_SELF_SCAN_REGION_MAX_BYTES : (opts.maxRegion || 262144);
+  if (!Number.isFinite(maxTotal) || maxTotal <= 0) return { skip: "scan disabled" };
+  let fd = null;
+  try {
+    fd = fs.openSync("/proc/self/mem", "r");
+  } catch (e) {
+    const code = e && e.code ? e.code : "error";
+    return { skip: "mem open failed: " + code };
+  }
+  let scanned = 0;
+  try {
+    for (const range of ranges) {
+      let offset = range.start;
+      const end = range.end;
+      while (offset < end) {
+        const remaining = maxTotal - scanned;
+        if (remaining <= 0) return { ok: true, scanned };
+        const regionSize = end - offset;
+        const chunkSize = Math.min(regionSize, maxRegion, remaining);
+        if (chunkSize <= 0) break;
+        const buf = Buffer.alloc(chunkSize);
+        let read = 0;
+        try {
+          read = fs.readSync(fd, buf, 0, chunkSize, offset);
+        } catch {
+          offset += chunkSize;
+          continue;
+        }
+        if (read > 0) {
+          scanned += read;
+          const slice = buf.subarray(0, read);
+          for (const token of tokens) {
+            if (e2eMaskedIncludes(slice, token)) {
+              return { hit: token.name || "token", addr: offset.toString(16) };
+            }
+          }
+        }
+        offset += chunkSize;
+      }
+    }
+  } finally {
+    try { fs.closeSync(fd); } catch {}
+  }
+  return { ok: true, scanned };
+}
+
+function e2eDumpMemoryToFile(tokens, opts = {}) {
+  if (!tokens || tokens.length === 0) return { skip: "tokens missing" };
+  const rangesRes = e2eCollectScanRanges(opts.bundleBytes || 0);
+  if (rangesRes.skip) return { skip: rangesRes.skip };
+  const ranges = rangesRes.ranges || [];
+  if (!ranges.length) return { skip: "no ranges" };
+  const defaultMax = 67108864;
+  const maxTotal = E2E_SELF_SCAN_MAX_BYTES > 0 ? E2E_SELF_SCAN_MAX_BYTES : (opts.maxTotal || defaultMax);
+  const maxRegion = E2E_SELF_SCAN_REGION_MAX_BYTES > 0 ? E2E_SELF_SCAN_REGION_MAX_BYTES : (opts.maxRegion || 262144);
+  if (!Number.isFinite(maxTotal) || maxTotal <= 0) return { skip: "dump disabled" };
+  const dumpPath = opts.dumpPath || path.join(os.tmpdir(), "seal-e2e-dump-" + Date.now() + "-" + Math.random().toString(16).slice(2) + ".bin");
+  let memfd = null;
+  let outfd = null;
+  const maxTokenLen = Math.max(...tokens.map((t) => t.len || 0));
+  let carry = maxTokenLen > 1 ? Buffer.alloc(maxTokenLen - 1) : null;
+  let carryLen = 0;
+  let scanned = 0;
+  try {
+    memfd = fs.openSync("/proc/self/mem", "r");
+    outfd = fs.openSync(dumpPath, "w");
+  } catch (e) {
+    const code = e && e.code ? e.code : "error";
+    try { if (memfd !== null) fs.closeSync(memfd); } catch {}
+    try { if (outfd !== null) fs.closeSync(outfd); } catch {}
+    return { skip: "dump open failed: " + code };
+  }
+  let hit = false;
+  try {
+    for (const range of ranges) {
+      let offset = range.start;
+      const end = range.end;
+      while (offset < end) {
+        const remaining = maxTotal - scanned;
+        if (remaining <= 0) break;
+        const regionSize = end - offset;
+        const chunkSize = Math.min(regionSize, maxRegion, remaining);
+        if (chunkSize <= 0) break;
+        const buf = Buffer.alloc(chunkSize);
+        let read = 0;
+        try {
+          read = fs.readSync(memfd, buf, 0, chunkSize, offset);
+        } catch {
+          offset += chunkSize;
+          continue;
+        }
+        if (read > 0) {
+          scanned += read;
+          const slice = buf.subarray(0, read);
+          try { fs.writeSync(outfd, slice); } catch {}
+          if (!hit) {
+            let data = slice;
+            if (carry && carryLen > 0) {
+              data = Buffer.concat([carry.subarray(0, carryLen), slice]);
+            }
+            if (e2eHasMaskedTokens(data, tokens)) {
+              hit = true;
+            }
+            if (carry) {
+              const tail = Math.min(carry.length, data.length);
+              data.subarray(data.length - tail).copy(carry);
+              carryLen = tail;
+            }
+          }
+        }
+        offset += chunkSize;
+      }
+      if (hit && !opts.fullScan) break;
+    }
+  } finally {
+    try { if (memfd !== null) fs.closeSync(memfd); } catch {}
+    try { if (outfd !== null) fs.closeSync(outfd); } catch {}
+  }
+  if (!opts.keep) {
+    try { fs.rmSync(dumpPath, { force: true }); } catch {}
+  }
+  if (hit) return { hit: "token", scanned };
+  return { ok: true, scanned };
+}
+
+function e2eWorkerScanMasked(token) {
+  if (!token || !token.mask || !token.len) return { skip: "token missing" };
+  let Worker = null;
+  try {
+    ({ Worker } = require("worker_threads"));
+  } catch {
+    return { skip: "worker_threads missing" };
+  }
+  if (typeof SharedArrayBuffer === "undefined" || typeof Atomics === "undefined") {
+    return { skip: "atomics unavailable" };
+  }
+  const baseMax = E2E_BUNDLE_BYTES > 0 ? Math.max(E2E_BUNDLE_BYTES * 2, 67108864) : 67108864;
+  const maxTotal = E2E_SELF_SCAN_MAX_BYTES > 0 ? E2E_SELF_SCAN_MAX_BYTES : baseMax;
+  const maxRegion = E2E_SELF_SCAN_REGION_MAX_BYTES > 0 ? E2E_SELF_SCAN_REGION_MAX_BYTES : 262144;
+  const sab = new SharedArrayBuffer(4);
+  const ia = new Int32Array(sab);
+  const workerCode = [
+    "const fs = require('fs');",
+    "const { workerData } = require('worker_threads');",
+    "const sab = workerData.sab;",
+    "const ia = new Int32Array(sab);",
+    "function maskedIncludes(buf, mask, key) {",
+    "  const len = mask.length;",
+    "  if (!buf || buf.length < len) return false;",
+    "  for (let i = 0; i <= buf.length - len; i++) {",
+    "    let ok = true;",
+    "    for (let j = 0; j < len; j++) {",
+    "      if ((buf[i + j] ^ key) !== mask[j]) { ok = false; break; }",
+    "    }",
+    "    if (ok) return true;",
+    "  }",
+    "  return false;",
+    "}",
+    "function isAnon(p) {",
+    "  if (!p) return true;",
+    "  if (p[0] !== '[') return false;",
+    "  if (p.startsWith('[heap]')) return true;",
+    "  if (p.startsWith('[anon')) return true;",
+    "  if (p.startsWith('[stack')) return true;",
+    "  return false;",
+    "}",
+    "function scan() {",
+    "  const mask = Buffer.from(workerData.mask, 'hex');",
+    "  const key = workerData.key & 0xff;",
+    "  const maxTotal = workerData.maxTotal || 16777216;",
+    "  const maxRegion = workerData.maxRegion || 262144;",
+    "  const maps = fs.readFileSync('/proc/self/maps', 'utf8');",
+    "  const lines = maps.split(/\\r?\\n/);",
+    "  let scanned = 0;",
+    "  const fd = fs.openSync('/proc/self/mem', 'r');",
+    "  const carryCap = mask.length > 1 ? mask.length - 1 : 0;",
+    "  let carry = carryCap ? Buffer.alloc(carryCap) : null;",
+    "  let carryLen = 0;",
+    "  try {",
+    "    for (const line of lines) {",
+    "      if (!line) continue;",
+    "      const parts = line.trim().split(/\\s+/);",
+    "      if (parts.length < 2) continue;",
+    "      const range = parts[0];",
+    "      const perms = parts[1] || '';",
+    "      if (!perms || perms[0] !== 'r' || perms[1] !== 'w') continue;",
+    "      const dash = range.indexOf('-');",
+    "      if (dash <= 0) continue;",
+    "      const start = parseInt(range.slice(0, dash), 16);",
+    "      const end = parseInt(range.slice(dash + 1), 16);",
+    "      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;",
+    "      const p = parts.length > 5 ? parts.slice(5).join(' ') : '';",
+    "      if (!isAnon(p)) continue;",
+    "      let off = start;",
+    "      while (off < end) {",
+    "        const remaining = maxTotal - scanned;",
+    "        if (remaining <= 0) return false;",
+    "        const region = end - off;",
+    "        const chunk = Math.min(region, maxRegion, remaining);",
+    "        if (chunk <= 0) break;",
+    "        const buf = Buffer.alloc(chunk);",
+    "        let read = 0;",
+    "        try { read = fs.readSync(fd, buf, 0, chunk, off); } catch { off += chunk; continue; }",
+    "        if (read > 0) {",
+    "          scanned += read;",
+    "          const slice = buf.subarray(0, read);",
+    "          let data = slice;",
+    "          if (carry && carryLen > 0) data = Buffer.concat([carry.subarray(0, carryLen), slice]);",
+    "          if (maskedIncludes(data, mask, key)) return true;",
+    "          if (carry) {",
+    "            const tail = Math.min(carry.length, data.length);",
+    "            data.subarray(data.length - tail).copy(carry);",
+    "            carryLen = tail;",
+    "          }",
+    "        }",
+    "        off += chunk;",
+    "      }",
+    "    }",
+    "  } finally {",
+    "    try { fs.closeSync(fd); } catch {}",
+    "  }",
+    "  return false;",
+    "}",
+    "let code = 2;",
+    "try { code = scan() ? 1 : 0; } catch { code = 2; }",
+    "Atomics.store(ia, 0, code);",
+    "Atomics.notify(ia, 0);",
+  ].join("\\n");
+  let worker = null;
+  try {
+    worker = new Worker(workerCode, {
+      eval: true,
+      workerData: {
+        mask: token.mask.toString("hex"),
+        key: token.key,
+        maxTotal,
+        maxRegion,
+        sab,
+      },
+    });
+  } catch {
+    return { skip: "worker spawn failed" };
+  }
+  const timeoutMs = Math.max(1000, Number(process.env.SEAL_E2E_BOOTSTRAP_WORKER_TIMEOUT_MS || 4000) || 4000);
+  const waitRes = Atomics.wait(ia, 0, 0, timeoutMs);
+  if (waitRes === "timed-out") {
+    try { worker.terminate(); } catch {}
+    return { skip: "worker timeout" };
+  }
+  try { worker.terminate(); } catch {}
+  const code = Atomics.load(ia, 0);
+  if (code === 1) return { hit: token.name || "token" };
+  if (code === 0) return { ok: true };
+  return { skip: "worker scan error" };
+}
+
+function e2eForkScanMasked(token) {
+  if (!token || !token.mask || !token.len) return { skip: "token missing" };
+  if (!nativeAddon || typeof nativeAddon.e2eForkScanMasked !== "function") {
+    return { skip: "native fork scan unavailable" };
+  }
+  const baseMax = E2E_BUNDLE_BYTES > 0 ? Math.max(E2E_BUNDLE_BYTES * 2, 67108864) : 67108864;
+  const maxTotal = E2E_SELF_SCAN_MAX_BYTES > 0 ? E2E_SELF_SCAN_MAX_BYTES : baseMax;
+  const maxRegion = E2E_SELF_SCAN_REGION_MAX_BYTES > 0 ? E2E_SELF_SCAN_REGION_MAX_BYTES : 262144;
+  let res = -1;
+  try {
+    res = nativeAddon.e2eForkScanMasked(token.mask, token.key, maxTotal, maxRegion);
+  } catch {
+    return { skip: "native fork scan failed" };
+  }
+  if (res === 1) return { hit: token.name || "token" };
+  if (res === 0) return { ok: true };
+  return { skip: "native fork scan error" };
+}
+
+function e2eGcPressure() {
+  const mb = Math.max(0, Number(process.env.SEAL_E2E_BOOTSTRAP_SELF_SCAN_GC_MB || 16) || 0);
+  if (!mb) return;
+  const chunks = [];
+  const chunkSize = 1024 * 1024;
+  const count = Math.max(1, Math.floor(mb));
+  for (let i = 0; i < count; i += 1) {
+    chunks.push(Buffer.alloc(chunkSize));
+  }
+  for (const buf of chunks) {
+    buf.fill(0x5a);
+  }
+  if (global.gc) {
+    global.gc();
+    global.gc();
+  }
+}
+
+let e2eMaskedCodeTokens = [];
+
+function e2eBuildCodeTokens(code) {
+  const out = [];
+  if (!code || code.length < 32) return out;
+  const positions = [
+    0,
+    Math.floor(code.length / 2),
+    Math.max(0, code.length - 64),
+  ];
+  for (const pos of positions) {
+    const slice = code.slice(pos, pos + 32);
+    if (slice.length < 16) continue;
+    const raw = Buffer.from(slice, "utf8");
+    const masked = e2eMaskToken(raw);
+    if (masked) {
+      masked.name = "code";
+      out.push(masked);
+    }
+    try { raw.fill(0); } catch {}
+  }
+  return out;
+}
+
+function e2eSelfScan(stage) {
+  if (!E2E_SELF_SCAN) return false;
+  if (E2E_SELF_SCAN_STAGE && E2E_SELF_SCAN_STAGE !== stage) return false;
+  if (E2E_SELF_SCAN_GC_PRESSURE) e2eGcPressure();
+  if (E2E_SELF_SCAN_VMFLAGS) {
+    const vm = e2eCheckVmFlags(E2E_BUNDLE_BYTES);
+    if (vm && vm.fail) {
+      if (E2E_SELF_SCAN_VMFLAGS_STRICT) e2eFail("self-scan vmflags: " + vm.fail);
+    } else if (vm && vm.skip && E2E_SELF_SCAN_VMFLAGS_STRICT) {
+      e2eFail("self-scan vmflags: " + vm.skip);
+    }
+  }
+  const tokens = [];
+  const target = E2E_SELF_SCAN_TARGET || "all";
+  if ((target === "marker" || target === "all") && e2eMarkerTokens.length) {
+    tokens.push(...e2eMarkerTokens);
+  }
+  if ((target === "code" || target === "all") && e2eMaskedCodeTokens.length) {
+    tokens.push(...e2eMaskedCodeTokens);
+  }
+  if (tokens.length === 0) {
+    if (E2E_SELF_SCAN_STRICT) e2eFail("self-scan tokens missing");
+    return true;
+  }
+  let res = null;
+  if (E2E_SELF_SCAN_MODE === "fork") {
+    let token = null;
+    if (target === "marker" && e2eMarkerTokens.length) token = e2eMarkerTokens[0];
+    else if (target === "code" && e2eMaskedCodeTokens.length) token = e2eMaskedCodeTokens[0];
+    else if (target === "all") token = e2eMarkerTokens[0] || e2eMaskedCodeTokens[0];
+    res = e2eForkScanMasked(token);
+  } else if (E2E_SELF_SCAN_MODE === "worker") {
+    let token = null;
+    if (target === "marker" && e2eMarkerTokens.length) token = e2eMarkerTokens[0];
+    else if (target === "code" && e2eMaskedCodeTokens.length) token = e2eMaskedCodeTokens[0];
+    else if (target === "all") token = e2eMarkerTokens[0] || e2eMaskedCodeTokens[0];
+    res = e2eWorkerScanMasked(token);
+  } else if (E2E_SELF_SCAN_MODE === "file") {
+    const dumpPath = process.env.SEAL_E2E_BOOTSTRAP_SELF_DUMP_PATH || "";
+    const keep = process.env.SEAL_E2E_BOOTSTRAP_SELF_DUMP_KEEP === "1";
+    res = e2eDumpMemoryToFile(tokens, { bundleBytes: E2E_BUNDLE_BYTES, dumpPath: dumpPath || undefined, keep });
+  } else {
+    res = e2eScanMemoryForTokens(tokens, { bundleBytes: E2E_BUNDLE_BYTES });
+  }
+  if (res && res.skip) {
+    if (E2E_SELF_SCAN_STRICT) e2eFail("self-scan skipped: " + res.skip);
+    return true;
+  }
+  const expectPresent = E2E_SELF_SCAN_EXPECT === "present";
+  if (expectPresent) {
+    if (!res || !res.hit) e2eFail("self-scan expected hit");
+  } else {
+    if (res && res.hit) e2eFail("self-scan hit: " + res.hit);
+  }
+  process.exit(0);
+  return true;
+}
+
+function e2eSelectTokens(target) {
+  const out = [];
+  const t = target || "all";
+  if ((t === "marker" || t === "all") && e2eMarkerTokens.length) {
+    out.push(...e2eMarkerTokens);
+  }
+  if ((t === "code" || t === "all") && e2eMaskedCodeTokens.length) {
+    out.push(...e2eMaskedCodeTokens);
+  }
+  return out;
+}
+
+function e2eStackScan(stage) {
+  if (!E2E_STACK_SCAN) return false;
+  if (E2E_STACK_SCAN_STAGE && E2E_STACK_SCAN_STAGE !== stage) return false;
+  const tokens = e2eSelectTokens(E2E_STACK_SCAN_TARGET);
+  if (!tokens.length) e2eFail("stack-scan tokens missing");
+  let stack = "";
+  try {
+    throw new Error("e2e-stack");
+  } catch (e) {
+    stack = String(e && e.stack ? e.stack : "");
+  }
+  const buf = Buffer.from(stack, "utf8");
+  if (e2eHasMaskedTokens(buf, tokens)) {
+    e2eFail("stack-scan hit");
+  }
+  process.exit(0);
+  return true;
+}
+
+function e2eModuleCacheScan(stage) {
+  if (!E2E_MODULE_SCAN) return false;
+  if (E2E_MODULE_SCAN_STAGE && E2E_MODULE_SCAN_STAGE !== stage) return false;
+  const tokens = e2eSelectTokens(E2E_MODULE_SCAN_TARGET);
+  if (!tokens.length) e2eFail("module-scan tokens missing");
+  const seen = new Set();
+  const maxDepth = E2E_MODULE_SCAN_MAX_DEPTH || 2;
+  const maxKeys = E2E_MODULE_SCAN_MAX_KEYS || 200;
+  const maxStr = 131072;
+  function scanValue(val, depth) {
+    if (!val || depth <= 0) return false;
+    if (typeof val === "string") {
+      const slice = val.length > maxStr ? val.slice(0, maxStr) : val;
+      const buf = Buffer.from(slice, "utf8");
+      return e2eHasMaskedTokens(buf, tokens);
+    }
+    if (Buffer.isBuffer(val)) {
+      return e2eHasMaskedTokens(val, tokens);
+    }
+    if (Array.isArray(val)) {
+      for (const item of val) {
+        if (scanValue(item, depth - 1)) return true;
+      }
+      return false;
+    }
+    if (typeof val !== "object") return false;
+    if (seen.has(val)) return false;
+    seen.add(val);
+    const keys = Object.keys(val);
+    const limit = Math.min(keys.length, maxKeys);
+    for (let i = 0; i < limit; i += 1) {
+      const k = keys[i];
+      try {
+        if (scanValue(val[k], depth - 1)) return true;
+      } catch {}
+    }
+    return false;
+  }
+  try {
+    const cache = require.cache || {};
+    for (const mod of Object.values(cache)) {
+      if (!mod) continue;
+      try {
+        if (scanValue(mod.exports, maxDepth)) {
+          e2eFail("module-scan hit");
+        }
+      } catch {}
+    }
+    try {
+      if (scanValue(Module._pathCache, maxDepth)) {
+        e2eFail("module-scan pathcache");
+      }
+    } catch {}
+    try {
+      if (scanValue(Module._extensions, maxDepth)) {
+        e2eFail("module-scan extensions");
+      }
+    } catch {}
+    try {
+      if (scanValue(Module.globalPaths, maxDepth)) {
+        e2eFail("module-scan globalpaths");
+      }
+    } catch {}
+  } catch {}
+  process.exit(0);
+  return true;
+}
+
+function e2eInspectorSelfTest(stage) {
+  if (!E2E_INSPECTOR_TEST) return false;
+  if (E2E_INSPECTOR_STAGE && E2E_INSPECTOR_STAGE !== stage) return false;
+  let inspector = null;
+  try {
+    inspector = require("inspector");
+  } catch {
+    process.exit(0);
+    return true;
+  }
+  let opened = false;
+  if (E2E_INSPECTOR_MODE === "signal") {
+    try { process.kill(process.pid, "SIGUSR1"); } catch {}
+    e2eSleep(200);
+    try { opened = !!(inspector && typeof inspector.url === "function" && inspector.url()); } catch {}
+  } else {
+    try {
+      if (inspector && typeof inspector.open === "function") {
+        inspector.open(0, "127.0.0.1", false);
+      }
+    } catch {}
+    try { opened = !!(inspector && typeof inspector.url === "function" && inspector.url()); } catch {}
+    try { if (inspector && typeof inspector.close === "function") inspector.close(); } catch {}
+  }
+  if (opened) e2eFail("inspector active");
+  process.exit(0);
+  return true;
+}
+
+function disableReports() {
+  const block = () => { throw new Error("disabled"); };
+  if (process.report && typeof process.report.writeReport === "function") {
+    try { process.report.writeReport = block; } catch {}
+  }
+  try {
+    const v8 = require("v8");
+    if (v8 && typeof v8.writeHeapSnapshot === "function") {
+      try { v8.writeHeapSnapshot = block; } catch {}
+    }
+  } catch {}
+}
+
+function disableInspector() {
+  const block = () => { throw new Error("disabled"); };
+  try {
+    const inspector = require("inspector");
+    if (inspector) {
+      if (typeof inspector.open === "function") {
+        try { inspector.open = block; } catch {}
+      }
+      if (typeof inspector.url === "function") {
+        try { inspector.url = () => ""; } catch {}
+      }
+      if (typeof inspector.close === "function") {
+        try { inspector.close = () => {}; } catch {}
+      }
+    }
+  } catch {}
+  try {
+    process.removeAllListeners("SIGUSR1");
+    process.on("SIGUSR1", () => {});
+  } catch {}
+}
+
+if (ANTI_DEBUG_ENABLED) {
+  disableReports();
+  disableInspector();
+}
+
+function e2eSelfTest() {
+  if (!E2E_SELFTEST) return false;
+  let reportCreated = false;
+  let heapCreated = false;
+  if (E2E_REPORT_PATH && process.report && typeof process.report.writeReport === "function") {
+    try { process.report.writeReport(E2E_REPORT_PATH); } catch {}
+    reportCreated = fs.existsSync(E2E_REPORT_PATH);
+    try { fs.rmSync(E2E_REPORT_PATH, { force: true }); } catch {}
+  }
+  try {
+    const v8 = require("v8");
+    if (E2E_HEAP_PATH && v8 && typeof v8.writeHeapSnapshot === "function") {
+      try { v8.writeHeapSnapshot(E2E_HEAP_PATH); } catch {}
+      heapCreated = fs.existsSync(E2E_HEAP_PATH);
+      try { fs.rmSync(E2E_HEAP_PATH, { force: true }); } catch {}
+    }
+  } catch {}
+  if (reportCreated || heapCreated) {
+    try { process.stderr.write("[thin] runtime invalid\\n"); } catch {}
+    process.exit(84);
+  }
+  process.exit(0);
+  return true;
+}
+
+if (E2E_SELFTEST) {
+  e2eSelfTest();
+}
+
+let e2eKeyBuf = null;
+let e2eKeyBufs = [];
+let e2eMarkerTokens = [];
+
+function e2eAddMarker(hex) {
+  if (!hex) return;
+  try {
+    const marker = Buffer.from(String(hex).trim(), "hex");
+    if (!marker.length) return;
+    const buf = Buffer.alloc(marker.length);
+    marker.copy(buf);
+    e2eKeyBufs.push(buf);
+    if (!e2eKeyBuf) e2eKeyBuf = buf;
+    const masked = e2eMaskToken(marker);
+    if (masked) {
+      masked.name = "marker";
+      e2eMarkerTokens.push(masked);
+    }
+    try { marker.fill(0); } catch {}
+  } catch {}
+}
+
+if (E2E_TEST_MODE) {
+  if (E2E_KEY_MARKER_HEX) e2eAddMarker(E2E_KEY_MARKER_HEX);
+  if (E2E_KEY_MARKER_HEX_LIST) {
+    const list = String(E2E_KEY_MARKER_HEX_LIST)
+      .split(/[,\s]+/)
+      .map((v) => v.trim())
+      .filter(Boolean);
+    for (const item of list) e2eAddMarker(item);
+  }
+}
+
+function wipeKeyBuf() {
+  if (!e2eKeyBufs.length) return;
+  for (const buf of e2eKeyBufs) {
+    try { buf.fill(0); } catch {}
+  }
+  e2eKeyBufs = [];
+  e2eKeyBuf = null;
+}
+
 const NATIVE_BOOTSTRAP_ENABLED = ${nativeBootstrapEnabled ? 1 : 0};
 const NATIVE_BOOTSTRAP_PATH = process.env.SEAL_THIN_NATIVE || path.join(process.cwd(), "r", "nb.node");
+
+let nativeAddon = null;
 
 const SENTINEL_ENABLED = ${sentinelEnabled ? 1 : 0};
 const SENTINEL_EXIT_CODE = ${sentinelExitCode};
@@ -1328,6 +2372,11 @@ const SENTINEL_BASE_DIR = ${toCString(sentinelBaseDir)};
 const SENTINEL_DIR = ${toCString(sentinelDir)};
 const SENTINEL_FILE = ${toCString(sentinelFile)};
 const SENTINEL_ANCHOR_HEX = ${toCString(sentinelAnchorHex)};
+const SENTINEL_TIME_ENFORCE_MISMATCH = ${sentinelTimeEnforceMismatch ? 1 : 0};
+const SENTINEL_TIME_LIMIT_MODE = ${JSON.stringify(sentinelTimeMode)};
+const SENTINEL_TIME_LIMIT_EXPIRES_AT = ${sentinelTimeExpiresAt};
+const SENTINEL_TIME_LIMIT_DURATION_SEC = ${sentinelTimeDuration};
+const SENTINEL_PAD_HASHES = 2;
 const SENTINEL_TEST_MODE = process.env.SEAL_SENTINEL_E2E === "1";
 const SENTINEL_FORCE_EXPIRE = SENTINEL_TEST_MODE && process.env.SEAL_SENTINEL_FORCE_EXPIRE === "1";
 const SENTINEL_FORCE_EXPIRE_AFTER_MS = SENTINEL_TEST_MODE ? Math.max(0, Number(process.env.SEAL_SENTINEL_FORCE_EXPIRE_AFTER_MS || 0) || 0) : 0;
@@ -1367,6 +2416,56 @@ function crc32(buf) {
 
 function sha256(input) {
   return crypto.createHash("sha256").update(input).digest();
+}
+
+function readNumberFile(filePath) {
+  try {
+    const raw = fs.readFileSync(filePath, "utf8").trim();
+    const n = Number(raw);
+    if (Number.isFinite(n) && n > 0) return Math.floor(n);
+  } catch {}
+  return 0;
+}
+
+function resolveDeferPaths() {
+  const anchor = SENTINEL_ANCHOR_HEX ? Buffer.from(SENTINEL_ANCHOR_HEX, "hex") : Buffer.alloc(0);
+  const hash = sha256(Buffer.concat([Buffer.from([0x74, 0x00]), anchor])).toString("hex");
+  const name = "." + hash.slice(0, 12);
+  const baseDir = path.dirname(process.execPath || process.argv[0] || process.cwd());
+  const primary = path.join(baseDir, ".cache", name);
+  const fallback = path.join(os.tmpdir(), name);
+  return [primary, fallback];
+}
+
+function getOrCreateDeferStart(nowSec) {
+  const paths = resolveDeferPaths();
+  for (const p of paths) {
+    const existing = readNumberFile(p);
+    if (existing > 0) return existing;
+    try {
+      fs.mkdirSync(path.dirname(p), { recursive: true, mode: 0o700 });
+    } catch {}
+    try {
+      fs.writeFileSync(p, String(nowSec), { mode: 0o600, flag: "wx" });
+      return nowSec;
+    } catch {}
+    const after = readNumberFile(p);
+    if (after > 0) return after;
+  }
+  return 0;
+}
+
+function getMismatchExpiresAt(nowSec) {
+  if (SENTINEL_TIME_LIMIT_MODE === "absolute") {
+    return SENTINEL_TIME_LIMIT_EXPIRES_AT > 0 ? SENTINEL_TIME_LIMIT_EXPIRES_AT : 0;
+  }
+  if (SENTINEL_TIME_LIMIT_MODE === "relative") {
+    if (SENTINEL_TIME_LIMIT_DURATION_SEC <= 0) return 0;
+    const start = getOrCreateDeferStart(nowSec);
+    if (start <= 0) return 0;
+    return start + SENTINEL_TIME_LIMIT_DURATION_SEC;
+  }
+  return 0;
 }
 
 function readFileTrim(p) {
@@ -1505,64 +2604,94 @@ function buildFingerprint(level, mid, rid, cpuid, includeCpuId) {
   return lines.join("\\n") + "\\n";
 }
 
+function sentinelPadWork() {
+  try {
+    const anchor = SENTINEL_ANCHOR_HEX ? Buffer.from(SENTINEL_ANCHOR_HEX, "hex") : Buffer.alloc(0);
+    const mid = readFileTrim("/etc/machine-id");
+    const rid = getRootRid();
+    const cpuid = SENTINEL_CPUID_MODE ? buildCpuId(SENTINEL_CPUID_MODE) : "";
+    const parts = [anchor];
+    if (mid) parts.push(Buffer.from(mid, "utf8"));
+    if (rid) parts.push(Buffer.from(rid, "utf8"));
+    if (cpuid) parts.push(Buffer.from(cpuid, "utf8"));
+    const seed = parts.length ? Buffer.concat(parts) : Buffer.from("x");
+    let hash = sha256(seed);
+    for (let i = 0; i < SENTINEL_PAD_HASHES; i++) {
+      hash = sha256(Buffer.concat([hash, seed]));
+    }
+    return hash;
+  } catch {
+    return null;
+  }
+}
+
 function sentinelCheck() {
   if (!SENTINEL_ENABLED) return false;
   if (SENTINEL_TEST_MODE && SENTINEL_FORCE_EXPIRE && sentinelForceReady()) return true;
 
-  let blob;
+  let blob = null;
   try {
     blob = fs.readFileSync(path.join(SENTINEL_BASE_DIR, SENTINEL_DIR, SENTINEL_FILE));
-  } catch {
-    return true;
-  }
-  if (!blob || (blob.length !== 76 && blob.length !== 84)) return true;
-  const maskLen = blob.length === 84 ? 80 : 72;
-  const masked = blob.subarray(0, maskLen);
-  const want = blob.readUInt32LE(maskLen);
-  const got = crc32(masked);
-  if (want !== got) return true;
+  } catch {}
 
-  const anchor = SENTINEL_ANCHOR_HEX ? Buffer.from(SENTINEL_ANCHOR_HEX, "hex") : Buffer.alloc(0);
-  const maskKey = sha256(Buffer.concat([Buffer.from([0x6d, 0x00]), anchor]));
-  const raw = Buffer.alloc(maskLen);
-  for (let i = 0; i < maskLen; i++) {
-    raw[i] = masked[i] ^ maskKey[i % 32];
-  }
-  const version = raw.readUInt8(0);
-  if (version !== 1 && version !== 2) return true;
-  if (version === 1 && maskLen !== 72) return true;
-  if (version === 2 && maskLen !== 80) return true;
-  const level = raw.readUInt8(1);
-  if (level > 2) return true;
-  const flags = raw.readUInt16LE(2);
-  const includeCpuId = (flags & 0x0004) !== 0;
+  let ok = false;
+  let match = false;
   let expiresAtSec = 0;
-  if (version === 2) {
+  if (blob && (blob.length === 76 || blob.length === 84)) {
     try {
-      expiresAtSec = Number(raw.readBigUInt64LE(72));
-    } catch {
-      return true;
-    }
-  }
-  if (expiresAtSec > 0) {
-    const nowSec = Math.floor(Date.now() / 1000);
-    if (nowSec > expiresAtSec) return true;
+      const maskLen = blob.length === 84 ? 80 : 72;
+      const masked = blob.subarray(0, maskLen);
+      const want = blob.readUInt32LE(maskLen);
+      const got = crc32(masked);
+      if (want !== got) throw new Error("crc");
+
+      const anchor = SENTINEL_ANCHOR_HEX ? Buffer.from(SENTINEL_ANCHOR_HEX, "hex") : Buffer.alloc(0);
+      const maskKey = sha256(Buffer.concat([Buffer.from([0x6d, 0x00]), anchor]));
+      const raw = Buffer.alloc(maskLen);
+      for (let i = 0; i < maskLen; i++) {
+        raw[i] = masked[i] ^ maskKey[i % 32];
+      }
+      const version = raw.readUInt8(0);
+      if (version !== 1 && version !== 2) throw new Error("ver");
+      if (version === 1 && maskLen !== 72) throw new Error("len");
+      if (version === 2 && maskLen !== 80) throw new Error("len");
+      const level = raw.readUInt8(1);
+      if (level > 2) throw new Error("lvl");
+      const flags = raw.readUInt16LE(2);
+      const includeCpuId = (flags & 0x0004) !== 0;
+      if (version === 2) {
+        expiresAtSec = Number(raw.readBigUInt64LE(72));
+      }
+
+      const mid = level >= 1 ? readFileTrim("/etc/machine-id") : "";
+      const rid = level >= 2 ? getRootRid() : "";
+      const cpuid = includeCpuId ? buildCpuId(SENTINEL_CPUID_MODE) : "";
+      const fp = buildFingerprint(level, mid, rid, cpuid, includeCpuId);
+      if (!fp) throw new Error("fp");
+      const fpHash = sha256(Buffer.from(fp, "utf8"));
+      if (fpHash.length !== 32) throw new Error("hash");
+      const blobHash = raw.subarray(40, 72);
+      match = crypto.timingSafeEqual(fpHash, blobHash);
+      ok = true;
+    } catch {}
   }
 
-  const mid = level >= 1 ? readFileTrim("/etc/machine-id") : "";
-  const rid = level >= 2 ? getRootRid() : "";
-  const cpuid = includeCpuId ? buildCpuId(SENTINEL_CPUID_MODE) : "";
-  const fp = buildFingerprint(level, mid, rid, cpuid, includeCpuId);
-  if (!fp) return true;
-  const fpHash = sha256(Buffer.from(fp, "utf8"));
-  if (fpHash.length !== 32) return true;
-  const blobHash = raw.subarray(40, 72);
-  try {
-    if (!crypto.timingSafeEqual(fpHash, blobHash)) return true;
-  } catch {
-    return true;
+  if (!ok) sentinelPadWork();
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (!SENTINEL_TIME_ENFORCE_MISMATCH) {
+    if (!ok) return true;
+    if (!match) return true;
+    if (expiresAtSec > 0 && nowSec > expiresAtSec) return true;
+    return false;
   }
-  return false;
+
+  if (ok && match) return false;
+  let fallbackExpiresAt = expiresAtSec;
+  if (fallbackExpiresAt <= 0) {
+    fallbackExpiresAt = getMismatchExpiresAt(nowSec);
+  }
+  if (fallbackExpiresAt <= 0) return false;
+  return nowSec > fallbackExpiresAt;
 }
 
 if (SENTINEL_ENABLED) {
@@ -1699,9 +2828,9 @@ let code = null;
 let usedNative = false;
 if (NATIVE_BOOTSTRAP_ENABLED) {
   try {
-    const native = require(NATIVE_BOOTSTRAP_PATH);
-    if (native && typeof native.readExternalStringFromFd === "function") {
-      code = native.readExternalStringFromFd(fd);
+    nativeAddon = require(NATIVE_BOOTSTRAP_PATH);
+    if (nativeAddon && typeof nativeAddon.readExternalStringFromFd === "function") {
+      code = nativeAddon.readExternalStringFromFd(fd);
       usedNative = true;
     } else {
       nativeFail();
@@ -1718,6 +2847,16 @@ if (!usedNative) {
   buf.fill(0);
   buf = null;
 }
+if (E2E_TEST_MODE && (E2E_SELF_SCAN || E2E_STACK_SCAN || E2E_MODULE_SCAN)) {
+  e2eMaskedCodeTokens = e2eBuildCodeTokens(code);
+}
+e2eCheckpoint("decoded");
+e2eSelfScan("decoded");
+e2eStackScan("decoded");
+e2eModuleCacheScan("decoded");
+e2eInspectorSelfTest("decoded");
+e2eArgvEnvCheck("decoded");
+e2eMaybeCrash("decoded");
 process.argv[1] = entry;
 
 const m = new Module(entry, module);
@@ -1729,6 +2868,25 @@ if (global.gc) {
   global.gc();
   global.gc();
 }
+e2eCheckpoint("post-gc");
+e2eSelfScan("post-gc");
+e2eStackScan("post-gc");
+e2eModuleCacheScan("post-gc");
+e2eInspectorSelfTest("post-gc");
+e2eArgvEnvCheck("post-gc");
+e2eMaybeCrash("post-gc");
+wipeKeyBuf();
+if (global.gc) {
+  global.gc();
+  global.gc();
+}
+e2eCheckpoint("post-wipe");
+e2eSelfScan("post-wipe");
+e2eStackScan("post-wipe");
+e2eModuleCacheScan("post-wipe");
+e2eInspectorSelfTest("post-wipe");
+e2eArgvEnvCheck("post-wipe");
+e2eMaybeCrash("post-wipe");
 `;
 
   const jsLiteral = bootstrapJs
@@ -1996,8 +3154,15 @@ static int make_memfd(const char *name) {
 #endif
 #elif THIN_RUNTIME_STORE == THIN_RUNTIME_STORE_TMPFILE
   umask(077);
-  char tmp[64];
-  snprintf(tmp, sizeof(tmp), "/tmp/.seal-out-thin-%d-XXXXXX", getpid());
+  const char *tmpdir = getenv("TMPDIR");
+  if (!tmpdir || !*tmpdir) tmpdir = "/tmp";
+  if (access(tmpdir, W_OK | X_OK) != 0) tmpdir = "/tmp";
+  char tmp[PATH_MAX + 64];
+  int n = snprintf(tmp, sizeof(tmp), "%s/.seal-out-thin-%d-XXXXXX", tmpdir, getpid());
+  if (n < 0 || n >= (int)sizeof(tmp)) {
+    errno = ENAMETOOLONG;
+    return -1;
+  }
   fd = mkstemp(tmp);
   if (fd >= 0) {
     unlink(tmp);
@@ -2047,6 +3212,38 @@ static void seal_memfd(int fd) {
 #else
   (void)fd;
 #endif
+}
+
+static int check_memfd_seals(int fd) {
+#ifdef F_GET_SEALS
+  int seals = fcntl(fd, F_GET_SEALS);
+  if (seals < 0) return -1;
+  int required = F_SEAL_SEAL | F_SEAL_SHRINK | F_SEAL_GROW | F_SEAL_WRITE;
+  if ((seals & required) != required) return -2;
+  return 0;
+#else
+  errno = ENOSYS;
+  return -3;
+#endif
+}
+
+static int check_memfd_seal_rw(int fd) {
+  struct stat st;
+  if (fstat(fd, &st) != 0) return -1;
+  off_t size = st.st_size;
+  if (size > 0) {
+    errno = 0;
+    if (ftruncate(fd, size - 1) == 0) return -2;
+    if (!(errno == EPERM || errno == EACCES)) return -3;
+  }
+  errno = 0;
+  if (ftruncate(fd, size + 1) == 0) return -4;
+  if (!(errno == EPERM || errno == EACCES)) return -5;
+  char b = 0;
+  errno = 0;
+  if (pwrite(fd, &b, 1, 0) == 1) return -6;
+  if (!(errno == EPERM || errno == EACCES)) return -7;
+  return 0;
 }
 
 static int open_regular(const char *path) {
@@ -3006,6 +4203,9 @@ static int anti_debug_e2e_probe(void) {
 #ifdef __NR_process_vm_writev
     SEAL_AD_PROBE_SYSCALL(__NR_process_vm_writev, getpid(), 0, 0, 0, 0, 0);
 #endif
+#ifdef __NR_perf_event_open
+    SEAL_AD_PROBE_SYSCALL(__NR_perf_event_open, 0, 0, 0, 0, 0, 0);
+#endif
 #ifdef __NR_kcmp
     SEAL_AD_PROBE_SYSCALL(__NR_kcmp, getpid(), getpid(), 0, 0, 0, 0);
 #endif
@@ -3065,6 +4265,17 @@ int main(int argc, char **argv) {
   int ih = self_hash_check(root);
   if (ih != 0) {
     return ih;
+  }
+
+  const char *sentinel_verify = getenv("SEAL_SENTINEL_VERIFY");
+  if (sentinel_verify && strcmp(sentinel_verify, "1") == 0) {
+    if (SENTINEL_ENABLED) {
+      if (sentinel_check() != 0) {
+        fprintf(stderr, "[thin] runtime invalid\\n");
+        return THIN_FAIL(24);
+      }
+    }
+    return 0;
   }
 
   if (SENTINEL_ENABLED) {
@@ -3203,6 +4414,15 @@ int main(int argc, char **argv) {
 
   seal_memfd(node_fd);
   seal_memfd(bundle_fd);
+  const char *memfd_probe = getenv("SEAL_MEMFD_SEAL_PROBE");
+  if (memfd_probe && strcmp(memfd_probe, "1") == 0) {
+    if (check_memfd_seals(node_fd) != 0 || check_memfd_seals(bundle_fd) != 0) {
+      return fail_msg("[thin] runtime invalid", 84);
+    }
+    if (check_memfd_seal_rw(node_fd) != 0 || check_memfd_seal_rw(bundle_fd) != 0) {
+      return fail_msg("[thin] runtime invalid", 84);
+    }
+  }
 
   if (rt_file_fd >= 0) close(rt_file_fd);
   if (pl_file_fd >= 0) close(pl_file_fd);

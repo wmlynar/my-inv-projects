@@ -13,6 +13,7 @@ const { info, warn, err, ok } = require("./ui");
 const { getSealPaths } = require("./project");
 const { spawnSyncSafe } = require("./spawn");
 const { renderAppctl } = require("./appctl");
+const { applyDecoy } = require("./decoy");
 const { packSea } = require("./packagers/sea");
 const { packFallback } = require("./packagers/fallback");
 const { packThin, applyLauncherSelfHash } = require("./packagers/thin");
@@ -53,21 +54,10 @@ function normalizeObfuscationProfile(raw) {
   if (raw === undefined || raw === null) {
     return { profile: "balanced", warning: null };
   }
-  const input = String(raw).toLowerCase();
-  const aliasMap = {
-    "prod-strict": "strict",
-    "prod-max": "max",
-    "aggressive": "strict",
-  };
-  const alias = aliasMap[input] || null;
-  const profile = alias || input;
+  const profile = String(raw).toLowerCase();
   const known = new Set(["minimal", "balanced", "strict", "max"]);
   if (!known.has(profile)) {
-    return { profile: "balanced", warning: `Unknown obfuscationProfile "${raw}", using "balanced"` };
-  }
-  if (alias) {
-    const note = input === "aggressive" ? "deprecated, use" : "renamed to";
-    return { profile, warning: `obfuscationProfile "${raw}" ${note} "${profile}"` };
+    throw new Error(`Invalid build.obfuscationProfile: ${raw} (expected: minimal|balanced|strict|max)`);
   }
   return { profile, warning: null };
 }
@@ -1162,12 +1152,28 @@ protection.integrity = thinIntegrity;
   // Includes: public/, data/ etc
   copyIncludes(projectRoot, releaseDir, projectCfg.build.includeDirs);
 
+  // Optional decoy (joker) files to make the release look like a regular Node project.
+  let decoyResult = { enabled: false, mode: "none" };
+  if (projectCfg.build.decoy !== undefined) {
+    decoyResult = applyDecoy({
+      projectRoot,
+      outDir: baseOutDir,
+      releaseDir,
+      appName,
+      buildId,
+      decoy: projectCfg.build.decoy,
+    });
+    if (decoyResult.enabled) {
+      ok(`Decoy OK (${decoyResult.mode}, scope=${decoyResult.scope})`);
+    }
+  }
+
 // Frontend obfuscation (public/*.js) – enabled by default
   const frontendCfg = projectCfg.build.frontendObfuscation;
   const frontendEnabled = frontendCfg === false ? false : !(typeof frontendCfg === 'object' && frontendCfg && frontendCfg.enabled === false);
   const frontendProfileRaw = (typeof frontendCfg === 'object' && frontendCfg && frontendCfg.profile)
     ? frontendCfg.profile
-    : (projectCfg.build.frontendObfuscationProfile || obfProfile);
+    : (projectCfg.build.frontendObfuscationProfile || "balanced");
   const frontendNorm = normalizeObfuscationProfile(frontendProfileRaw);
   if (frontendNorm.warning && frontendProfileRaw !== obfProfile) warn(frontendNorm.warning);
   const frontendProfile = frontendNorm.profile;
@@ -1248,6 +1254,7 @@ protection.integrity = thinIntegrity;
     consoleMode,
     frontendObfuscation: frontendResult,
     frontendMinify: minifyResult,
+    decoy: decoyResult,
     protection,
   };
   writeMeta(baseOutDir, meta);

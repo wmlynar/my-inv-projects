@@ -2,6 +2,7 @@
 "use strict";
 
 const assert = require("assert");
+const crypto = require("crypto");
 const fs = require("fs");
 const http = require("http");
 const net = require("net");
@@ -26,6 +27,21 @@ function fail(msg) {
 
 function runCmd(cmd, args, timeoutMs = 5000) {
   return spawnSync(cmd, args, { stdio: "pipe", timeout: timeoutMs });
+}
+
+function hashFile(filePath) {
+  const hash = crypto.createHash("sha256");
+  const fd = fs.openSync(filePath, "r");
+  try {
+    const buf = Buffer.alloc(1024 * 1024);
+    let bytes = 0;
+    while ((bytes = fs.readSync(fd, buf, 0, buf.length, null)) > 0) {
+      hash.update(buf.subarray(0, bytes));
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+  return hash.digest("hex");
 }
 
 function ensureLauncherObfuscation(projectCfg) {
@@ -233,6 +249,37 @@ function writeRuntimeConfig(releaseDir, port) {
   writeJson5(path.join(releaseDir, "config.runtime.json5"), cfg);
 }
 
+function assertNoReleaseArtifacts(releaseDir) {
+  const forbiddenNames = new Set([
+    "codec_state.json",
+    "codec_state.bin",
+    "codec_state",
+  ]);
+  if (fs.existsSync(path.join(releaseDir, "seal-out"))) {
+    throw new Error("forbidden artifact in release: seal-out");
+  }
+  if (fs.existsSync(path.join(releaseDir, "cache"))) {
+    throw new Error("forbidden artifact in release: cache");
+  }
+  const stack = [releaseDir];
+  while (stack.length) {
+    const dir = stack.pop();
+    let entries = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const ent of entries) {
+      const full = path.join(dir, ent.name);
+      if (forbiddenNames.has(ent.name)) {
+        throw new Error(`forbidden artifact in release: ${path.relative(releaseDir, full)}`);
+      }
+      if (ent.isDirectory()) stack.push(full);
+    }
+  }
+}
+
 async function runRelease({ releaseDir, buildId, runTimeoutMs, env }) {
   if (runRelease.skipListen) {
     log("SKIP: listen not permitted; runtime check disabled");
@@ -327,6 +374,7 @@ async function testThinSplit(ctx) {
   assert.ok(fs.existsSync(launcher), "BOOTSTRAP release missing b/a");
   assert.ok(fs.existsSync(rt), "BOOTSTRAP release missing r/rt");
   assert.ok(fs.existsSync(pl), "BOOTSTRAP release missing r/pl");
+  assertNoReleaseArtifacts(releaseDir);
 
   log("Running thin SPLIT wrapper...");
   await runRelease({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs });
@@ -388,6 +436,29 @@ async function testThinSplitNativeBootstrap(ctx) {
   fs.rmSync(outRoot, { recursive: true, force: true });
 }
 
+async function testThinSplitRandomization(ctx) {
+  log("Building thin SPLIT twice (randomness check)...");
+  const resA = await buildThinRelease(ctx.buildTimeoutMs);
+  const resB = await buildThinRelease(ctx.buildTimeoutMs);
+
+  try {
+    const aPl = hashFile(path.join(resA.releaseDir, "r", "pl"));
+    const bPl = hashFile(path.join(resB.releaseDir, "r", "pl"));
+    if (aPl === bPl) {
+      throw new Error("payload containers identical across builds (expected per-build randomness)");
+    }
+
+    const aRt = hashFile(path.join(resA.releaseDir, "r", "rt"));
+    const bRt = hashFile(path.join(resB.releaseDir, "r", "rt"));
+    if (aRt === bRt) {
+      throw new Error("runtime containers identical across builds (expected per-build randomness)");
+    }
+  } finally {
+    fs.rmSync(resA.outRoot, { recursive: true, force: true });
+    fs.rmSync(resB.outRoot, { recursive: true, force: true });
+  }
+}
+
 async function main() {
   if (process.env.SEAL_THIN_E2E !== "1") {
     log("SKIP: set SEAL_THIN_E2E=1 to run thin E2E tests");
@@ -421,7 +492,7 @@ async function main() {
     }
   }
 
-  const tests = [testThinSplit, testThinSplitNativeBootstrap];
+  const tests = [testThinSplit, testThinSplitRandomization, testThinSplitNativeBootstrap];
   let failures = 0;
   try {
     for (const t of tests) {

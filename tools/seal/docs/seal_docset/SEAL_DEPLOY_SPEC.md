@@ -1505,7 +1505,7 @@ Kompatybilność (MAY): aliasy historyczne `seal diff-config`, `seal pull-config
 Minimalne pola (MUST):
 - `version` (int)
 - `target` (string)
-- `profile` (string: `prod|debug`)
+- `securityProfile` (string: `minimal|balanced|strict|max`, opcjonalnie)
 - `initMode` (string: `NEW|ADOPT`)
 - `resolvedConfig` (object)
 - `decisions[]` (lista decyzji: `id/chosen/alternatives/reason`)
@@ -1539,7 +1539,8 @@ Minimalne pola (MUST):
 6) Spakuj do single artifact (preferowane: SEA → single executable).
 7) Protection/pack: domyślnie ELF packer (kiteshield, `-n`) dla thin‑split; opcjonalnie `strip`/inne packery (np. `midgetpack`, `upx`).
 8) Zbuduj `manifest.json`.
-9) Utwórz paczkę `seal-out/<app>-<buildId>.tgz`.
+9) (opcjonalnie) Decoy/joker: generuj wiarygodną strukturę projektu Node (bez nadpisywania istniejących plików).
+10) Utwórz paczkę `seal-out/<app>-<buildId>.tgz`.
 
 ### 26.2. Algorytm `deploy` (alias: `ship`)
 1) (opcjonalnie) zrób `release`, jeśli nie ma paczki / jest nieświeża.
@@ -1558,7 +1559,10 @@ Minimalne pola (MUST):
    - jeśli jest i `--push-config` → nadpisz.
 10) Zapisz `current.buildId` na nowy buildId (aktywacja wersji).
 11) Restart systemd (usługa uruchomi nowy release przez `appctl`).
-12) Health-check (np. HTTP `/healthz`):
+12) Readiness / health-check:
+    - `seal ship` **domyślnie czeka** na gotowość (systemd active).
+    - `seal deploy --restart --wait` robi to samo tylko gdy jawnie włączysz `--wait`.
+    - (opcjonalnie) HTTP `/healthz` (`--wait-url`, `--wait-mode http|both`).
     - jeśli fail → rollback: ustaw `current.buildId` na poprzedni buildId, restart.
 
 ### 26.3. Algorytm rollback
@@ -1745,6 +1749,13 @@ Przykład (aktualny dla v0.5):
     packager: "auto",
     packagerFallback: false,
 
+    // Poziom zabezpieczeń (ustawia domyślne wartości, bez nadpisywania jawnych pól)
+    // minimal | balanced | strict | max
+    securityProfile: "strict",
+
+    // Opcjonalny override tylko dla obfuskacji JS:
+    // obfuscationProfile: "strict",
+
     // Thin-specific settings (used by thin packagers)
     thin: {
       mode: "split",          // split
@@ -1778,11 +1789,8 @@ Przykład (aktualny dla v0.5):
       integrity: { enabled: false, mode: "inline", file: "ih" }
     },
 
-    // minimal|balanced|strict|max
-    obfuscationProfile: "balanced",
-
     // Frontend assets (public/**/*.js) – domyślnie obfuskowane
-    frontendObfuscation: { enabled: true, profile: "balanced" },
+    frontendObfuscation: { enabled: true },
 
     // Frontend HTML/CSS – domyślnie bezpiecznie minifikowane
     frontendMinify: { enabled: true, level: "safe", html: true, css: true },
@@ -1813,11 +1821,16 @@ Przykład (aktualny dla v0.5):
 ```
 
 ### 29.3. Reguły domyślne (jeśli pola brak)
+- Uwaga: `build.securityProfile` domyślnie = `strict` i **ustawia domyślne wartości** (np. `thin.integrity`, `thin.nativeBootstrap`, `thin.antiDebug`, `protection.strip`, `thin.envMode`).  
+  Jeśli chcesz zachować „gołe” defaulty, ustaw `securityProfile: "minimal"` lub nadpisz pola jawnie.
 - `appName`: z `package.json:name` (fallback: nazwa katalogu).
 - `entry`: kolejno próby: `package.json:main`, `src/index.js`, `index.js`.
 - `defaultTarget`: `local`.
 - `build.packager`: `auto` (domyślnie `thin-split`).
-- `build.obfuscationProfile`: `balanced`.
+- `build.securityProfile`: preset poziomu zabezpieczeń (`minimal|balanced|strict|max`), **domyślnie `strict`**. Preset ustawia **domyślne wartości** (nie nadpisuje jawnych pól).
+- `build.obfuscationProfile`: jeśli nie ustawione jawnie, dziedziczy poziom z `securityProfile` (`minimal|balanced|strict|max`).
+- `build.sentinel.profile`: domyślnie `auto` (sentinel włączany tylko dla `thin` + targetów `ssh`); opcje: `off|auto|required|strict`.
+- `build.sentinel.timeLimit.enforce`: `always` (domyślnie) lub `mismatch` (expiry tylko przy niedopasowaniu fingerprintu lub braku blobu).
 - `build.includeDirs`: `["public", "data"]`.
 - `build.packagerFallback`: `false`.
 - `build.thin.mode`: `split`.
@@ -1832,9 +1845,9 @@ Przykład (aktualny dla v0.5):
 - `build.thin.antiDebug.seccompNoDebug`: domyślnie `{ enabled: true, mode: "errno", aggressive: false }`.
 - `build.thin.antiDebug.coreDump`: domyślnie `true`.
 - `build.thin.antiDebug.loaderGuard`: domyślnie `true`.
-- `build.frontendObfuscation`: domyślnie `{ enabled: true, profile: build.obfuscationProfile }`.
+- `build.frontendObfuscation`: domyślnie `{ enabled: true, profile: "balanced" }` (frontend nie dziedziczy profilu z backendu).
 - `build.frontendMinify`: domyślnie `{ enabled: true, level: "safe", html: true, css: true }`.
-- `build.protection`: domyślnie `{ enabled: true, seaMain:{pack:true,method:"brotli",chunkSize:8000}, bundle:{pack:true}, strip:{enabled:false,cmd:"strip"}, elfPacker:{tool:"kiteshield",cmd:"kiteshield",args:["-n","{in}","{out}"]} }`.
+- `build.protection`: domyślnie `{ enabled: true, seaMain:{pack:true,method:"brotli",chunkSize:8000}, bundle:{pack:true}, strip:{enabled:false,cmd:"strip"}, elfPacker:{tool:"kiteshield",cmd:"kiteshield",args:["-n","{in}","{out}"]}, cObfuscator:{tool:"obfuscator-llvm",cmd:"ollvm-clang",args:["-mllvm","-fla","-mllvm","-sub"]} }`.
 - `build.protection.strip.cmd`: `strip` | `llvm-strip` | `eu-strip` | `sstrip` (domyślnie `strip`).
 - `build.protection.strip.args`: opcjonalne argumenty dla strip (placeholder `{in}` podstawia ścieżkę binarki); jeśli nie podasz — używane jest `--strip-all`.
 - `build.protection.elfPacker.tool`: packer/protector ELF: `kiteshield` | `midgetpack` | `upx` (domyślnie `kiteshield`).

@@ -199,6 +199,30 @@ function verifyPacker(binPath, spec) {
   return { skip: "unsupported packer check" };
 }
 
+function attemptUnpack(binPath, spec) {
+  const strict = process.env.SEAL_E2E_STRICT_UNPACK === "1";
+  if (spec.id !== "upx") return { skip: "unpack check not supported" };
+  if (!hasCommand("upx")) return { skip: "upx missing" };
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-unpack-"));
+  const tmpPath = path.join(tmpDir, path.basename(binPath));
+  try {
+    fs.copyFileSync(binPath, tmpPath);
+    const res = runCmd("upx", ["-d", tmpPath], 10000);
+    const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+    if (res.status === 0) {
+      if (strict) throw new Error("upx unpack succeeded");
+      return { skip: "upx unpack succeeded (set SEAL_E2E_STRICT_UNPACK=1 to enforce)" };
+    }
+    if (/not packed|notpacked|not a packed/i.test(out)) {
+      return { ok: true };
+    }
+    if (/unknown option|usage:/i.test(out)) return { skip: out.slice(0, 120) || "upx unsupported" };
+    return { ok: true };
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
 function checkSectionHeaderCollapse(binPath, spec) {
   const sections = parseReadelfSections(binPath);
   if (!sections) return { skip: "readelf failed" };
@@ -342,11 +366,32 @@ async function testElfPacker(ctx, spec) {
   if (verify && verify.skip) {
     log(`SKIP: ${spec.name} packer verification (${verify.skip})`);
   }
+  const unpack = attemptUnpack(launcherPath, spec);
+  if (unpack && unpack.skip) {
+    log(`SKIP: ${spec.name} unpack check (${unpack.skip})`);
+  }
   const collapse = checkSectionHeaderCollapse(launcherPath, spec);
   if (collapse && collapse.ok) {
     log(`${spec.name}: section headers collapsed (sections=${collapse.sections}, max=${collapse.max})`);
   } else if (collapse && collapse.skip) {
     log(`SKIP: ${spec.name} section header check (${collapse.skip})`);
+  }
+
+  const nbPath = path.join(res.releaseDir, "r", "nb.node");
+  const checkNb = process.env.SEAL_E2E_CHECK_PACK_NB === "1" || process.env.SEAL_E2E_STRICT_PACK_NB === "1";
+  if (checkNb && fs.existsSync(nbPath)) {
+    const verifyNb = verifyPacker(nbPath, spec);
+    if (verifyNb && verifyNb.error) {
+      throw new Error(`${spec.name} nb.node verification failed: ${verifyNb.error}`);
+    }
+    if (verifyNb && verifyNb.skip) {
+      if (process.env.SEAL_E2E_STRICT_PACK_NB === "1") {
+        throw new Error(`${spec.name} nb.node packer check skipped: ${verifyNb.skip}`);
+      }
+      log(`SKIP: ${spec.name} nb.node packer check (${verifyNb.skip})`);
+    }
+  } else if (checkNb) {
+    log("SKIP: nb.node not present; packer check skipped");
   }
 
   if (spec.runtimeSkip && process.env[spec.runtimeEnv] !== "1") {

@@ -247,6 +247,72 @@ function computeCpuIdBoth() {
   return "";
 }
 
+function decodeMountPath(value) {
+  return String(value || "").replace(/\\([0-7]{3})/g, (_, oct) => {
+    const code = parseInt(oct, 8);
+    if (!Number.isFinite(code)) return _;
+    return String.fromCharCode(code);
+  });
+}
+
+function getRootMajMin() {
+  const txt = readFileTrim("/proc/self/mountinfo");
+  if (!txt) return "";
+  const lines = txt.split(/\r?\n/);
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const parts = line.split(/\s+/);
+    if (parts.length < 5) continue;
+    const mountPoint = decodeMountPath(parts[4]);
+    if (mountPoint !== "/") continue;
+    return parts[2] || "";
+  }
+  return "";
+}
+
+function devMajorMinor(stat) {
+  try {
+    const rdev = BigInt(stat.rdev);
+    const major = (rdev >> 8n) & 0xfffn;
+    const minor = (rdev & 0xffn) | ((rdev >> 12n) & 0xfff00n);
+    return `${Number(major)}:${Number(minor)}`;
+  } catch {
+    return "";
+  }
+}
+
+function findDevByMajMin(dir, majmin) {
+  try {
+    const entries = fs.readdirSync(dir);
+    for (const name of entries) {
+      const full = path.join(dir, name);
+      let target = full;
+      try {
+        target = fs.realpathSync(full);
+      } catch {}
+      let st;
+      try {
+        st = fs.statSync(target);
+      } catch {
+        continue;
+      }
+      const mm = devMajorMinor(st);
+      if (mm && mm === majmin) return name;
+    }
+  } catch {}
+  return "";
+}
+
+function getRootRid() {
+  const majmin = getRootMajMin();
+  if (!majmin) return "";
+  const uuid = findDevByMajMin("/dev/disk/by-uuid", majmin);
+  if (uuid) return `uuid:${uuid}`;
+  const partuuid = findDevByMajMin("/dev/disk/by-partuuid", majmin);
+  if (partuuid) return `partuuid:${partuuid}`;
+  return `dev:${majmin}`;
+}
+
 async function buildReleaseWithSentinel({ baseDir, outRoot, sentinelOverride }) {
   const projectCfg = loadProjectConfig(EXAMPLE_ROOT);
   const targetCfg = loadTargetConfig(EXAMPLE_ROOT, "local").cfg;
@@ -305,7 +371,20 @@ function ensureBaseDirOwned(baseDir, mode) {
   fs.chownSync(baseDir, 0, 0);
 }
 
-function installSentinelBlob({ baseDir, namespaceId, appId, cpuid, expiresAtSec }) {
+function installSentinelBlob({
+  baseDir,
+  namespaceId,
+  appId,
+  level = 1,
+  cpuid,
+  mid,
+  rid,
+  puid,
+  eah,
+  includeCpuId,
+  includePuid,
+  expiresAtSec,
+}) {
   ensureBaseDirOwned(baseDir, 0o711);
   const opaqueDir = deriveOpaqueDir(namespaceId);
   const opaqueFile = deriveOpaqueFile(namespaceId, appId);
@@ -316,16 +395,22 @@ function installSentinelBlob({ baseDir, namespaceId, appId, cpuid, expiresAtSec 
 
   const anchor = buildAnchor(namespaceId, appId);
   const installId = crypto.randomBytes(32);
-  const includeCpuId = !!cpuid;
-  const fpHash = buildFingerprintHash(1, {
-    mid: readFileTrim("/etc/machine-id"),
-    rid: "",
-    puid: "",
+  const useCpuId = includeCpuId !== undefined ? !!includeCpuId : !!cpuid;
+  const usePuid = includePuid !== undefined ? !!includePuid : !!puid;
+  const useMid = mid !== undefined ? String(mid) : readFileTrim("/etc/machine-id");
+  const useRid = rid !== undefined ? String(rid) : "";
+  const usePuidValue = puid !== undefined ? String(puid) : "";
+  const useEah = eah !== undefined ? String(eah) : "";
+  const fpHash = buildFingerprintHash(level, {
+    mid: useMid,
+    rid: useRid,
+    puid: usePuidValue,
+    eah: useEah,
     cpuid,
-  }, { includePuid: false, includeCpuId });
+  }, { includePuid: usePuid, includeCpuId: useCpuId });
 
-  const flags = includeCpuId ? 0x0004 : 0x0000;
-  const blob = packBlob({ level: 1, flags, installId, fpHash, expiresAtSec }, anchor);
+  const flags = useCpuId ? 0x0004 : 0x0000;
+  const blob = packBlob({ level, flags, installId, fpHash, expiresAtSec }, anchor);
   const filePath = path.join(dirPath, opaqueFile);
   fs.writeFileSync(filePath, blob, { mode: 0o640 });
   fs.chmodSync(filePath, 0o640);
@@ -490,7 +575,11 @@ async function testSentinelBasics(ctx) {
   let realBase = null;
   try {
     const res = await withTimeout("buildRelease", ctx.buildTimeoutMs, () =>
-      buildReleaseWithSentinel({ baseDir, outRoot })
+      buildReleaseWithSentinel({
+        baseDir,
+        outRoot,
+        sentinelOverride: { level: 1, cpuIdSource: "both" },
+      })
     );
     outRoot = res.outRoot;
     releaseDir = res.releaseDir;
@@ -502,14 +591,24 @@ async function testSentinelBasics(ctx) {
     await runReleaseExpectFail({ releaseDir, runTimeoutMs: ctx.runTimeoutMs, expectCode: 222 });
 
     log("Case: valid blob -> expect OK");
+    const mid = readFileTrim("/etc/machine-id");
     const cpuid = computeCpuIdBoth();
-    installSentinelBlob({ baseDir, namespaceId, appId, cpuid });
+    installSentinelBlob({ baseDir, namespaceId, appId, level: 1, mid, cpuid });
     await runReleaseExpectOk({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs });
 
-    log("Case: mismatched blob -> expect fail");
-    const badCpuId = cpuid ? `${cpuid}-bad` : "proc:bad";
-    installSentinelBlob({ baseDir, namespaceId, appId, cpuid: badCpuId });
+    log("Case: mismatched machine-id -> expect fail");
+    const badMid = mid ? `${mid}-bad` : "deadbeef";
+    installSentinelBlob({ baseDir, namespaceId, appId, level: 1, mid: badMid, cpuid });
     await runReleaseExpectFail({ releaseDir, runTimeoutMs: ctx.runTimeoutMs, expectCode: 222 });
+
+    log("Case: mismatched cpuId -> expect fail");
+    if (cpuid) {
+      const badCpuId = `${cpuid}-bad`;
+      installSentinelBlob({ baseDir, namespaceId, appId, level: 1, mid, cpuid: badCpuId });
+      await runReleaseExpectFail({ releaseDir, runTimeoutMs: ctx.runTimeoutMs, expectCode: 222 });
+    } else {
+      log("SKIP: cpuId unavailable for mismatch test");
+    }
 
     log("Case: baseDir symlink -> expect fail");
     realBase = path.join(os.tmpdir(), `seal-sentinel-real-${process.pid}`);
@@ -528,6 +627,52 @@ async function testSentinelBasics(ctx) {
     if (outRoot) fs.rmSync(outRoot, { recursive: true, force: true });
     fs.rmSync(baseDir, { recursive: true, force: true });
     if (realBase) fs.rmSync(realBase, { recursive: true, force: true });
+  }
+}
+
+async function testSentinelRehostRid(ctx) {
+  log("Building thin-split with sentinel level=2 (root RID)...");
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-rid-"));
+  const namespaceId = "00112233445566778899aabbccddeeff";
+
+  let outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-"));
+  let releaseDir = null;
+  let buildId = null;
+  let appId = null;
+
+  const rid = getRootRid();
+  if (!rid) {
+    log("SKIP: root RID unavailable for sentinel level=2 test");
+    fs.rmSync(baseDir, { recursive: true, force: true });
+    fs.rmSync(outRoot, { recursive: true, force: true });
+    return;
+  }
+
+  try {
+    const res = await withTimeout("buildRelease", ctx.buildTimeoutMs, () =>
+      buildReleaseWithSentinel({
+        baseDir,
+        outRoot,
+        sentinelOverride: { level: 2, cpuIdSource: "off" },
+      })
+    );
+    outRoot = res.outRoot;
+    releaseDir = res.releaseDir;
+    buildId = res.buildId;
+    appId = res.appId;
+
+    const mid = readFileTrim("/etc/machine-id");
+    log("Case: valid level=2 blob -> expect OK");
+    installSentinelBlob({ baseDir, namespaceId, appId, level: 2, mid, rid, includeCpuId: false });
+    await runReleaseExpectOk({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs });
+
+    log("Case: mismatched RID -> expect fail");
+    const badRid = `${rid}-bad`;
+    installSentinelBlob({ baseDir, namespaceId, appId, level: 2, mid, rid: badRid, includeCpuId: false });
+    await runReleaseExpectFail({ releaseDir, runTimeoutMs: ctx.runTimeoutMs, expectCode: 222 });
+  } finally {
+    if (outRoot) fs.rmSync(outRoot, { recursive: true, force: true });
+    fs.rmSync(baseDir, { recursive: true, force: true });
   }
 }
 
@@ -572,6 +717,214 @@ async function testSentinelExpiry(ctx) {
   }
 }
 
+async function testSentinelMismatchDeferred(ctx) {
+  log("Building thin-split with sentinel mismatch deferral...");
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-def-"));
+  const namespaceId = "00112233445566778899aabbccddeeff";
+  let outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-"));
+  let releaseDir = null;
+  let buildId = null;
+  let appId = null;
+
+  try {
+    const res = await withTimeout("buildRelease", ctx.buildTimeoutMs, () =>
+      buildReleaseWithSentinel({
+        baseDir,
+        outRoot,
+        sentinelOverride: {
+          checkIntervalMs: 200,
+          timeLimit: { validForSeconds: 3, enforce: "mismatch" },
+        },
+      })
+    );
+    outRoot = res.outRoot;
+    releaseDir = res.releaseDir;
+    buildId = res.buildId;
+    appId = res.appId;
+
+    const mid = readFileTrim("/etc/machine-id");
+    const cpuid = computeCpuIdBoth();
+    const nowSec = Math.floor(Date.now() / 1000);
+    const badMid = mid ? `${mid}-bad` : "deadbeef";
+    installSentinelBlob({ baseDir, namespaceId, appId, level: 1, mid: badMid, cpuid, expiresAtSec: nowSec + 3 });
+    await runReleaseExpectExpire({
+      releaseDir,
+      buildId,
+      runTimeoutMs: ctx.runTimeoutMs,
+      expectCode: 222,
+      expireTimeoutMs: 8000,
+    });
+  } finally {
+    if (outRoot) fs.rmSync(outRoot, { recursive: true, force: true });
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+}
+
+async function testSentinelMissingDeferred(ctx) {
+  log("Building thin-split with sentinel missing deferral...");
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-miss-"));
+  let outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-"));
+  let releaseDir = null;
+  let buildId = null;
+
+  try {
+    const res = await withTimeout("buildRelease", ctx.buildTimeoutMs, () =>
+      buildReleaseWithSentinel({
+        baseDir,
+        outRoot,
+        sentinelOverride: {
+          checkIntervalMs: 200,
+          timeLimit: { validForSeconds: 3, enforce: "mismatch" },
+        },
+      })
+    );
+    outRoot = res.outRoot;
+    releaseDir = res.releaseDir;
+    buildId = res.buildId;
+
+    ensureBaseDirOwned(baseDir, 0o711);
+    await runReleaseExpectExpire({
+      releaseDir,
+      buildId,
+      runTimeoutMs: ctx.runTimeoutMs,
+      expectCode: 222,
+      expireTimeoutMs: 8000,
+    });
+  } finally {
+    if (outRoot) fs.rmSync(outRoot, { recursive: true, force: true });
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+}
+
+async function testSentinelExpiredBlob(ctx) {
+  log("Building thin-split with sentinel expired blob...");
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-expired-"));
+  const namespaceId = "00112233445566778899aabbccddeeff";
+  let outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-"));
+  let releaseDir = null;
+  let buildId = null;
+  let appId = null;
+
+  try {
+    const res = await withTimeout("buildRelease", ctx.buildTimeoutMs, () =>
+      buildReleaseWithSentinel({
+        baseDir,
+        outRoot,
+        sentinelOverride: { level: 1, cpuIdSource: "both" },
+      })
+    );
+    outRoot = res.outRoot;
+    releaseDir = res.releaseDir;
+    buildId = res.buildId;
+    appId = res.appId;
+
+    const mid = readFileTrim("/etc/machine-id");
+    const cpuid = computeCpuIdBoth();
+    const nowSec = Math.floor(Date.now() / 1000);
+    installSentinelBlob({ baseDir, namespaceId, appId, level: 1, mid, cpuid, expiresAtSec: nowSec - 5 });
+    await runReleaseExpectFail({ releaseDir, runTimeoutMs: ctx.runTimeoutMs, expectCode: 222 });
+  } finally {
+    if (outRoot) fs.rmSync(outRoot, { recursive: true, force: true });
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+}
+
+async function testSentinelUnsupportedLevels(ctx) {
+  log("Building thin-split with sentinel for unsupported level tests...");
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-l34-"));
+  const namespaceId = "00112233445566778899aabbccddeeff";
+  let outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-"));
+  let releaseDir = null;
+  let buildId = null;
+  let appId = null;
+
+  const mid = readFileTrim("/etc/machine-id");
+  const rid = getRootRid();
+  if (!mid || !rid) {
+    log("SKIP: missing mid/rid for unsupported level tests");
+    fs.rmSync(baseDir, { recursive: true, force: true });
+    fs.rmSync(outRoot, { recursive: true, force: true });
+    return;
+  }
+
+  try {
+    const res = await withTimeout("buildRelease", ctx.buildTimeoutMs, () =>
+      buildReleaseWithSentinel({
+        baseDir,
+        outRoot,
+        sentinelOverride: { level: 1, cpuIdSource: "off" },
+      })
+    );
+    outRoot = res.outRoot;
+    releaseDir = res.releaseDir;
+    buildId = res.buildId;
+    appId = res.appId;
+
+    log("Case: L3 blob -> expect fail (unsupported)");
+    installSentinelBlob({
+      baseDir,
+      namespaceId,
+      appId,
+      level: 3,
+      mid,
+      rid,
+      puid: "puid-test",
+      includePuid: true,
+      includeCpuId: false,
+    });
+    await runReleaseExpectFail({ releaseDir, runTimeoutMs: ctx.runTimeoutMs, expectCode: 222 });
+
+    log("Case: L4 blob -> expect fail (unsupported)");
+    installSentinelBlob({
+      baseDir,
+      namespaceId,
+      appId,
+      level: 4,
+      mid,
+      rid,
+      eah: "eah-test",
+      includeCpuId: false,
+      includePuid: false,
+    });
+    await runReleaseExpectFail({ releaseDir, runTimeoutMs: ctx.runTimeoutMs, expectCode: 222 });
+  } finally {
+    if (outRoot) fs.rmSync(outRoot, { recursive: true, force: true });
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+}
+
+async function testSentinelExternalAnchorUnsupported(ctx) {
+  log("Testing sentinel externalAnchor unsupported...");
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-ext-"));
+  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-"));
+  try {
+    let threw = false;
+    try {
+      await withTimeout("buildRelease(ext anchor)", ctx.buildTimeoutMs, () =>
+        buildReleaseWithSentinel({
+          baseDir,
+          outRoot,
+          sentinelOverride: {
+            externalAnchor: { type: "usb", usb: { vid: "1234", pid: "5678", serial: "deadbeef" } },
+          },
+        })
+      );
+    } catch (e) {
+      const msg = e && e.message ? e.message : String(e);
+      if (!/externalAnchor.*not supported/i.test(msg)) {
+        throw e;
+      }
+      threw = true;
+    }
+    if (!threw) {
+      throw new Error("expected externalAnchor build failure");
+    }
+  } finally {
+    fs.rmSync(outRoot, { recursive: true, force: true });
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  }
+}
+
 async function main() {
   if (process.env.SEAL_SENTINEL_E2E !== "1") {
     log("SKIP: set SEAL_SENTINEL_E2E=1 to run sentinel E2E tests");
@@ -596,11 +949,53 @@ async function main() {
     fail(`testSentinelBasics: ${e.message || e}`);
   }
   try {
+    await withTimeout("testSentinelRehostRid", testTimeoutMs, () => testSentinelRehostRid(ctx));
+    log("OK: testSentinelRehostRid");
+  } catch (e) {
+    failures += 1;
+    fail(`testSentinelRehostRid: ${e.message || e}`);
+  }
+  try {
+    await withTimeout("testSentinelUnsupportedLevels", testTimeoutMs, () => testSentinelUnsupportedLevels(ctx));
+    log("OK: testSentinelUnsupportedLevels");
+  } catch (e) {
+    failures += 1;
+    fail(`testSentinelUnsupportedLevels: ${e.message || e}`);
+  }
+  try {
+    await withTimeout("testSentinelExternalAnchorUnsupported", testTimeoutMs, () => testSentinelExternalAnchorUnsupported(ctx));
+    log("OK: testSentinelExternalAnchorUnsupported");
+  } catch (e) {
+    failures += 1;
+    fail(`testSentinelExternalAnchorUnsupported: ${e.message || e}`);
+  }
+  try {
     await withTimeout("testSentinelExpiry", testTimeoutMs, () => testSentinelExpiry(ctx));
     log("OK: testSentinelExpiry");
   } catch (e) {
     failures += 1;
     fail(`testSentinelExpiry: ${e.message || e}`);
+  }
+  try {
+    await withTimeout("testSentinelMismatchDeferred", testTimeoutMs, () => testSentinelMismatchDeferred(ctx));
+    log("OK: testSentinelMismatchDeferred");
+  } catch (e) {
+    failures += 1;
+    fail(`testSentinelMismatchDeferred: ${e.message || e}`);
+  }
+  try {
+    await withTimeout("testSentinelMissingDeferred", testTimeoutMs, () => testSentinelMissingDeferred(ctx));
+    log("OK: testSentinelMissingDeferred");
+  } catch (e) {
+    failures += 1;
+    fail(`testSentinelMissingDeferred: ${e.message || e}`);
+  }
+  try {
+    await withTimeout("testSentinelExpiredBlob", testTimeoutMs, () => testSentinelExpiredBlob(ctx));
+    log("OK: testSentinelExpiredBlob");
+  } catch (e) {
+    failures += 1;
+    fail(`testSentinelExpiredBlob: ${e.message || e}`);
   }
 
   if (failures > 0) {

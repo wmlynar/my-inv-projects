@@ -17,8 +17,15 @@ const DEFAULT_SENTINEL = {
   storage: { baseDir: "/var/lib", mode: "file" },
   exitCodeBlock: 200,
   checkIntervalMs: 60000,
-  timeLimit: { mode: "off" },
+  timeLimit: { mode: "off", enforce: "always" },
   externalAnchor: { type: "none" },
+};
+
+const SENTINEL_PROFILES = {
+  off: { enabled: false },
+  auto: { enabled: "auto" },
+  required: { enabled: true },
+  strict: { enabled: true, level: 2 },
 };
 
 function mergeSentinelConfig(base, override) {
@@ -27,6 +34,27 @@ function mergeSentinelConfig(base, override) {
   out.timeLimit = { ...(base.timeLimit || {}), ...((override || {}).timeLimit || {}) };
   out.externalAnchor = { ...(base.externalAnchor || {}), ...((override || {}).externalAnchor || {}) };
   return out;
+}
+
+function normalizeSentinelProfile(raw) {
+  if (raw === undefined || raw === null) return null;
+  const input = String(raw).trim().toLowerCase();
+  if (!input) return null;
+  return Object.prototype.hasOwnProperty.call(SENTINEL_PROFILES, input) ? input : null;
+}
+
+function splitSentinelSection(raw, label) {
+  if (raw === undefined || raw === null) return { cfg: {}, profile: undefined };
+  if (typeof raw === "boolean") return { cfg: { enabled: raw }, profile: undefined };
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error(`Invalid ${label}: expected object or boolean`);
+  }
+  const cfg = { ...raw };
+  const profile = Object.prototype.hasOwnProperty.call(cfg, "profile") ? cfg.profile : undefined;
+  if (Object.prototype.hasOwnProperty.call(cfg, "profile")) {
+    delete cfg.profile;
+  }
+  return { cfg, profile };
 }
 
 function normalizeTargetKey(value) {
@@ -178,6 +206,13 @@ function parseDurationSec(value, unitLabel) {
 
 function normalizeTimeLimit(value) {
   const cfg = value && typeof value === "object" ? value : {};
+  const enforceRaw = cfg.enforce;
+  const enforce = enforceRaw === undefined || enforceRaw === null || enforceRaw === ""
+    ? "always"
+    : String(enforceRaw).trim().toLowerCase();
+  if (enforce !== "always" && enforce !== "mismatch") {
+    throw new Error(`Invalid sentinel timeLimit.enforce: ${enforceRaw}`);
+  }
   const expiresAtSec = parseExpiresAtSec(cfg.expiresAt);
   const validForMs = parseDurationSec(cfg.validForMs, "validForMs");
   const validForSeconds = parseDurationSec(cfg.validForSeconds, "validForSeconds");
@@ -191,7 +226,7 @@ function normalizeTimeLimit(value) {
     throw new Error("sentinel timeLimit: only one of validForMs/validForSeconds/validForDays may be set");
   }
   if (expiresAtSec !== null) {
-    return { mode: "absolute", expiresAtSec, durationSec: null };
+    return { mode: "absolute", expiresAtSec, durationSec: null, enforce };
   }
   if (durationFields.length > 0) {
     let durationSec = 0;
@@ -205,16 +240,32 @@ function normalizeTimeLimit(value) {
     if (!Number.isFinite(durationSec) || durationSec <= 0) {
       throw new Error("Invalid sentinel timeLimit duration");
     }
-    return { mode: "relative", expiresAtSec: null, durationSec };
+    return { mode: "relative", expiresAtSec: null, durationSec, enforce };
   }
-  return { mode: "off", expiresAtSec: null, durationSec: null };
+  return { mode: "off", expiresAtSec: null, durationSec: null, enforce };
 }
 
 function resolveSentinelConfig({ projectRoot, projectCfg, targetCfg, targetName, packagerSpec }) {
-  const projSentinel = (projectCfg && projectCfg.build && projectCfg.build.sentinel) ? projectCfg.build.sentinel : {};
-  const targetSentinel = targetCfg && (targetCfg.sentinel || (targetCfg.build && targetCfg.build.sentinel)) ? (targetCfg.sentinel || targetCfg.build.sentinel) : {};
-  const merged = mergeSentinelConfig(DEFAULT_SENTINEL, projSentinel);
-  const cfg = mergeSentinelConfig(merged, targetSentinel);
+  const projHasSentinel = !!(projectCfg && projectCfg.build && Object.prototype.hasOwnProperty.call(projectCfg.build, "sentinel"));
+  const projRaw = projHasSentinel ? projectCfg.build.sentinel : undefined;
+  const targetRaw = targetCfg
+    ? (Object.prototype.hasOwnProperty.call(targetCfg, "sentinel")
+        ? targetCfg.sentinel
+        : (targetCfg.build && Object.prototype.hasOwnProperty.call(targetCfg.build, "sentinel") ? targetCfg.build.sentinel : undefined))
+    : undefined;
+  const { cfg: projSentinel, profile: projProfile } = splitSentinelSection(projRaw, "build.sentinel");
+  const { cfg: targetSentinel, profile: targetProfile } = splitSentinelSection(targetRaw, "target.sentinel/build.sentinel");
+
+  const profileRaw = targetProfile !== undefined ? targetProfile : projProfile;
+  const profileName = normalizeSentinelProfile(profileRaw);
+  if (profileRaw !== undefined && profileRaw !== null && profileName === null) {
+    throw new Error(`Invalid sentinel profile: ${profileRaw} (expected: off|auto|required|strict)`);
+  }
+  const profileDefaults = profileName ? SENTINEL_PROFILES[profileName] : {};
+
+  const merged = mergeSentinelConfig(DEFAULT_SENTINEL, profileDefaults);
+  const mergedProject = mergeSentinelConfig(merged, projSentinel);
+  const cfg = mergeSentinelConfig(mergedProject, targetSentinel);
 
   const enabledRaw = cfg.enabled;
   const isThin = packagerSpec && packagerSpec.kind === "thin";
@@ -223,7 +274,7 @@ function resolveSentinelConfig({ projectRoot, projectCfg, targetCfg, targetName,
     ? (isThin && isSsh)
     : !!enabledRaw;
 
-  if (!enabled) return { enabled: false };
+  if (!enabled) return { enabled: false, profile: profileName || null };
   if (packagerSpec && packagerSpec.kind !== "thin") {
     throw new Error("Sentinel requires thin packager");
   }
@@ -259,6 +310,9 @@ function resolveSentinelConfig({ projectRoot, projectCfg, targetCfg, targetName,
   const exitCodeBlock = normalizeExitCode(cfg.exitCodeBlock ?? DEFAULT_SENTINEL.exitCodeBlock);
   const checkIntervalMs = normalizeCheckIntervalMs(cfg.checkIntervalMs, DEFAULT_SENTINEL.checkIntervalMs);
   const timeLimit = normalizeTimeLimit(cfg.timeLimit);
+  if (timeLimit.enforce === "mismatch" && timeLimit.mode === "off") {
+    throw new Error("sentinel timeLimit.enforce=mismatch requires expiresAt or validFor*");
+  }
 
   const anchor = buildAnchor(nsHex, appId);
   const opaqueDir = deriveOpaqueDir(nsHex);
@@ -267,6 +321,7 @@ function resolveSentinelConfig({ projectRoot, projectCfg, targetCfg, targetName,
 
   return {
     enabled: true,
+    profile: profileName || null,
     appId,
     namespaceId: nsHex,
     storage: { baseDir, mode },

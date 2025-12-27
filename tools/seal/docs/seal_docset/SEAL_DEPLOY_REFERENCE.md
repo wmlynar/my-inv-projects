@@ -79,7 +79,7 @@ Seal powinien mieć interfejs packagera, aby można było podmieniać metodę pa
 **B) Obfuskacja**
 - wejście: `bundle.cjs`
 - wyjście: `bundle.obf.cjs`
-- profile: `minimal`, `balanced` (domyślny), `strict`, `max` (opcjonalny)
+- obfuscationProfile: `minimal`, `balanced` (domyślny), `strict`, `max` (opcjonalny)
 - zasada: obfuskacja działa na **pojedynczym** zbundlowanym pliku.
 
 **C) Generacja blobu SEA**
@@ -106,6 +106,14 @@ Seal powinien mieć interfejs packagera, aby można było podmieniać metodę pa
 - Gdy SEA nie jest możliwe i **bundle fallback jest jawnie włączony**, backend bundle jest pakowany do `app.bundle.cjs.gz` i uruchamiany przez mały loader (żeby nie leżał czytelny plik JS).
 - Bundle fallback wymaga jawnego włączenia: `build.packagerFallback=true` lub `packager=bundle`.
 - Protection można wyłączyć w `seal.json5` (`build.protection.enabled=false`).
+- Preset bezpieczeństwa: `build.securityProfile` domyślnie = `strict`.
+  Profile ustawiają **domyślne wartości** (nie nadpisują jawnych pól):
+  - `minimal`: obfuskacja `minimal`, a **anti-debug + integrity + nativeBootstrap + strip** są nadal włączone; `seccomp=kill`.
+  - `balanced` (rekomendowany): obfuskacja `balanced`, `envMode=denylist`, anti‑debug/integrity/nativeBootstrap/strip ON.
+  - `strict`: `balanced` + `snapshotGuard=ON` + `envMode=allowlist` + `obfuscationProfile=strict`.
+  - `max`: `strict` + `seccomp.aggressive` + `obfuscationProfile=max`.
+- Sentinel jest niezależny od profilu bezpieczeństwa: użyj `build.sentinel.profile: "required"` aby go wymusić (profile: `off|auto|required|strict`, czas nadal `off`).
+- Po `sentinel install` domyslnie wykonywany jest runtime verify (thin launcher); pomin: `--skip-verify` / `--skip-sentinel-verify`.
 - (MAY w przyszłości) self-integrity / anti-tamper jako opt-in.
 
 **G) Manifest i paczka `.tgz`**
@@ -202,6 +210,121 @@ Opcja: 2
 }
 ```
 
+### 3.4. Decoy (joker) – opcjonalny „fake project”
+
+Cel: w release pojawia się wiarygodna struktura projektu Node (server.js, src/, public/),
+żeby na pierwszy rzut oka wyglądało to jak zwykła aplikacja.
+
+Konfiguracja w `seal.json5`:
+```json5
+build: {
+  decoy: {
+    mode: "none",      // none | soft | wrapper
+    scope: "backend",  // backend | full
+    sourceDir: "decoy",// katalog z plikami decoya (opcjonalny)
+    overwrite: false   // jeśli false, build fail‑fast przy kolizjach
+  }
+}
+```
+
+Zasady:
+- `scope=backend`: decoy tylko dla backendu (bez `public/`).
+- `scope=full`: decoy dla backendu i frontendu (dodaje `public/`).
+- `sourceDir`: jeśli istnieje, SEAL używa tego katalogu jako źródła decoya (np. wygenerowanego przez AI).  
+  Jeśli nie istnieje, SEAL generuje **prosty** decoy w `seal-out/decoy/<app>-<buildId>` i stamtąd go instaluje.
+- `profile` nie jest już wspierany — decoy pochodzi z `sourceDir` albo z generatora bazowego.
+- `overwrite=true`: pozwala decoyowi **nadpisywać** pliki w release.  
+  Domyślnie `overwrite=false`, więc każda kolizja kończy build błędem.
+- `soft`: tylko pliki decoy (bez uruchamiania niczego).
+- `wrapper`: dodatkowy plik `bin/worker.js` i kod startu worker‑a sterowany przez `NATIVE_WORKER=1`.
+
+Uwaga: `scope=full` zastępuje frontend na dysku.  
+Jeśli chcesz **realny frontend** i decoy tylko „na żądanie”, użyj `scope=backend`  
+albo zastosuj mechanizm embedowania frontendowych assetów (serwowanie z loadera).
+
+Runtime:
+- `scope=backend` nie wpływa na uruchomienie aplikacji (backend działa z payloadu Seala, a frontend z prawdziwego `public/`).
+- `scope=full` zmienia to, co serwuje aplikacja z dysku — realny frontend musi być wtedy osadzony/serwowany z innego źródła.
+
+#### Wytyczne dla AI generujacej content decoya
+
+Cel: wygladac maksymalnie wiarygodnie dla osoby, ktora oglada pliki na szybko,
+ale **nie** ujawnic nic z chronionej aplikacji.
+
+Zasady (MUST):
+- Nie uzywaj slow: `seal`, `runner`, `bootstrap`, `sentinel`, `thin` ani nic, co zdradza mechanizm ochrony.
+- Nie kopiuj zadnych fragmentow realnego kodu ani nazw endpointow, ktore moga ujawniac domenowe detale.
+- Nie zapisuj sekretow, tokenow, kluczy ani prawdziwych adresow produkcyjnych.
+- Kod powinien wygladac jak standardowy serwer Node (np. express/fastify), ale logika ma byc neutralna i ogolna.
+- Decoy ma wygladac **jak chroniona aplikacja**: AI powinna przeskanowac strukture, nazwy modułów i UX chronionej aplikacji i stworzyc wiarygodny „look‑alike”, ale bez ujawniania szczegolow logiki ani danych.
+
+Zasady (SHOULD):
+- Udawaj „normalny” projekt: `package.json`, `server.js`, `src/routes`, `config/default.json`, `public/`.
+- Endpointy maja byc wiarygodne, ale generyczne (np. `/healthz`, `/status`, `/api/overview`).
+- API powinno byc spojne (np. `{ ok: true, data: ... }`) i przypominac styl prawdziwej aplikacji.
+- Udawaj obsluge frontendu: statyczne pliki w `public/`, oraz endpoint typu `/ui/config`.
+- Jeśli aplikacja „powinna” sluchac na porcie, to:
+  - **nie** binduj do portu realnej uslugi,
+  - mozna logowac „listening” bez realnego bindu, albo sluchac na alternatywnym porcie.
+- UI/HTML/CSS: ma wygladac estetycznie i sensownie, ale bez jakichkolwiek wskazowek o prawdziwej domenie.
+
+### 3.5. Workspace defaults (dziedziczenie z parenta)
+
+Jeśli w katalogu nadrzędnym (workspace) masz `seal.json5` z listą projektów,
+możesz tam dodać wspólne ustawienia dla wszystkich podprojektów.
+Każdy projekt dziedziczy te wartości, a lokalny `seal.json5` nadpisuje tylko różnice.
+
+Przykład `seal.json5` w root workspace:
+```json5
+{
+  projects: [
+    "modbus-sync-worksites",
+    "nowy-styl-ui",
+    "robot-task-manager",
+    "robot-ui"
+  ],
+  defaults: {
+    defaultTarget: "prod",
+    build: {
+      packager: "thin-split",
+      securityProfile: "strict",
+      protection: { enabled: true }
+    }
+  }
+}
+```
+
+Zasady merge:
+- `defaults` jest scalane w głąb z `seal.json5` projektu.
+- wartości z projektu **wygrywają** nad `defaults`.
+- tablice są **nadpisywane**, nie łączone (jeśli chcesz dodać element, wpisz całą tablicę w projekcie).
+
+To działa kaskadowo: jeśli masz kilka parentów z `defaults`, są one scalane od najdalszego do najbliższego.
+
+Uwaga: uruchomienie komendy w root workspace wykonuje ją automatycznie dla wszystkich projektów z listy `projects`.
+
+### 3.6. Security profiles (`build.securityProfile`)
+
+`securityProfile` to preset, który **ustawia domyślne wartości** (nie nadpisuje jawnych pól).
+Domyślny profil w SEAL to `strict`.
+
+**Mapa profili (skrót):**
+- `minimal`: obfuskacja backendu `minimal`, ale anti‑debug + integrity + nativeBootstrap + strip są nadal ON (seccomp=kill).
+- `balanced` (rekomendowany): obfuskacja backendu `balanced`, `envMode=denylist`, anti‑debug/integrity/nativeBootstrap/strip ON.
+- `strict`: jak `balanced` + `snapshotGuard=ON` + `envMode=allowlist` + obfuskacja backendu `strict`.
+- `max`: jak `strict` + `seccomp.aggressive` + obfuskacja backendu `max`.
+
+Uwaga: frontend ma **oddzielny** profil (domyślnie `balanced`) i nie dziedziczy z backendu.
+
+**Override**: każdą opcję możesz wyłączyć jawnie w projekcie:
+```json5
+build: {
+  securityProfile: "strict",
+  thin: { antiDebug: { enabled: false } }, // jawny override
+  protection: { strip: { enabled: false } }
+}
+```
+
 ---
 
 ## 4. Artefakty `seal-out/run/` + `seal plan` (REF)
@@ -238,7 +361,8 @@ seal-out/run.last_failed/
 {
   "version": 1,
   "target": "robot-01",
-  "profile": "prod",
+  "securityProfile": "strict",
+  "obfuscationProfile": "strict",
   "initMode": "ADOPT",
   "inputs": {
     "projectRoot": ".",
@@ -254,7 +378,7 @@ seal-out/run.last_failed/
       "enabled": true,
       // opcjonalnie, informacyjnie:
       "strings": {"obfuscation": "xorstr"},
-      // opcjonalnie, dla launchera thin:
+      // domyslnie, dla launchera thin:
       "cObfuscator": {
         "tool": "obfuscator-llvm",
         "cmd": "/path/to/obfuscating-clang",
@@ -386,6 +510,33 @@ Implementacja:
 
 ---
 
+## 7.0. Readiness po `ship` / `deploy --restart`
+
+- `seal ship <target>` **domyślnie czeka** na gotowość usługi po restarcie.
+  - wyłączenie: `seal ship <target> --no-wait`
+- `seal deploy <target> --restart --wait` robi to samo, ale tylko gdy jawnie włączysz `--wait`.
+- Domyślna gotowość = **systemd active**. Opcjonalnie można dodać HTTP:
+  - `--wait-url http://127.0.0.1:3000/healthz`
+  - `--wait-mode systemd|http|both` (domyślnie: `both` gdy podano URL, inaczej `systemd`)
+
+Przykład w `seal-config/targets/<name>.json5`:
+```json5
+{
+  readiness: {
+    enabled: true,
+    mode: "both",
+    url: "http://127.0.0.1:3000/healthz",
+    timeoutMs: 60000,
+    intervalMs: 1000,
+    httpTimeoutMs: 2000
+  }
+}
+```
+
+Uwaga: dla targetów SSH tryb HTTP wymaga `curl` albo `wget` na serwerze.
+
+---
+
 ## 7.1. Fast ship (unsafe) (`seal ship --fast`)
 
 **Cel:** ultra-szybkie prototypowanie bez SEA (bundle + rsync).
@@ -433,7 +584,7 @@ Implementacja:
 
 ### v0.4
 - Dodane: `seal-out/run/` + przykłady `plan.json`.
-- Doprecyzowane: spójność z `seal init` / profile `prod|debug`.
+- Doprecyzowane: spójność z `seal init` / `securityProfile` + `obfuscationProfile`.
 
 ### v0.3
 - Dokument dodany jako osobny „magazyn REF”, żeby SEAL_DEPLOY_SPEC mógł pozostać normatywny.
