@@ -174,6 +174,7 @@ Przykład:
 - STD-143 (SHOULD): po transferze artefaktow weryfikuj checksum (np. sha256) lub rozmiar.
 - STD-144 (SHOULD): dla duzych plikow uzywaj streamow i limitow rozmiaru zamiast `readFile` w calosci.
 - STD-145 (SHOULD): logi JSONL nie moga zawierac surowych znakow nowych linii lub binarnych bajtow; normalizuj/escapuj dane.
+- STD-145a (SHOULD): `set -x`/xtrace tylko w trybie debug i z maskowaniem sekretow; domyslnie OFF.
 - STD-146 (SHOULD): unikaj `~` i sciezek relatywnych przy `sudo`; uzywaj sciezek absolutnych i jawnego `HOME`/`cwd`.
 - STD-147 (SHOULD): retry sieciowe maja exponential backoff + jitter oraz limit prob i max delay.
 - STD-148 (SHOULD): ekstrakcja archiwow ma limit rozmiaru i liczby plikow (ochrona przed zip‑bomb).

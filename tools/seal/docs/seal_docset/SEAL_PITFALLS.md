@@ -843,6 +843,9 @@
   - Wymaganie: loguj tylko metadane i krotkie preview (limit znakow), bez pelnych body.
   - Wymaganie: logi minimalne, tylko dane potrzebne do diagnozy.
 
+- Blad: `set -x`/xtrace w skryptach logowal sekrety (tokeny/hasla/URL).
+  - Wymaganie: `set -x` tylko w trybie debug i z maskowaniem sekretow; domyslnie OFF.
+
 - Blad: logi JSONL byly psute przez znaki nowej linii lub binarne dane w polach.
   - Wymaganie: dane z zewnatrz sa normalizowane/escapowane (np. `\\n`), a binarne pola kodowane (base64/hex).
 
