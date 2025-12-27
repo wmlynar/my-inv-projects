@@ -1307,6 +1307,19 @@
   - Wymaganie: domyslny bind to `127.0.0.1`, a publiczny bind tylko jawnie.
 - Blad: przy `EADDRINUSE` brakowalo czytelnej sugestii kolejnego kroku.
   - Wymaganie: przy kolizji portu wypisz PID/komende i zasugeruj inny port.
+
+## Dodatkowe wnioski (batch 171-175)
+
+- Blad: unit systemd restartowal w petli bez backoff, zalewajac logi i CPU.
+  - Wymaganie: ustaw `RestartSec` i `StartLimit*` (backoff, limit restartow).
+- Blad: `TimeoutStopSec` byl zbyt niski lub domyslny, przez co proces byl ubijany bez sprzatania.
+  - Wymaganie: ustaw odpowiedni `TimeoutStopSec` i opcjonalny `ExecStop`.
+- Blad: `KillMode` pozwalal pozostac procesom potomnym po `stop`.
+  - Wymaganie: ustaw `KillMode=control-group` (lub `mixed`) aby zabijac cala grupę.
+- Blad: brak `LimitNOFILE` powodowal losowe bledy przy wiekszej liczbie polaczen.
+  - Wymaganie: ustaw `LimitNOFILE` do bezpiecznej wartosci.
+- Blad: `EnvironmentFile` w unit byl względny i nie byl znajdowany.
+  - Wymaganie: uzywaj absolutnych sciezek w `EnvironmentFile`.
 ## Dodatkowe wnioski (batch 131-135)
 
 - Blad: rekurencyjne skanowanie katalogow bralo `.git`, `node_modules`, `seal-out`, co powodowalo spowolnienia i przypadkowe artefakty.

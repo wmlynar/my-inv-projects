@@ -749,6 +749,11 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-365 (SHOULD): po starcie serwera loguj `host:port` (debuggability).
 - STD-366 (SHOULD): domyslny bind to `127.0.0.1`; publiczny bind tylko jawnie.
 - STD-367 (SHOULD): przy `EADDRINUSE` wypisz PID/komende i sugestie zmiany portu.
+- STD-368 (SHOULD): systemd ma `RestartSec` i `StartLimit*` (backoff i limit restartow).
+- STD-369 (SHOULD): ustaw `TimeoutStopSec` (i opcjonalny `ExecStop`) aby uniknac twardego kill bez sprzatania.
+- STD-370 (SHOULD): ustaw `KillMode=control-group` (lub `mixed`) aby zabijac wszystkie procesy potomne.
+- STD-371 (SHOULD): ustaw `LimitNOFILE` na bezpiecznym poziomie.
+- STD-372 (SHOULD): `EnvironmentFile` uzywa absolutnych sciezek.
 
 ## 10. Moduł `testing` (SHOULD)
 
