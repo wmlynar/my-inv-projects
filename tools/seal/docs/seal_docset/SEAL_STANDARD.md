@@ -570,6 +570,116 @@ Dlatego standard rozróżnia dwa tryby:
 
 ---
 
+## 9b. Dodatkowe standardy (SHOULD)
+
+- STD-200 (SHOULD): loguj wersje narzedzi builda (`tool --version`) dla kazdego uzytego narzedzia.
+- STD-201 (SHOULD): loguj absolutne sciezki do narzedzi (`which`/`command -v`), aby zdiagnozowac PATH.
+- STD-202 (SHOULD): cache buildow kluczuj po `os+arch` (oraz wersji formatu), aby uniknac niezgodnosci.
+- STD-203 (SHOULD): wspieraj deterministyczne buildy (`SOURCE_DATE_EPOCH`/stale czasy) i loguj tryb.
+- STD-204 (SHOULD): archiwa tworzone w stabilnym porzadku plikow (sort po sciezce).
+- STD-205 (SHOULD): waliduj TMPDIR (noexec/readonly) i dawaj jasna instrukcje zmiany.
+- STD-206 (SHOULD): umozliwiaj override katalogu temp oraz waliduj zapisywalnosc.
+- STD-207 (SHOULD): ogranicz domyslna rownoleglosc kompilacji; pozwol na jawny override.
+- STD-208 (SHOULD): `CFLAGS/CXXFLAGS/LDFLAGS` z ENV musza byc czyszczone lub jawnie logowane.
+- STD-209 (SHOULD): brak wskazanego kompilatora = fail‑fast, bez cichych fallbackow.
+
+- STD-210 (SHOULD): nazwa artefaktu zawiera `target+packager+buildId`, aby uniknac kolizji.
+- STD-211 (SHOULD): nie nadpisuj artefaktow bez `--force` lub unikalnej nazwy.
+- STD-212 (SHOULD): waliduj, ze artefakt nie jest pusty/uciety (rozmiar + minimalna zawartosc).
+- STD-213 (SHOULD): ustawiaj jawne permissje dla plikow wykonywalnych i configow w release.
+- STD-214 (SHOULD): przy rozpakowaniu na hostach uzywaj `--no-same-owner`/`--numeric-owner`.
+- STD-215 (SHOULD): generuj manifest plikow z hashami dla releasu.
+- STD-216 (SHOULD): zapisuj metadane wersji (`buildId`, `packager`, `configHash`).
+- STD-217 (SHOULD): release dir jest czyszczony lub tworzony od nowa per build.
+- STD-218 (SHOULD): symlinki w release musza byc blokowane albo jawnie walidowane.
+- STD-219 (SHOULD): sciezki w artefakcie musza byc relatywne (brak absolutnych).
+
+- STD-220 (SHOULD): zdalne skrypty deploy zaczynaja sie od `set -euo pipefail`.
+- STD-221 (SHOULD): przed deploy sprawdz zgodnosc architektury (`uname -m`).
+- STD-222 (SHOULD): przed deploy sprawdz kompatybilnosc runtime (glibc/musl).
+- STD-223 (SHOULD): ustaw i weryfikuj `umask` podczas deploy na serwerze.
+- STD-224 (SHOULD): aktualizuj `current` atomowo (`ln -sfn` + `fsync`).
+- STD-225 (SHOULD): skladanie komend zdalnych przez bezpieczne quoting/array (bez konkatenacji).
+- STD-226 (SHOULD): weryfikuj istnienie service usera (`id -u`) przed install.
+- STD-227 (SHOULD): brak systemd = fail‑fast z instrukcja (bez cichych fallbackow).
+- STD-228 (SHOULD): po deploy waliduj owner/perms kluczowych plikow.
+- STD-229 (SHOULD): `current.buildId` zapisuj atomowo (tmp + rename + fsync).
+
+- STD-230 (SHOULD): child procesy dostaja tylko allowlist ENV (bez wyciekow sekretow).
+- STD-231 (SHOULD): sekrety nie moga byc przekazywane w CLI args (tylko plik/ENV).
+- STD-232 (SHOULD): instalatory uzywaja tymczasowego `.npmrc` z ograniczonymi perms i cleanup.
+- STD-233 (SHOULD): pobierane binarki musza miec checksumy/signature i byc weryfikowane.
+- STD-234 (SHOULD): `LD_*` z ENV musi byc czyszczone przed exec child procesow.
+- STD-235 (SHOULD): pliki sekretow tworzone z `umask 077` i `chmod 0600`.
+- STD-236 (SHOULD): logi/diagnostyka redaguja klucze typu `password/token/secret`.
+- STD-237 (SHOULD): sekrety przechowywane w dedykowanym katalogu z ograniczonymi perms.
+- STD-238 (SHOULD): tymczasowe pliki z sekretami sa usuwane deterministycznie.
+- STD-239 (SHOULD): core dumpy sa domyslnie wylaczone (opt‑in z ostrzezeniem).
+
+- STD-240 (SHOULD): unknown keys w configu daja warning/blad (strict schema).
+- STD-241 (SHOULD): wartosci z ENV sa trimowane i walidowane.
+- STD-242 (SHOULD): wartosci liczbowe sa parsowane i walidowane w zakresie.
+- STD-243 (SHOULD): sciezki z configu sa normalizowane i weryfikowane w root.
+- STD-244 (SHOULD): merge configu ma jawna strategie (deep merge lub explicit).
+- STD-245 (SHOULD): defaulty stosuja `??`, nie `||`, aby nie nadpisywac `false/0`.
+- STD-246 (SHOULD): auto‑create config tylko w dev (explicit flag), nie w prod.
+- STD-247 (SHOULD): sprawdzaj owner/perms configu, gdy zawiera sekrety.
+- STD-248 (SHOULD): loguj efektywne flagi/booleany.
+- STD-249 (SHOULD): diff configu normalizuje kolejnosc, gdy order nie jest semantyczny.
+
+- STD-250 (SHOULD): readiness to polling z timeoutem (nie `sleep`).
+- STD-251 (SHOULD): testy snapshot/restore `process.env`.
+- STD-252 (SHOULD): testy maja per‑test temp dir (`mkdtemp`).
+- STD-253 (SHOULD): testy seeduja RNG i loguja seed.
+- STD-254 (SHOULD): testy asercyjnie sprawdzaja exit code/signal child procesow.
+- STD-255 (SHOULD): testy rownolegle izolują cache lub uzywaja locka.
+- STD-256 (SHOULD): brak zaleznosci w testach = SKIP z instrukcja.
+- STD-257 (SHOULD): przy failu testy zachowuja logi/artefakty (z limitem).
+- STD-258 (SHOULD): testy ustawiają `TZ=UTC` i `LC_ALL=C`.
+- STD-259 (SHOULD): testy izolują git config/hooks (`GIT_CONFIG_*`, `core.hooksPath=/dev/null`).
+
+- STD-260 (SHOULD): logi zawsze zawieraja `appName/buildId`.
+- STD-261 (SHOULD): timestampy w logach to UTC/ISO.
+- STD-262 (SHOULD): bledy zawieraja exit code/signal.
+- STD-263 (SHOULD): diagnostyka domyslnie w trybie safe; full tylko jawnie.
+- STD-264 (SHOULD): `--verbose` loguje uruchomione komendy (z sanitizacja).
+- STD-265 (SHOULD): pomiary czasu oparte o zegar monotoniczny.
+- STD-266 (SHOULD): rate‑limit/sampling dla powtarzalnych bledow.
+- STD-267 (SHOULD): biblioteki uzywaja centralnego loggera, nie `console`.
+- STD-268 (SHOULD): na fatal exit logi sa flushowane przed `exit`.
+- STD-269 (SHOULD): logi do pliku maja rotacje lub limit rozmiaru.
+
+- STD-270 (SHOULD): workspace zwraca non‑zero przy bledzie projektu (chyba ze `--continue-on-error`).
+- STD-271 (SHOULD): operacje multi‑project drukują summary (ok/fail/skip).
+- STD-272 (SHOULD): help/docs aktualizowane razem ze zmianami opcji (CI check).
+- STD-273 (SHOULD): nazwy opcji sa spojne (kebab‑case), bez nadmiaru aliasow.
+- STD-274 (SHOULD): uzycie `--force` wypisuje ostrzezenie.
+- STD-275 (SHOULD): dostępny tryb `--yes/--non-interactive` (bez promptow).
+- STD-276 (SHOULD): dostępny `--json` dla automatyzacji.
+- STD-277 (SHOULD): zawsze wypisz resolved root/workspace.
+- STD-278 (SHOULD): zawsze wypisz efektywny target (bez ukrytych defaultow).
+- STD-279 (SHOULD): nieznane argumenty = blad z sugestiami.
+
+- STD-280 (SHOULD): `rm -rf` wymaga guardu (sciezka niepusta, w dozwolonym root).
+- STD-281 (SHOULD): kopiowanie katalogow nie dereferuje symlinkow (albo jawnie blokuje).
+- STD-282 (SHOULD): generowane pliki sa tylko w `seal-out`/outDir.
+- STD-283 (SHOULD): temp dir tworzony w jawnej bazie i walidowany (noexec/permissions).
+- STD-284 (SHOULD): operacje FS retry na `EINTR`.
+- STD-285 (SHOULD): przed `kill` sprawdzaj PID/`cmdline`, nie tylko nazwe procesu.
+- STD-286 (SHOULD): ustaw `FD_CLOEXEC` na deskryptorach tymczasowych/pipes.
+- STD-287 (SHOULD): unikaj `chmod -R` na release; ustawiaj perms selektywnie.
+- STD-288 (SHOULD): segmenty sciezek sanitizowane (brak `..`, brak absolutnych).
+- STD-289 (SHOULD): `fsync` pliku i katalogu po zapisie krytycznych plikow.
+
+- STD-290 (SHOULD): HTTP ma `connect` i `total` timeout dla kazdego requestu.
+- STD-291 (SHOULD): retry tylko dla idempotentnych operacji (lub jawnie oznaczonych).
+- STD-292 (SHOULD): komunikaty rozrozniaja DNS/timeout/TLS.
+- STD-293 (SHOULD): wylaczenie TLS verify to opt‑in z ostrzezeniem.
+- STD-294 (SHOULD): uzycie proxy z ENV tylko gdy jawnie dozwolone.
+- STD-295 (SHOULD): limituj redirecty i loguj finalny URL.
+- STD-296 (SHOULD): sockety HTTP maja timeout/cleanup (brak wyciekow).
+- STD-297 (SHOULD): polaczenia dlugie maja heartbeat/ping + timeout.
+
 ## 10. Moduł `testing` (SHOULD)
 
 Ten moduł dotyczy testów E2E (zwłaszcza po sealingu), które mają potwierdzać, że aplikacja działa w realnych warunkach.

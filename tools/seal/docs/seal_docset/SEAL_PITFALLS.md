@@ -949,3 +949,211 @@
 - CLI: `appctl` i `seal remote` maja te same komendy/semantyke; `seal ship` dziala jako 1 krok.
 - CLI: `seal` jest dostepny globalnie (link lub `npx --prefix`) i `config diff` uzywa nazwy targetu.
 - Cache/retention: brak niczego, co rosnie bez limitu (cache, tmp, logi, releasy).
+
+## Dodatkowe wnioski (batch 100)
+
+- Blad: build nie logowal wersji narzedzi (cc/strip/packer), co utrudnial reprodukcje.
+  - Wymaganie: loguj `tool --version` dla kazdego uzytego narzedzia.
+- Blad: nie bylo wiadomo, z jakiej sciezki pochodzi kompilator (PATH), co utrudnialo diagnoze.
+  - Wymaganie: loguj absolutna sciezke do kazdego narzedzia (`which`/`command -v`).
+- Blad: cache buildow byl wspoldzielony miedzy OS/arch, przez co pojawialy sie niezgodne artefakty.
+  - Wymaganie: kluczuj cache po `os+arch` (i wersji formatu).
+- Blad: buildy nie byly deterministyczne przez timestampy w archiwach.
+  - Wymaganie: wspieraj deterministyczne buildy (`SOURCE_DATE_EPOCH`, stałe czasy).
+- Blad: archiwa mialy niestabilny porzadek plikow, co psulo porownania.
+  - Wymaganie: sortuj liste plikow w archiwum w sposob stabilny.
+- Blad: TMPDIR byl na `noexec` lub readonly i build wysypywal sie bez jasnego powodu.
+  - Wymaganie: sprawdz mount flags TMPDIR i dawaj jasna instrukcje zmiany.
+- Blad: brak mozliwosci zmiany katalogu tymczasowego powodowal problemy na NFS/slow FS.
+  - Wymaganie: pozwol nadpisac katalog temp (`SEAL_TMPDIR`) i waliduj zapisywalnosc.
+- Blad: domyslny `-j` w kompilacji nadmiernie obciazal CPU/RAM i powodowal flaki.
+  - Wymaganie: ustaw bezpieczny limit rownoleglosci i daj opcje override.
+- Blad: build dziedziczyl `CFLAGS/CXXFLAGS/LDFLAGS` z ENV, co psulo spojnosc.
+  - Wymaganie: albo czysc te zmienne, albo loguj je jawnie jako czesc configu.
+- Blad: brak oczekiwanego kompilatora powodowal cichy fallback na inny toolchain.
+  - Wymaganie: fail‑fast, gdy wskazany kompilator nie jest dostepny.
+
+- Blad: nazwy artefaktow kolidowaly miedzy targetami/packerami.
+  - Wymaganie: nazwa artefaktu zawiera `target+packager+buildId`.
+- Blad: artefakty byly nadpisywane bez ostrzezenia.
+  - Wymaganie: nadpisywanie tylko z `--force` albo unikalna nazwa.
+- Blad: artefakt byl pusty lub ucity, a pipeline szedl dalej.
+  - Wymaganie: waliduj rozmiar i oczekiwana zawartosc artefaktu.
+- Blad: pliki wykonywalne w release nie mialy +x.
+  - Wymaganie: ustaw jawne permissje dla binarek i skryptow.
+- Blad: tar na serwerze zachowywal ownera i psul uprawnienia.
+  - Wymaganie: uzywaj `--no-same-owner`/`--numeric-owner`.
+- Blad: brak manifestu plikow utrudnial walidacje releasu.
+  - Wymaganie: generuj manifest z hashami.
+- Blad: brak metadanych wersji utrudnial diagnostyke.
+  - Wymaganie: zapisuj `buildId/packager/config-hash` w metadanych.
+- Blad: ponowne buildy zostawialy stare pliki w release.
+  - Wymaganie: czysc release albo tworz nowe katalogi per build.
+- Blad: symlinki wchodzily do releasu i mogly wyciec poza root.
+  - Wymaganie: blokuj symlinki albo jawnie je waliduj.
+- Blad: archiwum zawieralo sciezki absolutne.
+  - Wymaganie: kazda sciezka w artefakcie musi byc relatywna.
+
+- Blad: skrypty zdalne nie uzywaly `set -euo pipefail`, co ukrywalo bledy.
+  - Wymaganie: wymusz `set -euo pipefail` dla skryptow deploy.
+- Blad: deploy szedl na niezgodna architekture.
+  - Wymaganie: waliduj `uname -m` na serwerze przed deploy.
+- Blad: deploy szedl na niezgodny runtime (glibc/musl).
+  - Wymaganie: waliduj kompatybilnosc runtime (np. `ldd --version`).
+- Blad: uprawnienia na serwerze byly zbyt szerokie przez `umask`.
+  - Wymaganie: ustaw i zweryfikuj `umask` podczas deploy.
+- Blad: aktualizacja `current` byla nieatomowa.
+  - Wymaganie: uzywaj `ln -sfn` + `fsync` dla atomowej zmiany.
+- Blad: sciezki zdalne z spacjami rozbijaly komendy.
+  - Wymaganie: skladanie komend tylko z bezpiecznym quoting/array.
+- Blad: serwisowy user nie istnial i instalacja padala w polowie.
+  - Wymaganie: sprawdz `id -u` i dawaj instrukcje utworzenia.
+- Blad: brak `systemctl` na hostcie dawal nieczytelny blad.
+  - Wymaganie: wykryj brak systemd i fail‑fast z instrukcja.
+- Blad: po deployu nie bylo walidacji owner/perms.
+  - Wymaganie: po deployu waliduj owner/perms kluczowych plikow.
+- Blad: `current.buildId` byl zapisywany bez atomowosci.
+  - Wymaganie: zapis tmp + rename + fsync.
+
+- Blad: child procesy dziedziczyly wszystkie ENV i wyciekaly sekrety.
+  - Wymaganie: allowlistuj ENV przekazywane do child procesow.
+- Blad: sekrety byly przekazywane w CLI args (widoczne w `ps`).
+  - Wymaganie: sekrety tylko w pliku lub ENV, nie w args.
+- Blad: globalne `.npmrc` z tokenami bylo uzywane przez instalatory.
+  - Wymaganie: ustaw `NPM_CONFIG_USERCONFIG` na temp plik i sprzataj.
+- Blad: pobieranie binarek bez weryfikacji checksum.
+  - Wymaganie: wymagaj sha256/signature i weryfikuj.
+- Blad: `LD_LIBRARY_PATH/LD_PRELOAD` z ENV wplywal na uruchomienia.
+  - Wymaganie: czysc `LD_*` przed exec child procesow.
+- Blad: pliki sekretow mialy zbyt szerokie uprawnienia.
+  - Wymaganie: `umask 077` i `chmod 0600` dla sekretow.
+- Blad: logi zawieraly pelne sekrety z configu.
+  - Wymaganie: redaguj klucze typu `password/token/secret`.
+- Blad: sekrety lezaly w publicznie dostepnym katalogu.
+  - Wymaganie: dedykowany katalog z ograniczonymi perms.
+- Blad: tymczasowe pliki z sekretami nie byly sprzatane.
+  - Wymaganie: usuwaj je deterministycznie po uzyciu.
+- Blad: core dumpy byly wlaczone w produkcji.
+  - Wymaganie: domyslnie wylacz core dumpy (opt‑in z ostrzezeniem).
+
+- Blad: nieznane klucze w configu byly ignorowane.
+  - Wymaganie: waliduj schema i ostrzegaj/failuj na unknown keys.
+- Blad: nadpisania z ENV mialy spacje i biale znaki.
+  - Wymaganie: trim i waliduj input z ENV.
+- Blad: liczby w configu byly parsowane jako stringi.
+  - Wymaganie: parse + walidacja zakresu.
+- Blad: sciezki w configu nie byly normalizowane.
+  - Wymaganie: `path.resolve` + walidacja w dozwolonym root.
+- Blad: merge configu byl plytki i gubil nested klucze.
+  - Wymaganie: jawny deep‑merge lub explicit config.
+- Blad: uzycie `||` w defaultach nadpisywalo poprawne `false/0`.
+  - Wymaganie: uzywaj `??` lub jawnego sprawdzenia.
+- Blad: config byl auto‑tworzony w produkcji bez zgody.
+  - Wymaganie: auto‑create tylko w dev (explicit flag).
+- Blad: brak walidacji owner/perms dla configu z sekretami.
+  - Wymaganie: sprawdzaj owner/perms configu.
+- Blad: wlaczone flagi nie byly logowane.
+  - Wymaganie: loguj efektywne flagi/booleany.
+- Blad: diff configu porownywal listy w zaleznosci od kolejnosci.
+  - Wymaganie: normalizuj kolejnosc tam, gdzie order nie ma znaczenia.
+
+- Blad: testy oczekiwaly gotowosci po `sleep`, co bylo flakey.
+  - Wymaganie: polling z timeoutem zamiast `sleep`.
+- Blad: testy modyfikowaly `process.env` i nie przywracaly.
+  - Wymaganie: snapshot/restore `process.env` w `finally`.
+- Blad: testy dzielily temp dir i wzajemnie sobie przeszkadzaly.
+  - Wymaganie: per‑test temp dir (`mkdtemp`).
+- Blad: losowe dane w testach byly niepowtarzalne.
+  - Wymaganie: seeduj RNG i loguj seed.
+- Blad: testy nie asercjonowaly exit code child procesow.
+  - Wymaganie: jawnie sprawdzaj exit code/signal.
+- Blad: testy rownolegle korzystaly ze wspolnego cache.
+  - Wymaganie: izoluj cache lub uzyj locka.
+- Blad: testy padaly na brakujacych zaleznosciach zamiast SKIP.
+  - Wymaganie: brak zaleznosci = SKIP z instrukcja instalacji.
+- Blad: przy failu brakowalo artefaktow do diagnozy.
+  - Wymaganie: zachowuj logi/artefakty (z limitem) przy failu.
+- Blad: testy zalezne od timezone/locale byly flakey.
+  - Wymaganie: `TZ=UTC`, `LC_ALL=C` w testach.
+- Blad: globalny git config/hooks wplywal na testy.
+  - Wymaganie: izoluj git config (`GIT_CONFIG_*`, `core.hooksPath=/dev/null`).
+
+- Blad: logi nie zawieraly `appName/buildId`, przez co nie bylo kontekstu.
+  - Wymaganie: logi zawsze zawieraja `appName/buildId`.
+- Blad: logi byly w lokalnym czasie i nieporownywalne.
+  - Wymaganie: czas w logach tylko UTC/ISO.
+- Blad: komunikaty bledu nie zawieraly kodu wyjscia.
+  - Wymaganie: loguj exit code/signal.
+- Blad: diagnostyka domyslnie zbierala dane w trybie full.
+  - Wymaganie: domyslnie tryb safe; full tylko jawnie.
+- Blad: `--verbose` nie pokazywal uruchomionych komend.
+  - Wymaganie: w verbose loguj command line (z sanitizacja).
+- Blad: pomiary czasu uzywaly `Date.now()`.
+  - Wymaganie: uzywaj zegara monotonicznego.
+- Blad: powtarzalne bledy zalewaly logi.
+  - Wymaganie: rate‑limit/sampling dla identycznych bledow.
+- Blad: biblioteki logowaly bezposrednio na stdout.
+  - Wymaganie: uzywaj centralnego loggera.
+- Blad: logi gubily sie przy `process.exit`.
+  - Wymaganie: flush logow przed wyjsciem.
+- Blad: logi do pliku rosly bez ograniczen.
+  - Wymaganie: rotacja lub limit rozmiaru.
+
+- Blad: workspace zwracal `0` mimo bledow w podprojektach.
+  - Wymaganie: non‑zero exit przy bledzie (chyba ze `--continue-on-error`).
+- Blad: brak podsumowania statusu dla wielu projektow.
+  - Wymaganie: drukuj summary (ok/fail/skip) po zakonczeniu.
+- Blad: help/opisy nie byly aktualizowane po zmianach opcji.
+  - Wymaganie: aktualizuj help/docs w tej samej zmianie (CI check).
+- Blad: nazwy opcji byly niespojnie nazywane.
+  - Wymaganie: spojny kebab‑case bez nadmiaru aliasow.
+- Blad: `--force` nie ostrzegal o ryzyku.
+  - Wymaganie: jawny warning w output.
+- Blad: brak trybu `--yes/--non-interactive` utrudnial CI.
+  - Wymaganie: dodaj tryb bez promptow.
+- Blad: brak `--json` utrudnial automatyzacje.
+  - Wymaganie: `--json` dla kluczowych komend.
+- Blad: brak informacji o wykrytym root/workspace.
+  - Wymaganie: wypisz resolved root w output.
+- Blad: domyslny target byl ukryty.
+  - Wymaganie: zawsze wypisuj efektywny target.
+- Blad: nieznane argumenty byly ignorowane.
+  - Wymaganie: fail‑fast z sugestiami.
+
+- Blad: `rm -rf $VAR` z pustym VAR usuwal zle katalogi.
+  - Wymaganie: guard na pusta sciezke i walidacja root.
+- Blad: kopiowanie `cp -r` dereferowalo symlinki.
+  - Wymaganie: zachowuj symlinki albo jawnie je blokuj.
+- Blad: nowe pliki byly tworzone poza `seal-out`.
+  - Wymaganie: generowane pliki tylko w `seal-out`/outDir.
+- Blad: `mktemp` korzystalo z domyslnego /tmp na `noexec`.
+  - Wymaganie: jawny base dir + walidacja mount flags.
+- Blad: bledy `EINTR` nie byly obslugiwane.
+  - Wymaganie: retry na `EINTR` dla kluczowych operacji FS.
+- Blad: `pkill` ubijal zle procesy po nazwie.
+  - Wymaganie: weryfikuj PID i `cmdline` przed kill.
+- Blad: otwarte FD wyciekaly do child procesow.
+  - Wymaganie: ustaw `FD_CLOEXEC` i zamykaj w `finally`.
+- Blad: `chmod -R` zmienial perms na calym release.
+  - Wymaganie: ustawiaj perms selektywnie.
+- Blad: segmenty sciezki z inputu umozliwialy path traversal.
+  - Wymaganie: sanitizuj segmenty (brak `..`/absolutnych).
+- Blad: brak `fsync` po zapisie krytycznych plikow.
+  - Wymaganie: `fsync` pliku i katalogu.
+
+- Blad: requesty HTTP wisialy bez timeoutow.
+  - Wymaganie: `connect` i `total` timeout dla kazdego requestu.
+- Blad: retry byly wykonywane dla nie‑idempotentnych operacji.
+  - Wymaganie: retry tylko dla idempotentnych lub jawnie oznaczonych.
+- Blad: komunikaty nie rozrozniay DNS/timeout/TLS.
+  - Wymaganie: rozrozniaj typ bledu w komunikacie.
+- Blad: TLS wylaczony przez ENV bez ostrzezenia.
+  - Wymaganie: `TLS verify off` tylko opt‑in z ostrzezeniem.
+- Blad: proxy z ENV bylo uzywane mimo braku zgody.
+  - Wymaganie: proxy tylko gdy jawnie wlaczone w configu.
+- Blad: redirecty bez limitu mogly zawiesic request.
+  - Wymaganie: limituj redirecty i loguj finalny URL.
+- Blad: polaczenia HTTP nie byly domykane i wyciekaly.
+  - Wymaganie: ustaw keep‑alive z timeoutem lub zamykaj sockety.
+- Blad: brak heartbeat dla polaczen dlugich (ws/long‑poll).
+  - Wymaganie: heartbeat/ping + timeout.
