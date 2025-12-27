@@ -97,6 +97,16 @@ function httpJson({ port, path: reqPath, method, body, timeoutMs }) {
   });
 }
 
+function formatObfFailures(obf) {
+  if (!obf || typeof obf !== "object") return "missing payload";
+  const checks = obf.checks;
+  if (!checks || typeof checks !== "object") return "missing checks";
+  const failed = Object.values(checks)
+    .filter((c) => c && c.ok === false)
+    .map((c) => `${c.name}:${c.got}!=${c.expected}`);
+  return failed.length ? failed.join(", ") : "unknown";
+}
+
 async function waitForStatus(port) {
   const started = Date.now();
   const timeoutMs = 10000;
@@ -163,6 +173,19 @@ async function runReleaseAndCheck({ releaseDir, runTimeoutMs }) {
     assert.ok(md5Res.ok, "Expected /api/md5 OK");
     assert.strictEqual(md5Res.json.md5, expected, "Expected MD5 to match");
     assert.strictEqual(md5Res.json.textLength, text.length, "Expected MD5 textLength to match");
+
+    const obfRes = await httpJson({ port, path: "/api/obf/checks", timeoutMs: 4000 });
+    assert.ok(obfRes.ok, "Expected /api/obf/checks OK");
+    const obf = obfRes.json || {};
+    if (!obf.ok) {
+      throw new Error(`obf checks failed: ${formatObfFailures(obf)}`);
+    }
+    assert.ok(obf.total >= 12, "Expected obf checks count >= 12");
+    const checks = obf.checks || {};
+    assert.strictEqual(checks.checksum?.got, 15594668, "Expected checksum match");
+    assert.strictEqual(checks.fib?.got, 6765, "Expected fib match");
+    assert.strictEqual(checks.class?.got, "6:19", "Expected class check match");
+    assert.strictEqual(checks.generator?.got, "1,2", "Expected generator check match");
   } finally {
     child.kill("SIGTERM");
     await new Promise((resolve) => {
@@ -233,6 +256,16 @@ async function main() {
   const runTimeoutMs = Number(process.env.SEAL_OBFUSCATION_E2E_RUN_TIMEOUT_MS || "15000");
   const testTimeoutMs = Number(process.env.SEAL_OBFUSCATION_E2E_TIMEOUT_MS || "240000");
   const ctx = { buildTimeoutMs, runTimeoutMs };
+
+  try {
+    await getFreePort();
+  } catch (e) {
+    if (e && e.code === "EPERM") {
+      log("SKIP: cannot listen on localhost (EPERM)");
+      process.exit(0);
+    }
+    throw e;
+  }
 
   const tests = [
     { profile: "prod-strict", passes: 3 },

@@ -14,7 +14,7 @@ const { loadProjectConfig, loadTargetConfig, resolveConfigName } = require("../s
 const { readJson5, writeJson5 } = require("../src/lib/json5io");
 
 const EXAMPLE_ROOT = process.env.SEAL_E2E_EXAMPLE_ROOT || path.resolve(__dirname, "..", "..", "example");
-const ERRNO = { EPERM: 1, EACCES: 13 };
+const ERRNO = { EPERM: 1, EACCES: 13, EFAULT: 14 };
 
 function log(msg) {
   process.stdout.write(`[thin-anti-debug-e2e] ${msg}\n`);
@@ -51,6 +51,22 @@ function runStraceAttach(pid, logPath, timeoutMs = 5000) {
   return spawnSync(
     "strace",
     ["-p", String(pid), "-f", "-qq", "-o", logPath, "-e", "trace=memfd_create,execveat,execve", "-c"],
+    { stdio: "pipe", timeout: timeoutMs }
+  );
+}
+
+function runLtraceAttach(pid, logPath, timeoutMs = 5000) {
+  return spawnSync(
+    "ltrace",
+    ["-p", String(pid), "-f", "-o", logPath],
+    { stdio: "pipe", timeout: timeoutMs }
+  );
+}
+
+function runGdbServerAttach(pid, hostPort, timeoutMs = 5000) {
+  return spawnSync(
+    "gdbserver",
+    ["--attach", hostPort, String(pid)],
     { stdio: "pipe", timeout: timeoutMs }
   );
 }
@@ -152,6 +168,84 @@ int main(int argc, char **argv) {
     return 4;
   }
   write(1, buf, (size_t)n);
+  return 0;
+}
+`;
+
+const HELPER_MEMWRITE_SRC = `#define _FILE_OFFSET_BITS 64
+#include <errno.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+int main(int argc, char **argv) {
+  if (argc < 3) {
+    fprintf(stderr, "usage: %s <pid> <addr_hex> [len]\\n", argv[0]);
+    return 2;
+  }
+  pid_t pid = (pid_t)atoi(argv[1]);
+  unsigned long long addr = strtoull(argv[2], NULL, 16);
+  size_t len = (argc > 3) ? (size_t)strtoul(argv[3], NULL, 10) : 1;
+  char path[64];
+  snprintf(path, sizeof(path), "/proc/%d/mem", (int)pid);
+  int fd = open(path, O_RDWR);
+  if (fd < 0) {
+    fprintf(stderr, "open:%d\\n", errno);
+    return 3;
+  }
+  unsigned char buf[8] = { 0 };
+  if (len > sizeof(buf)) len = sizeof(buf);
+  ssize_t n = pwrite(fd, buf, len, (off_t)addr);
+  if (n <= 0) {
+    fprintf(stderr, "write:%d\\n", errno);
+    close(fd);
+    return 4;
+  }
+  close(fd);
+  return 0;
+}
+`;
+
+const HELPER_VMWRITE_SRC = `#define _GNU_SOURCE
+#include <errno.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/uio.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+
+int main(int argc, char **argv) {
+  if (argc < 3) {
+    fprintf(stderr, "usage: %s <pid> <addr_hex> [len]\\n", argv[0]);
+    return 2;
+  }
+  pid_t pid = (pid_t)atoi(argv[1]);
+  unsigned long long addr = strtoull(argv[2], NULL, 16);
+  size_t len = (argc > 3) ? (size_t)strtoul(argv[3], NULL, 10) : 1;
+#ifndef SYS_process_vm_writev
+#ifdef __NR_process_vm_writev
+#define SYS_process_vm_writev __NR_process_vm_writev
+#else
+  fprintf(stderr, "unsupported\\n");
+  return 5;
+#endif
+#endif
+  unsigned char buf[8] = { 0 };
+  if (len > sizeof(buf)) len = sizeof(buf);
+  struct iovec local;
+  struct iovec remote;
+  local.iov_base = buf;
+  local.iov_len = len;
+  remote.iov_base = (void *)(uintptr_t)addr;
+  remote.iov_len = len;
+  ssize_t n = syscall(SYS_process_vm_writev, pid, &local, 1, &remote, 1, 0);
+  if (n <= 0) {
+    fprintf(stderr, "vmwrite:%d\\n", errno);
+    return 4;
+  }
   return 0;
 }
 `;
@@ -293,6 +387,7 @@ async function runReleaseWithReady({ releaseDir, runTimeoutMs, env, onReady, ski
     return;
   }
   const port = await getFreePort();
+  const gdbPort = await getFreePort();
   writeRuntimeConfig(releaseDir, port);
 
   const binPath = path.join(releaseDir, "seal-example");
@@ -361,9 +456,22 @@ function readProcMaps(pid) {
   }
 }
 
-function getReadableMapAddresses(pid, limit = 5) {
+function readProcLimits(pid) {
+  const limitsPath = path.join("/proc", String(pid), "limits");
+  try {
+    return fs.readFileSync(limitsPath, "utf8");
+  } catch (e) {
+    if (e && (e.code === "EACCES" || e.code === "EPERM")) return null;
+    throw e;
+  }
+}
+
+function getMapAddresses(pid, opts = {}) {
   const maps = readProcMaps(pid);
   if (maps === null) return { blocked: true, addresses: [] };
+  const readable = opts.readable === true;
+  const writable = opts.writable === true;
+  const limit = Number.isFinite(opts.limit) ? opts.limit : 5;
   const addrs = [];
   for (const line of maps.split(/\r?\n/)) {
     if (!line) continue;
@@ -371,7 +479,9 @@ function getReadableMapAddresses(pid, limit = 5) {
     if (parts.length < 2) continue;
     const range = parts[0];
     const perms = parts[1];
-    if (!perms || perms[0] !== "r") continue;
+    if (!perms) continue;
+    if (readable && perms[0] !== "r") continue;
+    if (writable && !perms.includes("w")) continue;
     const dash = range.indexOf("-");
     if (dash <= 0) continue;
     const start = range.slice(0, dash);
@@ -382,9 +492,63 @@ function getReadableMapAddresses(pid, limit = 5) {
   return { blocked: false, addresses: addrs };
 }
 
+function getReadableMapAddresses(pid, limit = 5) {
+  return getMapAddresses(pid, { readable: true, limit });
+}
+
+function getWritableMapAddresses(pid, limit = 5) {
+  return getMapAddresses(pid, { readable: true, writable: true, limit });
+}
+
 function parseHelperErrno(output) {
-  const match = /(open|read|vmread|ptrace):(\d+)/.exec(output || "");
+  const match = /(open|read|write|vmread|vmwrite|ptrace):(\d+)/.exec(output || "");
   return match ? Number(match[2]) : null;
+}
+
+function readSysctlValue(pathname) {
+  try {
+    return fs.readFileSync(pathname, "utf8").trim();
+  } catch {
+    return null;
+  }
+}
+
+function logSysctlInfo() {
+  const yama = readSysctlValue("/proc/sys/kernel/yama/ptrace_scope");
+  if (yama !== null) {
+    log(`INFO: kernel.yama.ptrace_scope=${yama}`);
+  } else {
+    log("INFO: kernel.yama.ptrace_scope unavailable");
+  }
+  const perf = readSysctlValue("/proc/sys/kernel/perf_event_paranoid");
+  if (perf !== null) {
+    log(`INFO: kernel.perf_event_paranoid=${perf}`);
+  } else {
+    log("INFO: kernel.perf_event_paranoid unavailable");
+  }
+}
+
+function checkCoreLimits(pid) {
+  const limits = readProcLimits(pid);
+  if (limits === null) {
+    return { skip: "limits blocked" };
+  }
+  const lines = limits.split(/\r?\n/);
+  const line = lines.find((l) => l.startsWith("Max core file size"));
+  if (!line) {
+    return { skip: "missing core limits" };
+  }
+  const match = /^Max core file size\s+(\S+)\s+(\S+)\s+(\S+)/.exec(line.trim());
+  if (!match) {
+    return { skip: "core limits parse error" };
+  }
+  const soft = match[1];
+  const hard = match[2];
+  const unit = match[3] || "";
+  if (soft !== "0" || hard !== "0") {
+    throw new Error(`core limit not zero: soft=${soft}, hard=${hard} ${unit}`.trim());
+  }
+  return { ok: true, note: `${soft}/${hard} ${unit}`.trim() };
 }
 
 function checkProcStatusHardened(pid) {
@@ -452,6 +616,40 @@ function checkProcMemBlocked(pid, helperPath) {
   return { skip: "non-permission errors" };
 }
 
+function checkProcMemWriteBlocked(pid, helperPath) {
+  const isRoot = typeof process.getuid === "function" && process.getuid() === 0;
+  const strict = process.env.SEAL_E2E_STRICT_PROC_MEM === "1";
+  const maps = getWritableMapAddresses(pid, 6);
+  if (maps.blocked) {
+    return { ok: true, note: "maps blocked" };
+  }
+  if (!maps.addresses.length) {
+    return { skip: "no writable maps" };
+  }
+  for (const addr of maps.addresses) {
+    const res = runCmd(helperPath, [String(pid), addr, "1"], 5000);
+    if (res.error) {
+      const msg = res.error && res.error.code ? res.error.code : String(res.error);
+      throw new Error(`mem write helper failed: ${msg}`);
+    }
+    const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+    if (/unsupported/i.test(out)) {
+      return { skip: "mem write helper unsupported" };
+    }
+    if (res.status === 0) {
+      if (isRoot && !strict) {
+        return { skip: "root can write /proc/<pid>/mem (set SEAL_E2E_STRICT_PROC_MEM=1 to enforce)" };
+      }
+      throw new Error(`/proc/<pid>/mem write succeeded (addr=0x${addr})`);
+    }
+    const errno = parseHelperErrno(out);
+    if (errno === ERRNO.EPERM || errno === ERRNO.EACCES) {
+      return { ok: true, note: `errno ${errno}` };
+    }
+  }
+  return { skip: "non-permission errors" };
+}
+
 function checkVmReadBlocked(pid, helperPath) {
   const isRoot = typeof process.getuid === "function" && process.getuid() === 0;
   const strict = process.env.SEAL_E2E_STRICT_PROC_MEM === "1";
@@ -486,7 +684,43 @@ function checkVmReadBlocked(pid, helperPath) {
   return { skip: "non-permission errors" };
 }
 
+function checkVmWriteBlocked(pid, helperPath) {
+  const isRoot = typeof process.getuid === "function" && process.getuid() === 0;
+  const strict = process.env.SEAL_E2E_STRICT_PROC_MEM === "1";
+  const maps = getWritableMapAddresses(pid, 6);
+  if (maps.blocked) {
+    return { ok: true, note: "maps blocked" };
+  }
+  if (!maps.addresses.length) {
+    return { skip: "no writable maps" };
+  }
+  for (const addr of maps.addresses) {
+    const res = runCmd(helperPath, [String(pid), addr, "1"], 5000);
+    if (res.error) {
+      const msg = res.error && res.error.code ? res.error.code : String(res.error);
+      throw new Error(`vmwrite helper failed: ${msg}`);
+    }
+    const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+    if (/unsupported/i.test(out)) {
+      return { skip: "process_vm_writev unsupported" };
+    }
+    if (res.status === 0) {
+      if (isRoot && !strict) {
+        return { skip: "root can use process_vm_writev (set SEAL_E2E_STRICT_PROC_MEM=1 to enforce)" };
+      }
+      throw new Error(`process_vm_writev succeeded (addr=0x${addr})`);
+    }
+    const errno = parseHelperErrno(out);
+    if (errno === ERRNO.EPERM || errno === ERRNO.EACCES) {
+      return { ok: true, note: `errno ${errno}` };
+    }
+  }
+  return { skip: "non-permission errors" };
+}
+
 function checkPtraceBlocked(pid, helperPath) {
+  const isRoot = typeof process.getuid === "function" && process.getuid() === 0;
+  const strict = process.env.SEAL_E2E_STRICT_PTRACE === "1";
   const res = runCmd(helperPath, [String(pid)], 5000);
   if (res.error) {
     const msg = res.error && res.error.code ? res.error.code : String(res.error);
@@ -497,6 +731,9 @@ function checkPtraceBlocked(pid, helperPath) {
     return { skip: "ptrace helper unsupported" };
   }
   if (res.status === 0) {
+    if (isRoot && !strict) {
+      return { skip: "root can ptrace (set SEAL_E2E_STRICT_PTRACE=1 to enforce)" };
+    }
     throw new Error("ptrace attach succeeded (unexpected)");
   }
   return { ok: true, note: out ? out.slice(0, 120) : "" };
@@ -548,12 +785,72 @@ function checkGcoreBlocked(pid) {
   }
 }
 
+function readCorePattern() {
+  return readSysctlValue("/proc/sys/kernel/core_pattern");
+}
+
+function listCoreFiles(dir, sinceMs) {
+  let entries = [];
+  try {
+    entries = fs.readdirSync(dir);
+  } catch {
+    return [];
+  }
+  const out = [];
+  for (const entry of entries) {
+    if (!entry.startsWith("core")) continue;
+    const full = path.join(dir, entry);
+    try {
+      const st = fs.statSync(full);
+      if (st.isFile() && st.mtimeMs >= sinceMs - 1000) {
+        out.push(entry);
+      }
+    } catch {}
+  }
+  return out;
+}
+
+function checkCoredumpctl(pid, sinceMs) {
+  if (!hasCommand("coredumpctl")) {
+    return { skip: "coredumpctl missing" };
+  }
+  const sinceSec = Math.max(0, Math.floor(sinceMs / 1000) - 1);
+  const res = runCmd("coredumpctl", ["--no-pager", "--since", `@${sinceSec}`, "--pid", String(pid)], 8000);
+  const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+  if (/no coredumps found/i.test(out)) {
+    return { ok: true };
+  }
+  if (res.status === 0 && out) {
+    return { ok: false, reason: `coredumpctl reported core for pid=${pid}` };
+  }
+  return { skip: out ? `coredumpctl error: ${out.slice(0, 120)}` : "coredumpctl error" };
+}
+
+function checkCoreFilesAfterCrash(releaseDir, pid, sinceMs) {
+  const pattern = readCorePattern();
+  if (!pattern) {
+    return { skip: "core_pattern unavailable" };
+  }
+  if (pattern.startsWith("|")) {
+    return checkCoredumpctl(pid, sinceMs);
+  }
+  if (pattern.includes("/")) {
+    return { skip: `core_pattern path: ${pattern}` };
+  }
+  const files = listCoreFiles(releaseDir, sinceMs);
+  if (files.length > 0) {
+    return { ok: false, reason: `core file(s): ${files.join(", ")}` };
+  }
+  return { ok: true };
+}
+
 async function runReleaseOk({ releaseDir, runTimeoutMs, env }) {
   if (runReleaseOk.skipListen) {
     log("SKIP: listen not permitted; runtime check disabled");
     return;
   }
   const port = await getFreePort();
+  const gdbPort = await getFreePort();
   writeRuntimeConfig(releaseDir, port);
 
   const binPath = path.join(releaseDir, "seal-example");
@@ -603,6 +900,7 @@ async function runReleaseExpectFail({ releaseDir, runTimeoutMs, env, expectStder
     return;
   }
   const port = await getFreePort();
+  const gdbPort = await getFreePort();
   writeRuntimeConfig(releaseDir, port);
 
   const binPath = path.join(releaseDir, "seal-example");
@@ -672,6 +970,15 @@ async function runReleaseProcIntrospectionChecks({ releaseDir, runTimeoutMs, env
       checkProcStatusHardened(pid);
       log("OK: /proc status hardened");
 
+      log("Checking /proc/<pid>/limits...");
+      const limitsRes = checkCoreLimits(pid);
+      if (limitsRes.skip) {
+        log(`SKIP: /proc/<pid>/limits (${limitsRes.skip})`);
+      } else {
+        const note = limitsRes.note ? ` (${limitsRes.note})` : "";
+        log(`OK: core limits zero${note}`);
+      }
+
       log("Checking /proc/<pid>/mem access...");
       const memRes = checkProcMemBlocked(pid, helpers.mem.path);
       if (memRes.skip) {
@@ -681,6 +988,15 @@ async function runReleaseProcIntrospectionChecks({ releaseDir, runTimeoutMs, env
         log(`OK: /proc/<pid>/mem blocked${note}`);
       }
 
+      log("Checking /proc/<pid>/mem write...");
+      const memWriteRes = checkProcMemWriteBlocked(pid, helpers.memwrite.path);
+      if (memWriteRes.skip) {
+        log(`SKIP: /proc/<pid>/mem write (${memWriteRes.skip})`);
+      } else {
+        const note = memWriteRes.note ? ` (${memWriteRes.note})` : "";
+        log(`OK: /proc/<pid>/mem write blocked${note}`);
+      }
+
       log("Checking process_vm_readv access...");
       const vmRes = checkVmReadBlocked(pid, helpers.vm.path);
       if (vmRes.skip) {
@@ -688,6 +1004,15 @@ async function runReleaseProcIntrospectionChecks({ releaseDir, runTimeoutMs, env
       } else {
         const note = vmRes.note ? ` (${vmRes.note})` : "";
         log(`OK: process_vm_readv blocked${note}`);
+      }
+
+      log("Checking process_vm_writev access...");
+      const vmWriteRes = checkVmWriteBlocked(pid, helpers.vmwrite.path);
+      if (vmWriteRes.skip) {
+        log(`SKIP: process_vm_writev (${vmWriteRes.skip})`);
+      } else {
+        const note = vmWriteRes.note ? ` (${vmWriteRes.note})` : "";
+        log(`OK: process_vm_writev blocked${note}`);
       }
     },
   });
@@ -727,6 +1052,71 @@ async function runReleaseGcoreFail({ releaseDir, runTimeoutMs, env }) {
       }
     },
   });
+}
+
+async function runReleaseCrashNoCore({ releaseDir, runTimeoutMs, env }) {
+  if (runReleaseOk.skipListen) {
+    log("SKIP: listen not permitted; core crash test disabled");
+    return;
+  }
+  const port = await getFreePort();
+  writeRuntimeConfig(releaseDir, port);
+
+  const binPath = path.join(releaseDir, "seal-example");
+  assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
+
+  const childEnv = Object.assign({}, process.env, env || {});
+  const startMs = Date.now();
+  const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe", env: childEnv });
+  const outChunks = [];
+  const errChunks = [];
+  child.stdout.on("data", (c) => outChunks.push(c));
+  child.stderr.on("data", (c) => errChunks.push(c));
+
+  const exitPromise = new Promise((resolve) => {
+    child.on("exit", (code, signal) => {
+      const stdout = Buffer.concat(outChunks).toString("utf8").trim();
+      const stderr = Buffer.concat(errChunks).toString("utf8").trim();
+      resolve({ code, signal, stdout, stderr, pid: child.pid });
+    });
+  });
+
+  try {
+    const winner = await withTimeout("core crash", runTimeoutMs, () => Promise.race([
+      exitPromise,
+      waitForStatus(port).then(() => ({ ok: true })),
+    ]));
+    if (winner && winner.ok) {
+      throw new Error("process reached /api/status (expected crash)");
+    }
+    const { code, signal, pid } = winner || {};
+    if (code === 0) {
+      throw new Error("process exited with code=0 (expected crash)");
+    }
+    if (code === null && !signal) {
+      throw new Error("process did not crash as expected");
+    }
+    const coreRes = checkCoreFilesAfterCrash(releaseDir, pid, startMs);
+    if (coreRes.skip) {
+      log(`SKIP: core dump check (${coreRes.skip})`);
+    } else if (!coreRes.ok) {
+      throw new Error(`core dump found (${coreRes.reason})`);
+    } else {
+      log("OK: no core dump after crash");
+    }
+  } finally {
+    child.kill("SIGTERM");
+    await new Promise((resolve) => {
+      const t = setTimeout(() => {
+        child.kill("SIGKILL");
+        resolve();
+      }, 4000);
+      child.on("exit", () => {
+        clearTimeout(t);
+        resolve();
+      });
+    });
+  }
 }
 
 async function runReleaseGdbAttachFail({ releaseDir, runTimeoutMs, env }) {
@@ -857,6 +1247,160 @@ async function runReleaseStraceAttachFail({ releaseDir, runTimeoutMs, env }) {
     if (!isFailure) {
       const trace = fs.existsSync(logPath) ? fs.readFileSync(logPath, "utf8").slice(0, 800) : "";
       throw new Error(`strace attach succeeded (unexpected)${trace ? `; trace=${trace}` : ""}`);
+    }
+  } finally {
+    child.kill("SIGTERM");
+    await new Promise((resolve) => {
+      const t = setTimeout(() => {
+        child.kill("SIGKILL");
+        resolve();
+      }, 4000);
+      child.on("exit", () => {
+        clearTimeout(t);
+        resolve();
+      });
+    });
+  }
+}
+
+async function runReleaseLtraceAttachFail({ releaseDir, runTimeoutMs, env }) {
+  if (runReleaseOk.skipListen) {
+    log("SKIP: listen not permitted; ltrace attach test disabled");
+    return;
+  }
+  if (!hasCommand("ltrace")) {
+    log("SKIP: ltrace not installed; ltrace attach test disabled");
+    return;
+  }
+
+  const port = await getFreePort();
+  writeRuntimeConfig(releaseDir, port);
+
+  const binPath = path.join(releaseDir, "seal-example");
+  assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
+
+  const childEnv = Object.assign({}, process.env, env || {});
+  const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe", env: childEnv });
+  const outChunks = [];
+  const errChunks = [];
+  child.stdout.on("data", (c) => outChunks.push(c));
+  child.stderr.on("data", (c) => errChunks.push(c));
+
+  const exitPromise = new Promise((_, reject) => {
+    child.on("exit", (code, signal) => {
+      const stdout = Buffer.concat(outChunks).toString("utf8").trim();
+      const stderr = Buffer.concat(errChunks).toString("utf8").trim();
+      const detail = [
+        code !== null ? `code=${code}` : null,
+        signal ? `signal=${signal}` : null,
+        stdout ? `stdout: ${stdout.slice(0, 400)}` : null,
+        stderr ? `stderr: ${stderr.slice(0, 400)}` : null,
+      ].filter(Boolean).join("; ");
+      reject(new Error(`process exited early (${detail || "no output"})`));
+    });
+  });
+
+  try {
+    await withTimeout("waitForStatus", runTimeoutMs, () => Promise.race([waitForStatus(port), exitPromise]));
+    const logPath = path.join(os.tmpdir(), `seal-ltrace-attach-${Date.now()}.log`);
+    const res = runLtraceAttach(child.pid, logPath, 5000);
+    if (res.error && res.error.code === "ETIMEDOUT") {
+      throw new Error("ltrace attach timed out (unexpected)");
+    }
+    const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+    const failMarkers = [
+      /operation not permitted/i,
+      /permission denied/i,
+      /ptrace/i,
+      /cannot attach/i,
+      /not being run/i,
+      /inappropriate ioctl/i,
+    ];
+    const isFailure = res.status !== 0 || failMarkers.some((re) => re.test(out));
+    if (!isFailure) {
+      const trace = fs.existsSync(logPath) ? fs.readFileSync(logPath, "utf8").slice(0, 800) : "";
+      throw new Error(`ltrace attach succeeded (unexpected)${trace ? `; trace=${trace}` : ""}`);
+    }
+  } finally {
+    child.kill("SIGTERM");
+    await new Promise((resolve) => {
+      const t = setTimeout(() => {
+        child.kill("SIGKILL");
+        resolve();
+      }, 4000);
+      child.on("exit", () => {
+        clearTimeout(t);
+        resolve();
+      });
+    });
+  }
+}
+
+async function runReleaseGdbServerAttachFail({ releaseDir, runTimeoutMs, env }) {
+  if (runReleaseOk.skipListen) {
+    log("SKIP: listen not permitted; gdbserver attach test disabled");
+    return;
+  }
+  if (!hasCommand("gdbserver")) {
+    log("SKIP: gdbserver not installed; gdbserver attach test disabled");
+    return;
+  }
+
+  const port = await getFreePort();
+  writeRuntimeConfig(releaseDir, port);
+
+  const binPath = path.join(releaseDir, "seal-example");
+  assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
+
+  const childEnv = Object.assign({}, process.env, env || {});
+  const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe", env: childEnv });
+  const outChunks = [];
+  const errChunks = [];
+  child.stdout.on("data", (c) => outChunks.push(c));
+  child.stderr.on("data", (c) => errChunks.push(c));
+
+  const exitPromise = new Promise((_, reject) => {
+    child.on("exit", (code, signal) => {
+      const stdout = Buffer.concat(outChunks).toString("utf8").trim();
+      const stderr = Buffer.concat(errChunks).toString("utf8").trim();
+      const detail = [
+        code !== null ? `code=${code}` : null,
+        signal ? `signal=${signal}` : null,
+        stdout ? `stdout: ${stdout.slice(0, 400)}` : null,
+        stderr ? `stderr: ${stderr.slice(0, 400)}` : null,
+      ].filter(Boolean).join("; ");
+      reject(new Error(`process exited early (${detail || "no output"})`));
+    });
+  });
+
+  try {
+    await withTimeout("waitForStatus", runTimeoutMs, () => Promise.race([waitForStatus(port), exitPromise]));
+    const hostPort = `127.0.0.1:${gdbPort}`;
+    const res = runGdbServerAttach(child.pid, hostPort, 5000);
+    if (res.error && res.error.code === "ETIMEDOUT") {
+      throw new Error("gdbserver attach timed out (unexpected)");
+    }
+    const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+    const skipMarkers = [
+      /address already in use/i,
+      /cannot bind/i,
+      /failed to bind/i,
+    ];
+    if (skipMarkers.some((re) => re.test(out))) {
+      log(`SKIP: gdbserver attach (${out.slice(0, 120)})`);
+      return;
+    }
+    const failMarkers = [
+      /operation not permitted/i,
+      /permission denied/i,
+      /ptrace/i,
+      /cannot attach/i,
+      /not being run/i,
+      /inappropriate ioctl/i,
+    ];
+    const isFailure = res.status !== 0 || failMarkers.some((re) => re.test(out));
+    if (!isFailure) {
+      throw new Error(`gdbserver attach succeeded (unexpected)${out ? `; output=${out.slice(0, 200)}` : ""}`);
     }
   } finally {
     child.kill("SIGTERM");
@@ -1079,6 +1623,8 @@ async function main() {
   const prereq = checkPrereqs();
   if (!prereq.ok) process.exit(prereq.skip ? 0 : 1);
 
+  logSysctlInfo();
+
   const buildTimeoutMs = Number(process.env.SEAL_THIN_ANTI_DEBUG_E2E_BUILD_TIMEOUT_MS || "240000");
   const runTimeoutMs = Number(process.env.SEAL_THIN_ANTI_DEBUG_E2E_RUN_TIMEOUT_MS || "15000");
   const testTimeoutMs = Number(process.env.SEAL_THIN_ANTI_DEBUG_E2E_TIMEOUT_MS || "300000");
@@ -1100,7 +1646,9 @@ async function main() {
   try {
     const helpers = {
       mem: ensureHelper(helperCtx, "memread", HELPER_MEMREAD_SRC),
+      memwrite: ensureHelper(helperCtx, "memwrite", HELPER_MEMWRITE_SRC),
       vm: ensureHelper(helperCtx, "vmread", HELPER_VMREAD_SRC),
+      vmwrite: ensureHelper(helperCtx, "vmwrite", HELPER_VMWRITE_SRC),
       ptrace: ensureHelper(helperCtx, "ptrace", HELPER_PTRACE_SRC),
     };
     const baseCfg = loadProjectConfig(EXAMPLE_ROOT);
@@ -1207,6 +1755,18 @@ async function main() {
     );
     log("OK: strace attach blocked");
 
+    log("Testing ltrace attach (expect failure)...");
+    await withTimeout("ltrace attach fail", testTimeoutMs, () =>
+      runReleaseLtraceAttachFail({ releaseDir: resA.releaseDir, runTimeoutMs })
+    );
+    log("OK: ltrace attach blocked");
+
+    log("Testing gdbserver attach (expect failure)...");
+    await withTimeout("gdbserver attach fail", testTimeoutMs, () =>
+      runReleaseGdbServerAttachFail({ releaseDir: resA.releaseDir, runTimeoutMs })
+    );
+    log("OK: gdbserver attach blocked");
+
     log("Testing ptrace helper (expect failure)...");
     await withTimeout("ptrace helper fail", testTimeoutMs, () =>
       runReleasePtraceHelperFail({ releaseDir: resA.releaseDir, runTimeoutMs, helperPath: helpers.ptrace.path })
@@ -1248,6 +1808,35 @@ async function main() {
       })
     );
     log("OK: seccomp probe ok");
+
+    log("Testing seccomp aggressive probe (expect success)...");
+    const resAgg = await withTimeout("buildRelease(seccomp aggressive)", buildTimeoutMs, () =>
+      buildThinSplit({
+        outRoot,
+        antiDebug: {
+          enabled: true,
+          seccompNoDebug: { enabled: true, mode: "errno", aggressive: true },
+        },
+        launcherObfuscation: false,
+      })
+    );
+    await withTimeout("seccomp aggressive probe ok", testTimeoutMs, () =>
+      runReleaseOk({
+        releaseDir: resAgg.releaseDir,
+        runTimeoutMs,
+        env: { SEAL_SECCOMP_AGGRESSIVE_PROBE: "1" },
+      })
+    );
+    log("OK: seccomp aggressive probe ok");
+
+    log("Testing core crash (no core dump)...");
+    await withTimeout("core crash probe", testTimeoutMs, () =>
+      runReleaseCrashNoCore({
+        releaseDir: resA.releaseDir,
+        runTimeoutMs,
+        env: { SEAL_CORE_CRASH_PROBE: "1" },
+      })
+    );
 
     log("Testing integrity tamper...");
     tamperLauncher(resA.releaseDir);

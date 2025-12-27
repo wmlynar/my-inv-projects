@@ -227,6 +227,8 @@ Test E2E obfuskacji logiki (`prod-strict` + `prod-max`):
 SEAL_OBFUSCATION_E2E=1 node tools/seal/seal/scripts/test-obfuscation-e2e.js
 ```
 
+Test odpala sealed binarkę i weryfikuje `/api/obf/checks` oraz `/api/md5`.
+
 Wyłączenie:
 
 ```json5

@@ -2984,6 +2984,60 @@ static int anti_debug_e2e_probe(void) {
 #endif
   }
 
+  const char *seccomp_aggr_probe = getenv("SEAL_SECCOMP_AGGRESSIVE_PROBE");
+  if (seccomp_aggr_probe && strcmp(seccomp_aggr_probe, "1") == 0) {
+#if THIN_AD_SECCOMP && THIN_AD_SECCOMP_AGGRESSIVE
+#if THIN_AD_SECCOMP_KILL
+    return fail_msg("[thin] runtime invalid", 82);
+#else
+    int did_probe = 0;
+#define SEAL_AD_PROBE_SYSCALL(nr, a1, a2, a3, a4, a5, a6) \
+  do { \
+    errno = 0; \
+    long rc = syscall(nr, a1, a2, a3, a4, a5, a6); \
+    did_probe = 1; \
+    if (!(rc == -1 && errno == EPERM)) { \
+      return fail_msg("[thin] runtime invalid", 82); \
+    } \
+  } while (0)
+#ifdef __NR_process_vm_readv
+    SEAL_AD_PROBE_SYSCALL(__NR_process_vm_readv, getpid(), 0, 0, 0, 0, 0);
+#endif
+#ifdef __NR_process_vm_writev
+    SEAL_AD_PROBE_SYSCALL(__NR_process_vm_writev, getpid(), 0, 0, 0, 0, 0);
+#endif
+#ifdef __NR_kcmp
+    SEAL_AD_PROBE_SYSCALL(__NR_kcmp, getpid(), getpid(), 0, 0, 0, 0);
+#endif
+#ifdef __NR_bpf
+    SEAL_AD_PROBE_SYSCALL(__NR_bpf, 0, 0, 0, 0, 0, 0);
+#endif
+#ifdef __NR_userfaultfd
+    SEAL_AD_PROBE_SYSCALL(__NR_userfaultfd, 0, 0, 0, 0, 0, 0);
+#endif
+#ifdef __NR_pidfd_open
+    SEAL_AD_PROBE_SYSCALL(__NR_pidfd_open, getpid(), 0, 0, 0, 0, 0);
+#endif
+#ifdef __NR_pidfd_getfd
+    SEAL_AD_PROBE_SYSCALL(__NR_pidfd_getfd, -1, 0, 0, 0, 0, 0);
+#endif
+#undef SEAL_AD_PROBE_SYSCALL
+    (void)did_probe;
+#endif
+#else
+    return fail_msg("[thin] runtime invalid", 82);
+#endif
+  }
+
+  const char *core_crash = getenv("SEAL_CORE_CRASH_PROBE");
+  if (core_crash && strcmp(core_crash, "1") == 0) {
+#if THIN_AD_CORE_DUMP
+    abort();
+#else
+    return fail_msg("[thin] runtime invalid", 83);
+#endif
+  }
+
   return 0;
 }
 

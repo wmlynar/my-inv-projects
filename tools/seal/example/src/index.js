@@ -9,6 +9,7 @@ const { loadRuntimeConfig } = require("./config");
 const { createLogger } = require("./logger");
 const { readJsonFile } = require("./files");
 const { externalEcho } = require("./external");
+const { runObfChecks } = require("./obfChecks");
 
 const BUILD_ID = (typeof __SEAL_BUILD_ID__ !== "undefined") ? __SEAL_BUILD_ID__ : "DEV";
 const APP_NAME = (typeof __SEAL_APP_NAME__ !== "undefined") ? __SEAL_APP_NAME__ : "seal-example";
@@ -78,6 +79,16 @@ function main() {
     const text = String((req.body && req.body.text) || "");
     const hash = md5(text);
     res.json({ ok: true, textLength: text.length, md5: hash });
+  });
+
+  // Obfuscation checks (E2E): validates runtime semantics under heavy transforms
+  app.get("/api/obf/checks", async (req, res) => {
+    try {
+      const result = await runObfChecks();
+      res.json(result);
+    } catch (e) {
+      res.status(500).json({ ok: false, error: { message: e.message } });
+    }
   });
 
   // External call (debug logs show full request/response)

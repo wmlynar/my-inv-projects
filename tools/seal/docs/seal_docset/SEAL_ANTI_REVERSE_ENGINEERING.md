@@ -796,7 +796,7 @@ Poniżej presety praktyczne. Klucz: wskazujemy, co da się zrobić **bez dodatko
 3) Backend Terser (minify + inline) przed obfuskacją: `build.backendTerser` (domyślnie włączony dla `prod‑strict`/`prod‑max`; dla `prod‑max` rekomendowane `passes=4`, `toplevel=true`).  
    Uwaga: `prod‑max` podnosi ryzyko regresji runtime i utrudnia diagnostykę — stosuj po testach E2E.  
    E2E: `SEAL_PROTECTION_E2E=1 node tools/seal/seal/scripts/test-protection-e2e.js` (zawiera check `prod‑max`).  
-   Dodatkowo: `SEAL_OBFUSCATION_E2E=1 node tools/seal/seal/scripts/test-obfuscation-e2e.js` (sprawdza logikę JS pod `prod‑strict`/`prod‑max`).  
+   Dodatkowo: `SEAL_OBFUSCATION_E2E=1 node tools/seal/seal/scripts/test-obfuscation-e2e.js` (sprawdza logikę JS pod `prod‑strict`/`prod‑max`, endpoint `/api/obf/checks`).  
 4) Włącz minifikację bundla jako opcję (esbuild ma ją wbudowaną) — dodatkowe tarcie dla czytelności.  
 5) Bundle/SEA: maskowanie payloadów (anti‑casual extraction; spójność z thin).  
 6) THIN: dopracowanie Poziomu A do „twardego standardu” (regresje + kompatybilność).  
