@@ -66,7 +66,8 @@ function obfuscationOptions(profile) {
       ...base,
       simplify: false,
       numbersToExpressions: true,
-      controlFlowFlattening: true,
+      // CFF breaks some let-closure semantics; keep off and rely on Terser inline + DCI.
+      controlFlowFlattening: false,
       controlFlowFlatteningThreshold: 0.75,
       deadCodeInjection: true,
       deadCodeInjectionThreshold: 0.3,
@@ -86,10 +87,11 @@ function obfuscationOptions(profile) {
       ...base,
       simplify: false,
       numbersToExpressions: true,
-      controlFlowFlattening: true,
+      // CFF breaks some let-closure semantics; keep off and rely on Terser inline + DCI.
+      controlFlowFlattening: false,
       controlFlowFlatteningThreshold: 0.75,
       deadCodeInjection: true,
-      deadCodeInjectionThreshold: 0.3,
+      deadCodeInjectionThreshold: 0.4,
       identifierNamesGenerator: "mangled-shuffled",
       renameGlobals: true,
       renameProperties: false,

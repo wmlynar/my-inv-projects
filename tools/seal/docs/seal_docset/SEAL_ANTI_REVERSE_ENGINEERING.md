@@ -791,7 +791,8 @@ Poniżej presety praktyczne. Klucz: wskazujemy, co da się zrobić **bez dodatko
 **Generator / build**
 1) Utrzymuj i testuj DoD jako „kontrakt”: brak forbidden globs, brak sourcemapów, brak wycieków w `strings`.  
 2) Dodaj „prod‑strict” / „prod‑max” profil obfuskacji JS:
-   - mocniejsze transformacje struktury (CFF/DeadCode) i agresywne manglowanie nazw,
+   - mocniejsze transformacje struktury (DeadCode + agresywne manglowanie nazw) + inline przez Terser,
+   - CFF jest wyłączone (potrafi psuć semantykę `let` w pętlach, wykryte w E2E),
    - (opcjonalnie) ukrywanie wrażliwych stringów tylko tam, gdzie nie psuje kontraktów.
 3) Backend Terser (minify + inline) przed obfuskacją: `build.backendTerser` (domyślnie włączony dla `prod‑strict`/`prod‑max`; dla `prod‑max` rekomendowane `passes=4`, `toplevel=true`).  
    Uwaga: `prod‑max` podnosi ryzyko regresji runtime i utrudnia diagnostykę — stosuj po testach E2E.  

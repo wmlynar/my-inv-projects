@@ -198,7 +198,7 @@ build: {
 }
 ```
 
-Profil bardziej agresywny (maksymalny inline/flatten):
+Profil bardziej agresywny (maksymalny inline + dead-code):
 
 ```json5
 build: {
@@ -213,7 +213,8 @@ build: {
 }
 ```
 
-Uwaga: `prod-max` zwiększa ryzyko regresji i utrudnia diagnostykę runtime. Używaj po testach E2E.
+Uwaga: `prod-max` zwiększa ryzyko regresji i utrudnia diagnostykę runtime. Używaj po testach E2E.  
+W profilach `prod-*` CFF jest wyłączone (potrafi psuć semantykę `let` w pętlach); spłaszczanie robi Terser + DCI.
 
 Test E2E (obejmuje `prod-max`):
 
@@ -236,6 +237,12 @@ build: {
   backendTerser: false
 }
 ```
+
+Dobór profilu obfuskacji (skrót):
+- `minimal`: kod dynamiczny (eval/Function), dużo refleksji/metaprogramowania.
+- `balanced`: domyślny, bezpieczny dla większości aplikacji.
+- `prod-strict`: produkcja po pełnych E2E, większe tarcie, CFF wyłączone.
+- `prod-max`: maksymalne utrudnienie (Terser inline + wyższy DCI), tylko po E2E.
 
 ## Frontend minifikacja HTML/CSS (domyślnie włączona)
 
