@@ -638,6 +638,9 @@
 - Blad: `status` nie wykrywal procesu uruchomionego przez BOOTSTRAP (`$ROOT/b/a`) przy braku unitu.
   - Wymaganie: fallback `status` uwzglednia `$ROOT/b/a` w detekcji procesu.
 
+- Blad: detekcja procesu (pgrep) lapala wlasne narzedzia (`pgrep`, edytory, shell), dajac falszywy wynik „process running”.
+  - Wymaganie: filtruj wyniki po PID (pomijaj PID testu/pgrep) i uzywaj dopasowania sciezki binarki, nie tylko nazwy procesu.
+
 - Blad: `serviceScope=user` na SSH prowadzil do blednych komend `sudo systemctl`.
   - Wymaganie: SSH wspiera tylko `serviceScope=system` (inaczej blad), albo implementujemy wariant `--user`.
 
