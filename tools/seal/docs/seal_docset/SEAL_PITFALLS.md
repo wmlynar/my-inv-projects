@@ -1269,6 +1269,19 @@
 - Blad: `fs.watch`/watchery byly uzywane do krytycznych decyzji, mimo ze sa niestabilne.
   - Wymaganie: watchery tylko pomocniczo; logika krytyczna opiera sie na polling/explicit checks.
 
+## Dodatkowe wnioski (batch 156-160)
+
+- Blad: archiwa przenosily bity `setuid/setgid`, co moglo eskalowac uprawnienia po rozpakowaniu.
+  - Wymaganie: po rozpakowaniu usuwaj bity `setuid/setgid` (chmod u-s,g-s) i weryfikuj perms.
+- Blad: artefakty zawieraly szum systemowy (`.DS_Store`, `Thumbs.db`), co psulo diffy i kontrole.
+  - Wymaganie: filtruj znane pliki smieciowe na etapie bundlingu/archiwizacji.
+- Blad: przekazywanie duzych danych przez CLI powodowalo `E2BIG`.
+  - Wymaganie: duze dane przekazuj przez plik/STDIN, nie przez argumenty.
+- Blad: `tar`/`cp -a` zachowywal bity wykonywalne na plikach, ktore nie powinny byc wykonywalne.
+  - Wymaganie: po rozpakowaniu/kopiowaniu jawnie ustaw `chmod` dla binarek i pozostalych plikow.
+- Blad: `PATH` wybieral narzedzia z nieoczekiwanych lokalizacji (np. snap), co dawalo inne zachowanie.
+  - Wymaganie: loguj sciezki i pozwol wymusic konkretne binarki w configu.
+
 ## Dodatkowe wnioski (batch 131-135)
 
 - Blad: rekurencyjne skanowanie katalogow bralo `.git`, `node_modules`, `seal-out`, co powodowalo spowolnienia i przypadkowe artefakty.

@@ -734,6 +734,11 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-350 (SHOULD): nazwy plikow są sanitizowane/escapowane w logach i przy budowie komend.
 - STD-351 (SHOULD): waliduj dlugosc sciezek i dawaj jasny blad `ENAMETOOLONG`.
 - STD-352 (SHOULD): watchery (`fs.watch`) nie steruja krytyczną logika; uzywaj polling/explicit checks.
+- STD-353 (SHOULD): po rozpakowaniu usuwaj bity `setuid/setgid` i weryfikuj perms.
+- STD-354 (SHOULD): filtruj pliki smieciowe (`.DS_Store`, `Thumbs.db`) w bundlingu/archiwizacji.
+- STD-355 (SHOULD): duze dane przekazuj przez plik/STDIN, nie przez argumenty CLI (`E2BIG`).
+- STD-356 (SHOULD): po rozpakowaniu/kopiowaniu ustawiaj jawne perms dla binarek i nie‑binarek.
+- STD-357 (SHOULD): loguj sciezki do narzedzi i pozwol je wymusic w configu.
 
 ## 10. Moduł `testing` (SHOULD)
 
