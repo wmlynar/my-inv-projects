@@ -24,6 +24,7 @@ INSTALL_NODE="${SEAL_INSTALL_NODE:-1}"
 INSTALL_NPM="${SEAL_INSTALL_NPM:-1}"
 INSTALL_E2E_TOOLS="${SEAL_INSTALL_E2E_TOOLS:-1}"
 INSTALL_KITESHIELD="${SEAL_INSTALL_KITESHIELD:-1}"
+SKIP_NPM_IF_PRESENT="${SEAL_NPM_SKIP_IF_PRESENT:-0}"
 
 APT_DEPS=(
   build-essential
@@ -99,12 +100,29 @@ if [ "$INSTALL_NPM" = "1" ]; then
     log "ERROR: npm not found. Install Node.js first."
     exit 4
   fi
-  if [ -f "$REPO_ROOT/package.json" ] && grep -q "\"workspaces\"" "$REPO_ROOT/package.json"; then
-    log "Installing npm deps from repo root (workspaces)..."
-    (cd "$REPO_ROOT" && npm install)
-  else
-    log "Installing npm deps in tools/seal/seal..."
-    (cd "$SEAL_DIR" && npm install)
+  DO_NPM_INSTALL=1
+  if [ "$SKIP_NPM_IF_PRESENT" = "1" ]; then
+    if [ -f "$REPO_ROOT/package.json" ] && grep -q "\"workspaces\"" "$REPO_ROOT/package.json"; then
+      if [ -d "$REPO_ROOT/node_modules" ] && [ -n "$(ls -A "$REPO_ROOT/node_modules" 2>/dev/null)" ]; then
+        log "npm deps already present; skipping npm install (SEAL_NPM_SKIP_IF_PRESENT=1)."
+        DO_NPM_INSTALL=0
+      fi
+    else
+      if [ -d "$SEAL_DIR/node_modules" ] && [ -n "$(ls -A "$SEAL_DIR/node_modules" 2>/dev/null)" ]; then
+        log "npm deps already present; skipping npm install (SEAL_NPM_SKIP_IF_PRESENT=1)."
+        DO_NPM_INSTALL=0
+      fi
+    fi
+  fi
+
+  if [ "$DO_NPM_INSTALL" = "1" ]; then
+    if [ -f "$REPO_ROOT/package.json" ] && grep -q "\"workspaces\"" "$REPO_ROOT/package.json"; then
+      log "Installing npm deps from repo root (workspaces)..."
+      (cd "$REPO_ROOT" && npm install)
+    else
+      log "Installing npm deps in tools/seal/seal..."
+      (cd "$SEAL_DIR" && npm install)
+    fi
   fi
 
   POSTJECT_CANDIDATES=(

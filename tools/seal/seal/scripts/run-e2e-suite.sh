@@ -33,6 +33,11 @@ has_cmd() {
   command -v "$1" >/dev/null 2>&1
 }
 
+dir_has_files() {
+  local dir="$1"
+  [ -d "$dir" ] && [ -n "$(ls -A "$dir" 2>/dev/null)" ]
+}
+
 trim_list() {
   local raw="$1"
   echo "$raw" | tr ',;' ' ' | tr -s ' ' | sed 's/^ *//;s/ *$//'
@@ -159,18 +164,22 @@ fi
 
 EXAMPLE_DIR="${SEAL_E2E_EXAMPLE_ROOT:-$EXAMPLE_DST}"
 if [ -d "$EXAMPLE_DIR" ]; then
-  if [ -n "${SEAL_E2E_NODE_MODULES_ROOT:-}" ] && [ ! -d "$EXAMPLE_DIR/node_modules" ]; then
-    if [ -d "$SEAL_E2E_NODE_MODULES_ROOT" ]; then
+  if [ -n "${SEAL_E2E_NODE_MODULES_ROOT:-}" ]; then
+    mkdir -p "$SEAL_E2E_NODE_MODULES_ROOT"
+    if [ ! -d "$EXAMPLE_DIR/node_modules" ]; then
       log "Linking shared node_modules..."
       ln -s "$SEAL_E2E_NODE_MODULES_ROOT" "$EXAMPLE_DIR/node_modules"
-    else
-      log "WARN: SEAL_E2E_NODE_MODULES_ROOT missing: $SEAL_E2E_NODE_MODULES_ROOT"
     fi
-  fi
-  if [ "${SEAL_E2E_INSTALL_EXAMPLE_DEPS:-1}" = "1" ]; then
-    if [ ! -d "$EXAMPLE_DIR/node_modules" ]; then
-      log "Installing example dependencies..."
+    if [ "${SEAL_E2E_INSTALL_EXAMPLE_DEPS:-1}" = "1" ] && ! dir_has_files "$SEAL_E2E_NODE_MODULES_ROOT"; then
+      log "Installing example dependencies (shared cache)..."
       (cd "$EXAMPLE_DIR" && npm install)
+    fi
+  else
+    if [ "${SEAL_E2E_INSTALL_EXAMPLE_DEPS:-1}" = "1" ]; then
+      if [ ! -d "$EXAMPLE_DIR/node_modules" ]; then
+        log "Installing example dependencies..."
+        (cd "$EXAMPLE_DIR" && npm install)
+      fi
     fi
   fi
 fi

@@ -5,6 +5,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 E2E_DIR="$REPO_ROOT/tools/seal/seal/docker/e2e"
 CACHE_DIR="${SEAL_DOCKER_E2E_CACHE_DIR:-$HOME/.cache/seal/docker-e2e}"
+NODE_MODULES_CACHE="$CACHE_DIR/node_modules"
+EXAMPLE_NODE_MODULES_CACHE="$CACHE_DIR/example-node_modules"
+NPM_CACHE_DIR="$CACHE_DIR/npm"
 SSH_DIR="${SEAL_DOCKER_E2E_SSH_DIR:-$CACHE_DIR/ssh}"
 NETWORK_NAME="seal-e2e"
 SERVER_NAME="seal-e2e-server"
@@ -14,6 +17,10 @@ REMOTE_E2E="${SEAL_DOCKER_E2E_REMOTE:-1}"
 
 log() {
   echo "[docker-e2e] $*"
+}
+
+dir_has_files() {
+  [ -d "$1" ] && [ -n "$(ls -A "$1" 2>/dev/null)" ]
 }
 
 fail() {
@@ -118,6 +125,7 @@ fi
 mkdir -p "$SSH_DIR"
 chmod 700 "$SSH_DIR"
 mkdir -p "$CACHE_DIR"
+mkdir -p "$NODE_MODULES_CACHE" "$EXAMPLE_NODE_MODULES_CACHE" "$NPM_CACHE_DIR"
 SSH_DIR="$(cd "$SSH_DIR" && pwd)"
 
 KEY_FILE="$SSH_DIR/id_ed25519"
@@ -217,11 +225,23 @@ SHIP_ENV_ARGS=()
 if [ "$REMOTE_E2E" = "1" ]; then
   SHIP_ENV_ARGS+=(-e SEAL_SHIP_SSH_HOST="$SERVER_NAME")
 fi
+E2E_INSTALL_DEPS="${SEAL_E2E_INSTALL_DEPS:-}"
+if [ -z "$E2E_INSTALL_DEPS" ]; then
+  if dir_has_files "$NODE_MODULES_CACHE"; then
+    E2E_INSTALL_DEPS=0
+    log "Using cached node_modules (skip npm install)."
+  else
+    E2E_INSTALL_DEPS=1
+    log "node_modules cache empty; npm install will run once."
+  fi
+fi
 $DOCKER run --rm \
   --init \
   --privileged \
   "${BUILDER_NET_ARGS[@]}" \
   -v "$REPO_ROOT:/workspace" \
+  -v "$NODE_MODULES_CACHE:/workspace/node_modules" \
+  -v "$NPM_CACHE_DIR:/root/.npm" \
   -v "$SSH_DIR:/tmp/seal-ssh:ro" \
   -v "$CACHE_DIR:/root/.cache/seal" \
   -w /workspace \
@@ -231,12 +251,14 @@ $DOCKER run --rm \
   -e SEAL_E2E_JOBS="${SEAL_E2E_JOBS:-}" \
   -e SEAL_E2E_TESTS="${SEAL_E2E_TESTS:-}" \
   -e SEAL_E2E_SKIP="${SEAL_E2E_SKIP:-}" \
-  -e SEAL_E2E_INSTALL_DEPS="${SEAL_E2E_INSTALL_DEPS:-1}" \
+  -e SEAL_E2E_INSTALL_DEPS="$E2E_INSTALL_DEPS" \
   -e SEAL_E2E_INSTALL_PACKERS="${SEAL_E2E_INSTALL_PACKERS:-1}" \
   -e SEAL_E2E_INSTALL_OBFUSCATORS="${SEAL_E2E_INSTALL_OBFUSCATORS:-1}" \
   -e SEAL_E2E_STRICT_PROC_MEM="${SEAL_E2E_STRICT_PROC_MEM:-0}" \
   -e SEAL_E2E_STRICT_PTRACE="${SEAL_E2E_STRICT_PTRACE:-0}" \
   -e SEAL_E2E_STRICT_SNAPSHOT_GUARD="${SEAL_E2E_STRICT_SNAPSHOT_GUARD:-0}" \
+  -e SEAL_E2E_NODE_MODULES_ROOT="/root/.cache/seal/example-node_modules" \
+  -e SEAL_NPM_SKIP_IF_PRESENT=1 \
   "${SHIP_ENV_ARGS[@]}" \
   "$BUILDER_IMAGE" \
   bash -lc 'if [ "${SEAL_E2E_PARALLEL:-0}" = "1" ]; then tools/seal/seal/scripts/run-e2e-parallel.sh; else tools/seal/seal/scripts/run-e2e-suite.sh; fi'
