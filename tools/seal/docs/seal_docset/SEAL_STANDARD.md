@@ -779,6 +779,11 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-395 (SHOULD): `rsync` uzywa `--partial-dir` i cleanup po przerwaniu.
 - STD-396 (SHOULD): konfiguracja pozwala wymusic `scp -O` lub preferuje `rsync`/`sftp` dla kompatybilnosci.
 - STD-397 (SHOULD): narzedzia uruchamiaj w trybie bez ANSI/pagera (NO_COLOR/--no-ansi).
+- STD-398 (SHOULD): wykrywaj duplikaty kluczy w JSON/JSON5 (warning lub fail‑fast).
+- STD-399 (SHOULD): config ma limit rozmiaru (max bytes) i jest odrzucany gdy przekroczony.
+- STD-400 (SHOULD): config jest UTF‑8; pliki binarne/nie‑UTF8 są odrzucane.
+- STD-401 (SHOULD): precedence configu jest jawny i logowany (CLI > ENV > file).
+- STD-402 (SHOULD): brak `eval`/`new Function` w parsowaniu configu.
 
 ## 10. Moduł `testing` (SHOULD)
 

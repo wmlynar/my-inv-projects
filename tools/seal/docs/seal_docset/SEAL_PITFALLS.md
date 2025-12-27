@@ -1410,3 +1410,16 @@
   - Wymaganie: pozwol wymusic `scp -O` lub preferuj `rsync`/`sftp`.
 - Blad: logi z narzedzi mialy ANSI/pager i psuly parse.
   - Wymaganie: ustaw `NO_COLOR=1`/`--no-ansi`/`--no-pager` tam gdzie to mozliwe.
+
+## Dodatkowe wnioski (batch 201-205)
+
+- Blad: JSON/JSON5 z duplikatami kluczy nadpisywal wartosci bez ostrzezenia.
+  - Wymaganie: wykrywaj duplikaty kluczy i fail‑fast lub loguj warning.
+- Blad: config mial nieoczekiwanie duzy rozmiar (MB), co psulo parse i pamiec.
+  - Wymaganie: ustaw max size dla configu i odrzuc zbyt duze pliki.
+- Blad: config zawieral binarne dane/nie‑UTF8, co psulo parser i logi.
+  - Wymaganie: wymusz UTF‑8 i odrzuc binarne pliki.
+- Blad: brak jasnej kolejnosci precedence (CLI/ENV/file) dawalo niespodziewane wartosci.
+  - Wymaganie: zdefiniuj i loguj precedence (np. CLI > ENV > file).
+- Blad: parser evalowal wartosci z configu (np. `new Function`), co bylo ryzykowne.
+  - Wymaganie: brak `eval`; tylko bezpieczny parser + walidacja.
