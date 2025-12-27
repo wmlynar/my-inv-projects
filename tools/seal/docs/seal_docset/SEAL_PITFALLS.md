@@ -215,6 +215,10 @@
   - Wymaganie: release nie moze polegac na toolchainie builda na serwerze.
   - Wymaganie: AIO buduj na tej samej architekturze/OS co target albo uzyj trybu BOOTSTRAP.
 
+- Blad: `esbuild` target byl nowszy niz runtime Node na hoście, co powodowalo błędy składniowe po deployu.
+  - Wymaganie: `esbuild` target musi byc <= wersji runtime (lub jawnie wymuszony w configu).
+  - Wymaganie: preflight/logi wypisuja target i wykryta wersje Node na hoście (fail‑fast przy mismatch).
+
 - Blad: `thin` dopuszczal niespojne offsety/rozmiary kontenera (latwo o bledy przy uszkodzonych artefaktach).
   - Wymaganie: `index_len == chunk_count * THIN_INDEX_ENTRY_LEN`.
   - Wymaganie: `comp_len > 0` i `raw_len > 0`.

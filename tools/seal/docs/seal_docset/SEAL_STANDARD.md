@@ -76,6 +76,7 @@ Przykład:
 - STD-015 (SHOULD): wykrywanie narzędzi (np. `postject`) musi mieć **jedno źródło prawdy**; `check` i `build` używają tego samego resolvera binarki.
 - STD-026 (SHOULD): preflight i build uzywaja tych samych opcji i resolvera narzedzi, zeby uniknac rozjazdow.
 - STD-032 (SHOULD): preflight sprawdza OS/arch i wersje toolchaina; mismatch = fail-fast.
+- STD-032a (SHOULD): `esbuild` target nie moze byc wyzszy niz runtime Node na hoście; preflight loguje target + wykryta wersje Node i fail‑fast przy mismatch.
 - STD-035 (SHOULD): build zapisuje wersje narzedzi/zaleznosci; build nie pobiera rzeczy z internetu.
 - STD-040 (SHOULD): preflight uzywa tych samych argumentow i srodowiska co runtime.
 - STD-041 (SHOULD): release nie moze polegac na toolchainie builda na serwerze.
