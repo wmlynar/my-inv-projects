@@ -69,6 +69,12 @@ Konfiguracja: `build.protection.cObfuscator`.
 ### 2.8 ELF packers/protectors
 Konfiguracja: `build.protection.elfPacker`.
 - Wspierane: `kiteshield`, `midgetpack`, `upx` (opcjonalne, wysokie ryzyko operacyjne).
+- Rekomendowana kolejność (anti‑disassembly): `kiteshield` → `midgetpack` → `upx`.
+- Domyślnie (thin‑split): `kiteshield` z `-n` (bez ptrace runtime; kompatybilne z anti‑debug).
+- Pełny `kiteshield` używa ptrace i koliduje z `antiDebug.tracerPid/ptraceGuard` — wymaga świadomego luzowania tych guardów.
+  - **Kiteshield**: szyfruje binarkę, ma loader i (w trybie pełnym) runtime‑engine z odszyfrowaniem funkcji „w locie” — najsilniejszy na disassembly.
+  - **Midgetpack**: bardzo mocny na „kontrolę dostępu” (key exchange), ale po uruchomieniu wciąż możliwy dump pamięci; słabszy na disassembly niż Kiteshield.
+  - **UPX**: głównie kompresja; łatwy do rozpakowania, więc najsłabszy z punktu widzenia anti‑disassembly.
 
 ### 2.9 Source‑level string obfuscation (metadata)
 Konfiguracja: `build.protection.strings` (informacyjne, manualna integracja).
@@ -217,9 +223,10 @@ To nie jest „obfuskacja”, ale często daje największy zwrot:
 - **O‑MVLL (Open‑Obfuscator / O‑MVLL)** — obfuskator jako plugin LLVM; licencja Apache‑2.0; nastawiony na Android/iOS toolchainy, ale technicznie to passy LLVM.
 
 ### 3.3 Packery / protectory ELF (FOSS)
+Rekomendowana kolejność (anti‑disassembly): **Kiteshield → MidgetPack → UPX**.
 - **Kiteshield** — packer/protector x86‑64 ELF, MIT; wielowarstwowe szyfrowanie + loader + techniki anti‑debug (projekt jawnie „academic exercise”).
-- **UPX** — popularny packer (GPL); świetny do rozmiaru, ale sam w sobie nie jest „krypto‑ochroną” (łatwo rozpakować) — traktuj bardziej jako kompresję.
 - **MidgetPack** — secure packer ELF (Linux/FreeBSD); GitHub pokazuje „View license” (licencja nie jest automatycznie rozpoznana przez GitHub w UI — sprawdź plik LICENSE przed użyciem).
+- **UPX** — popularny packer (GPL); świetny do rozmiaru, ale sam w sobie nie jest „krypto‑ochroną” (łatwo rozpakować) — traktuj bardziej jako kompresję.
 
 ### 3.4 Obfuskacja stringów/stałych (nagłówkowe biblioteki C/C++)
 To usuwa „darmowe” podpowiedzi z `strings(1)` (choć string pojawi się w RAM w runtime).
@@ -797,11 +804,11 @@ Poniżej presety praktyczne. Klucz: wskazujemy, co da się zrobić **bez dodatko
    - mocniejsze transformacje struktury (DeadCode + agresywne manglowanie nazw) + inline przez Terser,
    - CFF jest wyłączone (potrafi psuć semantykę `let` w pętlach, wykryte w E2E),
    - (opcjonalnie) ukrywanie wrażliwych stringów tylko tam, gdzie nie psuje kontraktów.
-3) Backend Terser (minify + inline) przed obfuskacją: `build.backendTerser` (domyślnie włączony dla `strict`/`max`; dla `max` rekomendowane `passes=4`, `toplevel=true`).  
+3) Backend Terser (minify + inline) przed obfuskacją: `build.backendTerser` (domyślnie włączony dla wszystkich profili; `minimal`/`balanced` mają bezpieczne ustawienia, `strict`/`max` mocniejsze; dla `max` rekomendowane `passes=4`, `toplevel=true`).  
    Uwaga: `max` podnosi ryzyko regresji runtime i utrudnia diagnostykę — stosuj po testach E2E.  
    E2E: `SEAL_PROTECTION_E2E=1 node tools/seal/seal/scripts/test-protection-e2e.js` (zawiera check `max`).  
    Dodatkowo: `SEAL_OBFUSCATION_E2E=1 node tools/seal/seal/scripts/test-obfuscation-e2e.js` (sprawdza logikę JS pod `strict`/`max`, endpoint `/api/obf/checks`).  
-4) Włącz minifikację bundla jako opcję (esbuild ma ją wbudowaną) — dodatkowe tarcie dla czytelności.  
+4) Minifikacja bundla (esbuild) — domyślnie włączona; wyłączenie: `build.backendMinify=false`.  
 5) Bundle/SEA: maskowanie payloadów (anti‑casual extraction; spójność z thin).  
 6) THIN: dopracowanie Poziomu A do „twardego standardu” (regresje + kompatybilność).  
 7) systemd: utrzymuj dwa presety (`baseline`, `strict`) + metryka `systemd-analyze security`.

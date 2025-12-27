@@ -99,7 +99,10 @@ Seal powinien mieć interfejs packagera, aby można było podmieniać metodę pa
   - alternatywnie: przez mechanizm assets SEA (jeśli packager to wspiera w danej wersji).
 
 **F) Protection/pack (domyślnie włączone)**
-- Domyślnie SEAL **nie** uruchamia `strip` ani ELF packera; są **OFF by default** i wymagają jawnego włączenia (np. `protection.strip.enabled=true`, `protection.elfPacker.tool="upx"`).
+- Domyślnie SEAL uruchamia **ELF packer** (kiteshield) dla `thin-split` (anti‑disassembly).  
+  `SEA` nie wspiera `strip`/ELF packera (build fail‑fast).
+- Rekomendowana kolejność packerów: `kiteshield` → `midgetpack` → `upx`.
+- Jeśli chcesz wyłączyć packer, usuń `protection.elfPacker` albo ustaw `elfPacker.tool=null`.
 - Gdy SEA nie jest możliwe i **bundle fallback jest jawnie włączony**, backend bundle jest pakowany do `app.bundle.cjs.gz` i uruchamiany przez mały loader (żeby nie leżał czytelny plik JS).
 - Bundle fallback wymaga jawnego włączenia: `build.packagerFallback=true` lub `packager=bundle`.
 - Protection można wyłączyć w `seal.json5` (`build.protection.enabled=false`).

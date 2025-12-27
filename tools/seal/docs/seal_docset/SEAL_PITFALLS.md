@@ -477,6 +477,9 @@
   - Wymaganie: testy dockerowe musza miec `trap`/cleanup i usuwac kontenery/sieci nawet przy error.
   - Wymaganie: opcja `KEEP=1` moze pominac cleanup, ale domyslnie cleanup jest zawsze.
 
+- Blad: `docker build` ukrywal output (domyslny progress UI), co utrudnialo diagnoze w CI.
+  - Wymaganie: w trybie CI/logowanie ustaw `--progress=plain` lub `BUILDKIT_PROGRESS=plain`.
+
 - Blad: testy dockerowe z systemd/sshd nie startowaly bez `--privileged` i poprawnie zamontowanego cgroup.
   - Wymaganie: testy wymagajace systemd sprawdzaja dostepnosc cgroup (`/sys/fs/cgroup`) i w razie braku robia SKIP z powodem.
   - Wymaganie: dokumentacja testow podaje wymagane flagi (`--privileged`, `--cgroupns=host`).

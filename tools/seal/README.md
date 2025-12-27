@@ -184,10 +184,12 @@ build: {
 }
 ```
 
-## Backend terser (opcjonalnie, domyślnie włączony dla strict)
+## Backend terser (opcjonalnie, domyślnie włączony dla wszystkich profili)
 
 SEAL może przepuścić backendowy bundle przez **Terser** (agresywny minifier/optimizer),
 żeby mocniej spłaszczyć strukturę kodu (inline + compress) przed obfuskacją.
+Domyślnie jest włączony dla wszystkich profili: `minimal`/`balanced` używają bezpiecznych ustawień,
+`strict`/`max` mają mocniejsze (toplevel + mangle).
 
 Konfiguracja (w `seal.json5`):
 
@@ -215,6 +217,16 @@ build: {
 
 Uwaga: `max` zwiększa ryzyko regresji i utrudnia diagnostykę runtime. Używaj po testach E2E.  
 W profilach `strict`/`max` CFF jest wyłączone (potrafi psuć semantykę `let` w pętlach); spłaszczanie robi Terser + DCI.
+
+Backend minify (esbuild) jest domyślnie włączony dla wszystkich profili. Wyłączenie:
+
+```json5
+build: {
+  backendMinify: false
+}
+```
+
+Uwaga: minify może wpływać na kod zależny od nazw funkcji/klas (`Function.name`).
 
 Test E2E (obejmuje `max`):
 
@@ -269,6 +281,24 @@ Wyłączenie:
 build: {
   backendTerser: false
 }
+```
+
+## Console stripping (backend)
+
+To jest **osobna opcja**, niezależna od profilu obfuskacji:
+usuwanie `console.log/info/debug/warn` (zostaje `console.error`).
+Przydaje się na produkcji, ale w dev zwykle chcesz pełne logi.
+
+```json5
+build: {
+  consoleMode: "full" // lub "errors-only"
+}
+```
+
+Możesz też nadpisać na czas builda:
+
+```bash
+SEAL_CONSOLE_MODE=errors-only seal release
 ```
 
 Dobór profilu obfuskacji (skrót):
@@ -335,7 +365,8 @@ SEAL domyślnie dokłada dodatkową warstwę "anti-peek" (utrudnia proste podgl�
 - **SEA (binarka)**: pakuje backend bundle do „loadera” (Brotli/Gzip) *przed* generacją blobu SEA – w binarce nie ma plaintext JS.
 - **Bundle** (opcja jawna): backendowy bundle jest pakowany do `app.bundle.cjs.gz` + mały loader (`seal.loader.cjs`), żeby nie leżał obok czytelny plik JS.
 
-Opcjonalnie (EXPERIMENTAL): `strip`/ELF packer (np. `upx`) na binarce SEA – **OFF by default**, bo postject-ed binarki potrafią się po tym wysypać.
+Domyślnie, dla `thin-split` uruchamiany jest **ELF packer** (kiteshield) – to podnosi koszt disassembly.
+`SEA` nie wspiera `strip`/ELF packera (build fail‑fast).
 
 To nie jest kryptografia – celem jest utrudnienie "zobaczę od razu po otwarciu pliku" i podniesienie kosztu analizy.
 
@@ -357,10 +388,22 @@ build: {
     seaMain: { pack: true, method: "brotli", chunkSize: 8000 },
     bundle: { pack: true }, // gzip backend bundle w bundle
     strip: { enabled: false, cmd: "strip" },
-    // elfPacker: { tool: "upx" }
+    elfPacker: { tool: "kiteshield", cmd: "kiteshield", args: ["-n", "{in}", "{out}"] }
   }
 }
 ```
+
+Kolejność rekomendowana (anti‑disassembly, od najmocniejszego):
+1) `kiteshield`
+2) `midgetpack`
+3) `upx`
+
+Instalacja kiteshield (wymagane dla defaultu):
+`tools/seal/seal/scripts/install-kiteshield.sh`
+lub `SEAL_INSTALL_KITESHIELD=1 tools/seal/seal/scripts/install-seal-deps.sh` (domyślnie włączone; `SEAL_INSTALL_KITESHIELD=0` aby pominąć).
+
+Uwaga: `kiteshield` w trybie pełnym używa ptrace (może kolidować z `antiDebug.tracerPid/ptraceGuard`).  
+Domyślnie używamy `-n` (bez runtime engine) dla kompatybilności z anti‑debug.
 
 > Tip: jeśli chcesz eksperymentować z `protection.elfPacker.tool="upx"`/`protection.strip.enabled`, włącz je jawnie w `seal.json5` i przetestuj uruchomienie na docelowym OS/arch (po postject bywa to wrażliwe).
 

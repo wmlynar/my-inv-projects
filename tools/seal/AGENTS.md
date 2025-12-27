@@ -39,7 +39,8 @@
   - `build.protection` is **enabled by default**:
     - SEA: can pack the main bundle into a compressed loader (so the SEA blob has no plaintext JS).
     - bundle: can gzip-pack the backend bundle behind a small loader.
-    - `protection.strip.enabled` and `protection.elfPacker.tool="upx"` for SEA binaries are **OFF by default** (postject-ed binaries can break). Enable explicitly if you want to experiment.
+    - thin-split: ELF packer defaults to `kiteshield` (`-n`) on the launcher.
+    - SEA does **not** support `strip`/ELF packer (fail-fast).
 
 ## Helpful Commands (end-to-end)
 - `npx seal verify --explain` prints a human-readable verification checklist.
