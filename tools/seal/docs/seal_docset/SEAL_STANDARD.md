@@ -699,6 +699,11 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-315 (SHOULD): dla nieinteraktywnych wywolan `git` ustaw `GIT_PAGER=cat` oraz `PAGER=cat`.
 - STD-316 (SHOULD): w CI ustaw `TERM=dumb` (i/lub `CI=1`) aby wymusic tryb nieinteraktywny.
 - STD-317 (SHOULD): skrypty ustawiają `LC_ALL=C` tam, gdzie sort/parse zalezy od locale.
+- STD-318 (SHOULD): bledy CLI trafiaja na stderr, a exit code jest nie‑zero; bledy uzycia maja osobny kod (np. 2).
+- STD-319 (SHOULD): przed odczytem configu/sekretow wymusz `regular file` (odrzuc FIFO/urzadzenia).
+- STD-320 (SHOULD): przy otwieraniu wrazliwych plikow stosuj `O_NOFOLLOW` lub `lstat` + `open` tylko na regular file.
+- STD-321 (SHOULD): rozpakowanie archiwow odrzuca entries typu device/FIFO; dopuszczalne tylko file/dir/symlink.
+- STD-322 (SHOULD): `--help` i komunikat “usage” pojawiaja sie przy bledach uzycia.
 
 ## 10. Moduł `testing` (SHOULD)
 

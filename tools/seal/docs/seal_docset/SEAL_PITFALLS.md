@@ -1203,3 +1203,16 @@
   - Wymaganie: ustaw `TERM=dumb` lub `CI=1`, aby wymusic tryb nieinteraktywny.
 - Blad: brak jawnego `LC_ALL=C` w skryptach powodowal roznice sortowania.
   - Wymaganie: ustaw `LC_ALL=C` w miejscach, gdzie parse/sort zalezy od locale.
+
+## Dodatkowe wnioski (batch 121-125)
+
+- Blad: bledy CLI byly wypisywane na stdout, a exit code byl 0.
+  - Wymaganie: bledy pisz do stderr i zwracaj nie‑zero; bledy uzycia maja osobny kod.
+- Blad: pliki konfiguracyjne/sekretow byly czytane bez weryfikacji typu (mogly byc FIFO/urzadzenie).
+  - Wymaganie: przed odczytem sprawdz `lstat` i wymagaj **regular file**.
+- Blad: otwieranie wrazliwych plikow podazalo za symlinkami.
+  - Wymaganie: stosuj `O_NOFOLLOW` albo jawny `lstat` + `open` tylko na regular file.
+- Blad: rozpakowanie archiwum pozwalalo na pliki specjalne (device/FIFO).
+  - Wymaganie: odrzucaj entries inne niz regular file/dir/symlink.
+- Blad: CLI nie rozroznial bledow uzycia od bledow runtime.
+  - Wymaganie: bledy uzycia zwracaja kod (np. 2) i wypisuja skrocony help.
