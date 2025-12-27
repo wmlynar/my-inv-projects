@@ -116,6 +116,7 @@ Przykład:
 - STD-102 (SHOULD): uruchamiaj komendy zewnetrzne przez `spawn`/`execFile` z args array i `shell: false`; gdy shell jest konieczny, stosuj `--` i bezpieczne quoting/sanitizacje.
 - STD-103 (SHOULD): operacje destrukcyjne (rm/copy/rsync) musza weryfikowac `realpath` i czy sciezka miesci sie w dozwolonym root; nie podazaj za symlinkami.
 - STD-106 (SHOULD): ssh/scp/rsync w trybie nieinteraktywnym musza byc uruchamiane z `BatchMode=yes` i fail-fast, bez wiszenia na prompt.
+- STD-106a (SHOULD): dla git/ssh ustaw `GIT_TERMINAL_PROMPT=0`, `GIT_ASKPASS=/bin/false`, `SSH_ASKPASS=/bin/false` (brak promptów); brak danych = szybki fail z instrukcja.
 - STD-107 (SHOULD): parsowanie outputu narzedzi systemowych powinno wymuszac `LC_ALL=C` (lub `LANG=C`) albo uzywac trybu `--json`/`--output`, aby uniknac roznic locale.
 - STD-108 (SHOULD): unikaj `exec()` z domyslnym `maxBuffer`; uzywaj `spawn`/`execFile` lub ustaw `maxBuffer` i loguj przycinki outputu.
 - STD-109 (SHOULD): zawsze stosuj `--` przed listą sciezek w komendach zewnetrznych (rm/cp/rsync/scp), aby sciezki zaczynajace sie od `-` nie byly traktowane jako opcje.

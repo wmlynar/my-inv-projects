@@ -59,6 +59,10 @@
 - Blad: procesy uruchamiane w trybie automatycznym miały stdin z TTY i wchodzily w tryb interaktywny.
   - Wymaganie: dla nieinteraktywnych komend ustaw `stdio: ["ignore", ...]` lub `input: ""`.
 
+- Blad: narzedzia zewnetrzne (git/ssh/rsync) prosily o haslo/hostkey i testy/deploy wisialy bez wyjscia.
+  - Wymaganie: ustaw `GIT_TERMINAL_PROMPT=0`, `GIT_ASKPASS=/bin/false`, `SSH_ASKPASS=/bin/false`.
+  - Wymaganie: `ssh/scp/rsync` uruchamiaj z `BatchMode=yes` i timeoutem (`ConnectTimeout`, `ServerAliveInterval`).
+
 - Blad: skrypty uzywaly niecytowanych zmiennych (`$VAR`), co powodowalo word‑splitting i globbing.
   - Wymaganie: kazda zmienna w shellu jest widocznie cytowana (`"$VAR"`), chyba ze jawnie potrzebny jest splitting.
 
