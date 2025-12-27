@@ -238,6 +238,10 @@ Przykład:
 - STD-087h (SHOULD): testy nie wymagają sieci domyślnie; operacje sieciowe są gated ENV i zawsze mają timeout.
 - STD-088 (SHOULD): testy przywracaja `process.cwd()` po zmianach (snapshot/restore).
 - STD-089 (SHOULD): testy E2E wymuszaja szybkie ustawienia (np. `thin.level=low`) i minimalne payloady, aby nie blokowac CI.
+- STD-089a (SHOULD): testy loguja `node -v` i `which node` na starcie oraz fail‑fast, gdy wersja < wymaganej; przy `sudo` uzywaj jawnego PATH lub `sudo -E`.
+- STD-089b (SHOULD): skrypty E2E wyznaczaja repo root wzgledem `__dirname` (CWD‑independent) i loguja effective root.
+- STD-089c (SHOULD): gdy test waliduje wiele sub‑checkow, musi wypisac liste tych, ktore padly (nazwa + got/expected), nie tylko `ok=false`.
+- STD-089d (SHOULD): dlugie pakiety E2E (np. docker) maja konfigurowalny globalny timeout i heartbeat log postepu; kroki instalacyjne musza byc opcjonalne (ENV‑gated).
 - STD-090 (SHOULD): preflight sprawdza **narzedzia CLI** (np. `postject` w `node_modules/.bin`/PATH), nie tylko obecność modulu.
 - STD-091 (SHOULD): funkcje zalezne od architektury (np. CPUID) musza degradująco dzialac na platformach bez wsparcia (pusty/neutralny ID zamiast twardego bledu).
 - STD-092 (SHOULD): `--skip-check` jest wyraznie oznaczony jako ryzykowny i zawsze wypisuje ostrzezenie; krytyczne braki toolchaina nie powinny byc maskowane.
