@@ -481,6 +481,9 @@
   - Wymaganie: testy wymagajace systemd sprawdzaja dostepnosc cgroup (`/sys/fs/cgroup`) i w razie braku robia SKIP z powodem.
   - Wymaganie: dokumentacja testow podaje wymagane flagi (`--privileged`, `--cgroupns=host`).
 
+- Blad: kontenery testowe bez init nie sprzataly zombie procesow, co powodowalo flakey timeouts.
+  - Wymaganie: uruchamiaj kontenery testowe z `--init` (tini) lub zapewnij init w obrazie.
+
 - Blad: rownolegle uruchomienia E2E kolidowaly na wspolnych nazwach uslug/plikach (`current.buildId`, instalacje), co dawalo flakey wyniki.
   - Wymaganie: testy musza byc bezpieczne dla rownoleglego uruchomienia (unikalne nazwy uslug, unikalne installDir, izolowane temp rooty).
 
