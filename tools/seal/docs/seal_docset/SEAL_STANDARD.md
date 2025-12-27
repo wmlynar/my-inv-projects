@@ -254,6 +254,7 @@ Przykład:
 - STD-089e (SHOULD): testy dockerowe sprzataja kontenery/sieci w `trap` (cleanup na error); `KEEP=1` tylko jawnie wylacza cleanup.
 - STD-089f (SHOULD): test‑workspace nie kopiuje `node_modules/`; zaleznosci instaluje osobno (deterministycznie) i loguje czy instalacja byla fresh.
 - STD-089g (SHOULD): kazdy SKIP w testach musi wypisac powod oraz instrukcje jak wymusic pelny test (ENV/flag).
+- STD-089h (SHOULD): w CI/E2E uzywaj `npm ci` dla deterministycznych zaleznosci; `npm install` tylko lokalnie (bez modyfikacji lockfile).
 - STD-090 (SHOULD): preflight sprawdza **narzedzia CLI** (np. `postject` w `node_modules/.bin`/PATH), nie tylko obecność modulu.
 - STD-091 (SHOULD): funkcje zalezne od architektury (np. CPUID) musza degradująco dzialac na platformach bez wsparcia (pusty/neutralny ID zamiast twardego bledu).
 - STD-092 (SHOULD): `--skip-check` jest wyraznie oznaczony jako ryzykowny i zawsze wypisuje ostrzezenie; krytyczne braki toolchaina nie powinny byc maskowane.

@@ -382,6 +382,9 @@
   - Wymaganie: fixture/test‑workspace nie kopiuje `node_modules/`; zaleznosci instaluj osobno (`npm ci`/`npm install`).
   - Wymaganie: testy loguja, czy instalacja zaleznosci jest fresh czy reuse.
 
+- Blad: `npm install` w CI modyfikowal lockfile i wprowadzał drift wersji.
+  - Wymaganie: w CI/E2E preferuj `npm ci` (deterministyczny), a `npm install` tylko lokalnie.
+
 - Blad: uruchomienie testow przez `sudo` uzywalo innej wersji Node (np. systemowej) niz wymaganej, co konczylo sie `MODULE_NOT_FOUND` lub regresjami.
   - Wymaganie: testy loguja `node -v` + `which node` na starcie i fail‑fast, gdy wersja < wymaganej.
   - Wymaganie: przy `sudo` uzywaj `sudo -E` lub absolutnej sciezki do `node`, aby nie tracic wersji z nvm/asdf.
