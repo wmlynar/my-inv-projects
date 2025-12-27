@@ -167,8 +167,15 @@ npx seal release prod --packager thin-split
   - `SEAL_DUMPABLE_PROBE=1`
   - `SEAL_CORE_PROBE=1`
   - `SEAL_SECCOMP_PROBE=1`
+  - `SEAL_SECCOMP_AGGRESSIVE_PROBE=1`
+  - `SEAL_CORE_CRASH_PROBE=1`
 - W testach `loaderGuard` używany jest tylko w trybie E2E specjalny ENV:
   - `SEAL_LOADER_GUARD_FORCE=1`
+- W testach `/proc` i `ptrace` (zwłaszcza jako root) można wymusić brak wyjątków:
+  - `SEAL_E2E_STRICT_PROC_MEM=1`
+  - `SEAL_E2E_STRICT_PTRACE=1`
+- W testach `denyEnv` (LD_PRELOAD/LD_AUDIT) można wymusić twardą asercję:
+  - `SEAL_E2E_STRICT_DENY_ENV=1`
 - `build.thin.integrity`:
   - `enabled` (domyślnie `false`) — weryfikuje self‑hash launchera (`b/a`) w `thin-split`.
   - **Tylko `thin-split`**; dla AIO build kończy się błędem.

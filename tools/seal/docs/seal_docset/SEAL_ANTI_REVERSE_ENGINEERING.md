@@ -78,6 +78,9 @@ Deterministyczne wymuszenia w trybie testowym:
 - TracerPid: `SEAL_TRACERPID_FORCE`, `SEAL_TRACERPID_FORCE_THREADS`, `SEAL_TRACERPID_FORCE_AFTER_MS`.
 - Snapshot: `SEAL_SNAPSHOT_FORCE`, `SEAL_SNAPSHOT_FORCE_AFTER_MS`.
 - Sentinel expiry: `SEAL_SENTINEL_FORCE_EXPIRE`, `SEAL_SENTINEL_FORCE_EXPIRE_AFTER_MS`.
+- Ptrace/seccomp/core: `SEAL_PTRACE_FORCE`, `SEAL_DUMPABLE_PROBE`, `SEAL_CORE_PROBE`, `SEAL_SECCOMP_PROBE`, `SEAL_SECCOMP_AGGRESSIVE_PROBE`, `SEAL_CORE_CRASH_PROBE`.
+- LoaderGuard: `SEAL_LOADER_GUARD_FORCE`.
+- E2E strict (root): `SEAL_E2E_STRICT_PROC_MEM`, `SEAL_E2E_STRICT_PTRACE`, `SEAL_E2E_STRICT_DENY_ENV`.
 
 ## 3. Decyzje projektowe (dlaczego)
 - **thin‑split jako jedyny rekomendowany packager**: umożliwia łączenie warstw ochrony (strip/ELF packer/integrity) bez korupcji payloadu.
@@ -790,14 +793,14 @@ Poniżej presety praktyczne. Klucz: wskazujemy, co da się zrobić **bez dodatko
 ### 9.1 Bez instalacji dodatkowych narzędzi (zmiany w SEAL / build config)
 **Generator / build**
 1) Utrzymuj i testuj DoD jako „kontrakt”: brak forbidden globs, brak sourcemapów, brak wycieków w `strings`.  
-2) Dodaj „prod‑strict” / „prod‑max” profil obfuskacji JS:
+2) Dodaj „strict” / „max” profil obfuskacji JS:
    - mocniejsze transformacje struktury (DeadCode + agresywne manglowanie nazw) + inline przez Terser,
    - CFF jest wyłączone (potrafi psuć semantykę `let` w pętlach, wykryte w E2E),
    - (opcjonalnie) ukrywanie wrażliwych stringów tylko tam, gdzie nie psuje kontraktów.
-3) Backend Terser (minify + inline) przed obfuskacją: `build.backendTerser` (domyślnie włączony dla `prod‑strict`/`prod‑max`; dla `prod‑max` rekomendowane `passes=4`, `toplevel=true`).  
-   Uwaga: `prod‑max` podnosi ryzyko regresji runtime i utrudnia diagnostykę — stosuj po testach E2E.  
-   E2E: `SEAL_PROTECTION_E2E=1 node tools/seal/seal/scripts/test-protection-e2e.js` (zawiera check `prod‑max`).  
-   Dodatkowo: `SEAL_OBFUSCATION_E2E=1 node tools/seal/seal/scripts/test-obfuscation-e2e.js` (sprawdza logikę JS pod `prod‑strict`/`prod‑max`, endpoint `/api/obf/checks`).  
+3) Backend Terser (minify + inline) przed obfuskacją: `build.backendTerser` (domyślnie włączony dla `strict`/`max`; dla `max` rekomendowane `passes=4`, `toplevel=true`).  
+   Uwaga: `max` podnosi ryzyko regresji runtime i utrudnia diagnostykę — stosuj po testach E2E.  
+   E2E: `SEAL_PROTECTION_E2E=1 node tools/seal/seal/scripts/test-protection-e2e.js` (zawiera check `max`).  
+   Dodatkowo: `SEAL_OBFUSCATION_E2E=1 node tools/seal/seal/scripts/test-obfuscation-e2e.js` (sprawdza logikę JS pod `strict`/`max`, endpoint `/api/obf/checks`).  
 4) Włącz minifikację bundla jako opcję (esbuild ma ją wbudowaną) — dodatkowe tarcie dla czytelności.  
 5) Bundle/SEA: maskowanie payloadów (anti‑casual extraction; spójność z thin).  
 6) THIN: dopracowanie Poziomu A do „twardego standardu” (regresje + kompatybilność).  

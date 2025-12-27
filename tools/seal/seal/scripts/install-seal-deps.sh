@@ -22,6 +22,7 @@ NODE_MAJOR="${SEAL_NODE_MAJOR:-24}"
 INSTALL_APT="${SEAL_INSTALL_APT:-1}"
 INSTALL_NODE="${SEAL_INSTALL_NODE:-1}"
 INSTALL_NPM="${SEAL_INSTALL_NPM:-1}"
+INSTALL_E2E_TOOLS="${SEAL_INSTALL_E2E_TOOLS:-1}"
 
 APT_DEPS=(
   build-essential
@@ -56,6 +57,14 @@ if [ "$INSTALL_APT" = "1" ]; then
   log "Installing core apt dependencies..."
   run_sudo apt-get update
   run_sudo apt-get install -y "${APT_DEPS[@]}"
+  if [ "$INSTALL_E2E_TOOLS" = "1" ]; then
+    log "Installing E2E anti-debug tools..."
+    SEAL_E2E_TOOLS_SKIP_UPDATE=1 "$SCRIPT_DIR/install-e2e-tools.sh"
+  else
+    log "Skipping E2E tool install (SEAL_INSTALL_E2E_TOOLS=0)"
+  fi
+elif [ "$INSTALL_E2E_TOOLS" = "1" ]; then
+  log "WARN: SEAL_INSTALL_APT=0; E2E tools not installed."
 fi
 
 if [ "$INSTALL_NODE" = "1" ]; then
@@ -140,12 +149,28 @@ if [ "$INSTALL_NPM" = "1" ]; then
     log "WARN: terser not found after npm install."
     log "      Backend terser pass will be unavailable until dependencies are installed."
   fi
+
+  if [ "$INSTALL_E2E_TOOLS" = "1" ]; then
+    for tool in gdb gdbserver strace ltrace; do
+      if has_cmd "$tool"; then
+        log "$tool OK: $(command -v "$tool")"
+      else
+        log "WARN: $tool not found (install via apt-get if needed)."
+      fi
+    done
+    if has_cmd coredumpctl; then
+      log "coredumpctl OK: $(command -v coredumpctl)"
+    else
+      log "WARN: coredumpctl not found (core crash E2E will be partially skipped)."
+    fi
+  fi
 else
   log "Skipping npm install (SEAL_INSTALL_NPM=0)"
 fi
 
 log "Done."
 log "Optional extras (run only if needed):"
+log "  - $SCRIPT_DIR/install-e2e-tools.sh"
 log "  - $SCRIPT_DIR/install-upx.sh"
 log "  - $SCRIPT_DIR/install-strip.sh"
 log "  - $SCRIPT_DIR/install-ollvm.sh"

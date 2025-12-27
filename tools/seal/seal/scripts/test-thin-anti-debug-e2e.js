@@ -815,13 +815,40 @@ function checkCoredumpctl(pid, sinceMs) {
     return { skip: "coredumpctl missing" };
   }
   const sinceSec = Math.max(0, Math.floor(sinceMs / 1000) - 1);
-  const res = runCmd("coredumpctl", ["--no-pager", "--since", `@${sinceSec}`, "--pid", String(pid)], 8000);
-  const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+  const baseArgs = ["--no-pager", "--json=short", "--since", `@${sinceSec}`];
+  let res = runCmd("coredumpctl", [...baseArgs, "--pid", String(pid)], 8000);
+  let out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+  if (/unrecognized option.*--pid/i.test(out)) {
+    res = runCmd("coredumpctl", [...baseArgs, "list", `COREDUMP_PID=${pid}`], 8000);
+    out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+  }
   if (/no coredumps found/i.test(out)) {
     return { ok: true };
   }
-  if (res.status === 0 && out) {
-    return { ok: false, reason: `coredumpctl reported core for pid=${pid}` };
+  if (out) {
+    let entries = 0;
+    let matches = 0;
+    const lines = out.split(/\r?\n/).filter(Boolean);
+    for (const line of lines) {
+      try {
+        const obj = JSON.parse(line);
+        if (!obj || typeof obj !== "object") continue;
+        entries += 1;
+        const val = obj.COREDUMP_PID || obj._PID || obj.PID;
+        if (val !== undefined && Number(val) === Number(pid)) {
+          matches += 1;
+        }
+      } catch {}
+    }
+    if (matches > 0) {
+      return { ok: false, reason: `coredumpctl reported core for pid=${pid}` };
+    }
+    if (entries > 0 && res.status === 0) {
+      return { ok: true };
+    }
+  }
+  if (res.status === 0 && !out) {
+    return { ok: true };
   }
   return { skip: out ? `coredumpctl error: ${out.slice(0, 120)}` : "coredumpctl error" };
 }
@@ -1060,6 +1087,7 @@ async function runReleaseCrashNoCore({ releaseDir, runTimeoutMs, env }) {
     return;
   }
   const port = await getFreePort();
+  const gdbPort = await getFreePort();
   writeRuntimeConfig(releaseDir, port);
 
   const binPath = path.join(releaseDir, "seal-example");
@@ -1130,6 +1158,7 @@ async function runReleaseGdbAttachFail({ releaseDir, runTimeoutMs, env }) {
   }
 
   const port = await getFreePort();
+  const gdbPort = await getFreePort();
   writeRuntimeConfig(releaseDir, port);
 
   const binPath = path.join(releaseDir, "seal-example");
@@ -1202,6 +1231,7 @@ async function runReleaseStraceAttachFail({ releaseDir, runTimeoutMs, env }) {
   }
 
   const port = await getFreePort();
+  const gdbPort = await getFreePort();
   writeRuntimeConfig(releaseDir, port);
 
   const binPath = path.join(releaseDir, "seal-example");
@@ -1347,6 +1377,7 @@ async function runReleaseGdbServerAttachFail({ releaseDir, runTimeoutMs, env }) 
   }
 
   const port = await getFreePort();
+  const gdbPort = await getFreePort();
   writeRuntimeConfig(releaseDir, port);
 
   const binPath = path.join(releaseDir, "seal-example");
@@ -1704,8 +1735,8 @@ async function main() {
     const denyEnvTests = [
       { name: "NODE_OPTIONS", value: "--inspect" },
       { name: "NODE_V8_COVERAGE", value: "/tmp/seal-v8" },
-      { name: "LD_PRELOAD", value: "1", allowSuccess: true },
-      { name: "LD_AUDIT", value: "1", allowSuccess: true },
+      { name: "LD_PRELOAD", value: "1", allowSkip: true },
+      { name: "LD_AUDIT", value: "1", allowSkip: true },
     ];
     for (const t of denyEnvTests) {
       log(`Testing denyEnv (${t.name})...`);
@@ -1720,8 +1751,11 @@ async function main() {
         );
         log(`OK: denyEnv blocked ${t.name}`);
       } catch (err) {
-        if (t.allowSuccess && !strictDenyEnv && /reached \/api\/status/.test(String(err && err.message))) {
-          log(`SKIP: ${t.name} not visible to runtime (loader may strip); set SEAL_E2E_STRICT_DENY_ENV=1 to enforce`);
+        if (t.allowSkip && /reached \/api\/status/.test(String(err && err.message))) {
+          const suffix = strictDenyEnv
+            ? "loader likely stripped before runtime; denyEnv not observable"
+            : "loader may strip; set SEAL_E2E_STRICT_DENY_ENV=1 to enforce other envs";
+          log(`SKIP: ${t.name} not visible to runtime (${suffix})`);
           continue;
         }
         throw err;

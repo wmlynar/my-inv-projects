@@ -184,7 +184,7 @@ build: {
 }
 ```
 
-## Backend terser (opcjonalnie, domyślnie włączony dla prod-strict)
+## Backend terser (opcjonalnie, domyślnie włączony dla strict)
 
 SEAL może przepuścić backendowy bundle przez **Terser** (agresywny minifier/optimizer),
 żeby mocniej spłaszczyć strukturę kodu (inline + compress) przed obfuskacją.
@@ -193,7 +193,7 @@ Konfiguracja (w `seal.json5`):
 
 ```json5
 build: {
-  obfuscationProfile: "prod-strict", // lub "prod-max"
+  obfuscationProfile: "strict", // lub "max"
   backendTerser: { enabled: true, passes: 3 }
 }
 ```
@@ -202,7 +202,7 @@ Profil bardziej agresywny (maksymalny inline + dead-code):
 
 ```json5
 build: {
-  obfuscationProfile: "prod-max",
+  obfuscationProfile: "max",
   backendTerser: {
     enabled: true,
     passes: 4,
@@ -213,22 +213,55 @@ build: {
 }
 ```
 
-Uwaga: `prod-max` zwiększa ryzyko regresji i utrudnia diagnostykę runtime. Używaj po testach E2E.  
-W profilach `prod-*` CFF jest wyłączone (potrafi psuć semantykę `let` w pętlach); spłaszczanie robi Terser + DCI.
+Uwaga: `max` zwiększa ryzyko regresji i utrudnia diagnostykę runtime. Używaj po testach E2E.  
+W profilach `strict`/`max` CFF jest wyłączone (potrafi psuć semantykę `let` w pętlach); spłaszczanie robi Terser + DCI.
 
-Test E2E (obejmuje `prod-max`):
+Test E2E (obejmuje `max`):
 
 ```bash
 SEAL_PROTECTION_E2E=1 node tools/seal/seal/scripts/test-protection-e2e.js
 ```
 
-Test E2E obfuskacji logiki (`prod-strict` + `prod-max`):
+Test E2E obfuskacji logiki (`strict` + `max`):
 
 ```bash
 SEAL_OBFUSCATION_E2E=1 node tools/seal/seal/scripts/test-obfuscation-e2e.js
 ```
 
 Test odpala sealed binarkę i weryfikuje `/api/obf/checks` oraz `/api/md5`.
+
+## E2E anti-debug (thin-split)
+
+Wymaga narzędzi systemowych: `gdb`, `gdbserver`, `strace`, `ltrace` (opcjonalnie `coredumpctl`).
+Instalacja:
+
+```bash
+tools/seal/seal/scripts/install-e2e-tools.sh
+```
+
+Lub przez główny installer:
+
+```bash
+SEAL_INSTALL_E2E_TOOLS=1 tools/seal/seal/scripts/install-seal-deps.sh
+```
+
+Uruchomienie testu:
+
+```bash
+SEAL_THIN_ANTI_DEBUG_E2E=1 node tools/seal/seal/scripts/test-thin-anti-debug-e2e.js
+```
+
+Opcjonalnie (ostrzej, zwłaszcza jako root):
+
+```bash
+SEAL_E2E_STRICT_PROC_MEM=1 SEAL_E2E_STRICT_PTRACE=1 SEAL_THIN_ANTI_DEBUG_E2E=1 \
+  node tools/seal/seal/scripts/test-thin-anti-debug-e2e.js
+```
+
+```bash
+SEAL_E2E_STRICT_DENY_ENV=1 SEAL_THIN_ANTI_DEBUG_E2E=1 \
+  node tools/seal/seal/scripts/test-thin-anti-debug-e2e.js
+```
 
 Wyłączenie:
 
@@ -241,8 +274,10 @@ build: {
 Dobór profilu obfuskacji (skrót):
 - `minimal`: kod dynamiczny (eval/Function), dużo refleksji/metaprogramowania.
 - `balanced`: domyślny, bezpieczny dla większości aplikacji.
-- `prod-strict`: produkcja po pełnych E2E, większe tarcie, CFF wyłączone.
-- `prod-max`: maksymalne utrudnienie (Terser inline + wyższy DCI), tylko po E2E.
+- `aggressive`: więcej tarcia (DCI + minify), bez renameGlobals i bez Tersera.
+- `strict`: produkcja po pełnych E2E, renameGlobals + Terser + DCI.
+- `max`: maksymalne utrudnienie (wyższy DCI + Terser passes=4), tylko po E2E.
+Alias: `prod-strict`/`prod-max` są nadal akceptowane, ale emitują warning.
 
 ## Frontend minifikacja HTML/CSS (domyślnie włączona)
 
