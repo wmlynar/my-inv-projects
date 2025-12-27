@@ -207,7 +207,15 @@ async function buildThinRelease(buildTimeoutMs, opts = {}) {
   projectCfg.build.sentinel = Object.assign({}, projectCfg.build.sentinel || {}, {
     enabled: false,
   });
+  const packager = opts.packager || "thin-split";
   const thinCfg = Object.assign({}, projectCfg.build.thin || {});
+  if (packager === "thin-single") {
+    thinCfg.mode = "single";
+    thinCfg.integrity = { enabled: false };
+    projectCfg.build.protection = { enabled: false };
+  } else {
+    thinCfg.mode = "split";
+  }
   if (opts.nativeBootstrap === true) {
     thinCfg.nativeBootstrap = { enabled: true };
   }
@@ -220,13 +228,12 @@ async function buildThinRelease(buildTimeoutMs, opts = {}) {
   const targetCfg = loadTargetConfig(EXAMPLE_ROOT, "local").cfg;
   const configName = resolveConfigName(targetCfg, "local");
 
-  const packager = "thin-split";
-  targetCfg.packager = "thin-split";
+  targetCfg.packager = packager;
 
-  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-out-split-"));
+  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), packager === "thin-single" ? "seal-out-single-" : "seal-out-split-"));
   const outDir = path.join(outRoot, "seal-out");
 
-  const res = await withTimeout("buildRelease(split)", buildTimeoutMs, () =>
+  const res = await withTimeout(`buildRelease(${packager})`, buildTimeoutMs, () =>
     buildRelease({
       projectRoot: EXAMPLE_ROOT,
       projectCfg,
@@ -403,6 +410,20 @@ async function testThinSplit(ctx) {
   fs.rmSync(outRoot, { recursive: true, force: true });
 }
 
+async function testThinSingleLegacy(ctx) {
+  log("Building thin SINGLE (AIO)...");
+  const res = await buildThinRelease(ctx.buildTimeoutMs, { packager: "thin-single" });
+  const { releaseDir, buildId, outRoot } = res;
+
+  const binPath = path.join(releaseDir, "seal-example");
+  assert.ok(fs.existsSync(binPath), "AIO release missing seal-example binary");
+
+  log("Running thin SINGLE...");
+  await runRelease({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs });
+
+  fs.rmSync(outRoot, { recursive: true, force: true });
+}
+
 async function testThinSplitNativeBootstrap(ctx) {
   const prereq = checkNativePrereqs();
   if (!prereq.ok) {
@@ -492,7 +513,7 @@ async function main() {
     }
   }
 
-  const tests = [testThinSplit, testThinSplitRandomization, testThinSplitNativeBootstrap];
+  const tests = [testThinSplit, testThinSingleLegacy, testThinSplitRandomization, testThinSplitNativeBootstrap];
   let failures = 0;
   try {
     for (const t of tests) {

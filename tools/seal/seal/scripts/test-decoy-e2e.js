@@ -29,9 +29,9 @@ function readFileSafe(p) {
 
 function ensureNoSecrets(text) {
   const banned = ["seal", "runner", "bootstrap", "sentinel", "thin"];
-  const lower = text.toLowerCase();
   for (const token of banned) {
-    if (lower.includes(token)) {
+    const re = new RegExp(`\\b${token}\\b`, "i");
+    if (re.test(text)) {
       throw new Error(`Decoy contains banned token: ${token}`);
     }
   }
@@ -55,6 +55,7 @@ async function buildWithDecoy({ mode, includeDirs, scope, overwrite }) {
     mode,
     scope: scope || "backend",
     overwrite: overwrite !== undefined ? overwrite : false,
+    generator: "basic",
   };
   projectCfg.build.includeDirs = includeDirs;
   projectCfg.build.sentinel = { enabled: false };

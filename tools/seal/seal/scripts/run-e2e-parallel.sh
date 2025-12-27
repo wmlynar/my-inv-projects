@@ -54,7 +54,7 @@ if [ -n "$NODE_MODULES_ROOT" ]; then
 fi
 
 PARALLEL_GROUPS=(
-  "packagers:thin,thin-anti-debug"
+  "packagers:thin,thin-anti-debug,legacy-packagers"
   "hardening:protection,strip,elf-packers"
   "security:sentinel"
   "obf:obfuscation,c-obfuscators,decoy"

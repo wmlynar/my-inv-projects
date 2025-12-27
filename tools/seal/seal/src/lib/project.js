@@ -331,7 +331,13 @@ function loadProjectConfig(projectRoot) {
     cfg.build.frontendMinify = { enabled: true, level: "safe", html: true, css: true };
   }
   if (cfg.build.decoy === undefined) {
-    cfg.build.decoy = { mode: "none", scope: "backend", sourceDir: "decoy", overwrite: false };
+    cfg.build.decoy = {
+      mode: "none",
+      scope: "backend",
+      sourceDir: "decoy",
+      overwrite: false,
+      generator: "off",
+    };
   }
 
   // Protection: enabled by default. Attempts to reduce "casual" inspection of executables/bundles.

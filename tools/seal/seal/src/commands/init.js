@@ -28,7 +28,7 @@ function templateProjectJson5(appName, entry) {
         elfPacker: { tool: "kiteshield", cmd: "kiteshield", args: ["-n", "{in}", "{out}"] },
       },
       thin: { mode: "split", level: "low" },
-      decoy: { mode: "none", scope: "backend", sourceDir: "decoy", overwrite: false },
+      decoy: { mode: "none", scope: "backend", sourceDir: "decoy", overwrite: false, generator: "off" },
       includeDirs: ["public", "data"],
     },
   };

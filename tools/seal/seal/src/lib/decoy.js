@@ -6,6 +6,7 @@ const path = require("path");
 
 const DECOY_MODES = new Set(["none", "soft", "wrapper"]);
 const DECOY_SCOPES = new Set(["backend", "full"]);
+const DECOY_GENERATORS = new Set(["off", "basic"]);
 
 function normalizeDecoyConfig(raw) {
   if (raw === undefined || raw === null) {
@@ -15,6 +16,7 @@ function normalizeDecoyConfig(raw) {
       scope: "backend",
       sourceDir: "decoy",
       overwrite: false,
+      generator: "off",
       seed: null,
     };
   }
@@ -45,8 +47,19 @@ function normalizeDecoyConfig(raw) {
   const overwrite = raw.overwrite !== undefined
     ? !!raw.overwrite
     : (raw.overlay !== undefined ? !!raw.overlay : false);
+  let generator = "off";
+  if (raw.generator !== undefined) {
+    if (typeof raw.generator === "boolean") {
+      generator = raw.generator ? "basic" : "off";
+    } else {
+      generator = String(raw.generator).toLowerCase();
+    }
+  }
+  if (!DECOY_GENERATORS.has(generator)) {
+    throw new Error(`Invalid build.decoy.generator: ${raw.generator} (expected off|basic)`);
+  }
   const seedRaw = raw.seed !== undefined && raw.seed !== null ? String(raw.seed) : null;
-  return { enabled: mode !== "none", mode, scope, sourceDir, overwrite, seed: seedRaw };
+  return { enabled: mode !== "none", mode, scope, sourceDir, overwrite, generator, seed: seedRaw };
 }
 
 function buildProfile() {
@@ -74,9 +87,9 @@ function buildProfile() {
   return base;
 }
 
-function renderPackageJson(appName, title) {
+function renderPackageJson(title) {
   const pkg = {
-    name: `${appName}-service`,
+    name: "service-console",
     version: "0.1.0",
     private: true,
     description: `${title} - internal service`,
@@ -249,13 +262,11 @@ function hashToNumber(text) {
   return h.readUInt32LE(0);
 }
 
-function renderRoutesJs(profile, appName, buildId) {
+function renderRoutesJs(profile, sampleId) {
   const endpoints = profile.items.map((name, idx) => ({
     path: `/list/${idx + 1}`,
     label: name,
   }));
-  const sampleSeed = `${appName}:${buildId}:${profile.id}`;
-  const sampleId = (hashToNumber(sampleSeed) % 9000) + 1000;
   return `const express = require("express");
 const router = express.Router();
 const data = require("../services/data");
@@ -451,15 +462,17 @@ module.exports = { snapshot };
 
 function buildDecoyFiles({ appName, buildId, decoy }) {
   const profile = buildProfile();
+  const sampleSeed = `${appName}:${buildId}:${profile.id}`;
+  const sampleId = (hashToNumber(sampleSeed) % 9000) + 1000;
   const files = new Map();
 
-  files.set("package.json", renderPackageJson(appName, profile.title));
+  files.set("package.json", renderPackageJson(profile.title));
   files.set("README.md", renderReadme(profile.title));
   files.set(".env.example", renderEnvExample());
   files.set("config/default.json", renderConfig(profile));
   files.set("config/ui.json", renderUiConfig(profile));
   files.set("server.js", renderServerJs(profile, decoy.mode));
-  files.set("src/routes/index.js", renderRoutesJs(profile, appName, buildId));
+  files.set("src/routes/index.js", renderRoutesJs(profile, sampleId));
   files.set("src/services/data.js", renderDataService(profile));
   files.set("src/services/cache.js", renderCacheService());
   files.set("src/services/metrics.js", renderMetricsService(profile));
@@ -518,6 +531,9 @@ function applyDecoy({ projectRoot, outDir, releaseDir, appName, buildId, decoy }
   let decoyFiles = [];
 
   if (!hasSource) {
+    if (cfg.generator === "off") {
+      throw new Error(`Decoy sourceDir not found: ${sourceAbs}. Create it or set build.decoy.generator=basic.`);
+    }
     const genRoot = path.join(outDir, "decoy", `${appName}-${buildId}`);
     fs.rmSync(genRoot, { recursive: true, force: true });
     const { files } = buildDecoyFiles({ appName, buildId, decoy: cfg });

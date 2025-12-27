@@ -222,7 +222,8 @@ build: {
     mode: "none",      // none | soft | wrapper
     scope: "backend",  // backend | full
     sourceDir: "decoy",// katalog z plikami decoya (opcjonalny)
-    overwrite: false   // jeśli false, build fail‑fast przy kolizjach
+    overwrite: false,  // jeśli false, build fail‑fast przy kolizjach
+    generator: "off"   // off | basic (generate decoy when sourceDir missing)
   }
 }
 ```
@@ -231,7 +232,8 @@ Zasady:
 - `scope=backend`: decoy tylko dla backendu (bez `public/`).
 - `scope=full`: decoy dla backendu i frontendu (dodaje `public/`).
 - `sourceDir`: jeśli istnieje, SEAL używa tego katalogu jako źródła decoya (np. wygenerowanego przez AI).  
-  Jeśli nie istnieje, SEAL generuje **prosty** decoy w `seal-out/decoy/<app>-<buildId>` i stamtąd go instaluje.
+  Jeśli nie istnieje i `generator=basic`, SEAL generuje **prosty** decoy w `seal-out/decoy/<app>-<buildId>` i stamtąd go instaluje.  
+  Gdy `generator=off` (domyslnie), brak `sourceDir` powoduje blad.
 - `profile` nie jest już wspierany — decoy pochodzi z `sourceDir` albo z generatora bazowego.
 - `overwrite=true`: pozwala decoyowi **nadpisywać** pliki w release.  
   Domyślnie `overwrite=false`, więc każda kolizja kończy build błędem.

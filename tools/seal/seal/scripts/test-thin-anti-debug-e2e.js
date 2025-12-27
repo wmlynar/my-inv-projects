@@ -3656,6 +3656,22 @@ async function runReleaseProcIntrospectionChecks({ releaseDir, outDir, runTimeou
         log("OK: fd targets clean");
       }
 
+      log("Checking memfd lifetime...");
+      const memfdRes = checkSealMemfdClosed(pid);
+      if (memfdRes.skip) {
+        log(`SKIP: memfd (${memfdRes.skip})`);
+      } else {
+        log("OK: seal memfd closed");
+      }
+
+      log("Checking fd hygiene...");
+      const fdHygieneRes = checkProcessFdHygiene(pid, releaseDir);
+      if (fdHygieneRes.skip) {
+        log(`SKIP: fd hygiene (${fdHygieneRes.skip})`);
+      } else {
+        log("OK: fd hygiene clean");
+      }
+
       log("Checking exec via memfd...");
       const exeRes = checkProcExeMemfd(pid, releaseDir);
       if (exeRes.skip) {

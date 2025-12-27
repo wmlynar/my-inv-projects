@@ -187,6 +187,7 @@ fi
 
 export SEAL_THIN_E2E=1
 export SEAL_THIN_ANTI_DEBUG_E2E=1
+export SEAL_LEGACY_PACKAGERS_E2E=1
 export SEAL_USER_FLOW_E2E=1
 export SEAL_E2E_STRICT_PROC_MEM="${SEAL_E2E_STRICT_PROC_MEM:-1}"
 export SEAL_E2E_STRICT_PTRACE="${SEAL_E2E_STRICT_PTRACE:-1}"
@@ -286,6 +287,7 @@ fi
 
 run_test "thin" "$NODE_BIN" tools/seal/seal/scripts/test-thin-e2e.js
 run_test "thin-anti-debug" "$NODE_BIN" tools/seal/seal/scripts/test-thin-anti-debug-e2e.js
+run_test "legacy-packagers" "$NODE_BIN" tools/seal/seal/scripts/test-legacy-packagers-e2e.js
 run_test "completion" "$NODE_BIN" tools/seal/seal/scripts/test-completion-e2e.js
 run_test "user-flow" "$NODE_BIN" tools/seal/seal/scripts/test-user-flow-e2e.js
 run_test "sentinel" "$NODE_BIN" tools/seal/seal/scripts/test-sentinel-e2e.js
