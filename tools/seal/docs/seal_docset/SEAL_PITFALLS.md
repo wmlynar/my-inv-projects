@@ -49,6 +49,9 @@
 - Blad: skrypty shellowe nie mialy `set -euo pipefail`, przez co ukrywaly bledy w pipeline.
   - Wymaganie: kazdy skrypt zdalny/produkcyjny zaczyna sie od `set -euo pipefail`.
 
+- Blad: pipeline z `tee` przerywal testy (SIGPIPE) gdy odbiorca zamknal stdout, a `pipefail` traktowal to jako błąd.
+  - Wymaganie: przy `tee` obsłuż SIGPIPE (np. `set +o pipefail` dla tej linii lub kontrola `PIPESTATUS`), aby unikac fałszywych porażek.
+
 - Blad: `rm -rf "$DIR"/*` przy pustym `DIR` kasowal `/` (lub inne krytyczne katalogi).
   - Wymaganie: przed destrukcyjnym `rm` wymagaj niepustego `DIR` + `realpath` w dozwolonym root.
   - Wymaganie: stosuj helper typu `safeRmDir(dir, root)` zamiast inline `rm`.
