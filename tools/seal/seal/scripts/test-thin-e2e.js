@@ -212,7 +212,9 @@ async function buildThinRelease(buildTimeoutMs, opts = {}) {
   if (packager === "thin-single") {
     thinCfg.mode = "single";
     thinCfg.integrity = { enabled: false };
-    projectCfg.build.protection = { enabled: false };
+    thinCfg.launcherObfuscation = false;
+    thinCfg.nativeBootstrap = { enabled: false };
+    projectCfg.build.protection = Object.assign({}, projectCfg.build.protection || {}, { enabled: false });
   } else {
     thinCfg.mode = "split";
   }
@@ -411,14 +413,14 @@ async function testThinSplit(ctx) {
 }
 
 async function testThinSingleLegacy(ctx) {
-  log("Building thin SINGLE (AIO)...");
+  log("Building thin-single (AIO)...");
   const res = await buildThinRelease(ctx.buildTimeoutMs, { packager: "thin-single" });
   const { releaseDir, buildId, outRoot } = res;
 
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), "AIO release missing seal-example binary");
 
-  log("Running thin SINGLE...");
+  log("Running thin-single...");
   await runRelease({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs });
 
   fs.rmSync(outRoot, { recursive: true, force: true });

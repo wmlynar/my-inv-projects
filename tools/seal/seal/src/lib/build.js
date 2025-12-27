@@ -1024,7 +1024,7 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
     info(`Packaging (${packagerSpec.label}, level=${thinLevel})...`);
     const launcherObfuscation = thinCfg.launcherObfuscation !== false;
     if (launcherObfuscation && !protectionCfg.cObfuscator) {
-      throw new Error("thin.launcherObfuscation enabled but no protection.cObfuscator configured");
+      throw new Error(`thin.launcherObfuscation enabled but no protection.cObfuscator configured (${packagerSpec.label})`);
     }
     const launcherHardening = thinCfg.launcherHardening !== false;
     const launcherHardeningCET = thinCfg.launcherHardeningCET !== false;
