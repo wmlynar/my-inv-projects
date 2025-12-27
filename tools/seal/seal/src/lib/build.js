@@ -602,7 +602,9 @@ function resolveStripArgs(args, binPath) {
 
 function tryStripBinary(binPath, opts = {}) {
   const cmd = opts.cmd || "strip";
-  const args = Array.isArray(opts.args) ? opts.args : ["--strip-all"];
+  const args = Array.isArray(opts.args)
+    ? opts.args
+    : ["--strip-all", "--strip-debug", "--strip-dwo", "--remove-section=.comment"];
   if (!hasCommand(cmd)) {
     return { ok: false, skipped: true, reason: "strip_not_installed", tool: cmd };
   }
@@ -819,6 +821,17 @@ function applyHardeningPost(releaseDir, appName, packagerUsed, hardCfg) {
 
   if (!isScript && stripEnabled) {
     steps.push({ step: "strip", target: hardTargetLabel, ...tryStripBinary(hardTargetPath, { cmd: stripTool, args: stripArgs }) });
+    if (packagerUsed === "thin-split") {
+      const nativePath = path.join(releaseDir, "r", "nb.node");
+      if (fileExists(nativePath)) {
+        steps.push({
+          step: "strip_native_bootstrap",
+          target: "native_bootstrap",
+          file: "r/nb.node",
+          ...tryStripBinary(nativePath, { cmd: stripTool, args: stripArgs }),
+        });
+      }
+    }
   } else if (!isScript && !isThin) {
     steps.push({ step: "strip", ok: false, skipped: true, reason: stripEnabled ? "strip_failed" : "disabled_by_default", target: hardTargetLabel });
   }
