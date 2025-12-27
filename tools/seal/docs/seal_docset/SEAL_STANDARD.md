@@ -754,6 +754,11 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-370 (SHOULD): ustaw `KillMode=control-group` (lub `mixed`) aby zabijac wszystkie procesy potomne.
 - STD-371 (SHOULD): ustaw `LimitNOFILE` na bezpiecznym poziomie.
 - STD-372 (SHOULD): `EnvironmentFile` uzywa absolutnych sciezek.
+- STD-373 (SHOULD): skrypty cytuja zmienne i ustawiają `IFS=$'\\n\\t'` (brak word‑splitting/globbing).
+- STD-374 (SHOULD): `flock` uzywa timeoutu (`-w`) i fail‑fast po przekroczeniu.
+- STD-375 (SHOULD): uzywaj `printf` zamiast `echo -e` dla przenosnego outputu.
+- STD-376 (SHOULD): `trap` cleanup ustawiaj na poczatku skryptu.
+- STD-377 (SHOULD): pętle `while read` obsługują ostatnią linię bez `\\n`.
 
 ## 10. Moduł `testing` (SHOULD)
 

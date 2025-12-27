@@ -1320,6 +1320,19 @@
   - Wymaganie: ustaw `LimitNOFILE` do bezpiecznej wartosci.
 - Blad: `EnvironmentFile` w unit byl względny i nie byl znajdowany.
   - Wymaganie: uzywaj absolutnych sciezek w `EnvironmentFile`.
+
+## Dodatkowe wnioski (batch 176-180)
+
+- Blad: brak cudzyslowu wokol zmiennych w bash powodowal word‑splitting i globbing.
+  - Wymaganie: zawsze cytuj zmienne (`\"$var\"`) i ustaw `IFS=$'\\n\\t'` w skryptach.
+- Blad: `flock` bez timeoutu wisial, blokujac operacje na locku.
+  - Wymaganie: uzywaj `flock -w <sec>` i dawaj czytelny blad po timeout.
+- Blad: `echo -e` zachowywal sie inaczej miedzy shellami i psul output.
+  - Wymaganie: uzywaj `printf` zamiast `echo -e`.
+- Blad: `trap` na cleanup byl ustawiany za pozno, więc bledy wczesne zostawialy smieci.
+  - Wymaganie: `trap` ustawiaj na poczatku skryptu.
+- Blad: petle `while read` gubily ostatnia linie bez `\\n`.
+  - Wymaganie: uzywaj `while IFS= read -r line || [ -n \"$line\" ]; do ...`.
 ## Dodatkowe wnioski (batch 131-135)
 
 - Blad: rekurencyjne skanowanie katalogow bralo `.git`, `node_modules`, `seal-out`, co powodowalo spowolnienia i przypadkowe artefakty.
