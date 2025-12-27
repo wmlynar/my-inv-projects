@@ -571,6 +571,9 @@
 - Blad: unit/komendy operowaly na zlej nazwie uslugi (status/stop/restart nie trafialy w odpowiedni unit).
   - Wymaganie: nazwa uslugi jest zapisywana w `<root>/service.name` i uzywana konsekwentnie przez `seal` i `appctl`.
 
+- Blad: po zmianie pliku unit systemd brakowalo `daemon-reload`, przez co systemd uzywal starej konfiguracji.
+  - Wymaganie: po zapisie/aktualizacji unitu zawsze wykonaj `systemctl daemon-reload` (lub `--user` odpowiednio do scope).
+
 - Blad: stare releasy rosly bez limitu (brak cleanup).
   - Wymaganie: retention (np. ostatnie N release) + usuwanie starych katalogow.
   - Wymaganie: cleanup dotyczy takze `*-fast`.
