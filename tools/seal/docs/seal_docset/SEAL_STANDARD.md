@@ -122,6 +122,7 @@ Przykład:
 - STD-109 (SHOULD): zawsze stosuj `--` przed listą sciezek w komendach zewnetrznych (rm/cp/rsync/scp), aby sciezki zaczynajace sie od `-` nie byly traktowane jako opcje.
 - STD-110 (SHOULD): dla komend nieinteraktywnych ustawiaj `stdin` na `ignore`/pusty input, by nie blokowac sie na promptach.
 - STD-111 (SHOULD): skrypty shellowe uruchamiane zdalnie zaczynaja sie od `set -euo pipefail`, aby bledy w pipeline nie byly ukryte.
+- STD-111a (SHOULD): instalatory systemowe (apt/dpkg) uruchamiaj w trybie nieinteraktywnym (`DEBIAN_FRONTEND=noninteractive`, `TZ=UTC`, `apt-get -y`); brak trybu non‑interactive = fail‑fast.
 - STD-112 (SHOULD): dla synchronizacji katalogow przez rsync stosuj jawna semantyke trailing slash (sync zawartosci vs katalogu) i pokryj to testem.
 - STD-113 (SHOULD): parser JSON/JSON5 usuwa BOM i normalizuje CRLF (unikaj bledow na plikach z Windows).
 - STD-114 (SHOULD): tmp dla operacji atomowych jest tworzony w tym samym katalogu/FS co plik docelowy (unikaj `EXDEV`).
