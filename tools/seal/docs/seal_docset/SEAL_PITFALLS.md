@@ -543,6 +543,9 @@
 - Blad: unit systemd nie ustawial `WorkingDirectory`, przez co `config.runtime.json5` nie byl znajdowany.
   - Wymaganie: `WorkingDirectory` wskazuje katalog release (albo `run-current.sh` ustawia CWD przed startem).
 
+- Blad: systemd unit uzywal względnych sciezek w `ExecStart`, co psulo start po zmianie CWD.
+  - Wymaganie: `ExecStart` zawsze uzywa absolutnych sciezek (lub `WorkingDirectory` + `./bin` tylko jesli jawnie wspierane).
+
 - Blad: unit/komendy operowaly na zlej nazwie uslugi (status/stop/restart nie trafialy w odpowiedni unit).
   - Wymaganie: nazwa uslugi jest zapisywana w `<root>/service.name` i uzywana konsekwentnie przez `seal` i `appctl`.
 

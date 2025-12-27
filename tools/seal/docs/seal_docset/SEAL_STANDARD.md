@@ -92,6 +92,7 @@ Przykład:
 - STD-029 (SHOULD): operacje bootstrap/deploy/clean sa idempotentne (powtorka nie psuje stanu).
 - STD-029a (SHOULD): szybkie sciezki (payload-only/fast) musza zachowywac parytet walidacji i listy plikow z pelnym deployem; ewentualne roznice musza byc jawnie opisane i testowane.
 - STD-030 (SHOULD): build/deploy/clean uzywaja lockfile; kolizje maja czytelny komunikat i nie niszcza stanu.
+- STD-030a (SHOULD): systemd `ExecStart` uzywa absolutnych sciezek; brak `WorkingDirectory` wymaga pelnych sciezek do binarki i configu.
 - STD-031 (SHOULD): brak sudo domyslnie; eskalacja tylko jawnie. Waliduj owner/perms/umask w punktach krytycznych.
 - STD-031a (SHOULD): komendy wymagajace `sudo` w trybie nieinteraktywnym uzywaja `sudo -n` i fail‑fast z instrukcja (brak wiszenia na promptach).
 - STD-033 (SHOULD): operacje zewnetrzne (ssh/scp/rsync/http) maja timeout i komunikat "co dalej".
