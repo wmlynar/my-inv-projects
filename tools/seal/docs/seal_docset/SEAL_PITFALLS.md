@@ -422,6 +422,10 @@
 - Blad: testy polegaly na `localhost`, co w niektorych systemach rozwiązywalo sie do IPv6 i powodowalo fail.
   - Wymaganie: testy jawnie binduja do `127.0.0.1` i uzywaja adresu IPv4.
 
+- Blad: testy dockerowe zostawialy kontenery/sieci po porazce i kolejne uruchomienia kolidowaly.
+  - Wymaganie: testy dockerowe musza miec `trap`/cleanup i usuwac kontenery/sieci nawet przy error.
+  - Wymaganie: opcja `KEEP=1` moze pominac cleanup, ale domyslnie cleanup jest zawsze.
+
 - Blad: rownolegle uruchomienia E2E kolidowaly na wspolnych nazwach uslug/plikach (`current.buildId`, instalacje), co dawalo flakey wyniki.
   - Wymaganie: testy musza byc bezpieczne dla rownoleglego uruchomienia (unikalne nazwy uslug, unikalne installDir, izolowane temp rooty).
 

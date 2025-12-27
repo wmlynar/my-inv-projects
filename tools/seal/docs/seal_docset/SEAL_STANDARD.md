@@ -244,6 +244,7 @@ Przykład:
 - STD-089b (SHOULD): skrypty E2E wyznaczaja repo root wzgledem `__dirname` (CWD‑independent) i loguja effective root.
 - STD-089c (SHOULD): gdy test waliduje wiele sub‑checkow, musi wypisac liste tych, ktore padly (nazwa + got/expected), nie tylko `ok=false`.
 - STD-089d (SHOULD): dlugie pakiety E2E (np. docker) maja konfigurowalny globalny timeout i heartbeat log postepu; kroki instalacyjne musza byc opcjonalne (ENV‑gated).
+- STD-089e (SHOULD): testy dockerowe sprzataja kontenery/sieci w `trap` (cleanup na error); `KEEP=1` tylko jawnie wylacza cleanup.
 - STD-090 (SHOULD): preflight sprawdza **narzedzia CLI** (np. `postject` w `node_modules/.bin`/PATH), nie tylko obecność modulu.
 - STD-091 (SHOULD): funkcje zalezne od architektury (np. CPUID) musza degradująco dzialac na platformach bez wsparcia (pusty/neutralny ID zamiast twardego bledu).
 - STD-092 (SHOULD): `--skip-check` jest wyraznie oznaczony jako ryzykowny i zawsze wypisuje ostrzezenie; krytyczne braki toolchaina nie powinny byc maskowane.
