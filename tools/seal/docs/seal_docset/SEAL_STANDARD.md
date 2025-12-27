@@ -764,6 +764,11 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-380 (SHOULD): tmp katalogi tworz przez `mktemp -d` (unikaj statycznych nazw).
 - STD-381 (SHOULD): `pushd/popd` wymaga bash; w sh uzywaj `cd` + `pwd`.
 - STD-382 (SHOULD): dla danych uzywaj `printf '%s\\n'`, nie `echo`.
+- STD-383 (SHOULD): systemd unit ma ustawiony `UMask=` zgodnie z polityka uprawnien.
+- STD-384 (SHOULD): uzywaj `RuntimeDirectory`/`StateDirectory` zamiast recznego mkdir.
+- STD-385 (SHOULD): `--dry-run` jest bez‑efektowy (brak zapisow); loguje planowane akcje.
+- STD-386 (SHOULD): `--json` output ma `schemaVersion` i stabilny format.
+- STD-387 (SHOULD): w trybie `--json` ostrzezenia sa zwracane w polu `warnings[]`.
 
 ## 10. Moduł `testing` (SHOULD)
 

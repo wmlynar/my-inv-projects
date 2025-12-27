@@ -1371,3 +1371,16 @@
   - Wymaganie: w sh uzywaj `cd` + `pwd` lub wymagaj bash.
 - Blad: `echo` interpretowal `-n`/`-e` w danych i psul output.
   - Wymaganie: do danych uzywaj `printf '%s\n'`.
+
+## Dodatkowe wnioski (batch 186-190)
+
+- Blad: brak `UMask` w unit powodowal zbyt szerokie perms dla plikow tworzonych przez serwis.
+  - Wymaganie: ustaw `UMask=` w unit zgodnie z polityka uprawnien.
+- Blad: katalogi runtime/state byly tworzone recznie z blednymi perms.
+  - Wymaganie: uzywaj `RuntimeDirectory`/`StateDirectory` w systemd zamiast recznego mkdir.
+- Blad: `--dry-run` wykonywal czesciowe zmiany (tmp/pliki), co mylilo uzytkownika.
+  - Wymaganie: `--dry-run` nie ma efektow ubocznych; loguje planowane akcje.
+- Blad: `--json` output nie mial wersji schematu, co psulo automatyzacje po zmianach.
+  - Wymaganie: dodaj `schemaVersion` i utrzymuj kompatybilnosc wsteczna.
+- Blad: CLI zwracal exit code 0 przy ostrzezeniach, bez informacji w JSON.
+  - Wymaganie: dla ostrzezen dodaj pole `warnings[]` i jawnie je wypisz.
