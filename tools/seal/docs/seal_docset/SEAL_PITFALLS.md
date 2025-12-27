@@ -1229,3 +1229,16 @@
   - Wymaganie: waliduj zakres portu 1‑65535 i dawaj jasny blad.
 - Blad: komunikaty bledow podawaly sciezki relatywne, przez co diagnostyka byla mylaca.
   - Wymaganie: wypisuj absolutna sciezke do pliku w bledach.
+
+## Dodatkowe wnioski (batch 131-135)
+
+- Blad: rekurencyjne skanowanie katalogow bralo `.git`, `node_modules`, `seal-out`, co powodowalo spowolnienia i przypadkowe artefakty.
+  - Wymaganie: przy skanowaniu repo zawsze ignoruj katalogi generowane i VCS.
+- Blad: obliczanie hashy ladowalo caly plik do pamieci, co crashowalo na duzych plikach.
+  - Wymaganie: hashuj strumieniowo, nie trzymac calego pliku w RAM.
+- Blad: raporty/logi rosly bez ograniczen i zapychaly dysk.
+  - Wymaganie: limituj rozmiar logow/raportow (rotacja, max lines/bytes).
+- Blad: generowane manifesty byly zapisywane bez jawnego `mode`, co dawalo losowe uprawnienia.
+  - Wymaganie: ustawiaj `mode` przy `fs.open` (np. `0o600/0o644`) zamiast polegac na umask.
+- Blad: walidacja sciezek dopuszczala `..` po normalizacji (np. `path.join` z absolutnym segmentem).
+  - Wymaganie: zawsze sprawdz `realpath` i wymagaj, by sciezka byla w dozwolonym root.

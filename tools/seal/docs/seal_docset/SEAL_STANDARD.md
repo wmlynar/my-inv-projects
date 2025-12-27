@@ -709,6 +709,11 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-325 (SHOULD): wartosci enum z configu sa normalizowane (lower‑case) i walidowane against whitelist.
 - STD-326 (SHOULD): porty w configu maja walidacje zakresu 1‑65535 z jasnym bledem.
 - STD-327 (SHOULD): bledy odnoszace sie do plikow wypisuja absolutne sciezki.
+- STD-328 (SHOULD): skanowanie repo ignoruje `.git`, `node_modules`, `seal-out` i inne katalogi generowane.
+- STD-329 (SHOULD): obliczanie hashy jest strumieniowe (bez wczytywania calego pliku do RAM).
+- STD-330 (SHOULD): logi/raporty maja limit rozmiaru lub rotacje.
+- STD-331 (SHOULD): generowane manifesty plikow zapisuj z jawnym `mode` (nie polegaj na umask).
+- STD-332 (SHOULD): walidacja sciezek uzywa `realpath` i wymusza, by sciezka byla w dozwolonym root.
 
 ## 10. Moduł `testing` (SHOULD)
 
