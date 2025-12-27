@@ -224,6 +224,8 @@
 
 - Blad: `postject` byl zainstalowany jako modul, ale brakowalo CLI w PATH (check ostrzegal, a build i tak failowal).
   - Wymaganie: `seal check` weryfikuje **CLI** (`node_modules/.bin/postject` lub PATH), nie sam modul.
+- Blad: instalatory narzedzi zewnetrznych klonowaly repo bez pinu commita/tagu, co psulo reprodukowalnosc i wprowadzalo nagle zmiany.
+  - Wymaganie: pinuj tag/commit, loguj wersje/commit i (gdy to mozliwe) weryfikuj checksumy; zapewnij offline backup/mirror.
   - Wymaganie: brak CLI = twardy blad z instrukcja instalacji.
 
 - Blad: thin build failowal dopiero w trakcie kompilacji launchera (brak `libzstd-dev`), bez jasnej instrukcji instalacji.
