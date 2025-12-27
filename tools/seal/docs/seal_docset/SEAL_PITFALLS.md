@@ -1449,3 +1449,16 @@
   - Wymaganie: loguj ostrzezenie i pokazuj przyjeta wartosc domyslna.
 - Blad: helpery E2E duplikowaly logike wykrywania narzedzi, co prowadzilo do niespojnosci.
   - Wymaganie: uzywaj wspolnego helpera do detekcji narzedzi.
+
+## Dodatkowe wnioski (batch 216-220)
+
+- Blad: szablon/init wlaczal opcjonalne narzedzia (np. obfuscator) bez pewnosci instalacji, co psulo pierwszy build.
+  - Wymaganie: template nie wlacza opcjonalnych narzedzi domyslnie; wymagany jest jawny opt‑in.
+- Blad: brak rozroznienia miedzy „feature enabled” a „tool dostępny” powodowal niejasne awarie.
+  - Wymaganie: przed buildem sprawdz dostepnosc narzedzia i dawaj jasny blad z instrukcja.
+- Blad: domyslna konfiguracja byla „production‑strict” i zbyt wymagajaca dla dev.
+  - Wymaganie: domyslny profil jest bezpieczny dla dev; tryby stricte‑secure wymagaja jawnego wyboru.
+- Blad: brak informacji o skutkach wlaczenia zabezpieczen (np. potrzeba toolchain).
+  - Wymaganie: dokumentuj koszt/warunki wlaczenia kazdego zabezpieczenia (toolchain, OS).
+- Blad: brak testu „minimalnego” profilu utrudnial diagnoze regresji.
+  - Wymaganie: testy E2E obejmuja profil minimalny + profil maksymalny.

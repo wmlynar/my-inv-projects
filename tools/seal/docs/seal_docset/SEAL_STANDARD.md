@@ -794,6 +794,11 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-410 (SHOULD): detekcja narzedzi sprawdza `X_OK` (wykonywalnosc), nie tylko istnienie.
 - STD-411 (SHOULD): niepoprawne wartosci z ENV loguja ostrzezenie + wartosc domyslna.
 - STD-412 (SHOULD): helpery E2E uzywaja wspolnego modułu do detekcji narzedzi.
+- STD-413 (SHOULD): template/init nie wlacza opcjonalnych narzedzi/ochron bez jawnego opt‑in.
+- STD-414 (SHOULD): przed buildem sprawdzaj dostepnosc narzedzi wymaganych przez wlaczone opcje.
+- STD-415 (SHOULD): domyslny profil jest dev‑friendly; tryby strict/secure wymagaja jawnego wyboru.
+- STD-416 (SHOULD): dokumentuj wymagania/konsekwencje kazdego zabezpieczenia (toolchain, OS).
+- STD-417 (SHOULD): testy E2E obejmuja profil minimalny i maksymalny.
 
 ## 10. Moduł `testing` (SHOULD)
 
