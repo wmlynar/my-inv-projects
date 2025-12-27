@@ -1180,3 +1180,26 @@
   - Wymaganie: przy synchronizacji uzywaj odpowiednich flag (`rsync -a`, `scp -p`).
 - Blad: rozpakowanie archiwum bez limitu rozmiaru/liczby plikow moglo zrobic „zip bomb”.
   - Wymaganie: narzuc limity (max size/entries) i fail‑fast po przekroczeniu.
+
+## Dodatkowe wnioski (batch 111-120)
+
+- Blad: `apt/dpkg` byl zablokowany przez inny proces, a instalator wisial bez konca.
+  - Wymaganie: dodaj retry/backoff lub czekanie na lock z timeoutem i jasnym komunikatem.
+- Blad: testy dockerowe uzywaly niepinowanych obrazow, co dawalo dryf zachowania.
+  - Wymaganie: pinuj obrazy do digestu (sha256) lub jawnej wersji.
+- Blad: `stat`/`date` mialy inne flagi na roznych dystrybucjach, co psulo skrypty.
+  - Wymaganie: stosuj wrapper z detekcja wariantu lub `python -c` do uzyskania metadanych.
+- Blad: skrypty bash nie byly lintowane i zawieraly subtelne bledy.
+  - Wymaganie: uruchamiaj `shellcheck` w CI dla wszystkich skryptow.
+- Blad: zaleznosci natywne (`node-gyp`) failowaly przez brak `python3`.
+  - Wymaganie: preflight sprawdza `python3` i daje instrukcje instalacji.
+- Blad: time‑based guardy failowaly przy duzym drift czasu systemowego.
+  - Wymaganie: wykrywaj duzy drift (np. >5 min) i fail‑fast z instrukcja synchronizacji czasu.
+- Blad: `nproc` zwracal wysoka wartosc w CI i kompilacja wysypywala RAM.
+  - Wymaganie: limituj rownoleglosc takze wzgledem dostepnej pamieci.
+- Blad: komendy `git` wisialy na pagerze (`less`) w trybie nieinteraktywnym.
+  - Wymaganie: ustaw `GIT_PAGER=cat` i `PAGER=cat` dla nieinteraktywnych wywolan.
+- Blad: narzedzia wykrywaly TTY i wlaczaly tryb interaktywny mimo CI.
+  - Wymaganie: ustaw `TERM=dumb` lub `CI=1`, aby wymusic tryb nieinteraktywny.
+- Blad: brak jawnego `LC_ALL=C` w skryptach powodowal roznice sortowania.
+  - Wymaganie: ustaw `LC_ALL=C` w miejscach, gdzie parse/sort zalezy od locale.

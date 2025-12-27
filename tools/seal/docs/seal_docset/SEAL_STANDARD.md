@@ -689,6 +689,16 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-305 (SHOULD): sprawdzaj `ulimit -n` i ustaw minimalny limit dla procesu.
 - STD-306 (SHOULD): transfery zachowują perms/mtime (`rsync -a`, `scp -p`) gdy jest to wymagane.
 - STD-307 (SHOULD): rozpakowanie archiwów ma limity rozmiaru i liczby plików (anti zip‑bomb).
+- STD-308 (SHOULD): instalatory `apt/dpkg` maja retry/backoff lub czekanie na lock z timeoutem.
+- STD-309 (SHOULD): obrazy dockera w testach sa pinowane do digestu lub jawnej wersji.
+- STD-310 (SHOULD): uzywaj wrappera dla `stat`/`date` lub `python -c` (portable metadane).
+- STD-311 (SHOULD): skrypty bash przechodza `shellcheck` w CI.
+- STD-312 (SHOULD): preflight sprawdza `python3` dla zaleznosci natywnych i podaje instrukcje instalacji.
+- STD-313 (SHOULD): detekcja driftu czasu (np. >5 min) blokuje time‑based guardy i daje instrukcje NTP.
+- STD-314 (SHOULD): limit rownoleglosci uwzglednia pamiec (cap mimo `nproc`).
+- STD-315 (SHOULD): dla nieinteraktywnych wywolan `git` ustaw `GIT_PAGER=cat` oraz `PAGER=cat`.
+- STD-316 (SHOULD): w CI ustaw `TERM=dumb` (i/lub `CI=1`) aby wymusic tryb nieinteraktywny.
+- STD-317 (SHOULD): skrypty ustawiają `LC_ALL=C` tam, gdzie sort/parse zalezy od locale.
 
 ## 10. Moduł `testing` (SHOULD)
 
