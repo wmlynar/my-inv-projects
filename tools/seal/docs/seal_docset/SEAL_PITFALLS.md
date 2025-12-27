@@ -1423,3 +1423,16 @@
   - Wymaganie: zdefiniuj i loguj precedence (np. CLI > ENV > file).
 - Blad: parser evalowal wartosci z configu (np. `new Function`), co bylo ryzykowne.
   - Wymaganie: brak `eval`; tylko bezpieczny parser + walidacja.
+
+## Dodatkowe wnioski (batch 206-210)
+
+- Blad: zapis na stdout przy zamknietym pipe powodowal `EPIPE` i crash.
+  - Wymaganie: obsluguj `EPIPE`/`SIGPIPE` i koncz proces cicho.
+- Blad: masowe operacje FS otwieraly zbyt wiele plikow (`EMFILE`).
+  - Wymaganie: limituj równoległość I/O (kolejka/semafor).
+- Blad: deskryptory plikow nie byly domykane przy bledzie.
+  - Wymaganie: zawsze `close()` w `finally` (takze przy error).
+- Blad: `mkdir -p` przechodzil mimo `EEXIST`, gdy pod sciezka byl plik, co psulo logike.
+  - Wymaganie: przy `EEXIST` sprawdz, czy to katalog; inaczej fail‑fast.
+- Blad: `writeFile`/`appendFile` bez `fsync` powodowal utrate danych po crashu.
+  - Wymaganie: dla krytycznych plikow uzywaj `fsync` po zapisie.

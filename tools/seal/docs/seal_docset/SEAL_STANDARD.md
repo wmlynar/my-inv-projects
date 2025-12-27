@@ -784,6 +784,11 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-400 (SHOULD): config jest UTF‑8; pliki binarne/nie‑UTF8 są odrzucane.
 - STD-401 (SHOULD): precedence configu jest jawny i logowany (CLI > ENV > file).
 - STD-402 (SHOULD): brak `eval`/`new Function` w parsowaniu configu.
+- STD-403 (SHOULD): obsluguj `EPIPE`/`SIGPIPE` przy zapisie stdout (ciche wyjscie).
+- STD-404 (SHOULD): limituj rownoleglosc I/O aby uniknac `EMFILE`.
+- STD-405 (SHOULD): deskryptory plikow sa zamykane w `finally` (brak wyciekow FD).
+- STD-406 (SHOULD): przy `EEXIST` sprawdz, czy sciezka jest katalogiem; inaczej fail‑fast.
+- STD-407 (SHOULD): krytyczne zapisy sa `fsync`owane po `writeFile`/`appendFile`.
 
 ## 10. Moduł `testing` (SHOULD)
 
