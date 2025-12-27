@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 E2E_DIR="$REPO_ROOT/tools/seal/seal/docker/e2e"
-CACHE_DIR="${SEAL_DOCKER_E2E_CACHE_DIR:-$HOME/.cache/seal/docker-e2e}"
+CACHE_DIR="${SEAL_DOCKER_E2E_CACHE_DIR:-/tmp/seal-e2e-cache}"
 NODE_MODULES_CACHE="$CACHE_DIR/node_modules"
 EXAMPLE_NODE_MODULES_CACHE="$CACHE_DIR/example-node_modules"
 NPM_CACHE_DIR="$CACHE_DIR/npm"
@@ -225,6 +225,11 @@ SHIP_ENV_ARGS=()
 if [ "$REMOTE_E2E" = "1" ]; then
   SHIP_ENV_ARGS+=(-e SEAL_SHIP_SSH_HOST="$SERVER_NAME")
 fi
+NODE_MODULES_ENV=()
+if [ "${SEAL_E2E_USE_SHARED_NODE_MODULES:-0}" = "1" ]; then
+  NODE_MODULES_ENV+=(-e SEAL_E2E_NODE_MODULES_ROOT="/root/.cache/seal/example-node_modules")
+  log "Using shared example node_modules cache (SEAL_E2E_USE_SHARED_NODE_MODULES=1)."
+fi
 E2E_INSTALL_DEPS="${SEAL_E2E_INSTALL_DEPS:-}"
 if [ -z "$E2E_INSTALL_DEPS" ]; then
   if dir_has_files "$NODE_MODULES_CACHE"; then
@@ -257,7 +262,7 @@ $DOCKER run --rm \
   -e SEAL_E2E_STRICT_PROC_MEM="${SEAL_E2E_STRICT_PROC_MEM:-0}" \
   -e SEAL_E2E_STRICT_PTRACE="${SEAL_E2E_STRICT_PTRACE:-0}" \
   -e SEAL_E2E_STRICT_SNAPSHOT_GUARD="${SEAL_E2E_STRICT_SNAPSHOT_GUARD:-0}" \
-  -e SEAL_E2E_NODE_MODULES_ROOT="/root/.cache/seal/example-node_modules" \
+  "${NODE_MODULES_ENV[@]}" \
   -e SEAL_NPM_SKIP_IF_PRESENT=1 \
   "${SHIP_ENV_ARGS[@]}" \
   "$BUILDER_IMAGE" \
