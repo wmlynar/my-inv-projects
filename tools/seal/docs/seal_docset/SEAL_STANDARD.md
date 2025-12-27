@@ -198,6 +198,7 @@ Przykład:
 - STD-017 (SHOULD): komenda uruchomiona poza projektem ma fail‑fast i nie generuje efektów ubocznych (brak tworzenia plików/ostrzeżeń „z innego katalogu”).
 - STD-104 (SHOULD): przy wykryciu wielu projektow CLI pokazuje liste i wymaga jawnej zgody (`--yes/--workspace`), aby uniknac przypadkowych operacji masowych.
 - STD-105 (SHOULD): semantyka multi‑project jest jawna (domyslnie fail‑fast); `--continue-on-error` musi byc wyraznie wskazany.
+- STD-105a (SHOULD): kolejnosc projektow w workspace jest deterministyczna (sort po `name`/`path`) i jawnie logowana.
 - STD-019 (SHOULD): shell completion nie moze maskowac opcji (gdy token zaczyna sie od `-`, podpowiada opcje). Aktualizuj completion po kazdej zmianie CLI.
 - STD-020 (SHOULD): wizard CLI powinien podawac krotkie opisy komend i rekomendowana akcje na teraz; w trybie TTY dziala krok-po-kroku (petla).
 - STD-021 (SHOULD): output CLI ma byc jednoznaczny i akcjonowalny (bledy/warningi z konkretnym "co dalej" i bez duplikatow).

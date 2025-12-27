@@ -701,6 +701,9 @@
 - Blad: uruchomienie komendy w monorepo rekurencyjnie (workspace) uzywalo relatywnej sciezki CLI i padalo w podprojektach.
   - Wymaganie: rekurencyjne uruchomienia CLI musza uzywac **absolutnej** sciezki do binarki/JS.
 
+- Blad: projekty w workspace byly przetwarzane w niestabilnej kolejnosci (FS order), co psulo logi i testy.
+  - Wymaganie: lista projektow jest sortowana deterministycznie (np. po `name`/`path`) i wypisywana w tej kolejnosci.
+
 - Blad: `seal check` uruchomiony poza projektem nadal tworzyl pliki i generowal mylace warningi.
   - Wymaganie: brak `seal.json5` = fail-fast **bez efektow ubocznych**.
 
