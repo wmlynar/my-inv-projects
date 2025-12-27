@@ -419,6 +419,10 @@
   - Wymaganie: testy pracuja na kopii projektu albo uzywaja `outDirOverride` + temp config w katalogu release.
   - Wymaganie: kazda modyfikacja plikow w repo musi byc przywrocona w `finally`.
 
+- Blad: uruchomienie testow jako root zostawialo root‑owned artefakty w repo (np. `node_modules`, `seal-out`), co psulo prace bez sudo.
+  - Wymaganie: testy uruchamiane jako root pracuja na kopii projektu lub w temp‑workspace; nie dotykaja repo.
+  - Wymaganie: jesli testy musza operowac na repo, ustaw `umask 022` i wykonuj sprzatanie w `finally`.
+
 - Blad: testy polegaly na `sleep()` zamiast aktywnego wait na gotowosc (`/status`), co bylo flakey.
   - Wymaganie: start procesu = aktywny wait na health/status z retry, nie twardy sleep.
   - Wymaganie: test monitoruje wczesne wyjscie procesu i failuje natychmiast z logiem.
