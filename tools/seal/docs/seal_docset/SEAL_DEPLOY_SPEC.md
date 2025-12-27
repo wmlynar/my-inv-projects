@@ -951,7 +951,7 @@ build: {
 - ustawienie profilu:
 ```json5
 build: {
-  frontendObfuscation: { enabled: true, profile: "minimal" } // albo "balanced" / "aggressive"
+  frontendObfuscation: { enabled: true, profile: "minimal" } // albo "balanced" / "strict" / "max"
 }
 ```
 
@@ -1772,7 +1772,7 @@ Przykład (aktualny dla v0.5):
       integrity: { enabled: false, mode: "inline", file: "ih" }
     },
 
-    // minimal|balanced|aggressive
+    // minimal|balanced|strict|max
     obfuscationProfile: "balanced",
 
     // Frontend assets (public/**/*.js) – domyślnie obfuskowane

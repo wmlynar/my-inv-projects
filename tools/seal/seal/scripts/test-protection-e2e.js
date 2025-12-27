@@ -403,7 +403,7 @@ async function testBackendTerser(ctx) {
       buildWithProtection({
         protection: {},
         build: {
-          obfuscationProfile: "prod-strict",
+          obfuscationProfile: "strict",
           backendTerser: { enabled: true, passes: 2 },
         },
         outRoot,
@@ -419,22 +419,22 @@ async function testBackendTerser(ctx) {
   }
 }
 
-async function testProdMaxRuntime(ctx) {
-  log("Building thin-split with prod-max obfuscation...");
-  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-protection-prodmax-"));
+async function testMaxRuntime(ctx) {
+  log("Building thin-split with max obfuscation...");
+  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-protection-max-"));
   try {
-    const res = await withTimeout("buildRelease(prod-max)", ctx.buildTimeoutMs, () =>
+    const res = await withTimeout("buildRelease(max)", ctx.buildTimeoutMs, () =>
       buildWithProtection({
         protection: {},
         build: {
-          obfuscationProfile: "prod-max",
+          obfuscationProfile: "max",
           backendTerser: { enabled: true, passes: 4 },
         },
         outRoot,
         packager: "thin-split",
       })
     );
-    assert.strictEqual(res.meta?.obfuscationProfile, "prod-max", "Expected prod-max profile");
+    assert.strictEqual(res.meta?.obfuscationProfile, "max", "Expected max profile");
     const terser = res.meta?.backendTerser;
     assert.ok(terser && terser.enabled, "Expected backendTerser enabled");
     assert.strictEqual(terser.ok, true, "Expected backendTerser to be ok");
@@ -600,7 +600,7 @@ async function main() {
     }
   }
 
-  const tests = [testStringObfuscationMeta, testBackendTerser, testProdMaxRuntime, testElfPacker, testFullProtection];
+  const tests = [testStringObfuscationMeta, testBackendTerser, testMaxRuntime, testElfPacker, testFullProtection];
   let failures = 0;
   try {
     for (const t of tests) {

@@ -49,25 +49,49 @@ function cleanOutDir(outDir, keepNames = []) {
   }
 }
 
+function normalizeObfuscationProfile(raw) {
+  if (raw === undefined || raw === null) {
+    return { profile: "balanced", warning: null };
+  }
+  const input = String(raw).toLowerCase();
+  const aliasMap = {
+    "prod-strict": "strict",
+    "prod-max": "max",
+    "aggressive": "strict",
+  };
+  const alias = aliasMap[input] || null;
+  const profile = alias || input;
+  const known = new Set(["minimal", "balanced", "strict", "max"]);
+  if (!known.has(profile)) {
+    return { profile: "balanced", warning: `Unknown obfuscationProfile "${raw}", using "balanced"` };
+  }
+  if (alias) {
+    const note = input === "aggressive" ? "deprecated, use" : "renamed to";
+    return { profile, warning: `obfuscationProfile "${raw}" ${note} "${profile}"` };
+  }
+  return { profile, warning: null };
+}
+
 function obfuscationOptions(profile) {
+  const normalized = normalizeObfuscationProfile(profile).profile;
   // Keep logs readable: do NOT hide string literals.
   const base = {
     compact: true,
+    // CFF breaks some let-closure semantics; keep off and rely on Terser inline + DCI.
     controlFlowFlattening: false,
     deadCodeInjection: false,
     stringArray: false,
     splitStrings: false,
     sourceMap: false,
     renameGlobals: false,
+    target: "node",
   };
 
-  if (profile === "prod-strict") {
+  if (normalized === "strict") {
     return {
       ...base,
       simplify: false,
       numbersToExpressions: true,
-      // CFF breaks some let-closure semantics; keep off and rely on Terser inline + DCI.
-      controlFlowFlattening: false,
       controlFlowFlatteningThreshold: 0.75,
       deadCodeInjection: true,
       deadCodeInjectionThreshold: 0.3,
@@ -78,17 +102,14 @@ function obfuscationOptions(profile) {
       unicodeEscapeSequence: false,
       debugProtection: false,
       selfDefending: false,
-      target: "node",
     };
   }
 
-  if (profile === "prod-max") {
+  if (normalized === "max") {
     return {
       ...base,
       simplify: false,
       numbersToExpressions: true,
-      // CFF breaks some let-closure semantics; keep off and rely on Terser inline + DCI.
-      controlFlowFlattening: false,
       controlFlowFlatteningThreshold: 0.75,
       deadCodeInjection: true,
       deadCodeInjectionThreshold: 0.4,
@@ -99,23 +120,10 @@ function obfuscationOptions(profile) {
       unicodeEscapeSequence: false,
       debugProtection: false,
       selfDefending: false,
-      target: "node",
     };
   }
 
-  if (profile === "aggressive") {
-    return {
-      ...base,
-      controlFlowFlattening: true,
-      controlFlowFlatteningThreshold: 0.7,
-      deadCodeInjection: true,
-      deadCodeInjectionThreshold: 0.25,
-      numbersToExpressions: true,
-      simplify: true,
-    };
-  }
-
-  if (profile === "minimal") return base;
+  if (normalized === "minimal") return base;
 
   // balanced
   return {
@@ -126,8 +134,8 @@ function obfuscationOptions(profile) {
 }
 
 function resolveBackendTerser(raw, profile) {
-  const isProd = profile === "prod-strict" || profile === "prod-max";
-  const defaultPasses = profile === "prod-max" ? 4 : 3;
+  const isProd = profile === "strict" || profile === "max";
+  const defaultPasses = profile === "max" ? 4 : 3;
   const defaults = {
     passes: defaultPasses,
     toplevel: true,
@@ -891,12 +899,14 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
     packagerSpec,
   });
 
-  const obfProfile = projectCfg.build.obfuscationProfile || "balanced";
-  const isProdObf = obfProfile === "prod-strict" || obfProfile === "prod-max";
+  const obfNorm = normalizeObfuscationProfile(projectCfg.build.obfuscationProfile);
+  if (obfNorm.warning) warn(obfNorm.warning);
+  const obfProfile = obfNorm.profile;
+  const isStrictObf = obfProfile === "strict" || obfProfile === "max";
   const backendMinify = projectCfg.build.backendMinify !== undefined
     ? !!projectCfg.build.backendMinify
-    : isProdObf;
-  const stripConsole = isProdObf;
+    : isStrictObf;
+  const stripConsole = isStrictObf;
   const backendTerserCfg = resolveBackendTerser(projectCfg.build.backendTerser, obfProfile);
   info("Bundling (esbuild)...");
   let bundlePath = await buildBundle({
@@ -1116,9 +1126,12 @@ protection.integrity = thinIntegrity;
 // Frontend obfuscation (public/*.js) – enabled by default
   const frontendCfg = projectCfg.build.frontendObfuscation;
   const frontendEnabled = frontendCfg === false ? false : !(typeof frontendCfg === 'object' && frontendCfg && frontendCfg.enabled === false);
-  const frontendProfile = (typeof frontendCfg === 'object' && frontendCfg && frontendCfg.profile)
+  const frontendProfileRaw = (typeof frontendCfg === 'object' && frontendCfg && frontendCfg.profile)
     ? frontendCfg.profile
     : (projectCfg.build.frontendObfuscationProfile || obfProfile);
+  const frontendNorm = normalizeObfuscationProfile(frontendProfileRaw);
+  if (frontendNorm.warning && frontendProfileRaw !== obfProfile) warn(frontendNorm.warning);
+  const frontendProfile = frontendNorm.profile;
 
   const frontendResult = obfuscateFrontendAssets(releaseDir, frontendProfile, frontendEnabled);
   if (!frontendResult.enabled) {

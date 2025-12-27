@@ -268,8 +268,8 @@ async function main() {
   }
 
   const tests = [
-    { profile: "prod-strict", passes: 3 },
-    { profile: "prod-max", passes: 4 },
+    { profile: "strict", passes: 3 },
+    { profile: "max", passes: 4 },
   ];
   let failures = 0;
   for (const t of tests) {
