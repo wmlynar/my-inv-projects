@@ -1216,3 +1216,16 @@
   - Wymaganie: odrzucaj entries inne niz regular file/dir/symlink.
 - Blad: CLI nie rozroznial bledow uzycia od bledow runtime.
   - Wymaganie: bledy uzycia zwracaja kod (np. 2) i wypisuja skrocony help.
+
+## Dodatkowe wnioski (batch 126-130)
+
+- Blad: `buildId`/timestamp byl generowany w lokalnej strefie i mylil daty w nazwach artefaktow.
+  - Wymaganie: uzywaj UTC (ISO/`YYYYMMDD-HHMMSS`) i dokumentuj format.
+- Blad: identyfikatory/nonce byly generowane przez `Math.random`, co jest slabe kryptograficznie.
+  - Wymaganie: do ID/nonce uzywaj `crypto.randomUUID()` lub `crypto.randomBytes`.
+- Blad: opcje enum (np. `packager`) byly case‑sensitive, co prowadzilo do trudnych bledow.
+  - Wymaganie: normalizuj do lower‑case i waliduj przeciwko whitelist.
+- Blad: porty w configu nie byly walidowane (0/ujemne/>65535), co dawalo niejasne bledy.
+  - Wymaganie: waliduj zakres portu 1‑65535 i dawaj jasny blad.
+- Blad: komunikaty bledow podawaly sciezki relatywne, przez co diagnostyka byla mylaca.
+  - Wymaganie: wypisuj absolutna sciezke do pliku w bledach.

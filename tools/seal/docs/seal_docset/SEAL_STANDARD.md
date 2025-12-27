@@ -704,6 +704,11 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-320 (SHOULD): przy otwieraniu wrazliwych plikow stosuj `O_NOFOLLOW` lub `lstat` + `open` tylko na regular file.
 - STD-321 (SHOULD): rozpakowanie archiwow odrzuca entries typu device/FIFO; dopuszczalne tylko file/dir/symlink.
 - STD-322 (SHOULD): `--help` i komunikat “usage” pojawiaja sie przy bledach uzycia.
+- STD-323 (SHOULD): `buildId`/timestamp uzywa UTC i stabilnego formatu (np. `YYYYMMDD-HHMMSS`).
+- STD-324 (SHOULD): do ID/nonce uzywaj `crypto.randomUUID()`/`randomBytes` (nie `Math.random`).
+- STD-325 (SHOULD): wartosci enum z configu sa normalizowane (lower‑case) i walidowane against whitelist.
+- STD-326 (SHOULD): porty w configu maja walidacje zakresu 1‑65535 z jasnym bledem.
+- STD-327 (SHOULD): bledy odnoszace sie do plikow wypisuja absolutne sciezki.
 
 ## 10. Moduł `testing` (SHOULD)
 
