@@ -1230,6 +1230,19 @@
 - Blad: komunikaty bledow podawaly sciezki relatywne, przez co diagnostyka byla mylaca.
   - Wymaganie: wypisuj absolutna sciezke do pliku w bledach.
 
+## Dodatkowe wnioski (batch 141-145)
+
+- Blad: lock PID byl weryfikowany bez sprawdzania start‑time/cmdline, co powodowalo false‑positive przez reuse PID.
+  - Wymaganie: przy walidacji locka sprawdzaj start‑time/cmdline procesu.
+- Blad: `chmod`/`chown` podazaly za symlinkami i modyfikowaly pliki poza root.
+  - Wymaganie: uzywaj `--no-dereference`/`-h` lub jawnie blokuj symlinki.
+- Blad: `readdir`/`glob` zwracaly losowa kolejnosc, co psulo deterministyczne operacje.
+  - Wymaganie: sortuj liste plikow przed dalszym przetwarzaniem.
+- Blad: rekurencyjne skanowanie nie mialo limitu i moglo wpasc w petle (symlinki).
+  - Wymaganie: stosuj limit glebokosci lub trackuj inode/realpath, aby uniknac petli.
+- Blad: `find`/skanowanie przechodzilo przez mount‑pointy i lapalo niechciane FS.
+  - Wymaganie: uzywaj `-xdev` lub jawnego ograniczenia do jednego FS.
+
 ## Dodatkowe wnioski (batch 131-135)
 
 - Blad: rekurencyjne skanowanie katalogow bralo `.git`, `node_modules`, `seal-out`, co powodowalo spowolnienia i przypadkowe artefakty.

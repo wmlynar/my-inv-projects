@@ -719,6 +719,11 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-335 (SHOULD): rozpakowanie tar nie zachowuje luznych perms (`--no-same-permissions`) i/lub jawny `chmod`.
 - STD-336 (SHOULD): synchronizacja zdalna wymusza oczekiwane perms (`--chmod` lub `--no-perms` + `chmod`).
 - STD-337 (SHOULD): po kopiowaniu katalogow ustawiaj jawne perms dla katalogow docelowych.
+- STD-338 (SHOULD): walidacja locka sprawdza start‑time/cmdline procesu (ochrona przed reuse PID).
+- STD-339 (SHOULD): `chmod`/`chown` nie podaza za symlinkami (`--no-dereference`/`-h`).
+- STD-340 (SHOULD): listy plikow z `readdir`/glob sa sortowane przed dalszym przetwarzaniem.
+- STD-341 (SHOULD): rekurencyjne skanowanie ma limit glebokosci lub ochronę przed petlami symlink.
+- STD-342 (SHOULD): skanowanie FS ogranicz do jednego mount‑pointu (`-xdev`) lub jawnego root.
 
 ## 10. Moduł `testing` (SHOULD)
 
