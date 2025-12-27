@@ -724,6 +724,11 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-340 (SHOULD): listy plikow z `readdir`/glob sa sortowane przed dalszym przetwarzaniem.
 - STD-341 (SHOULD): rekurencyjne skanowanie ma limit glebokosci lub ochronę przed petlami symlink.
 - STD-342 (SHOULD): skanowanie FS ogranicz do jednego mount‑pointu (`-xdev`) lub jawnego root.
+- STD-343 (SHOULD): w trybie `--json` stdout zawiera tylko JSON; logi ida na stderr.
+- STD-344 (SHOULD): brak `timeout` w systemie -> uzyj timeoutow zaimplementowanych w kodzie (bez wiszenia).
+- STD-345 (SHOULD): cleanup obejmuje dotfiles (nie tylko `*`).
+- STD-346 (SHOULD): brak dostepu do `/proc` (hidepid) daje jasny blad z instrukcja.
+- STD-347 (SHOULD): `mkdir -p` poprzedzaj sprawdzeniem, czy sciezka nie jest plikiem.
 
 ## 10. Moduł `testing` (SHOULD)
 

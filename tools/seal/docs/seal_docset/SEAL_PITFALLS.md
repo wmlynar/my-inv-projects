@@ -1243,6 +1243,19 @@
 - Blad: `find`/skanowanie przechodzilo przez mount‑pointy i lapalo niechciane FS.
   - Wymaganie: uzywaj `-xdev` lub jawnego ograniczenia do jednego FS.
 
+## Dodatkowe wnioski (batch 146-150)
+
+- Blad: `--json` output byl zanieczyszczony logami i nie dało sie go parsować.
+  - Wymaganie: w trybie `--json` stdout zawiera tylko JSON, a logi ida na stderr.
+- Blad: `timeout` byl niedostepny lub roznil sie na busybox, przez co procesy wisialy.
+  - Wymaganie: sprawdz `timeout` i w razie braku uzyj wlasnych timeoutow w kodzie.
+- Blad: skrypty sprzatania usuwaly tylko `*`, zostawiajac dotfiles.
+  - Wymaganie: cleanup musi obejmowac dotfiles (np. `find` albo `shopt -s dotglob`).
+- Blad: `/proc` byl niedostepny (hidepid=2), co psulo checki bez jasnego komunikatu.
+  - Wymaganie: wykryj brak dostepu do `/proc` i fail‑fast z instrukcja zmiany mount options.
+- Blad: `mkdir -p` na istniejacym pliku dawało mylące bledy.
+  - Wymaganie: przed `mkdir -p` sprawdz, czy sciezka nie wskazuje na plik.
+
 ## Dodatkowe wnioski (batch 131-135)
 
 - Blad: rekurencyjne skanowanie katalogow bralo `.git`, `node_modules`, `seal-out`, co powodowalo spowolnienia i przypadkowe artefakty.
