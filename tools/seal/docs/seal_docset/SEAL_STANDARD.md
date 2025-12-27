@@ -171,6 +171,7 @@ Przykład:
 - STD-148 (SHOULD): ekstrakcja archiwow ma limit rozmiaru i liczby plikow (ochrona przed zip‑bomb).
 - STD-149 (SHOULD): `host`/`user` w targetach sa walidowane (brak spacji/znakow kontrolnych; whitelist znakow).
 - STD-150 (SHOULD): zanim uruchomisz `strip`/packer na pliku, zweryfikuj typ (ELF magic/`file`) i w razie braku zgodnosci wykonaj SKIP z powodem.
+- STD-150a (SHOULD): po `strip`/packerze wykonaj szybki smoke test (np. `--version`/`--help` lub krótki run z timeoutem), aby wykryć uszkodzone binarki.
 - STD-151 (SHOULD): gdy operacja wymaga uprawnien/sandbox escape, komunikat musi jasno prosic o zgode; brak cichych fallbackow.
 - STD-152 (SHOULD): dla `thin-split` hardening (strip/packer) musi targetowac **launcher** (`b/a`), a nie wrapper `./<app>`; zapisuj w metadanych/logach, ktory plik byl celem.
 - STD-153 (SHOULD): dla packagerów AIO (SEA) hardening (strip/packer) jest niedozwolony — fail‑fast z jasnym komunikatem i nie probuj modyfikowac AIO.

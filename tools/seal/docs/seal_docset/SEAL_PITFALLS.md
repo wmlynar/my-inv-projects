@@ -568,6 +568,9 @@
 - Blad: `strip` byl uruchamiany na pliku, ktory nie byl ELF (np. skrypt), co powodowalo bledy.
   - Wymaganie: przed uruchomieniem `strip` sprawdz typ pliku (ELF magic lub `file`) i w razie niezgodnosci SKIP z powodem.
 
+- Blad: ELF packer/strip zwracał sukces, ale binarka byla uszkodzona i crashowala w runtime.
+  - Wymaganie: po packerze/stripie wykonaj szybki smoke test (np. uruchomienie z `--version`/`--health` lub `file` + krótki run z timeoutem).
+
 - Blad: w `thin-split` `strip`/ELF packer byl uruchamiany na wrapperze (`<app>`), a nie na faktycznym launcherze (`b/a`), przez co ochrona nie dzialala lub dawla falszywe wyniki.
   - Wymaganie: dla `thin-split` targetuj realny ELF launchera (`b/a`) i zapisuj w metadanych/logach, ze celem byl `launcher`.
 
