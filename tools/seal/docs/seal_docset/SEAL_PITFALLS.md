@@ -1256,6 +1256,19 @@
 - Blad: `mkdir -p` na istniejacym pliku dawało mylące bledy.
   - Wymaganie: przed `mkdir -p` sprawdz, czy sciezka nie wskazuje na plik.
 
+## Dodatkowe wnioski (batch 151-155)
+
+- Blad: case‑insensitive FS powodowal kolizje nazw (np. `App` vs `app`).
+  - Wymaganie: wykrywaj kolizje case‑insensitive i fail‑fast z jasnym bledem.
+- Blad: destrukcyjne operacje byly dozwolone na niebezpiecznych sciezkach (`/`, `/home`, `C:\\`).
+  - Wymaganie: jawna denylista niebezpiecznych katalogow i twardy fail.
+- Blad: nazwy plikow z kontrolnymi znakami psuly logi lub komendy shell.
+  - Wymaganie: sanitizuj/escapuj nazwy plikow w logach i przy budowie komend.
+- Blad: zbyt dlugie sciezki (`ENAMETOOLONG`) dawaly nieczytelny blad w polowie operacji.
+  - Wymaganie: waliduj dlugosc sciezek i wypisz jasna instrukcje skrocenia.
+- Blad: `fs.watch`/watchery byly uzywane do krytycznych decyzji, mimo ze sa niestabilne.
+  - Wymaganie: watchery tylko pomocniczo; logika krytyczna opiera sie na polling/explicit checks.
+
 ## Dodatkowe wnioski (batch 131-135)
 
 - Blad: rekurencyjne skanowanie katalogow bralo `.git`, `node_modules`, `seal-out`, co powodowalo spowolnienia i przypadkowe artefakty.

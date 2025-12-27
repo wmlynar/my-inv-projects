@@ -729,6 +729,11 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-345 (SHOULD): cleanup obejmuje dotfiles (nie tylko `*`).
 - STD-346 (SHOULD): brak dostepu do `/proc` (hidepid) daje jasny blad z instrukcja.
 - STD-347 (SHOULD): `mkdir -p` poprzedzaj sprawdzeniem, czy sciezka nie jest plikiem.
+- STD-348 (SHOULD): wykrywaj kolizje nazw na case‑insensitive FS i fail‑fast.
+- STD-349 (SHOULD): operacje destrukcyjne maja denylistę niebezpiecznych sciezek (`/`, `/home`, `C:\\`).
+- STD-350 (SHOULD): nazwy plikow są sanitizowane/escapowane w logach i przy budowie komend.
+- STD-351 (SHOULD): waliduj dlugosc sciezek i dawaj jasny blad `ENAMETOOLONG`.
+- STD-352 (SHOULD): watchery (`fs.watch`) nie steruja krytyczną logika; uzywaj polling/explicit checks.
 
 ## 10. Moduł `testing` (SHOULD)
 
