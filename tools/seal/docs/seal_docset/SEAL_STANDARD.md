@@ -108,6 +108,7 @@ Przykład:
 - STD-045 (SHOULD): przy wlaczonych zabezpieczeniach/stealth komunikaty bledow musza byc zunifikowane (opaque failure), bez ujawniania sciezek/rolek.
 - STD-046 (SHOULD): idempotentne porownania/zapisy do plikow chronionych musza uzywac tych samych uprawnien co install (sudo lub dedykowana grupa); brak uprawnien = blad z instrukcja.
 - STD-046a (SHOULD): detekcja procesu (status) filtruje wyniki `pgrep`/`ps` tak, aby nie zliczac wlasnych narzedzi; dopasuj sciezke binarki lub PID, nie tylko nazwe procesu.
+- STD-046b (SHOULD): przy dopasowaniu procesu unikaj ucinania komendy (`ps`); preferuj `/proc/<pid>/cmdline` lub `ps -ww`.
 - STD-047 (SHOULD): osadzone skrypty shellowe w template stringach musza escapowac `${` (np. `\\${VAR}`) lub korzystac z bezpiecznego here‑doc helpera, aby uniknac niezamierzonej interpolacji JS.
 - STD-048 (SHOULD): tymczasowe pliki z danymi wrazliwymi tworz przez `mkdtemp` + pliki `0600`, z unikalna nazwa i sprzataniem w `finally` (unikaj przewidywalnych nazw w `/tmp`).
 - STD-049 (SHOULD): przy zapisie plikow krytycznych (zwl. jako root) ustaw `umask 077`, zapisuj do tmp + `fsync` + `rename`, a potem `fsync` katalogu.

@@ -714,6 +714,9 @@
 - Blad: detekcja procesu (pgrep) lapala wlasne narzedzia (`pgrep`, edytory, shell), dajac falszywy wynik „process running”.
   - Wymaganie: filtruj wyniki po PID (pomijaj PID testu/pgrep) i uzywaj dopasowania sciezki binarki, nie tylko nazwy procesu.
 
+- Blad: detekcja procesu opierala sie na `ps` z ucinanym `cmd`, co dawalo falszywe dopasowania.
+  - Wymaganie: do identyfikacji procesu uzywaj `/proc/<pid>/cmdline` lub `ps -ww` (pełna komenda).
+
 - Blad: `serviceScope=user` na SSH prowadzil do blednych komend `sudo systemctl`.
   - Wymaganie: SSH wspiera tylko `serviceScope=system` (inaczej blad), albo implementujemy wariant `--user`.
 
