@@ -228,7 +228,7 @@ export SEAL_THIN_ZSTD_TIMEOUT_MS="${SEAL_THIN_ZSTD_TIMEOUT_MS:-120000}"
 
 export SEAL_UI_E2E_HEADLESS="${SEAL_UI_E2E_HEADLESS:-1}"
 
-if [ "${SEAL_UI_E2E:-0}" = "1" ]; then
+if [ "${SEAL_UI_E2E:-0}" = "1" ] && should_run "example-ui"; then
   if ! has_cmd npx; then
     log "WARN: npx not found; skipping Playwright browser install"
   else
