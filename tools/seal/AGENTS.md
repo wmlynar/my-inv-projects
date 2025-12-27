@@ -40,7 +40,7 @@
     - SEA: can pack the main bundle into a compressed loader (so the SEA blob has no plaintext JS).
     - bundle: can gzip-pack the backend bundle behind a small loader.
     - thin-split: ELF packer defaults to `kiteshield` (`-n`) on the launcher.
-    - SEA does **not** support `strip`/ELF packer (fail-fast).
+    - SEA/thin-single ignore `strip`/ELF packer (auto-disabled).
 
 ## Helpful Commands (end-to-end)
 - `npx seal verify --explain` prints a human-readable verification checklist.

@@ -356,7 +356,7 @@ Ta sekcja jest celowo krótka: ma umożliwić szybkie zrozumienie *dlaczego* Sea
    - **SEA**: main script jest spakowany (Brotli/Gzip loader) zanim trafi do blobu.
    - **bundle** (jawnie włączony): `app.bundle.cjs` jest zastąpione przez `.gz` + loader.
    - **thin‑split**: domyślnie uruchamiany jest ELF packer (kiteshield, `-n`) dla launchera `b/a`.
-   `SEA` nie wspiera `strip`/ELF packera (build fail‑fast).
+   `SEA` i `thin-single` ignorują `strip`/ELF packer (auto-disabled); użyj `thin-split`, jeśli chcesz hardening binarki.
    Rekomendowana kolejność packerów: `kiteshield` → `midgetpack` → `upx`.
    Bundle fallback wymaga jawnego włączenia: `build.packagerFallback=true` lub `packager=bundle`.
 
@@ -763,7 +763,7 @@ Warstwy (od najbardziej praktycznych):
 3) **Baseline hardening systemd** → utrudnia szybkie sztuczki typu `NODE_OPTIONS=--inspect`, core dumpy, itp.
 4) **(Opcjonalnie) Anti‑copy / licencja** → utrudnia uruchomienie skopiowanej binarki na innym hoście.
 5) **(Domyślnie) Pack bundla (SEA, bundle tylko jawnie)** → brak plaintext kodu w artefaktach (SEA main packing + gzip loader w bundle, gdy włączony).
-6) **ELF packer (domyślnie, thin‑split)** → kiteshield (`-n`) dla launchera `b/a`; `SEA` nie wspiera packera/strip (fail‑fast).
+6) **ELF packer (domyślnie, thin‑split)** → kiteshield (`-n`) dla launchera `b/a`; `SEA` i `thin-single` ignorują packer/strip (auto-disabled).
 
 W praktyce:
 - przeciw A1/A2 (z sekcji 3.3) rozwiązanie jest bardzo mocne,
@@ -781,7 +781,7 @@ W praktyce:
 - **Domyślnie**: pack bundla (SEA main packing + gzip loader w bundle, gdy włączony) – bez plaintext JS w artefaktach.
 
 **Domyślnie (thin‑split)**: ELF packer (kiteshield, `-n`).  
-`SEA` nie wspiera packera/strip; użyj `thin-split` albo wyłącz `elfPacker`.  
+`SEA` i `thin-single` ignorują packer/strip; użyj `thin-split` albo wyłącz `elfPacker`.  
 Rekomendowana kolejność packerów: `kiteshield` → `midgetpack` → `upx`.
 
 
@@ -877,7 +877,7 @@ SEA w Node (Single Executable Application) ma twarde ograniczenia, które determ
    - **SEA:** Seal domyślnie pakuje backend bundle do „loadera” (Brotli/Gzip) *przed* generacją blobu SEA, aby w blobie nie było plaintext JS.
    - **Bundle fallback:** gdy SEA nie jest możliwe, Seal domyślnie pakuje backend bundle do `app.bundle.cjs.gz` i uruchamia go przez mały loader (brak czytelnego pliku JS obok launchera).
    - **ELF packer (thin‑split):** domyślnie uruchamiany jest `kiteshield` (`-n`) na launcherze `b/a`.  
-     `SEA` nie wspiera packera/strip (build fail‑fast).
+     `SEA` i `thin-single` ignorują packer/strip (auto-disabled).
      - Gdy `elfPacker.tool="upx"` jest włączony i nie działa (brak narzędzia lub błąd typu `CantUnpackException: bad e_phoff`), build **musi** się przerwać z błędem.
      - Gdy `strip` jest włączony i narzędzie jest niedostępne, Seal wypisuje ostrzeżenie (bez przerywania builda).
   - Użytkownik **MUST** mieć możliwość wyłączenia protection w `seal.json5` (np. `build.protection.enabled=false`).
@@ -1796,7 +1796,7 @@ Przykład (aktualny dla v0.5):
     frontendMinify: { enabled: true, level: "safe", html: true, css: true },
 
     // Protection (anti-peek) – domyślnie włączone
-    // - SEA: strip/elfPacker NIE są wspierane (build musi fail-fast)
+    // - SEA/thin-single: strip/elfPacker są ignorowane (auto-disabled)
     // - thin-split: elfPacker domyślnie kiteshield (-n), target: launcher b/a
     // - thin.integrity (inline) + elfPacker: NIEkompatybilne (build fail-fast; użyj mode=sidecar)
     // - bundle: bundle.pack = gzip-pack backend bundle + loader

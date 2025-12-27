@@ -44,7 +44,7 @@ node src/index.js
 Podczas `seal release` SEAL obfuskuje też frontend (`public/*.js`) i bezpiecznie minifikuje HTML/CSS w `public/**` (pomija `*.min.*`) – domyślnie włączone (poziom: `safe`).
 
 Dodatkowo, SEAL domyślnie wykonuje protection/anti-peek (np. kompresja backend bundle w SEA/bundle).
-Dla `thin-split` domyślnie włączony jest ELF packer (kiteshield). `SEA` nie wspiera `strip`/ELF packera (fail-fast).
+Dla `thin-split` domyślnie włączony jest ELF packer (kiteshield). `SEA` i `thin-single` ignorują `strip`/ELF packer (auto-disabled).
 
 ```bash
 npx seal check

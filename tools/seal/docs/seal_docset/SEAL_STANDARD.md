@@ -188,8 +188,8 @@ Przykład:
 - STD-150a (SHOULD): po `strip`/packerze wykonaj szybki smoke test (np. `--version`/`--help` lub krótki run z timeoutem), aby wykryć uszkodzone binarki.
 - STD-151 (SHOULD): gdy operacja wymaga uprawnien/sandbox escape, komunikat musi jasno prosic o zgode; brak cichych fallbackow.
 - STD-152 (SHOULD): dla `thin-split` hardening (strip/packer) musi targetowac **launcher** (`b/a`), a nie wrapper `./<app>`; zapisuj w metadanych/logach, ktory plik byl celem.
-- STD-153 (SHOULD): dla packagerów AIO (SEA) hardening (strip/packer) jest niedozwolony — fail‑fast z jasnym komunikatem i nie probuj modyfikowac AIO.
-- STD-154 (SHOULD): dla `sea` `strip`/ELF packer jest niewspierany i musi fail‑fast z jasnym komunikatem.
+- STD-153 (SHOULD): dla packagerów AIO (SEA/thin-single) hardening (strip/packer) jest ignorowany (auto-disabled) z jasnym ostrzeżeniem i rekomendacją `thin-split`; nie próbuj modyfikować AIO.
+- STD-154 (SHOULD): dla `sea` `strip`/ELF packer jest ignorowany (auto-disabled) i powinien generować ostrzeżenie z sugestią `thin-split`.
 - STD-157 (SHOULD): `thin.appBind` jest domyślnie włączony i używa stabilnego ID projektu (nie ścieżek); w razie kolizji `appName`/`entry` ustaw jawne `appBind.value`.
 - STD-158 (SHOULD): `thin.launcherObfuscation` domyślnie włączone i **fail‑fast**, jeśli brak `protection.cObfuscator` (brak fallbacków).
 - STD-159 (SHOULD): `thin.snapshotGuard` jest opt‑in; testy muszą wymuszać trigger poprzez dedykowane ENV, a produkcja nie polega na testowych override.

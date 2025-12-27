@@ -69,6 +69,40 @@ else
   PARALLEL_GROUPS+=("flow:user-flow")
 fi
 
+PARALLEL_MODE="${SEAL_E2E_PARALLEL_MODE:-groups}"
+if [ "$PARALLEL_MODE" = "per-test" ]; then
+  ALL_TESTS=(
+    "thin"
+    "thin-anti-debug"
+    "legacy-packagers"
+    "completion"
+    "user-flow"
+    "sentinel"
+    "protection"
+    "obfuscation"
+    "strip"
+    "elf-packers"
+    "c-obfuscators"
+    "postject"
+    "example-ui"
+    "decoy"
+    "ship"
+  )
+  PARALLEL_GROUPS=()
+  for test in "${ALL_TESTS[@]}"; do
+    skip=0
+    for serial in "${SERIAL_TESTS[@]}"; do
+      if [ "$test" = "$serial" ]; then
+        skip=1
+        break
+      fi
+    done
+    if [ "$skip" -eq 0 ]; then
+      PARALLEL_GROUPS+=("test-${test}:${test}")
+    fi
+  done
+fi
+
 run_group() {
   local group="$1"
   local tests="$2"

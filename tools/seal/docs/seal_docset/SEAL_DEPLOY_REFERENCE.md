@@ -100,7 +100,7 @@ Seal powinien mieć interfejs packagera, aby można było podmieniać metodę pa
 
 **F) Protection/pack (domyślnie włączone)**
 - Domyślnie SEAL uruchamia **ELF packer** (kiteshield) dla `thin-split` (anti‑disassembly).  
-  `SEA` nie wspiera `strip`/ELF packera (build fail‑fast).
+  `SEA` i `thin-single` ignorują `strip`/ELF packer (auto-disabled); użyj `thin-split`, jeśli chcesz hardening binarki.
 - Rekomendowana kolejność packerów: `kiteshield` → `midgetpack` → `upx`.
 - Jeśli chcesz wyłączyć packer, usuń `protection.elfPacker` albo ustaw `elfPacker.tool=null`.
 - Gdy SEA nie jest możliwe i **bundle fallback jest jawnie włączony**, backend bundle jest pakowany do `app.bundle.cjs.gz` i uruchamiany przez mały loader (żeby nie leżał czytelny plik JS).

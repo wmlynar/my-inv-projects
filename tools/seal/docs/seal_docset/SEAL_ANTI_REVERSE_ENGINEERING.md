@@ -106,7 +106,7 @@ Poniżej „gruby” opis zabezpieczeń w SEAL, warstwa po warstwie. To są **wa
 - `build.protection.strip`: usuwa symbole/debug info (mniej „darmowych” podpowiedzi dla `strings`/`nm`).
 - `build.protection.elfPacker`: packery/protectory (`kiteshield`, `midgetpack`, `upx`).  
   Domyślnie: `kiteshield -n` (bez ptrace runtime, zgodny z anti‑debug).  
-  Uwaga: dla SEA strip/packer są **niewspierane** (fail‑fast).
+  Uwaga: dla SEA/thin-single strip/packer są **ignorowane** (auto-disabled).
 
 **D. Anti‑debug / anti‑instrumentation (runtime)**
 - `build.thin.antiDebug`: TracerPid, denylist ENV, skan `/proc/self/maps`, ptrace guard, seccomp no‑debug, core‑dump off, loader guard.
@@ -129,7 +129,8 @@ Poniżej „gruby” opis zabezpieczeń w SEAL, warstwa po warstwie. To są **wa
 - `build.protection.strings` to **metadane** (np. `xorstr`, `crystr`, `obfuscate`) — integracja po stronie kodu, nie automatyczna.
 
 **I. Fail‑fast jako „warstwa bezpieczeństwa”**
-- Jeśli narzędzie jest wymagane (np. `cObfuscator`) lub funkcja jest niewspierana dla danego packagera (np. strip/packer dla SEA), build kończy się **jawnie błędem** — brak cichych fallbacków.
+- Jeśli narzędzie jest wymagane (np. `cObfuscator`), build kończy się **jawnie błędem**.  
+  Opcje niewspierane przez dany packager (np. strip/packer dla SEA/thin-single) są **auto‑disabled** z ostrzeżeniem.
 
 ### 2.11a Profile bezpieczeństwa (`securityProfile`) + podprofile obfuskacji
 Ustaw `build.securityProfile` w `seal.json5`, aby jednym polem włączyć spójny poziom zabezpieczeń.  
@@ -164,7 +165,7 @@ build: {
 ```
 
 Uwagi:
-- Profile zakładają `thin-split`; dla SEA/`thin-single` część opcji (np. strip/packer, native bootstrap) jest niewspierana i może zakończyć build błędem.
+- Profile zakładają `thin-split`; dla SEA/`thin-single` część opcji (np. strip/packer, native bootstrap) jest ignorowana (auto‑disabled) z ostrzeżeniem.
 - `max` jest najbardziej restrykcyjny — może wymagać dopasowania środowiska (ENV) i testów E2E.
 
 ### 2.11b Profil sentinela (`build.sentinel.profile`)
@@ -220,7 +221,7 @@ Uwagi:
 #### 2.12.6 `strip` / ELF packer
 - Jak działa: `strip` usuwa symbole/debug info; packer opakowuje binarkę i utrudnia disassembly.
 - Chroni przed: „darmowym” rozpoznaniem funkcji/strings i prostą dekompilacją.
-- Implementacja: `strip`/`elfPacker` działają na launcherze `b/a` (thin‑split). Dla SEA i thin‑single są **niewspierane** → fail‑fast.
+- Implementacja: `strip`/`elfPacker` działają na launcherze `b/a` (thin‑split). Dla SEA i thin‑single są ignorowane (auto‑disabled).
 
 #### 2.12.7 Anti‑debug / anti‑instrumentation
 - **Mini‑glossary (prosto):**  
@@ -335,7 +336,7 @@ Uwagi:
 #### 2.12.16 Fail‑fast i brak cichych fallbacków
 - Jak działa: brak wymaganych narzędzi albo niewspierany packager → twardy błąd.
 - Chroni przed: „pozornym bezpieczeństwem” (build bez realnych zabezpieczeń).
-- Implementacja: walidacje w `packagerConfig` i `build` (np. `cObfuscator` wymagany, strip/packer blokowany dla SEA).
+- Implementacja: walidacje w `packagerConfig` i `build` (np. `cObfuscator` wymagany, strip/packer auto‑disabled dla SEA/thin-single).
 
 ## 3. Decyzje projektowe (dlaczego)
 - **thin‑split jako jedyny rekomendowany packager**: umożliwia łączenie warstw ochrony (strip/ELF packer/integrity) bez korupcji payloadu.

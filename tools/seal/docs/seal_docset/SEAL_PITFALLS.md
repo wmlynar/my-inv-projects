@@ -348,8 +348,8 @@
 - Blad: nowy plik w layout (np. sidecar) nie byl uwzgledniony w deploy/rollback/fast/cleanup, przez co stan na target byl niespojny.
   - Wymaganie: kazdy nowy plik w layout musi byc dodany do wszystkich sciezek deployu, rollbacku i cleanupu oraz pokryty testem.
 
-- Blad: test UI E2E uruchamial AIO z wlaczonym `strip`/`elfPacker`, co jest niewspierane i konczy sie bledem.
-  - Wymaganie: testy UI używaja `thin-split` (lub jawnie wylaczaja `strip`/`elfPacker` dla AIO).
+- Blad: test UI E2E uruchamial AIO z wlaczonym `strip`/`elfPacker`, co jest ignorowane (auto-disabled) i zaciemnia intencje testu.
+  - Wymaganie: testy UI używaja `thin-split` (lub jawnie wylaczaja `strip`/`elfPacker` dla AIO) i asercyjnie weryfikują ostrzeżenie/compat.
 
 - Blad: testy uruchamialy AIO z wlaczonym `thin.integrity`, co zawsze failuje (integrity wymaga `thin-split`).
   - Wymaganie: testy dla AIO musza wylaczyc `thin.integrity` albo przejsc na `thin-split`.
@@ -664,10 +664,10 @@
   - Wymaganie: dla `thin-split` targetuj realny ELF launchera (`b/a`) i zapisuj w metadanych/logach, ze celem byl `launcher`.
 
 - Blad: w AIO probowano `strip`/ELF packer na pliku z doklejonym payloadem, co psulo runtime.
-  - Wymaganie: `strip`/packer dla AIO musi fail-fast z jasnym komunikatem; dokumentacja ma wyraznie wskazywac `thin-split` jako tryb produkcyjny.
+  - Wymaganie: `strip`/packer dla AIO musi być ignorowany (auto-disabled) z jasnym ostrzeżeniem; dokumentacja ma wyraźnie wskazywać `thin-split` jako tryb produkcyjny.
 
 - Blad: `strip` na binarce SEA powodowal crash (SIGSEGV) mimo udanego builda.
-  - Wymaganie: dla `sea` `strip` jest niewspierany i musi fail-fast z jasnym komunikatem.
+  - Wymaganie: dla `sea`/`thin-single` `strip` jest ignorowany (auto-disabled) z jasnym ostrzeżeniem.
 
 - Blad: detekcja narzedzi (`postject`, packery) nie uwzgledniala monorepo/workspace i szukala tylko w `./node_modules/.bin`, przez co testy/CLI nie widzialy narzedzia mimo instalacji.
   - Wymaganie: przy wykrywaniu CLI sprawdzaj kilka poziomow `node_modules/.bin` lub uzywaj mechanizmu typu `npm bin -w`/`npm exec`.

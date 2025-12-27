@@ -88,7 +88,7 @@ Domyślnie `seal release`:
 - **domyślnie wykonuje protection/anti-peek**:
   - **SEA**: pakuje backend bundle do „loadera” (Brotli/Gzip) zanim trafi do SEA blobu (bez plaintext JS),
   - **bundle** (jawnie włączony): gzip + loader (brak `app.bundle.cjs` w prostym podglądzie),
-  - **ELF packer (thin‑split)**: domyślnie włączony kiteshield (`-n`); `SEA` nie wspiera packera/strip (fail‑fast).
+  - **ELF packer (thin‑split)**: domyślnie włączony kiteshield (`-n`); `SEA` i `thin-single` ignorują packer/strip (auto-disabled).
 - uruchamia `seal check` (fail-fast),
 - buduje artefakt do `seal-out/<app>-<buildId>.tgz`,
 - rozpakowuje build do `seal-out/release/` (zawsze tylko ostatni release).
