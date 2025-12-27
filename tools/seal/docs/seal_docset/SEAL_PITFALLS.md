@@ -487,6 +487,9 @@
 - Blad: kontenery testowe bez init nie sprzataly zombie procesow, co powodowalo flakey timeouts.
   - Wymaganie: uruchamiaj kontenery testowe z `--init` (tini) lub zapewnij init w obrazie.
 
+- Blad: po dodaniu uzytkownika do grupy `docker` testy nadal failowaly (brak re‑loginu), co dawalo mylące błędy „permission denied”.
+  - Wymaganie: po `usermod -aG docker $USER` wymagany jest nowy login/shell; do czasu odswiezenia uzywaj `sudo docker`.
+
 - Blad: rownolegle uruchomienia E2E kolidowaly na wspolnych nazwach uslug/plikach (`current.buildId`, instalacje), co dawalo flakey wyniki.
   - Wymaganie: testy musza byc bezpieczne dla rownoleglego uruchomienia (unikalne nazwy uslug, unikalne installDir, izolowane temp rooty).
 
