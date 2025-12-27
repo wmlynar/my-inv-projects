@@ -1384,3 +1384,16 @@
   - Wymaganie: dodaj `schemaVersion` i utrzymuj kompatybilnosc wsteczna.
 - Blad: CLI zwracal exit code 0 przy ostrzezeniach, bez informacji w JSON.
   - Wymaganie: dla ostrzezen dodaj pole `warnings[]` i jawnie je wypisz.
+
+## Dodatkowe wnioski (batch 191-195)
+
+- Blad: `flock` na NFS nie dzialal, wiec lock nie chronil przed rownoleglym uruchomieniem.
+  - Wymaganie: wykryj NFS/nieobsługiwany FS i uzyj lock‑dir/atomic mkdir lub fail‑fast.
+- Blad: pliki byly nadpisywane mimo oczekiwania "create‑only".
+  - Wymaganie: uzywaj `O_EXCL`/`flag: 'wx'` gdy overwrite nie jest dozwolony.
+- Blad: wartosci z ENV zawieraly znaki nowej linii, co psulo logi i komendy.
+  - Wymaganie: sanitizuj/stripuj kontrolne znaki z inputu ENV.
+- Blad: ścieżki relatywne byly rozstrzygane po zmianie `cwd`, co prowadzilo do bledow.
+  - Wymaganie: resolve do absolutnych sciezek na starcie i używaj tylko ich.
+- Blad: lockfile nie zawieral hosta, przez co w środowiskach współdzielonych mylono procesy.
+  - Wymaganie: zapisuj w locku `hostname`/`pid`/`startTime` i weryfikuj zgodnosc.

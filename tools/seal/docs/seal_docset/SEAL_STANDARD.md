@@ -769,6 +769,11 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-385 (SHOULD): `--dry-run` jest bez‑efektowy (brak zapisow); loguje planowane akcje.
 - STD-386 (SHOULD): `--json` output ma `schemaVersion` i stabilny format.
 - STD-387 (SHOULD): w trybie `--json` ostrzezenia sa zwracane w polu `warnings[]`.
+- STD-388 (SHOULD): na NFS lub nieobsługiwanych FS lock nie polega na `flock` (uzyj lock‑dir/atomic mkdir lub fail‑fast).
+- STD-389 (SHOULD): gdy overwrite jest zabroniony, uzywaj `O_EXCL`/`flag: 'wx'`.
+- STD-390 (SHOULD): input z ENV jest sanitizowany (brak kontrolnych znakow).
+- STD-391 (SHOULD): ścieżki relatywne sa resolve do absolutnych na starcie.
+- STD-392 (SHOULD): lockfile zawiera `hostname`/`pid`/`startTime` i jest weryfikowany.
 
 ## 10. Moduł `testing` (SHOULD)
 
