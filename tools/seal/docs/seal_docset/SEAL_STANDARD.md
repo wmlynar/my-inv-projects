@@ -80,6 +80,7 @@ Przykład:
 - STD-032b (SHOULD): buildId musi zawierac komponent losowy lub monotoniczny, aby uniknac kolizji przy rownoleglych buildach.
 - STD-035 (SHOULD): build zapisuje wersje narzedzi/zaleznosci; build nie pobiera rzeczy z internetu.
 - STD-040 (SHOULD): preflight uzywa tych samych argumentow i srodowiska co runtime.
+- STD-040a (SHOULD): runtime/serwis uruchamia aplikacje z `NODE_ENV=production` (jesli nie ustawiono inaczej), a testy E2E sprawdzaja ten tryb.
 - STD-041 (SHOULD): release nie moze polegac na toolchainie builda na serwerze.
 
 #### Operacje / niezawodnosc

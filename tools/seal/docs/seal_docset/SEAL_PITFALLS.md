@@ -374,6 +374,9 @@
 - Blad: kod szukal zasobow przez `__dirname`, co po bundlingu wskazywalo zla sciezke.
   - Wymaganie: zasoby runtime lokalizuj wzgledem `process.cwd()` (release dir) i jawnych katalogow (`public/`, `shared/`).
 
+- Blad: runtime zachowywal sie jak w dev (brak `NODE_ENV=production`), co zmienialo logike lub wydajnosc.
+  - Wymaganie: w uruchomieniu produkcyjnym ustaw `NODE_ENV=production` i testuj w tej konfiguracji.
+
 ## Testy / CI
 
 - Blad: testy E2E potrafily wisiec bez wyjscia (brak timeoutu na krokach/komendach).
