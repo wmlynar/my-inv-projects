@@ -59,7 +59,7 @@
       }
     },
     "sentinel": {
-      "enabled": true,
+      "enabled": false,
       "level": "auto",
       "appId": "auto",
       "namespaceId": "auto",
@@ -129,13 +129,16 @@
       "scope": "backend",
       "sourceDir": "decoy",
       "overwrite": false,
-      "generator": "off" // off | basic (generate decoy when sourceDir missing)
+      "generator": "off"
     },
     "includeDirs": [
       "public",
       "data"
     ],
     "keepLocalOut": true
+  },
+  "deploy": {
+    "autoBootstrap": true
   },
   "policy": {
     "retention": {

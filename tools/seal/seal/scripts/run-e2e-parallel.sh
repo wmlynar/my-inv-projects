@@ -336,23 +336,15 @@ write_combined_summary() {
     return
   fi
   mkdir -p "$(dirname "$SUMMARY_PATH")"
-  local header_written=0
-  : > "$SUMMARY_PATH"
+  printf "group\ttest\tstatus\tduration_s\tcategory\tparallel\tskip_risk\tdescription\tlog_path\tfail_hint\n" > "$SUMMARY_PATH"
   local group summary_file
   for group in "${GROUP_ORDER[@]}"; do
     summary_file="${GROUP_SUMMARY[$group]:-}"
     if [ ! -f "$summary_file" ]; then
       continue
     fi
-    if [ "$header_written" -eq 0 ]; then
-      head -n 1 "$summary_file" > "$SUMMARY_PATH"
-      header_written=1
-    fi
-    tail -n +2 "$summary_file" >> "$SUMMARY_PATH"
+    awk 'NR == 1 && $0 ~ /^group\t/ {next} {print}' "$summary_file" >> "$SUMMARY_PATH"
   done
-  if [ "$header_written" -eq 0 ]; then
-    printf "group\ttest\tstatus\tduration_s\tcategory\tparallel\tskip_risk\tdescription\tlog_path\tfail_hint\n" > "$SUMMARY_PATH"
-  fi
 }
 
 print_combined_summary() {

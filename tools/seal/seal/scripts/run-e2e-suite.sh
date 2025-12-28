@@ -422,8 +422,6 @@ print_summary() {
 
 trap print_summary EXIT
 
-init_summary_file
-
 DEPS_SIG="$(make_sig "deps" \
   "$REPO_ROOT/package.json" \
   "$REPO_ROOT/package-lock.json" \
@@ -514,6 +512,9 @@ EXAMPLE_NODE_MODULES_DIR="$EXAMPLE_DIR/node_modules"
 if [ -n "${SEAL_E2E_NODE_MODULES_ROOT:-}" ]; then
   EXAMPLE_NODE_MODULES_DIR="$SEAL_E2E_NODE_MODULES_ROOT"
 fi
+
+# Ensure summary headers survive example workspace resets.
+init_summary_file
 EXAMPLE_SIG="$(make_sig "example" \
   "$EXAMPLE_SRC/package.json" \
   "$EXAMPLE_SRC/package-lock.json")"
@@ -581,6 +582,8 @@ export SEAL_SENTINEL_E2E=1
 export SEAL_PROTECTION_E2E=1
 export SEAL_OBFUSCATION_E2E=1
 export SEAL_STRIP_E2E=1
+export SEAL_STRIP_E2E_STRINGS_TIMEOUT_MS="${SEAL_STRIP_E2E_STRINGS_TIMEOUT_MS:-60000}"
+export SEAL_STRIP_E2E_STRINGS_MAX_BUFFER="${SEAL_STRIP_E2E_STRINGS_MAX_BUFFER:-50000000}"
 export SEAL_ELF_PACKERS_E2E=1
 DEFAULT_C_OBF_E2E=1
 if [ "$TOOLSET" != "full" ]; then

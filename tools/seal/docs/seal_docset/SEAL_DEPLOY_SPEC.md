@@ -382,7 +382,7 @@ Seal oferuje jedną ścieżkę startową:
   - **NEW** (folder pusty / skeleton)
   - **ADOPT** (istniejący projekt)
 - `seal init` materializuje wyniki w plikach, w tym:
-  - `seal.json5` (sekcje: `build`, `policy`)
+  - `seal.json5` (sekcje: `build`, `deploy`, `policy`)
   - `seal-config/configs/local.json5` (oraz przykładowe warianty configów)
   - `seal-config/targets/local.json5`
   - `config.runtime.json5`
@@ -630,7 +630,8 @@ Serwer jest „nieprzygotowany”, jeśli brakuje któregokolwiek z:
 ### 11.3. Jak uruchomić bootstrap
 - Pierwszy deploy:
   - `seal deploy <target> --bootstrap`
-- Jeśli nie użyjesz `--bootstrap` na nieprzygotowanym serwerze, Seal **MUST** zakończyć się błędem z jedną, konkretną instrukcją naprawczą.
+- Domyślnie Seal wykonuje auto‑bootstrap, jeśli wykryje brak przygotowania (`deploy.autoBootstrap=true`).
+- Jeśli auto‑bootstrap jest wyłączony i nie użyjesz `--bootstrap` na nieprzygotowanym serwerze, Seal **MUST** zakończyć się błędem z jedną, konkretną instrukcją naprawczą.
 
 (MAY) Ręcznie na serwerze (gdy SSH jest nietypowe lub chcesz przygotować hosta bez Seala):
 - `sudo bash seal-server.sh`
@@ -1816,6 +1817,9 @@ Przykład (aktualny dla v0.5):
     // Katalogi kopiowane 1:1 do release (np. static assets, dane)
     includeDirs: ["public", "data"],
 
+  },
+  deploy: {
+    autoBootstrap: true, // auto bootstrap, gdy SSH target nieprzygotowany
   },
 }
 ```

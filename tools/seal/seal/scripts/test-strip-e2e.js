@@ -586,7 +586,15 @@ function readDenylist(appName) {
 }
 
 function scanStringsForDenylist(filePath, denylist) {
-  const res = runCmd("strings", ["-a", filePath], 8000);
+  const timeoutMs = Number(process.env.SEAL_STRIP_E2E_STRINGS_TIMEOUT_MS || "8000");
+  const maxBuffer = Number(process.env.SEAL_STRIP_E2E_STRINGS_MAX_BUFFER || String(10 * 1024 * 1024));
+  const res = spawnSync("strings", ["-a", filePath], { stdio: "pipe", timeout: timeoutMs, maxBuffer });
+  if (res.error && res.error.code === "ETIMEDOUT") {
+    throw new Error(`strings timed out for ${filePath} (timeout=${timeoutMs}ms)`);
+  }
+  if (res.error && res.error.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
+    throw new Error(`strings output exceeded maxBuffer for ${filePath} (maxBuffer=${maxBuffer})`);
+  }
   if (res.status !== 0 && res.status !== 1) {
     const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
     throw new Error(`strings failed for ${filePath}: ${out.slice(0, 200)}`);

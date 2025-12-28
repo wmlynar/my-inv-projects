@@ -340,6 +340,13 @@ function loadProjectConfig(projectRoot) {
     };
   }
 
+  if (!cfg.deploy || typeof cfg.deploy !== "object" || Array.isArray(cfg.deploy)) {
+    cfg.deploy = {};
+  }
+  if (cfg.deploy.autoBootstrap === undefined) {
+    cfg.deploy.autoBootstrap = true;
+  }
+
   // Protection: enabled by default. Attempts to reduce "casual" inspection of executables/bundles.
   // - SEA: packs the main bundle into a compressed loader (so the SEA blob has no plaintext JS)
   // - bundle: gzip-pack backend bundle + loader

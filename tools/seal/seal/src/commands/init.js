@@ -31,6 +31,9 @@ function templateProjectJson5(appName, entry) {
       decoy: { mode: "none", scope: "backend", sourceDir: "decoy", overwrite: false, generator: "off" },
       includeDirs: ["public", "data"],
     },
+    deploy: {
+      autoBootstrap: true,
+    },
   };
 }
 

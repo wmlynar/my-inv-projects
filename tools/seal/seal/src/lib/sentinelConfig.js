@@ -6,6 +6,7 @@ const crypto = require("crypto");
 
 const { ensureDir, fileExists } = require("./fsextra");
 const { readJson5, writeJson5 } = require("./json5io");
+const { packagerSupportsSentinel } = require("./packagerConfig");
 const { normalizeAppId, parseNamespaceId, buildAnchor, deriveOpaqueDir, deriveOpaqueFile, buildFingerprintString, sha256 } = require("./sentinelCore");
 
 const DEFAULT_SENTINEL = {
@@ -268,15 +269,24 @@ function resolveSentinelConfig({ projectRoot, projectCfg, targetCfg, targetName,
   const cfg = mergeSentinelConfig(mergedProject, targetSentinel);
 
   const enabledRaw = cfg.enabled;
-  const isThin = packagerSpec && packagerSpec.kind === "thin";
+  const supportsSentinel = !!(packagerSpec && packagerSupportsSentinel(packagerSpec.label));
   const isSsh = (targetCfg && String(targetCfg.kind || "local").toLowerCase() === "ssh");
   const enabled = (enabledRaw === undefined || enabledRaw === null || enabledRaw === "auto")
-    ? (isThin && isSsh)
+    ? (supportsSentinel && isSsh)
     : !!enabledRaw;
 
   if (!enabled) return { enabled: false, profile: profileName || null };
-  if (packagerSpec && packagerSpec.kind !== "thin") {
-    throw new Error("Sentinel requires thin packager");
+  if (!supportsSentinel) {
+    const label = packagerSpec ? packagerSpec.label : "unknown";
+    return {
+      enabled: false,
+      profile: profileName || null,
+      compat: {
+        disabled: { packager: true },
+        packager: label,
+        notes: [`${label === "sea" ? "SEA" : label} ignores sentinel (requires thin-split)`],
+      },
+    };
   }
 
   const appIdRaw = (cfg.appId === undefined || cfg.appId === null || cfg.appId === "auto")

@@ -364,7 +364,12 @@ async function cmdConfigExplain(cwd, targetNameOrConfig) {
   console.log("");
 
   console.log("Sentinel:");
-  console.log(`  enabled: ${sentinelCfg.enabled ? "true" : "false"}`);
+  const sentinelLabel = sentinelCfg.enabled
+    ? "true"
+    : (sentinelCfg && sentinelCfg.compat && sentinelCfg.compat.disabled && sentinelCfg.compat.disabled.packager
+        ? "false (auto)"
+        : "false");
+  console.log(`  enabled: ${sentinelLabel}`);
   if (sentinelCfg.enabled) {
     console.log(`  level: ${sentinelCfg.level}`);
     const timeLimit = sentinelCfg.timeLimit || { mode: "off", enforce: "always" };
@@ -374,6 +379,9 @@ async function cmdConfigExplain(cwd, targetNameOrConfig) {
   console.log("");
 
   const notes = [...thinCompat.notes, ...protectionCompat.notes];
+  if (sentinelCfg && sentinelCfg.compat && Array.isArray(sentinelCfg.compat.notes)) {
+    notes.push(...sentinelCfg.compat.notes);
+  }
   if (thinCfg.integrity.enabled && thinCfg.integrity.mode === "inline" && protectionCfg.elfPacker) {
     notes.push("thin.integrity inline is incompatible with elfPacker (use sidecar)");
   }

@@ -251,7 +251,7 @@ async function testShipThinBootstrapSsh() {
     return;
   }
 
-  log("Testing seal ship prod (thin SPLIT/BOOTSTRAP over SSH, payload-only)...");
+  log("Testing seal ship prod (thin SPLIT/BOOTSTRAP over SSH, auto bootstrap)...");
   const targetName = `ship-e2e-ssh-${Date.now()}-${process.pid}`;
   const targetCfg = {
     target: targetName,
@@ -271,7 +271,18 @@ async function testShipThinBootstrapSsh() {
   writeTargetConfig(targetName, targetCfg);
 
   try {
-    await shipOnce(targetCfg, { bootstrap: true, pushConfig: true, skipCheck: true, packager: "thin-split" });
+    try {
+      uninstallSsh(targetCfg);
+    } catch (e) {
+      log(`WARN: SSH pre-clean failed: ${e.message || e}`);
+    }
+
+    await shipOnce(targetCfg, { bootstrap: false, pushConfig: true, skipCheck: true, packager: "thin-split" });
+    const runnerStat = sshStat(user, host, `${installDir}/run-current.sh`, sshPort);
+    const unitStat = sshStat(user, host, `/etc/systemd/system/${serviceName}.service`, sshPort);
+    assert.ok(runnerStat, "Missing runner after auto bootstrap ship (ssh)");
+    assert.ok(unitStat, "Missing systemd unit after auto bootstrap ship (ssh)");
+
     const rtPath = `${installDir}/r/rt`;
     const plPath = `${installDir}/r/pl`;
     const rtStat1 = sshStat(user, host, rtPath, sshPort);

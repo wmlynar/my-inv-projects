@@ -76,10 +76,11 @@ function formatSshFailure(res) {
 function sshExec({ user, host, args, stdin = null, stdio = "inherit", tty = false, strictHostKeyChecking, sshPort }) {
   const target = sshTarget(user, host);
   let finalArgs = args || [];
-  if (Array.isArray(args) && args[0] === "bash" && args[1] === "-lc" && args.length >= 3) {
+  if (Array.isArray(args) && args[0] === "bash" && (args[1] === "-lc" || args[1] === "-c") && args.length >= 3) {
     // ssh concatenates args without quoting, so wrap the bash -lc command.
+    const flag = args[1];
     const cmd = args.slice(2).join(" ");
-    finalArgs = [`bash -lc ${shellQuote(cmd)}`];
+    finalArgs = [`bash ${flag} ${shellQuote(cmd)}`];
   }
   const baseArgs = [];
   if (tty) baseArgs.push("-tt");

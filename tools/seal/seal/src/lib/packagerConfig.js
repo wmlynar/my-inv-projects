@@ -589,6 +589,10 @@ function packagerSupportsIntegrity(label) {
   return label === "thin-split";
 }
 
+function packagerSupportsSentinel(label) {
+  return label === "thin-split";
+}
+
 function applyThinCompatibility(packagerLabel, thinCfg) {
   const next = {
     ...thinCfg,
@@ -656,6 +660,7 @@ module.exports = {
   packagerSupportsHardening,
   packagerSupportsNativeBootstrap,
   packagerSupportsIntegrity,
+  packagerSupportsSentinel,
   applyThinCompatibility,
   applyProtectionCompatibility,
 };

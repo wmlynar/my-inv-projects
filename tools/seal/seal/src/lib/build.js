@@ -938,6 +938,9 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
     targetName: targetCfg.target || targetCfg.config || "default",
     packagerSpec,
   });
+  if (sentinelCfg && sentinelCfg.compat && Array.isArray(sentinelCfg.compat.notes)) {
+    for (const note of sentinelCfg.compat.notes) compatNotes.add(note);
+  }
 
   const obfNorm = normalizeObfuscationProfile(projectCfg.build.obfuscationProfile);
   if (obfNorm.warning) warn(obfNorm.warning);

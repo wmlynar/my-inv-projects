@@ -257,6 +257,17 @@ function bootstrapHint(targetCfg, layout, user, host, issues) {
   ].join("\n");
 }
 
+function collectPreflightIssues(out, layout) {
+  const issues = [];
+  if (out.includes("__SEAL_MISSING_DIR__")) issues.push(`Missing installDir: ${layout.installDir}`);
+  if (out.includes("__SEAL_NOT_WRITABLE__")) issues.push(`InstallDir not writable: ${layout.installDir}`);
+  if (out.includes("__SEAL_NOT_WRITABLE_RELEASES__")) issues.push(`Releases dir not writable: ${layout.releasesDir}`);
+  if (out.includes("__SEAL_NOT_WRITABLE_SHARED__")) issues.push(`Shared dir not writable: ${layout.sharedDir}`);
+  if (out.includes("__SEAL_MISSING_RUNNER__")) issues.push(`Missing runner: ${layout.runner}`);
+  if (out.includes("__SEAL_MISSING_UNIT__")) issues.push(`Missing systemd unit: ${layout.serviceFile}`);
+  return issues;
+}
+
 function checkRemoteWritable(targetCfg, opts) {
   const { user, host } = sshUserHost(targetCfg);
   const layout = remoteLayout(targetCfg);
@@ -498,30 +509,39 @@ function cleanupFastReleasesSsh({ targetCfg, current }) {
   ok(`Fast cleanup: removed ${toDelete.length} old fast release(s) on ${host}`);
 }
 
-function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootstrap, policy, fast, releaseDir, buildId }) {
+function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootstrap, policy, fast, releaseDir, buildId, allowAutoBootstrap }) {
   const thinMode = resolveThinMode(targetCfg);
   const thinIntegrityMode = targetCfg && targetCfg._thinIntegrityMode ? targetCfg._thinIntegrityMode : null;
   const thinIntegrityFile = targetCfg && targetCfg._thinIntegrityFile ? targetCfg._thinIntegrityFile : "ih";
   const thinIntegritySidecar = !!(targetCfg && targetCfg._thinIntegrityEnabled && thinIntegrityMode === "sidecar");
-  let reuseBootstrap = thinMode === "bootstrap" && !bootstrap;
-  const { res: preflight, layout, user, host } = checkRemoteWritable(targetCfg, { requireService: !bootstrap });
-  const out = `${preflight.stdout}\n${preflight.stderr}`.trim();
+  const autoBootstrapAllowed = allowAutoBootstrap !== false;
+  let effectiveBootstrap = !!bootstrap;
+  let autoBootstrap = false;
+  const { res: preflight, layout, user, host } = checkRemoteWritable(targetCfg, { requireService: !effectiveBootstrap });
+  let out = `${preflight.stdout}\n${preflight.stderr}`.trim();
   if (!preflight.ok) {
     throw new Error(`ssh preflight failed${formatSshFailure(preflight) || (out || preflight.error ? `: ${out || preflight.error}` : "")}`);
   }
-  const issues = [];
-  if (out.includes("__SEAL_MISSING_DIR__")) issues.push(`Missing installDir: ${layout.installDir}`);
-  if (out.includes("__SEAL_NOT_WRITABLE__")) issues.push(`InstallDir not writable: ${layout.installDir}`);
-  if (out.includes("__SEAL_NOT_WRITABLE_RELEASES__")) issues.push(`Releases dir not writable: ${layout.releasesDir}`);
-  if (out.includes("__SEAL_NOT_WRITABLE_SHARED__")) issues.push(`Shared dir not writable: ${layout.sharedDir}`);
-  if (out.includes("__SEAL_MISSING_RUNNER__")) issues.push(`Missing runner: ${layout.runner}`);
-  if (out.includes("__SEAL_MISSING_UNIT__")) issues.push(`Missing systemd unit: ${layout.serviceFile}`);
+  let issues = collectPreflightIssues(out, layout);
+  if (issues.length && !effectiveBootstrap && autoBootstrapAllowed) {
+    warn(`Auto bootstrap: ${issues.join("; ")}. Running bootstrap.`);
+    bootstrapSsh(targetCfg);
+    effectiveBootstrap = true;
+    autoBootstrap = true;
+    const retry = checkRemoteWritable(targetCfg, { requireService: false });
+    out = `${retry.res.stdout}\n${retry.res.stderr}`.trim();
+    if (!retry.res.ok) {
+      throw new Error(`ssh preflight failed after bootstrap${formatSshFailure(retry.res) || (out || retry.res.error ? `: ${out || retry.res.error}` : "")}`);
+    }
+    issues = collectPreflightIssues(out, layout);
+  }
   if (issues.length) {
     throw new Error(bootstrapHint(targetCfg, layout, user, host, issues));
   }
+  let reuseBootstrap = thinMode === "bootstrap" && !effectiveBootstrap;
 
   const payloadLocal = releaseDir ? path.join(releaseDir, "r", "pl") : null;
-  let payloadOnly = thinMode === "bootstrap" && !bootstrap && payloadLocal && fileExists(payloadLocal);
+  let payloadOnly = thinMode === "bootstrap" && !effectiveBootstrap && payloadLocal && fileExists(payloadLocal);
   let payloadCodec = null;
   if (payloadOnly) {
     payloadCodec = readThinCodecHashLocal(releaseDir);
@@ -799,24 +819,33 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
   if (!fast) cleanupReleasesSsh({ targetCfg, current: folderName, policy });
   // Always clean fast releases after a successful normal deploy.
   cleanupFastReleasesSsh({ targetCfg, current: folderName });
-  return { layout, folderName, relDir };
+  return { layout, folderName, relDir, autoBootstrap };
 }
 
-function deploySshFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, bootstrap, buildId }) {
+function deploySshFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, bootstrap, buildId, allowAutoBootstrap }) {
   const thinMode = resolveThinMode(targetCfg);
   const thinIntegrityFile = targetCfg && targetCfg._thinIntegrityFile ? targetCfg._thinIntegrityFile : "ih";
-  const { res: preflight, layout, user, host } = checkRemoteWritable(targetCfg, { requireService: !bootstrap });
-  const out = `${preflight.stdout}\n${preflight.stderr}`.trim();
+  const autoBootstrapAllowed = allowAutoBootstrap !== false;
+  let effectiveBootstrap = !!bootstrap;
+  let autoBootstrap = false;
+  const { res: preflight, layout, user, host } = checkRemoteWritable(targetCfg, { requireService: !effectiveBootstrap });
+  let out = `${preflight.stdout}\n${preflight.stderr}`.trim();
   if (!preflight.ok) {
     throw new Error(`ssh preflight failed${formatSshFailure(preflight) || (out || preflight.error ? `: ${out || preflight.error}` : "")}`);
   }
-  const issues = [];
-  if (out.includes("__SEAL_MISSING_DIR__")) issues.push(`Missing installDir: ${layout.installDir}`);
-  if (out.includes("__SEAL_NOT_WRITABLE__")) issues.push(`InstallDir not writable: ${layout.installDir}`);
-  if (out.includes("__SEAL_NOT_WRITABLE_RELEASES__")) issues.push(`Releases dir not writable: ${layout.releasesDir}`);
-  if (out.includes("__SEAL_NOT_WRITABLE_SHARED__")) issues.push(`Shared dir not writable: ${layout.sharedDir}`);
-  if (out.includes("__SEAL_MISSING_RUNNER__")) issues.push(`Missing runner: ${layout.runner}`);
-  if (out.includes("__SEAL_MISSING_UNIT__")) issues.push(`Missing systemd unit: ${layout.serviceFile}`);
+  let issues = collectPreflightIssues(out, layout);
+  if (issues.length && !effectiveBootstrap && autoBootstrapAllowed) {
+    warn(`Auto bootstrap: ${issues.join("; ")}. Running bootstrap.`);
+    bootstrapSsh(targetCfg);
+    effectiveBootstrap = true;
+    autoBootstrap = true;
+    const retry = checkRemoteWritable(targetCfg, { requireService: false });
+    out = `${retry.res.stdout}\n${retry.res.stderr}`.trim();
+    if (!retry.res.ok) {
+      throw new Error(`ssh preflight failed after bootstrap${formatSshFailure(retry.res) || (out || retry.res.error ? `: ${out || retry.res.error}` : "")}`);
+    }
+    issues = collectPreflightIssues(out, layout);
+  }
   if (issues.length) {
     throw new Error(bootstrapHint(targetCfg, layout, user, host, issues));
   }
@@ -915,7 +944,7 @@ function deploySshFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, boot
   ok(`Deployed on ${host}: ${folderName} (${buildId || "fast"})`);
 
   cleanupFastReleasesSsh({ targetCfg, current: folderName });
-  return { layout, folderName, relDir };
+  return { layout, folderName, relDir, autoBootstrap };
 }
 
 function statusSsh(targetCfg) {
@@ -1011,17 +1040,16 @@ function systemctlStatusSsh(targetCfg) {
 function checkHttpSsh(targetCfg, url, timeoutMs) {
   const { user, host } = sshUserHost(targetCfg);
   const tm = Math.max(1, Math.ceil(timeoutMs / 1000));
+  const urlQ = shQuote(url);
   const script = [
     "set -euo pipefail",
     "export NO_PROXY=127.0.0.1,localhost",
     "export no_proxy=127.0.0.1,localhost",
-    `URL=${shQuote(url)}`,
-    `TM=${shQuote(String(tm))}`,
-    "if command -v curl >/dev/null 2>&1; then curl -fsS --noproxy \"*\" --max-time \"$TM\" \"$URL\" >/dev/null; exit $?; fi",
-    "if command -v wget >/dev/null 2>&1; then wget -q -O /dev/null --timeout=\"$TM\" \"$URL\"; exit $?; fi",
+    `if command -v curl >/dev/null 2>&1; then curl -fsS --noproxy \"*\" --max-time ${tm} ${urlQ} >/dev/null; exit $?; fi`,
+    `if command -v wget >/dev/null 2>&1; then wget -q -O /dev/null --timeout=${tm} ${urlQ}; exit $?; fi`,
     "echo '__SEAL_HTTP_TOOL_MISSING__' >&2; exit 127",
-  ].join("\n");
-  const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-lc", script], stdio: "pipe" });
+  ].join("; ");
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-c", script], stdio: "pipe" });
   const output = `${res.stdout || ""}\n${res.stderr || ""}`.trim();
   if (!res.ok && output.includes("__SEAL_HTTP_TOOL_MISSING__")) {
     return { ok: false, fatal: true, error: "missing_http_tool", output };

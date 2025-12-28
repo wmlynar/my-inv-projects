@@ -125,6 +125,7 @@ async function cmdDeploy(cwd, targetArg, opts) {
   const { proj, targetName, targetCfg, packagerSpec } = resolveTarget(projectRoot, targetArg);
   const policy = loadPolicy(projectRoot);
   const sentinelCfg = resolveSentinelConfig({ projectRoot, projectCfg: proj, targetCfg, targetName, packagerSpec });
+  const autoBootstrapEnabled = !(proj && proj.deploy && proj.deploy.autoBootstrap === false);
 
   const configName = resolveConfigName(targetCfg, null);
   const configFile = getConfigFile(projectRoot, configName);
@@ -150,18 +151,21 @@ async function cmdDeploy(cwd, targetArg, opts) {
     else bootstrapLocal(targetCfg);
   }
 
+  let autoBootstrap = false;
   if ((targetCfg.kind || "local").toLowerCase() === "ssh") {
+    let deployRes;
     if (isFast) {
-      deploySshFast({
+      deployRes = deploySshFast({
         targetCfg,
         releaseDir: fastRelease.releaseDir,
         repoConfigPath: configFile,
         pushConfig: !!opts.pushConfig,
         bootstrap: !!opts.bootstrap,
+        allowAutoBootstrap: autoBootstrapEnabled,
         buildId: fastRelease.buildId,
       });
     } else {
-      deploySsh({
+      deployRes = deploySsh({
         targetCfg,
         artifactPath,
         repoConfigPath: configFile,
@@ -170,9 +174,12 @@ async function cmdDeploy(cwd, targetArg, opts) {
         policy,
         releaseDir: opts.releaseDir || null,
         buildId: opts.buildId || null,
+        allowAutoBootstrap: autoBootstrapEnabled,
       });
     }
-    if (opts.bootstrap) {
+    autoBootstrap = !!(deployRes && deployRes.autoBootstrap);
+    const shouldInstall = !!opts.bootstrap || autoBootstrap;
+    if (shouldInstall) {
       installServiceSsh(targetCfg, sentinelCfg);
       if (sentinelCfg.enabled) {
         installSentinelSsh({
@@ -230,7 +237,9 @@ async function cmdDeploy(cwd, targetArg, opts) {
   console.log("");
   ok("Done.");
   console.log("Next:");
-  console.log(`  seal deploy ${targetName} --bootstrap   # (once) install systemd service (explicit)`);
+  if (!opts.bootstrap && !autoBootstrap) {
+    console.log(`  seal deploy ${targetName} --bootstrap   # (once) install systemd service (explicit)`);
+  }
   console.log(`  seal remote ${targetName} restart      # start/restart service (explicit)`);
   console.log(`  seal remote ${targetName} status`);
   console.log(`  seal remote ${targetName} logs`);

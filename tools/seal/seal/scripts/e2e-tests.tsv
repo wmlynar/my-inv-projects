@@ -2,6 +2,7 @@ name	category	parallel	description	skip_risk	fail_hint	script
 thin	packagers	1	Builds and runs thin packager (core flow, runtime + integrity).	high	Check toolchain (cc/pkg-config/libzstd) and thin build logs.	tools/seal/seal/scripts/test-thin-e2e.js
 thin-anti-debug	security	1	Validates anti-debug and hardening probes around thin runtime.	high	Check ptrace/perf/bpf tooling and strict env flags.	tools/seal/seal/scripts/test-thin-anti-debug-e2e.js
 legacy-packagers	packagers	1	Covers legacy packagers (bundle/SEA) compatibility and runtime.	medium	Check postject/SEA tooling and packager availability.	tools/seal/seal/scripts/test-legacy-packagers-e2e.js
+compat	misc	1	Checks packager compatibility (sentinel/strip/elfPacker) via config explain.	low	Verify config explain output and packager gating.	tools/seal/seal/scripts/test-compat-e2e.js
 completion	misc	1	Checks CLI bash completion output and target discovery.	low	Check bash availability and completion script output.	tools/seal/seal/scripts/test-completion-e2e.js
 user-flow	flow	0	Exercises end-to-end user flow (init/build/run/deploy style).	high	Check SSH/systemd readiness and example workspace.	tools/seal/seal/scripts/test-user-flow-e2e.js
 sentinel	security	1	Verifies sentinel install/verify paths and hardware IDs.	high	Check root access, /etc/machine-id, and host device IDs.	tools/seal/seal/scripts/test-sentinel-e2e.js
