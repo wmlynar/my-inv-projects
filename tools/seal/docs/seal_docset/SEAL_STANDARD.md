@@ -153,6 +153,7 @@ Przykład:
 - STD-106c (SHOULD): hostkey prompts eliminuje sie przez pre‑seed `known_hosts` albo jawny `StrictHostKeyChecking=accept-new` (gdy dozwolone); brak wpisu = fail‑fast z instrukcja.
 - STD-106d (SHOULD): w testach/CI uzywaj tymczasowego `UserKnownHostsFile`, aby uniknac konfliktow hostkey miedzy uruchomieniami.
 - STD-106e (SHOULD): ustawiaj prawidlowe permissje kluczy SSH (private key `0600`, `authorized_keys`/`known_hosts` `0644`), inaczej ssh je zignoruje.
+- STD-106e.a (SHOULD): katalog `~/.ssh` ma perms `0700`; inne uprawnienia moga blokowac uzycie kluczy.
 - STD-106f (SHOULD): gdy `git` uzywa SSH, ustaw `GIT_SSH_COMMAND` z `BatchMode=yes`, `UserKnownHostsFile=...`, `StrictHostKeyChecking=...`; git nie dziedziczy opcji ssh z innych wywolan, więc brak tego moze blokowac CI.
 - STD-106g (SHOULD): preferuj ED25519/ECDSA; `ssh-rsa` jest dozwolone tylko jawnie (opcja `HostKeyAlgorithms`/`PubkeyAcceptedAlgorithms`) i musi byc logowane jako legacy.
 - STD-106h (SHOULD): ogranicz liczbe kluczy prezentowanych serwerowi (`IdentitiesOnly=yes` + `IdentityFile`), aby uniknac `Too many authentication failures`.
@@ -253,6 +254,9 @@ Przykład:
 - STD-027s (SHOULD): wartosc `SEAL_E2E_TOOLSET` jest walidowana (allowlista), a nieznana wartosc daje FAIL lub wyrazny warning + fallback.
 - STD-027t (SHOULD): ustawienia rownoległosci E2E (`SEAL_E2E_PARALLEL`, `SEAL_E2E_PARALLEL_MODE`, `SEAL_E2E_JOBS`) sa walidowane i logowane jako effective config; niepoprawne wartosci = FAIL lub jawny fallback.
 - STD-027u (SHOULD): sciezki `SEAL_E2E_EXAMPLE_ROOT`/`SEAL_E2E_SEED_ROOT` sa walidowane jako bezpieczne (np. `/tmp`/`$TMPDIR`), nie wskazuja na repo/systemowe rooty; niebezpieczne = FAIL z instrukcja, chyba ze jawny override.
+- STD-027v (SHOULD): `SEAL_E2E_SUMMARY_PATH` jest unikalny per‑run/grupa lub zapisy sa chronione lockiem, aby uniknac przeplatania w trybie rownoleglym.
+- STD-027w (SHOULD): summary jest zapisywane poza repo (np. `/tmp`/`$TMPDIR`); zapis w repo wymaga jawnego override i ostrzezenia (zwl. przy uruchomieniu jako root).
+- STD-027x (SHOULD): pola summary (group/test) sa sanitizowane (bez `\\t`/`\\n`) lub escapowane w stabilny sposob.
 - STD-027o (SHOULD): jesli `SEAL_E2E_CONFIG` jest ustawiony i plik nie istnieje lub nie jest czytelny, runner daje FAIL albo wyrazny warning + log fallback.
 - STD-027p (SHOULD): plik configu E2E jest parsowany jako `KEY=VALUE` (bez wykonywania kodu); jesli uzywasz `source`, sprawdz ownership/perms i blokuj world‑writable pliki.
 - STD-027q (SHOULD): cache narzedzi E2E ma bezpieczne perms/ownership (nie world‑writable); wykrycie niebezpiecznych perms = fail‑fast.

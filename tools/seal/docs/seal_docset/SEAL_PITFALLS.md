@@ -96,6 +96,7 @@
 
 - Blad: zbyt liberalne uprawnienia na kluczach SSH powodowaly `unprotected private key file` i brak polaczenia.
   - Wymaganie: klucze prywatne `0600`, `authorized_keys`/`known_hosts` `0644`.
+  - Wymaganie: katalog `~/.ssh` ma perms `0700` (inaczej ssh ignoruje klucze).
 
 - Blad: agent SSH mial wiele kluczy i serwer odrzucal polaczenie (`Too many authentication failures`).
   - Wymaganie: wymusz `IdentitiesOnly=yes` i jawny `IdentityFile`; w razie potrzeby czysc `SSH_AUTH_SOCK`.
@@ -704,6 +705,15 @@
 
 - Blad: brak podsumowania SKIP dawał fałszywe poczucie “all green”.
   - Wymaganie: testy musza wypisać liczbę i listę SKIP oraz mieć tryb strict, który traktuje SKIP jako FAIL w runach certyfikacyjnych.
+
+- Blad: wspolny `SEAL_E2E_SUMMARY_PATH` przy rownoleglych uruchomieniach powodowal przeplatanie wpisow i uszkodzony TSV.
+  - Wymaganie: summary path jest unikalny per‑run/grupa lub zapisy chronione lockiem (append atomowy).
+
+- Blad: `SEAL_E2E_SUMMARY_PATH` wskazywal na katalog w repo (zwl. przy uruchomieniu jako root), co zostawialo root‑owned artefakty i przypadkowe commity.
+  - Wymaganie: summary path jest poza repo (np. `/tmp`/`$TMPDIR`); gdy jest w repo, wymagaj jawnego override i ostrzezenia.
+
+- Blad: pola summary (group/test) zawieraly taby/nowe linie, co psulo format TSV.
+  - Wymaganie: sanitizuj pola summary (stripuj `\\t`/`\\n`) lub escapuj je w stabilny sposob.
 
 - Blad: filtr testow E2E (np. `SEAL_E2E_TESTS`) z literowka powodowal pusta suite lub pomijal testy bez ostrzezenia.
   - Wymaganie: przy aktywnym filtrze loguj liste dopasowanych testow; brak dopasowan = FAIL lub jawny SKIP z instrukcja.
