@@ -338,6 +338,9 @@
 - Blad: submodule update w installerach byl ignorowany (`|| true`), co zostawialo niekompletny repo i dawalo pozniejsze, nieczytelne bledy.
   - Wymaganie: `git submodule update --init --recursive` musi fail‑fast (lub jawny SKIP z powodem, jesli submoduly sa opcjonalne).
 
+- Blad: brak `git-lfs` powodowal, ze duze pliki byly tylko pointerami, a build/testy failowaly bez jasnej diagnozy.
+  - Wymaganie: wykrywaj pliki LFS (pointery) i fail‑fast z instrukcja `git lfs install && git lfs pull`, albo jawnie SKIP w srodowiskach bez LFS.
+
 - Blad: klonowanie bardzo duzych repo (np. LLVM) bez `--depth` powodowalo timeouts i ogromne zuzycie dysku.
   - Wymaganie: dla duzych repo stosuj shallow clone (`--depth`/`--filter=blob:none`) z fallback do pelnego fetch, gdy potrzebny konkretny commit.
 
@@ -589,6 +592,9 @@
 
 - Blad: skrypty zakladaly `docker compose` (plugin v2), a na hostach z `docker-compose` v1 testy nie startowaly.
   - Wymaganie: wykrywaj `docker compose` vs `docker-compose`, loguj wybrany binarny i wypisz instrukcje instalacji, gdy brak.
+
+- Blad: docker build wciagal ogromny kontekst (`node_modules`, `seal-out`, `.git`), co spowalnialo buildy i wprowadzalo stale artefakty.
+  - Wymaganie: utrzymuj `.dockerignore` (min. `node_modules`, `seal-out`, `.git`) i loguj rozmiar kontekstu z ostrzezeniem przy duzych wartosciach.
 
 - Blad: obraz testowego serwera byl reuse’owany mimo zmian w Dockerfile/entrypoincie (tag bez zmiany), co uruchamialo stary build.
   - Wymaganie: obraz ma label z hashem wejsc (Dockerfile/entrypoint); mismatch = wymuszenie rebuild.
