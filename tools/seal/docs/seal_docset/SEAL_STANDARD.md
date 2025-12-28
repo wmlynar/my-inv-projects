@@ -227,6 +227,7 @@ Przykład:
 - STD-027k (SHOULD): lockfile narzedzi E2E jest walidowany schematem; brakujace pola (url/rev/bin) = fail‑fast z lista brakow.
 - STD-027l (SHOULD): lokalne patche do narzedzi sa jawnie logowane i sterowane ENV, a wersja patcha/flag wchodzi do stempla cache.
 - STD-027m (SHOULD): testy zalezne od funkcji kernela (cgroup/perf/ptrace) maja tryb strict (ENV), ktory zamienia SKIP na FAIL; w trybie domyslnym SKIP zawsze podaje instrukcje jak wymusic strict.
+- STD-027n (SHOULD): runner E2E loguje aktywny toolset (np. core/full), a testy/instalatory respektuja go (brak narzedzi w toolsecie = SKIP lub jawny FAIL w trybie strict).
 - STD-056 (SHOULD): drenaż stdout/stderr dotyczy **wszystkich** scenariuszy testowych (takze gdy spodziewasz sie porazki procesu).
 - STD-059 (SHOULD): testy E2E musza obejmowac scenariusze negatywne (brak plikow, zle uprawnienia, symlink), bo tam najczesciej wychodza regresje.
 - STD-060 (SHOULD): testy musza deterministycznie sprzatac zasoby (tmp/porty/procesy), a brak sprzatania jest traktowany jako fail.

@@ -602,6 +602,9 @@
 - Blad: nowe pliki testow E2E nie byly dodawane do runnera i w praktyce nigdy sie nie uruchamialy.
   - Wymaganie: runner ma auto‑discover albo manifest z CI checkiem, ktory failuje, gdy test nie jest zarejestrowany.
 
+- Blad: tryb toolsetu (core/full) nie byl logowany, a testy probowaly uruchamiac niedostepne narzedzia mimo ustawionego ograniczenia.
+  - Wymaganie: runner loguje aktywny toolset, a testy/instalatory respektuja go (brak narzedzi w toolsecie = SKIP lub jawny FAIL w trybie strict).
+
 - Blad: `NODE_OPTIONS`/`NODE_PATH` z srodowiska wstrzykiwaly `--require` lub inne hooki, psujac build/testy.
   - Wymaganie: testy i buildy czyszcza ryzykowne ENV (`NODE_OPTIONS`, `NODE_PATH`, `NODE_EXTRA_CA_CERTS`) albo jawnie ustawiają bezpieczne wartości.
 
