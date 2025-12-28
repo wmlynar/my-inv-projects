@@ -211,6 +211,17 @@
   - Wymaganie: renameProperties tylko dla prywatnych struktur; publiczne pola i dynamiczne klucze musza byc na liscie `reserved/keep`.
   - Wymaganie: gdy brak pewnosci, renameProperties wylaczone z jasnym logiem; E2E weryfikuje kontrakty API.
 
+- Blad: tree‑shaking/bundling usunął moduły z efektami ubocznymi (rejestracje, polyfille), bo `sideEffects` było błędne lub brakowało jawnych importów.
+  - Wymaganie: moduły z efektami ubocznymi są oznaczone w `sideEffects` lub importowane jawnie; E2E weryfikuje obecność efektów po sealingu.
+  - Wymaganie: w krytycznych ścieżkach wyłącz agresywne tree‑shaking albo użyj whitelisty modułów do zachowania.
+
+- Blad: agresywne opcje minifikacji (`unsafe`, `pure_getters`, `reduce_funcs`) zmieniały semantykę (gettery z efektami ubocznymi, `this`‑binding).
+  - Wymaganie: opcje „unsafe” są domyślnie OFF; włączaj je tylko z dedykowanymi testami E2E i logiem „effective config”.
+
+- Blad: bundler wchłaniał `require()` dynamiczne lub native addon, przez co `.node` nie trafiał do release (runtime `MODULE_NOT_FOUND`).
+  - Wymaganie: dynamiczne `require()` i native addon-y są oznaczone jako `external`, a pliki `.node` są kopiowane do release.
+  - Wymaganie: E2E testuje ładowanie native addon po sealingu.
+
 - Blad: `elfPacker.tool="upx"` byl wlaczony, ale jego blad byl ignorowany (build przechodzil mimo `CantUnpackException` itp.).
   - Wymaganie: jezeli `elfPacker.tool="upx"` jest wlaczony i sie nie powiedzie, build **musi** sie przerwac z bledem.
   - Wymaganie: `elfPacker.tool="upx"` domyslnie wylaczony dla SEA; wlaczaj tylko po potwierdzeniu `upx -t` na binarce.
@@ -236,6 +247,8 @@
   - Wymaganie: jedna macierz kompatybilnosci (packager/opcja/narzedzie) + normalizacja configu.
   - Wymaganie: brak wsparcia dla pojedynczej opcji nie moze wylaczac calego `protection`; wylaczaj tylko niekompatybilny fragment i loguj ostrzezenie.
   - Wymaganie: loguj "effective config" po normalizacji i uzywaj go w testach/dokumentacji.
+  - Wymaganie: ostrzezenia o niekompatybilnosci zawieraja powod i jasna rekomendacje (np. "uzyj thin-split").
+  - Wymaganie: komunikaty/logi uzywaja pelnych nazw packagerow (bez skrotow), aby uniknac pomylek typu `thin-single` vs `thin-split`.
 
 - Blad: `nativeBootstrap` byl dostepny dla `sea`/`thin-single`, mimo ze nie ma tam zastosowania.
   - Wymaganie: `nativeBootstrap` jest dozwolony tylko dla `thin-split` (lub jawnie zdefiniowanych packagerow).
@@ -495,6 +508,7 @@
 
 - Blad: docker buildy korzystaly ze starych obrazow bazowych, bo `--pull` nie byl jawnie kontrolowany.
   - Wymaganie: tryb pull jest jawny (`--pull`/`--no-pull`) i logowany, a bazowy obraz jest identyfikowany po tagu/digescie.
+  - Wymaganie: loguj tryb BuildKit (`DOCKER_BUILDKIT`) i `BUILDKIT_PROGRESS`, zeby uniknac roznic w cache i output.
 
 - Blad: rozne entrypointy E2E mialy inne defaulty (cache, parallel), co utrudnialo reprodukcje miedzy lokalnym i dockerowym uruchomieniem.
   - Wymaganie: jeden publiczny entrypoint ustawia wspolne domyslne wartosci i jest jedynym rekomendowanym sposobem uruchomienia; pozostale skrypty sa wewnetrzne.
@@ -545,6 +559,16 @@
 
 - Blad: testy `strip`/packer mialy tylko czesciowa weryfikacje, bo brakowalo narzedzi weryfikacyjnych (np. `readelf`, `eu-readelf`, `objdump`, `dwarfdump`, `binwalk`, `file`, `strings`, `zstd`).
   - Wymaganie: na maszynie testowej zainstaluj `binutils` + `elfutils` + `binwalk` + `zstd` + `dwarfdump`; w trybie strict brak narzedzi = FAIL.
+
+- Blad: rownolegla instalacja narzedzi E2E nadpisywala cache lub zostawiala czesciowe buildy, co dawalo flakey wyniki.
+  - Wymaganie: instalatory narzedzi uzywaja locka per‑tool/cache i atomowego swapu (tmp + rename), a stamp jest zapisywany **po** sukcesie.
+  - Wymaganie: lock ma timeout i loguje czas oczekiwania, aby uniknac wiszenia w CI.
+
+- Blad: lockfile narzedzi mial brakujace pola (url/rev/bin) lub literowki, a instalator nie failowal jasno.
+  - Wymaganie: waliduj schema lockfile i fail‑fast z lista narzedzi/kluczy, ktorych brakuje.
+
+- Blad: lokalne patche do narzedzi z lockfile byly stosowane cicho, a cache nie uwzglednial wersji patcha, co prowadzilo do uzycia starej binarki.
+  - Wymaganie: kazdy patch jest jawnie logowany i sterowany ENV (on/off), a stamp cache uwzglednia wersje patcha/flag.
 
 - Blad: brak metryk czasu ukrywal najwolniejsze testy i utrudnial planowanie rownoległości.
   - Wymaganie: testy E2E logują czas per‑test/per‑grupa oraz sumaryczny czas, zeby mozna było priorytetyzowac optymalizacje.
@@ -803,10 +827,16 @@
 - Blad: przy failu UI E2E brakowalo artefaktow diagnostycznych.
   - Wymaganie: na porazke zapisuj screenshot/trace/video i loguj sciezki (z limitem rozmiaru).
 
+- Blad: brak ustalonego viewportu/locale/animacji powodowal roznice w layout (responsive) i flakey asercje.
+  - Wymaganie: ustaw jawny viewport, deviceScaleFactor i locale/timezone w UI E2E; wylacz animacje (np. `prefers-reduced-motion`/global CSS).
+
 ## Deploy / infrastruktura
 
 - Blad: instalacja w `/opt` (mala partycja) powodowala brak miejsca.
   - Wymaganie: domyslny `installDir` dla uslug to `/home/admin/apps/<app>`.
+
+- Blad: `installDir` lub katalog release byl na mount z `noexec`, przez co launcher nie startowal (`Permission denied`/`Exec format error`).
+  - Wymaganie: preflight/deploy sprawdza mount options `installDir` (wymaga `exec`); w razie `noexec` fail‑fast z instrukcja wyboru innej sciezki.
 
 - Blad: `seal uninstall` mogl usunac zbyt wysoki katalog (np. przez bledny `installDir`).
   - Wymaganie: Seal odmawia `rm -rf` jesli `installDir` jest zbyt plytki lub jest katalogiem systemowym.
