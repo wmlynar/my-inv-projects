@@ -63,11 +63,16 @@ function normalizeObfuscationProfile(raw) {
     return { profile: "balanced", warning: null };
   }
   const profile = String(raw).toLowerCase();
-  const known = new Set(["minimal", "balanced", "strict", "max"]);
-  if (!known.has(profile)) {
-    throw new Error(`Invalid build.obfuscationProfile: ${raw} (expected: minimal|balanced|strict|max)`);
+  const aliases = new Map([
+    ["off", "none"],
+    ["disabled", "none"],
+  ]);
+  const normalized = aliases.get(profile) || profile;
+  const known = new Set(["none", "minimal", "balanced", "strict", "max", "test-fast"]);
+  if (!known.has(normalized)) {
+    throw new Error(`Invalid build.obfuscationProfile: ${raw} (expected: none|minimal|balanced|strict|max|test-fast)`);
   }
-  return { profile, warning: null };
+  return { profile: normalized, warning: null };
 }
 
 function resolveConsoleMode(raw) {
@@ -107,6 +112,12 @@ function obfuscationOptions(profile) {
     renameGlobals: false,
     target: "node",
   };
+
+  if (normalized === "none") {
+    throw new Error("Obfuscation profile 'none' has no options (obfuscation disabled).");
+  }
+
+  if (normalized === "test-fast") return base;
 
   if (normalized === "strict") {
     return {
@@ -984,9 +995,19 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
     bundlePath = terserResult.outPath;
     ok(`Backend terser OK (passes:${backendTerserCfg.passes}, saved:${terserResult.bytesIn - terserResult.bytesOut} bytes)`);
   }
-  info("Obfuscating bundle...");
-  const obfPath = timeSync("build.obfuscate", () => obfuscateBundle(bundlePath, stageDir, obfProfile));
-  ok(`Obfuscation OK (${obfProfile})`);
+  let obfPath = null;
+  if (obfProfile === "none") {
+    info("Obfuscation disabled (profile=none)");
+    obfPath = timeSync("build.obfuscate", () => {
+      const out = path.join(stageDir, "bundle.obf.cjs");
+      fs.copyFileSync(bundlePath, out);
+      return out;
+    });
+  } else {
+    info("Obfuscating bundle...");
+    obfPath = timeSync("build.obfuscate", () => obfuscateBundle(bundlePath, stageDir, obfProfile));
+    ok(`Obfuscation OK (${obfProfile})`);
+  }
 
   const packagerRequested = packagerSpec.kind;
   const allowBundleFallback = resolveBundleFallback(targetCfg, projectCfg);
@@ -1222,7 +1243,7 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
 
 // Frontend obfuscation (public/*.js) – enabled by default
   const frontendCfg = projectCfg.build.frontendObfuscation;
-  const frontendEnabled = frontendCfg === false ? false : !(typeof frontendCfg === 'object' && frontendCfg && frontendCfg.enabled === false);
+  const frontendEnabled = frontendCfg === false ? false : !(typeof frontendCfg === "object" && frontendCfg && frontendCfg.enabled === false);
   const frontendProfileRaw = (typeof frontendCfg === 'object' && frontendCfg && frontendCfg.profile)
     ? frontendCfg.profile
     : (projectCfg.build.frontendObfuscationProfile || "balanced");
@@ -1230,7 +1251,8 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   if (frontendNorm.warning && frontendProfileRaw !== obfProfile) warn(frontendNorm.warning);
   const frontendProfile = frontendNorm.profile;
 
-  const frontendResult = timeSync("build.frontend.obfuscate", () => obfuscateFrontendAssets(releaseDir, frontendProfile, frontendEnabled));
+  const frontendObfuscateEnabled = frontendEnabled && frontendProfile !== "none";
+  const frontendResult = timeSync("build.frontend.obfuscate", () => obfuscateFrontendAssets(releaseDir, frontendProfile, frontendObfuscateEnabled));
   if (!frontendResult.enabled) {
     info('Frontend obfuscation disabled');
   } else if (frontendResult.files > 0) {

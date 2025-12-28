@@ -15,7 +15,7 @@ function guessHint(message) {
     return "Allowed: off | auto | required | strict";
   }
   if (/Unknown obfuscationProfile|Invalid build\.obfuscationProfile/i.test(msg)) {
-    return "Allowed: minimal | balanced | strict | max";
+    return "Allowed: none | minimal | balanced | strict | max | test-fast";
   }
   if (/Missing repo config/i.test(msg)) {
     return "Run: seal config add <name> (or ensure seal-config/configs/<name>.json5 exists)";

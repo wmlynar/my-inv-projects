@@ -9,6 +9,7 @@ function cmdProfiles() {
   console.log("  (default: strict)");
   console.log("");
   console.log("Obfuscation profiles (backend JS):");
+  console.log("  - none    : skip backend obfuscation (fastest)");
   console.log("  - minimal : most compatible, minimal transforms");
   console.log("  - balanced: default, safe for most apps");
   console.log("  - strict  : stronger DCI + renameGlobals + terser (toplevel)");

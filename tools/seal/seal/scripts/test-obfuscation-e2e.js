@@ -14,6 +14,7 @@ const { hasCommand, resolveE2ETimeout, resolveE2ERunTimeout, applyReadyFileEnv, 
 const { buildRelease } = require("../src/lib/build");
 const { loadProjectConfig, loadTargetConfig, resolveConfigName } = require("../src/lib/project");
 const { readJson5, writeJson5 } = require("../src/lib/json5io");
+const { createTiming, formatDuration } = require("../src/lib/timing");
 
 const EXAMPLE_ROOT = process.env.SEAL_E2E_EXAMPLE_ROOT || path.resolve(__dirname, "..", "..", "example");
 
@@ -27,6 +28,25 @@ function fail(msg) {
 
 function runCmd(cmd, args, timeoutMs = 5000) {
   return spawnSync(cmd, args, { stdio: "pipe", timeout: timeoutMs });
+}
+
+function sumTiming(entries, label) {
+  return (entries || []).reduce((acc, entry) => acc + (entry.label === label ? entry.ms : 0), 0);
+}
+
+function summarizeTiming(timing) {
+  const entries = timing && Array.isArray(timing.entries) ? timing.entries : [];
+  return {
+    bundleMs: sumTiming(entries, "build.bundle"),
+    terserMs: sumTiming(entries, "build.terser"),
+    backendObfMs: sumTiming(entries, "build.obfuscate"),
+    frontendObfMs: sumTiming(entries, "build.frontend.obfuscate"),
+  };
+}
+
+function formatMs(ms) {
+  if (!Number.isFinite(ms) || ms <= 0) return "n/a";
+  return formatDuration(ms);
 }
 
 function ensureLauncherObfuscation(projectCfg) {
@@ -232,18 +252,28 @@ async function runReleaseAndCheck({ releaseDir, runTimeoutMs }) {
   }
 }
 
-async function buildProfile({ profile, passes, outRoot, ctx }) {
+async function buildProfile({ profile, passes, outRoot, ctx, backendTerser, frontendObfuscation }) {
   const projectCfg = loadProjectConfig(EXAMPLE_ROOT);
   projectCfg.build = projectCfg.build || {};
   projectCfg.build.sentinel = Object.assign({}, projectCfg.build.sentinel || {}, { enabled: false });
   projectCfg.build.thin = Object.assign({}, projectCfg.build.thin || {}, { level: "low" });
   projectCfg.build.obfuscationProfile = profile;
-  projectCfg.build.backendTerser = { enabled: true, passes };
+  if (frontendObfuscation === false) {
+    projectCfg.build.frontendObfuscation = false;
+  } else if (frontendObfuscation && typeof frontendObfuscation === "object") {
+    projectCfg.build.frontendObfuscation = frontendObfuscation;
+  } else if (profile === "none") {
+    projectCfg.build.frontendObfuscation = false;
+  } else {
+    projectCfg.build.frontendObfuscation = { enabled: true, profile };
+  }
+  projectCfg.build.backendTerser = backendTerser !== undefined ? backendTerser : { enabled: true, passes };
   ensureLauncherObfuscation(projectCfg);
 
   const targetCfg = loadTargetConfig(EXAMPLE_ROOT, "local").cfg;
   const configName = resolveConfigName(targetCfg, "local");
   const outDir = path.join(outRoot, "seal-out");
+  const timing = createTiming(true);
 
   const res = await withTimeout(`buildRelease(${profile})`, ctx.buildTimeoutMs, () =>
     buildRelease({
@@ -254,21 +284,38 @@ async function buildProfile({ profile, passes, outRoot, ctx }) {
       packagerOverride: "thin-split",
       outDirOverride: outDir,
       skipArtifact: true,
+      timing,
     })
   );
   assert.strictEqual(res.meta?.obfuscationProfile, profile, `Expected obfuscationProfile=${profile}`);
-  return res;
+  return { res, timing: summarizeTiming(timing) };
 }
 
-async function testProfile(profile, passes, ctx) {
-  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), `seal-obf-${profile}-`));
+async function testProfile(test, ctx) {
+  const { profile, passes, run, backendTerser, frontendObfuscation } = test;
+  const label = test.label || profile;
+  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), `seal-obf-${label}-`));
   try {
-    const res = await buildProfile({ profile, passes, outRoot, ctx });
+    const { res, timing } = await buildProfile({
+      profile,
+      passes,
+      outRoot,
+      ctx,
+      backendTerser,
+      frontendObfuscation,
+    });
     const terser = res.meta?.backendTerser;
-    assert.ok(terser && terser.enabled, "Expected backendTerser enabled");
-    assert.strictEqual(terser.ok, true, "Expected backendTerser ok");
-    assert.strictEqual(terser.passes, passes, "Expected backendTerser passes");
-    await runReleaseAndCheck({ releaseDir: res.releaseDir, runTimeoutMs: ctx.runTimeoutMs });
+    if (backendTerser === false || (backendTerser && backendTerser.enabled === false)) {
+      assert.ok(terser && terser.enabled === false, "Expected backendTerser disabled");
+    } else {
+      assert.ok(terser && terser.enabled, "Expected backendTerser enabled");
+      assert.strictEqual(terser.ok, true, "Expected backendTerser ok");
+      assert.strictEqual(terser.passes, passes, "Expected backendTerser passes");
+    }
+    if (run) {
+      await runReleaseAndCheck({ releaseDir: res.releaseDir, runTimeoutMs: ctx.runTimeoutMs });
+    }
+    return { profile, label, passes, timing };
   } finally {
     fs.rmSync(outRoot, { recursive: true, force: true });
   }
@@ -301,17 +348,32 @@ async function main() {
   }
 
   const tests = [
-    { profile: "strict", passes: 3 },
-    { profile: "max", passes: 4 },
+    { profile: "none", passes: 1, run: false, frontendObfuscation: false },
+    { profile: "minimal", passes: 1, run: false },
+    { profile: "balanced", passes: 2, run: false },
+    { profile: "strict", passes: 3, run: true },
+    { profile: "max", passes: 4, run: true },
   ];
   let failures = 0;
+  const timingRows = [];
   for (const t of tests) {
     try {
-      await withTimeout(`testProfile(${t.profile})`, testTimeoutMs, () => testProfile(t.profile, t.passes, ctx));
-      log(`OK: ${t.profile}`);
+      const label = t.label || t.profile;
+      const res = await withTimeout(`testProfile(${label})`, testTimeoutMs, () => testProfile(t, ctx));
+      timingRows.push(res);
+      log(`OK: ${label}`);
     } catch (e) {
       failures += 1;
-      fail(`${t.profile}: ${e.message || e}`);
+      fail(`${t.label || t.profile}: ${e.message || e}`);
+    }
+  }
+
+  if (timingRows.length) {
+    log("Timing (JS obfuscation profiles):");
+    for (const row of timingRows) {
+      const timing = row.timing || {};
+      const label = row.label || row.profile;
+      log(`  profile=${label} passes=${row.passes} backend=${formatMs(timing.backendObfMs)} frontend=${formatMs(timing.frontendObfMs)} terser=${formatMs(timing.terserMs)} bundle=${formatMs(timing.bundleMs)}`);
     }
   }
 
