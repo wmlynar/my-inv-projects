@@ -551,6 +551,9 @@
 - Blad: rozne entrypointy E2E mialy inne defaulty (cache, parallel), co utrudnialo reprodukcje miedzy lokalnym i dockerowym uruchomieniem.
   - Wymaganie: jeden publiczny entrypoint ustawia wspolne domyslne wartosci i jest jedynym rekomendowanym sposobem uruchomienia; pozostale skrypty sa wewnetrzne.
 
+- Blad: ustawienia rownoległosci E2E (mode/jobs) nie byly walidowane ani logowane, co dawalo nieoczekiwany zakres testow i trudne debugowanie.
+  - Wymaganie: runner loguje effective `SEAL_E2E_PARALLEL`, `SEAL_E2E_PARALLEL_MODE` i `SEAL_E2E_JOBS`, a niepoprawne wartosci sa odrzucane lub fallbackowane z ostrzezeniem.
+
 - Blad: rownolegle uruchomienia E2E probowaly instalowac globalne narzedzia (packery/obfuscatory) jednoczesnie, co powodowalo wyscigi i uszkodzenia.
   - Wymaganie: instalatory narzedzi globalnych uzywaja locka (np. `flock` na cache) i czekaja/skipuja, gdy instalacja juz trwa.
   - Wymaganie: instalacja jest atomowa (tmp + rename), a stamp zapisywany **po** sukcesie.
