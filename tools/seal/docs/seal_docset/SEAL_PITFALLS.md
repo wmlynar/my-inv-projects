@@ -532,6 +532,9 @@
 - Blad: `npm ci/install` wisial przy problemach sieciowych (brak timeoutow lub zbyt dlugie retry).
   - Wymaganie: ustaw `NPM_CONFIG_FETCH_RETRIES`, `NPM_CONFIG_FETCH_TIMEOUT`, `NPM_CONFIG_FETCH_RETRY_MINTIMEOUT` i `NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT` w testach/CI.
 
+- Blad: `NODE_ENV=production` podczas E2E powodowal pomijanie devDependencies i brak narzedzi testowych.
+  - Wymaganie: dla instalacji testowych wymusz `NODE_ENV=development` lub `npm ci --include=dev`, a tryb instalacji loguj na starcie.
+
 - Blad: `npm` uruchamiany jako root w containerze blokowal skrypty postinstall (brak `unsafe-perm`) lub wykonywal je z innymi uprawnieniami.
   - Wymaganie: w kontenerach uruchamiaj `npm` jako nie‑root lub ustaw `NPM_CONFIG_UNSAFE_PERM=true`.
 
@@ -598,6 +601,7 @@
 
 - Blad: filtr testow E2E (np. `SEAL_E2E_TESTS`) z literowka powodowal pusta suite lub pomijal testy bez ostrzezenia.
   - Wymaganie: przy aktywnym filtrze loguj liste dopasowanych testow; brak dopasowan = FAIL lub jawny SKIP z instrukcja.
+  - Wymaganie: waliduj kazdy token filtra przeciwko znanej liscie testow; nieznane nazwy = FAIL (chyba ze tryb "allow-unknown").
 
 - Blad: nowe pliki testow E2E nie byly dodawane do runnera i w praktyce nigdy sie nie uruchamialy.
   - Wymaganie: runner ma auto‑discover albo manifest z CI checkiem, ktory failuje, gdy test nie jest zarejestrowany.
@@ -689,6 +693,9 @@
 - Blad: rownolegle uruchomienia E2E kolidowaly na wspolnych nazwach uslug/plikach (`current.buildId`, instalacje), co dawalo flakey wyniki.
   - Wymaganie: testy musza byc bezpieczne dla rownoleglego uruchomienia (unikalne nazwy uslug, unikalne installDir, izolowane temp rooty).
   - Wymaganie: sharding testow jest deterministyczny (stala kolejnosc listy) i loguje, ktore testy trafily do danego sharda.
+
+- Blad: runner rownolegly nie propagowal porazki (exit code=0) lub zostawial dzialajace procesy po FAIL.
+  - Wymaganie: tryb rownolegly musi zwrocic non‑zero przy pierwszej porazce i sprzatac pozostale procesy/worker-y.
 
 - Blad: testy dzielily cache (np. `seal-out/cache`) i wyniki byly zalezne od poprzednich uruchomien.
   - Wymaganie: testy izolują cache (osobny temp project root lub `SEAL_THIN_CACHE_LIMIT=0`).
@@ -1097,6 +1104,9 @@
 
 - Blad: `npx seal` z podfolderu monorepo nie widzial CLI.
   - Wymaganie: zapewnij globalny link (`tools/seal/scripts/link-global-seal.sh`) albo uzywaj `npx --prefix <repo-root>`.
+
+- Blad: instalacja zaleznosci uruchamiala sie w zlym workspace (root zamiast `tools/seal`), przez co brakowalo lokalnych binarek.
+  - Wymaganie: przy pracy w monorepo jawnie wskazuj workspace (`npm -w <name> install`) lub `--prefix`, a runner loguje aktywny prefix/workspace.
 
 - Blad: `npx` bez `--no-install` probowal pobierac pakiety z sieci i wieszal testy/CI bez internetu.
   - Wymaganie: w CI/testach uzywaj `npx --no-install` lub bezposrednio `./node_modules/.bin/<tool>`.
