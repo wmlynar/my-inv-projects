@@ -1045,6 +1045,8 @@
 
 - Blad: unit/komendy operowaly na zlej nazwie uslugi (status/stop/restart nie trafialy w odpowiedni unit).
   - Wymaganie: nazwa uslugi jest zapisywana w `<root>/service.name` i uzywana konsekwentnie przez `seal` i `appctl`.
+- Blad: `appName` zawieral spacje/znaki specjalne i byl uzywany w sciezkach/nazwach plikow, co psulo deploy i `scp`.
+  - Wymaganie: waliduj `appName/serviceName` do bezpiecznego alfabetu (np. `[a-zA-Z0-9._-]`) i normalizuj przed uzyciem w sciezkach/komendach.
 
 - Blad: po zmianie pliku unit systemd brakowalo `daemon-reload`, przez co systemd uzywal starej konfiguracji.
   - Wymaganie: po zapisie/aktualizacji unitu zawsze wykonaj `systemctl daemon-reload` (lub `--user` odpowiednio do scope).

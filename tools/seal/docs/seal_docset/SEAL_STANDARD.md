@@ -129,6 +129,7 @@ Przykład:
 - STD-039 (SHOULD): SIGINT/SIGTERM sprzataja procesy i pliki tymczasowe.
 - STD-043 (SHOULD): waliduj wymagania **warunkowo** od poziomu/trybu (np. level 0/1/2), nie wymuszaj danych dla wyzszych poziomow.
 - STD-044 (SHOULD): identyfikatory uzywane w sciezkach plikow musza byc sanitizowane do bezpiecznego alfabetu (brak path traversal).
+- STD-044a (SHOULD): `appName`/`serviceName` sa walidowane do bezpiecznego zestawu znakow (bez spacji/slash), zanim trafia do sciezek lub komend deploy.
 - STD-045 (SHOULD): przy wlaczonych zabezpieczeniach/stealth komunikaty bledow musza byc zunifikowane (opaque failure), bez ujawniania sciezek/rolek.
 - STD-045a (SHOULD): endpointy `/health` i `/status` nie zdradzaja obecnosci sentinel/guardow (tresc i timing stabilne); szczegoly tylko w logach instalatora/CLI.
 - STD-046 (SHOULD): idempotentne porownania/zapisy do plikow chronionych musza uzywac tych samych uprawnien co install (sudo lub dedykowana grupa); brak uprawnien = blad z instrukcja.
