@@ -98,17 +98,26 @@
 - Blad: brak `ca-certificates` powodowal bledy TLS przy `curl`/`git`, co maskowalo realny problem (wygladalo jak timeout lub 404).
   - Wymaganie: preflight instaluje `ca-certificates` i weryfikuje, ze TLS dziala (np. krótki `curl -I https://example.com`).
 
+- Blad: tokeny/hasla byly przekazywane w URL (`https://token@...`) lub przez `curl -u`, co wyciekało w logach i `ps`.
+  - Wymaganie: przekazuj sekrety przez naglowki/ENV/`--netrc` z prawami 0600; logi musza redagowac URL i naglowki autoryzacyjne.
+
 - Blad: `rsync` bez timeoutu potrafil wisiec na zerwanym polaczeniu.
   - Wymaganie: uzywaj `--timeout` w `rsync` (sekundy bez aktywnosci) oraz jawny limit czasu calkowitego.
 
 - Blad: lokalny i zdalny `rsync` mialy rozne wersje, przez co wybrane flagi nie byly wspierane i deploy failowal.
   - Wymaganie: loguj `rsync --version` po obu stronach i fail-fast, gdy wymagane flagi nie sa wspierane (z instrukcja aktualizacji).
 
+- Blad: `rsync` podazal za symlinkami lub kopiuje je jako pliki, co moglo nadpisac dane poza docelowym rootem.
+  - Wymaganie: uzywaj `--safe-links` (lub waliduj brak symlinkow w drzewie) i sprawdzaj `realpath` przed sync.
+
 - Blad: `git` korzystajacy z SSH nie dziedziczyl opcji nieinteraktywnych (BatchMode/known_hosts), co blokowalo CI.
   - Wymaganie: ustaw `GIT_SSH_COMMAND="ssh -o BatchMode=yes -o UserKnownHostsFile=... -o StrictHostKeyChecking=accept-new"` w testach/CI.
 
 - Blad: prompt o zaufanie hosta SSH blokowal deploy (brak wpisu w `known_hosts`).
   - Wymaganie: pre‑seed `known_hosts` lub uzyj jawnego `StrictHostKeyChecking=accept-new` (tylko gdy zaakceptowane); bez tego fail‑fast z instrukcja.
+
+- Blad: `REMOTE HOST IDENTIFICATION HAS CHANGED` blokowal deploy po reinstalacji serwera, a komunikat nie podpowiadal rozwiazania.
+  - Wymaganie: wykrywaj ten błąd i podawaj instrukcje `ssh-keygen -R <host>` (lub ręczna edycja `known_hosts`); nie usuwaj wpisu automatycznie bez zgody.
 
 - Blad: reuzycie globalnego `known_hosts` w testach powodowalo flakey wyniki (hostkey mismatch po przebudowie kontenera).
   - Wymaganie: testy/CI uzywaja tymczasowego `UserKnownHostsFile` (per run), aby uniknac kolizji host key.
@@ -424,6 +433,8 @@
   - Wymaganie: waliduj limity/liczby w `seal check` i fail‑fast z jasnym bledem, nie dopiero podczas builda.
 - Blad: `build.thin`/`target.thin` ustawione na `null` lub tablice powodowaly TypeError albo ciche pominiecie konfiguracji.
   - Wymaganie: `thin` musi byc plain object; `null`/array/string/number = fail‑fast z jasnym bledem (prefer w `seal check`).
+- Blad: `build.protection` ustawione na `null`/string/array bylo traktowane jak puste `{}` (protection wlaczony), co maskowalo bledna konfiguracje.
+  - Wymaganie: `build.protection` akceptuje tylko boolean lub obiekt; inne typy = fail‑fast (prefer w `seal check`).
 
 - Blad: build byl niedeterministyczny lub wykonany na innej architekturze/OS niz target (AIO zawiera runtime z build machine).
   - Wymaganie: preflight waliduje OS/arch i wersje narzedzi; mismatch = fail-fast.
@@ -1122,8 +1133,11 @@
   - Wymaganie: Seal odmawia `rm -rf` jesli `installDir` jest zbyt plytki lub jest katalogiem systemowym.
   - Wymaganie: awaryjnie mozna ustawic `SEAL_ALLOW_UNSAFE_RM=1`, ale jest to **niebezpieczne**.
 
-- Blad: lokalne komendy `systemctl`/`journalctl` dla `serviceScope=system` uzywaly `sudo` nawet przy UID 0, co na minimalnych hostach bez `sudo` konczylo sie bledem.
-  - Wymaganie: gdy proces dziala jako root, uruchamiaj `systemctl`/`journalctl` bez `sudo`.
+- Blad: lokalne komendy `systemctl` dla `serviceScope=system` uzywaly `sudo` nawet przy UID 0, co na minimalnych hostach bez `sudo` konczylo sie bledem.
+  - Wymaganie: gdy proces dziala jako root, uruchamiaj `systemctl` bez `sudo`.
+
+- Blad: `installDir` w targetach lokalnych nie byl walidowany (relatywne sciezki/spacje/znaki shellowe), a trafial do `run-current.sh` i unitu systemd, co dawalo bledy lub nieprzewidziane ekspansje.
+  - Wymaganie: `installDir` musi byc absolutny i bez whitespace/metaznakow; walidacja dotyczy **takze** targetow lokalnych.
 
 - Blad: `run-current.sh` i katalog aplikacji mialy zlego wlasciciela (root) i brak prawa wykonania.
   - Wymaganie: `installDir` i `run-current.sh` musza byc wlascicielem uzytkownika uslugi i `run-current.sh` musi byc wykonywalny.
@@ -1141,6 +1155,9 @@
   - Wymaganie: uzywaj `mktemp` + perms 0600 i sprzataj w `finally` po diff/porownaniu.
 - Blad: aktualizacja `config.json5` odbywala sie przez zwykle `cp`/`copyFile` (bez atomowosci), co moglo zostawic polowiczny plik po crashu.
   - Wymaganie: zapisuj config atomowo (tmp w tym samym katalogu + `rename` + `fsync` katalogu).
+
+- Blad: szybkie kopiowanie release (`copyDir`) pomijalo symlinki bez ostrzezenia, co powodowalo brak plikow i trudny debug.
+  - Wymaganie: symlinki w release musza byc jawnie obslugiwane (copy jako link lub twardy FAIL), nie cicho pomijane.
 
 - Blad: brak wczesnej walidacji wolnego miejsca na serwerze powodowal `tar: Cannot mkdir: No space left on device`.
   - Wymaganie: preflight sprawdza wolne miejsce w `installDir` oraz `/tmp` i failuje z instrukcja, jesli za malo miejsca.

@@ -106,6 +106,8 @@ Przykład:
 - STD-034c (SHOULD): booleany w configu sa typu `true/false`; stringi/numbery nie sa akceptowane (brak `!!` coercion).
 - STD-034d (SHOULD): walidacja targetu (host/user/serviceName/installDir) jest scentralizowana i uzywana przez wszystkie komendy (deploy/check/sentinel).
 - STD-034e (SHOULD): sekcje `build.thin`/`target.thin` sa plain object; `null`/array/string/number = fail‑fast (prefer w `seal check`).
+- STD-034f (SHOULD): `build.protection` akceptuje tylko boolean lub obiekt; inne typy = fail‑fast (prefer w `seal check`).
+- STD-034g (SHOULD): `installDir` jest absolutny i bez whitespace/metaznakow; walidacja dotyczy lokalnych i SSH targetow.
 - STD-025 (SHOULD): wszystkie generowane katalogi (cache/release/tmp) maja retention/pruning i loguja przyczyny czyszczenia.
 - STD-025a (SHOULD): cache jest kluczowany po target+config+wersja/format; zmiana schematu wymusza czyszczenie lub nowy namespace cache.
 - STD-028 (SHOULD): zapisy plikow krytycznych sa atomowe (tmp + rename), aby uniknac polowicznych stanow po crashu.
@@ -131,7 +133,9 @@ Przykład:
 - STD-033a.b (SHOULD): dla URLi z przekierowaniami (np. GitHub Releases) uzywaj `curl -L`/`wget --max-redirect`, a liczbe redirectow limituj i loguj finalny URL.
 - STD-033a.c (SHOULD): unikaj `curl | tar` bez weryfikacji; preferuj pobranie do pliku + checksum + `tar -xf` (albo `pipefail` + walidacja rozmiaru/formatu).
 - STD-033a.d (SHOULD): preflight instaluje `ca-certificates` i weryfikuje TLS; brak CA = fail‑fast z instrukcja instalacji.
+- STD-033a.e (SHOULD): nie przekazuj sekretow w URL (`https://token@...`) ani przez `curl -u`; uzywaj naglowkow/ENV/`--netrc` z perms 0600 i redaguj je w logach.
 - STD-033b (SHOULD): `rsync` uruchamiaj z `--timeout` (limit bez aktywnosci) oraz globalnym timeoutem procesu.
+- STD-033b.a (SHOULD): `rsync` uzywa `--safe-links` (lub preflight waliduje brak symlinkow), aby nie kopiowac danych poza docelowym rootem.
 - STD-033e (SHOULD): loguj `rsync --version` po obu stronach i fail‑fast, gdy wymagane flagi nie sa wspierane (z instrukcja aktualizacji).
 - STD-033c (SHOULD): instalatory narzedzi zewnetrznych pinuja tag/commit, loguja wersje/commit i w miare mozliwosci weryfikuja checksumy; w razie braku zrodla wspieraja mirror/backup.
 - STD-033d (SHOULD): instalatory narzedzi buildowanych ze zrodel preflightuja wymagane zaleznosci (`cmake`/`ninja`/`python3`/`cc`) i podaja konkretne instrukcje instalacji.
@@ -180,6 +184,7 @@ Przykład:
 - STD-106a (SHOULD): dla git/ssh ustaw `GIT_TERMINAL_PROMPT=0`, `GIT_ASKPASS=/bin/false`, `SSH_ASKPASS=/bin/false` (brak promptów); brak danych = szybki fail z instrukcja.
 - STD-106b (SHOULD): przy uruchamianiu `ssh` pod `sudo` zachowaj `SSH_AUTH_SOCK` lub ustaw `IdentityFile` + `IdentitiesOnly=yes`; ustaw jawny `HOME`/`known_hosts`.
 - STD-106c (SHOULD): hostkey prompts eliminuje sie przez pre‑seed `known_hosts` albo jawny `StrictHostKeyChecking=accept-new` (gdy dozwolone); brak wpisu = fail‑fast z instrukcja.
+- STD-106c.a (SHOULD): przy błędzie „REMOTE HOST IDENTIFICATION HAS CHANGED” wypisz instrukcje `ssh-keygen -R <host>`; nie usuwaj wpisów `known_hosts` automatycznie bez zgody.
 - STD-106d (SHOULD): w testach/CI uzywaj tymczasowego `UserKnownHostsFile`, aby uniknac konfliktow hostkey miedzy uruchomieniami.
 - STD-106e (SHOULD): ustawiaj prawidlowe permissje kluczy SSH (private key `0600`, `authorized_keys`/`known_hosts` `0644`), inaczej ssh je zignoruje.
 - STD-106e.a (SHOULD): katalog `~/.ssh` ma perms `0700`; inne uprawnienia moga blokowac uzycie kluczy.
@@ -785,6 +790,7 @@ Dlatego standard rozróżnia dwa tryby:
 
 - STD-280 (SHOULD): `rm -rf` wymaga guardu (sciezka niepusta, w dozwolonym root).
 - STD-281 (SHOULD): kopiowanie katalogow nie dereferuje symlinkow (albo jawnie blokuje).
+- STD-281a (SHOULD): kopiowanie katalogow nie pomija symlinkow po cichu; brak wsparcia = twardy blad z komunikatem.
 - STD-282 (SHOULD): generowane pliki sa tylko w `seal-out`/outDir.
 - STD-283 (SHOULD): temp dir tworzony w jawnej bazie i walidowany (noexec/permissions).
 - STD-284 (SHOULD): operacje FS retry na `EINTR`.
