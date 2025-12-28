@@ -125,6 +125,7 @@ Przykład:
 - STD-030a (SHOULD): systemd `ExecStart` uzywa absolutnych sciezek; brak `WorkingDirectory` wymaga pelnych sciezek do binarki i configu.
 - STD-030b (SHOULD): po aktualizacji pliku unit zawsze wykonaj `systemctl daemon-reload` (lub `--user`), aby uniknac starej konfiguracji.
 - STD-030c (SHOULD): wywolania `systemctl` maja timeout i obsługę braku systemd/DBus (SKIP z powodem w testach).
+- STD-030d (SHOULD): dla `systemctl --user` w trybie non‑interactive ustaw `XDG_RUNTIME_DIR`/`DBUS_SESSION_BUS_ADDRESS` lub fail‑fast z instrukcja; brak tych zmiennych nie moze dawac niejasnego bledu.
 - STD-030d (SHOULD): `serviceName` nie zawiera sufiksu `.service`; normalizuj lub fail‑fast z jasnym bledem.
 - STD-030e (SHOULD): dla `serviceScope=system` logi `journalctl` uruchamiaj przez `sudo` lub wymagaj grupy `systemd-journal`; brak uprawnien = jasny blad.
 - STD-030f (SHOULD): `serviceScope` akceptuje tylko `user`/`system`; inne wartosci = fail‑fast (bez cichego fallbacku).
@@ -815,6 +816,7 @@ Dlatego standard rozróżnia dwa tryby:
 
 - STD-280 (SHOULD): `rm -rf` wymaga guardu (sciezka niepusta, w dozwolonym root).
 - STD-280a (SHOULD): `outDir`/`outDirOverride` musi przechodzic walidacje bezpiecznego rootu (absolutny, nie‑systemowy, minimalna glebokosc) przed cleanupem; bledny = fail‑fast.
+- STD-280b (SHOULD): cleanup nie polega na `accessSync` do sprawdzenia istnienia; uzywaj `lstat` albo `rm` z obsluga `ENOENT`, aby usuwac także zerwane symlinki.
 - STD-281 (SHOULD): kopiowanie katalogow nie dereferuje symlinkow (albo jawnie blokuje).
 - STD-281a (SHOULD): kopiowanie katalogow nie pomija symlinkow po cichu; brak wsparcia = twardy blad z komunikatem.
 - STD-282 (SHOULD): generowane pliki sa tylko w `seal-out`/outDir.
@@ -823,7 +825,7 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-285 (SHOULD): przed `kill` sprawdzaj PID/`cmdline`, nie tylko nazwe procesu.
 - STD-286 (SHOULD): ustaw `FD_CLOEXEC` na deskryptorach tymczasowych/pipes.
 - STD-287 (SHOULD): unikaj `chmod -R` na release; ustawiaj perms selektywnie.
-- STD-288 (SHOULD): segmenty sciezek sanitizowane (brak `..`, brak absolutnych) oraz ograniczone do bezpiecznego alfabetu i dlugosci; dotyczy identyfikatorow typu `appName`, `target`, `buildId`.
+- STD-288 (SHOULD): segmenty sciezek sanitizowane (brak `..`, brak absolutnych) oraz ograniczone do bezpiecznego alfabetu i dlugosci; dotyczy identyfikatorow typu `appName`, `target`, `configName`, `buildId`.
 - STD-289 (SHOULD): `fsync` pliku i katalogu po zapisie krytycznych plikow.
 
 - STD-290 (SHOULD): HTTP ma `connect` i `total` timeout dla kazdego requestu.

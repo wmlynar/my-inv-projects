@@ -43,6 +43,9 @@
   - Wymaganie: przed operacjami destrukcyjnymi sprawdz `realpath` i czy jest w dozwolonym root.
   - Wymaganie: nie podazaj za symlinkami (`lstat` + blokada) i odrzucaj `..` w identyfikatorach.
 
+- Blad: sprawdzanie istnienia pliku przez `accessSync` ignorowalo zerwane symlinki, przez co cleanup nie usuwal ich i kolejne operacje trafialy w nieoczekiwane sciezki.
+  - Wymaganie: do cleanupu uzywaj `lstat`/`rm` z obsluga `ENOENT`, a nie `accessSync`; broken symlink traktuj jak istniejący.
+
 - Blad: atomic rename failowal (EXDEV), bo tmp byl na innym filesystemie.
   - Wymaganie: tmp dla operacji atomowych tworz w tym samym katalogu/FS co plik docelowy.
 
@@ -439,6 +442,9 @@
 
 - Blad: instalatory narzedzi (np. z lockfile) probowaly budowac bez wymaganych narzedzi builda (`cmake`/`ninja`/`python3`), a blad byl nieczytelny.
   - Wymaganie: installer preflightuje wymagane build deps i podaje konkretne instrukcje instalacji (pakiety).
+
+- Blad: cache repo narzedzia z lockfile bywal w stanie "dirty" (stale locki lub pliki po przerwanym buildzie) i `git checkout` failowal przez untracked files.
+  - Wymaganie: przed checkoutem usuwaj stale locki `.git/index.lock` i zawsze rob `git reset --hard` + `git clean -fdx` dla repo w cache.
 
 - Blad: instalatory budujace ze zrodel wykonywaly `make install` do systemu (`/usr/local`), wymagaly sudo i zostawialy globalne artefakty.
   - Wymaganie: instaluj narzedzia do katalogu cache (`$SEAL_CACHE/tools/...`) przez `DESTDIR`/`CMAKE_INSTALL_PREFIX`, bez sudo; w PATH dodawaj tylko lokalny prefix.
@@ -1406,6 +1412,9 @@
 
 - Blad: nazwa targetu byla uzywana w sciezkach bez sanitizacji (mozliwy path traversal).
   - Wymaganie: wszystkie identyfikatory uzywane jako fragment sciezki musza byc normalizowane do bezpiecznego alfabetu (`[a-zA-Z0-9_.-]`).
+
+- Blad: `configName`/`targetName` z CLI trafialy bez walidacji do `path.join` (`seal-config/configs/<name>.json5`, `targets/<name>.json5`), co pozwalalo na path traversal (`../`) lub mylace nazwy plikow.
+  - Wymaganie: waliduj nazwy config/target jako bezpieczne segmenty (brak `/`/`..`/znakow kontrolnych); po `path.join` weryfikuj `realpath` w katalogu config/targets.
 
 - Blad: `current.buildId` byl czytany bez walidacji i uzywany jako fragment sciezki (`$ROOT/releases/$CUR` / `path.join`), wiec podmieniony plik mogl wskazac poza `releases/` (absolutna sciezka lub `../`), a `rm/pkill/exec` dzialaly na niepoprawnym katalogu.
   - Wymaganie: waliduj `current.buildId` przy odczycie (bez `/` i `..`, tylko bezpieczny alfabet, limit dlugosci).
