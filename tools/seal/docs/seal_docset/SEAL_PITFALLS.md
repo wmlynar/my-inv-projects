@@ -1023,6 +1023,9 @@
 - Blad: podwojne uploadowanie artefaktu przy pierwszym deployu (brak configu na serwerze).
   - Wymaganie: sprawdzaj `shared/config.json5` przed uploadem; artefakt wysylany **tylko raz**.
 
+- Blad: tymczasowy config byl zapisywany pod przewidywalna sciezka `/tmp/<service>-config.json5`, co powodowalo kolizje rownoleglych deployow i ryzyko symlink‑attack.
+  - Wymaganie: uzywaj `mktemp`/losowej nazwy (0600) i waliduj typ/owner; sprzataj w `finally`.
+
 - Blad: brak wczesnej walidacji wolnego miejsca na serwerze powodowal `tar: Cannot mkdir: No space left on device`.
   - Wymaganie: preflight sprawdza wolne miejsce w `installDir` oraz `/tmp` i failuje z instrukcja, jesli za malo miejsca.
 
