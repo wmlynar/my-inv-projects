@@ -100,11 +100,17 @@
 - Blad: agent SSH mial wiele kluczy i serwer odrzucal polaczenie (`Too many authentication failures`).
   - Wymaganie: wymusz `IdentitiesOnly=yes` i jawny `IdentityFile`; w razie potrzeby czysc `SSH_AUTH_SOCK`.
 
+- Blad: rownolegle polaczenia SSH byly zrywane przez limity serwera (`MaxStartups`/`MaxSessions`), co dawalo flakey deploy.
+  - Wymaganie: limituj rownoleglosc polaczen lub dodaj retry/backoff; w srodowiskach kontrolowanych zwieksz limity w `sshd_config`.
+
 - Blad: `~/.ssh/config` uzytkownika zmienial zachowanie (ProxyJump/ControlMaster/GSSAPI) i psul deterministycznosc deployu/testow.
   - Wymaganie: uzywaj `ssh -F /dev/null` lub jawnie nadpisuj opcje w `-o ...`; loguj kluczowe opcje SSH.
 
 - Blad: server wypisywal banner/MOTD lub `.bashrc` emitowal output w trybie non‑interactive, przez co `scp/rsync` failowaly.
   - Wymaganie: dla transferow uzywaj `ssh -T` (bez TTY) i wymagaj ciszy w non‑interactive shellu (guard `if [ -z "$PS1" ]` w `.bashrc`).
+
+- Blad: fallback do `sftp` nie dzialal, bo brakowalo `Subsystem sftp`/`sftp-server` na serwerze.
+  - Wymaganie: preflight sprawdza dostepnosc SFTP (np. `ssh -s sftp`) i podaje instrukcje instalacji/konfiguracji.
 
 - Blad: `ControlMaster`/`ControlPath` uzywal zbyt dlugiej sciezki lub zostawial stale sockety, co psulo kolejne polaczenia.
   - Wymaganie: jesli uzywasz multiplexingu, ustaw krotki `ControlPath` w temp i sprzataj stale sockety; w razie problemow wylacz `ControlMaster`.
@@ -123,6 +129,9 @@
 
 - Blad: `rsync` byl uruchamiany przez `sudo` bez `-n`, co powodowalo wiszenie na promptach hasla.
   - Wymaganie: dla `--rsync-path` uzywaj `sudo -n rsync` (albo NOPASSWD tylko dla rsync) i loguj ostrzezenie, gdy sudo nie jest dostepne.
+
+- Blad: `sudo` na hoście wymagalo TTY (`requiretty`), przez co nieinteraktywne komendy failowaly mimo poprawnych uprawnien.
+  - Wymaganie: dla uzytkownika deploy wylacz `requiretty` lub w ostatecznosci uruchom `ssh -tt` tylko gdy to niezbedne (loguj ten fakt).
 
 - Blad: serwer mial `ForceCommand internal-sftp` lub restricted shell, przez co `scp/rsync` failowaly mimo poprawnych kluczy.
   - Wymaganie: wykrywaj tryb SFTP-only i oferuj fallback do `sftp` (lub jasny blad z instrukcja).

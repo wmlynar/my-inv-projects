@@ -162,6 +162,9 @@ Przykład:
 - STD-106n (SHOULD): preflight sprawdza dostepnosc `rsync` na hoście zdalnym (`command -v`); w razie potrzeby uzyj `--rsync-path` z absolutna sciezka.
 - STD-106o (SHOULD): gdy `rsync` wymaga `sudo`, uzywaj `--rsync-path='sudo -n rsync'` lub jawnego NOPASSWD tylko dla rsync; brak sudo nie moze wisiec.
 - STD-106p (SHOULD): wykrywaj serwery SFTP-only (`ForceCommand internal-sftp`/restricted shell) i zapewnij fallback do `sftp` lub jasny blad z instrukcja.
+- STD-106q (SHOULD): limituj rownoleglosc polaczen SSH lub stosuj retry/backoff, aby uniknac limitow `MaxStartups`/`MaxSessions`; w kontrolowanych srodowiskach zwieksz limity serwera.
+- STD-106r (SHOULD): preflight sprawdza dostepnosc SFTP (`ssh -s sftp`) i raportuje brak `Subsystem sftp`/`sftp-server` z instrukcja instalacji.
+- STD-106s (SHOULD): wykrywaj `requiretty` w `sudo` na hoście i podawaj instrukcje wylaczenia; `ssh -tt` tylko awaryjnie i jawnie logowane.
 - STD-107 (SHOULD): parsowanie outputu narzedzi systemowych powinno wymuszac `LC_ALL=C` (lub `LANG=C`) albo uzywac trybu `--json`/`--output`, aby uniknac roznic locale.
 - STD-108 (SHOULD): unikaj `exec()` z domyslnym `maxBuffer`; uzywaj `spawn`/`execFile` lub ustaw `maxBuffer` i loguj przycinki outputu.
 - STD-109 (SHOULD): zawsze stosuj `--` przed listą sciezek w komendach zewnetrznych (rm/cp/rsync/scp), aby sciezki zaczynajace sie od `-` nie byly traktowane jako opcje.
