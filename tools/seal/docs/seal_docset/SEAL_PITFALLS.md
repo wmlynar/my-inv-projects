@@ -293,6 +293,9 @@
   - Wymaganie: release nie moze polegac na toolchainie builda na serwerze.
   - Wymaganie: AIO buduj na tej samej architekturze/OS co target albo uzyj trybu BOOTSTRAP.
 
+- Blad: artefakty byly budowane z "dirty" worktree i bez zapisu stanu repo, co utrudnialo reprodukcje.
+  - Wymaganie: build/release loguje `git rev-parse HEAD` + status worktree; w CI domyslnie FAIL, chyba ze `--allow-dirty`.
+
 - Blad: `esbuild` target byl nowszy niz runtime Node na hoście, co powodowalo błędy składniowe po deployu.
   - Wymaganie: `esbuild` target musi byc <= wersji runtime (lub jawnie wymuszony w configu).
   - Wymaganie: preflight/logi wypisuja target i wykryta wersje Node na hoście (fail‑fast przy mismatch).
@@ -531,6 +534,7 @@
 
 - Blad: `npm install` w CI modyfikowal lockfile i wprowadzał drift wersji.
   - Wymaganie: w CI/E2E preferuj `npm ci` (deterministyczny), a `npm install` tylko lokalnie.
+  - Wymaganie: brak `package-lock.json` przy `npm ci` = FAIL z instrukcja wygenerowania lockfile.
 
 - Blad: `npm ci/install` wisial przy problemach sieciowych (brak timeoutow lub zbyt dlugie retry).
   - Wymaganie: ustaw `NPM_CONFIG_FETCH_RETRIES`, `NPM_CONFIG_FETCH_TIMEOUT`, `NPM_CONFIG_FETCH_RETRY_MINTIMEOUT` i `NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT` w testach/CI.
@@ -698,6 +702,7 @@
   - Wymaganie: skrypty loguja `docker context show` i `docker info` (server), a uruchomienie moze wskazac jawny context (`DOCKER_CONTEXT=`).
   - Wymaganie: loguj identyfikatory obrazow (`docker image inspect --format '{{.Id}}'`) i wersje obrazu/testu, zeby nie uruchamiac "starych" buildow.
   - Wymaganie: bind‑mounty z hosta nie moga tworzyc root‑owned artefaktow w repo; uzywaj cache poza repo lub uruchamiaj kontener z mapowanym UID/GID.
+  - Wymaganie: loguj architekture hosta i obrazu (`docker info`/`docker inspect`) oraz tryb emulacji; mismatch arch/`--platform` = WARN lub FAIL.
 
 - Blad: rownolegle uruchomienia E2E kolidowaly na wspolnych nazwach uslug/plikach (`current.buildId`, instalacje), co dawalo flakey wyniki.
   - Wymaganie: testy musza byc bezpieczne dla rownoleglego uruchomienia (unikalne nazwy uslug, unikalne installDir, izolowane temp rooty).
