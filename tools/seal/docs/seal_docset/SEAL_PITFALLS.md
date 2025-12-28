@@ -544,6 +544,10 @@
 - Blad: `npm install` w CI modyfikowal lockfile i wprowadzał drift wersji.
   - Wymaganie: w CI/E2E preferuj `npm ci` (deterministyczny), a `npm install` tylko lokalnie.
   - Wymaganie: brak `package-lock.json` przy `npm ci` = FAIL z instrukcja wygenerowania lockfile.
+  - Wymaganie: po instalacji sprawdzaj, czy lockfile nie zostal zmieniony; w CI zmiana = FAIL z diffem.
+
+- Blad: rozne wersje `npm` przepisywaly lockfile (lockfileVersion) i psuly deterministycznosc.
+  - Wymaganie: pinuj wersje `npm` (lub loguj `npm -v` i egzekwuj oczekiwany major); mismatch = WARN/FAIL.
 
 - Blad: `npm ci/install` wisial przy problemach sieciowych (brak timeoutow lub zbyt dlugie retry).
   - Wymaganie: ustaw `NPM_CONFIG_FETCH_RETRIES`, `NPM_CONFIG_FETCH_TIMEOUT`, `NPM_CONFIG_FETCH_RETRY_MINTIMEOUT` i `NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT` w testach/CI.
@@ -719,6 +723,7 @@
 
 - Blad: runner rownolegly nie propagowal porazki (exit code=0) lub zostawial dzialajace procesy po FAIL.
   - Wymaganie: tryb rownolegly musi zwrocic non‑zero przy pierwszej porazce i sprzatac pozostale procesy/worker-y.
+  - Wymaganie: logi z workerow musza miec prefix testu/workera albo osobne pliki, zeby uniknac interleavingu.
 
 - Blad: testy dzielily cache (np. `seal-out/cache`) i wyniki byly zalezne od poprzednich uruchomien.
   - Wymaganie: testy izolują cache (osobny temp project root lub `SEAL_THIN_CACHE_LIMIT=0`).
@@ -1416,6 +1421,8 @@
   - Wymaganie: `TZ=UTC`, `LC_ALL=C` w testach.
 - Blad: globalny git config/hooks wplywal na testy.
   - Wymaganie: izoluj git config (`GIT_CONFIG_*`, `core.hooksPath=/dev/null`).
+- Blad: `git` w kontenerze (root) odmawial pracy na repo przez "dubious ownership".
+  - Wymaganie: w testach/CI ustaw `GIT_SAFE_DIRECTORY` lub dodaj repo do `safe.directory` i loguj to jawnie.
 
 - Blad: logi nie zawieraly `appName/buildId`, przez co nie bylo kontekstu.
   - Wymaganie: logi zawsze zawieraja `appName/buildId`.
@@ -1536,6 +1543,8 @@
   - Wymaganie: wykrywaj duzy drift (np. >5 min) i fail‑fast z instrukcja synchronizacji czasu.
 - Blad: `nproc` zwracal wysoka wartosc w CI i kompilacja wysypywala RAM.
   - Wymaganie: limituj rownoleglosc takze wzgledem dostepnej pamieci.
+- Blad: limity CPU w cgroup nie byly uwzgledniane, co powodowalo oversubscription i timeouty.
+  - Wymaganie: przy wyliczaniu `jobs` uwzgledniaj limity cgroup (quota/period) i loguj wykryta liczbe CPU.
 - Blad: komendy `git` wisialy na pagerze (`less`) w trybie nieinteraktywnym.
   - Wymaganie: ustaw `GIT_PAGER=cat` i `PAGER=cat` dla nieinteraktywnych wywolan.
 - Blad: narzedzia wykrywaly TTY i wlaczaly tryb interaktywny mimo CI.
