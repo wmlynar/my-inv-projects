@@ -693,7 +693,10 @@ if [ "${SEAL_UI_E2E:-0}" = "1" ] && should_run "example-ui"; then
   PW_BROWSER_PATH=""
   PW_DEPS_OK=1
   if [ -d "$PW_CACHE" ]; then
-    PW_BROWSER_PATH="$(find "$PW_CACHE" -type f \( -name 'chrome-headless-shell' -o -name 'chrome' \) -print -quit 2>/dev/null || true)"
+    PW_BROWSER_PATH="$(find "$PW_CACHE" -type f -name 'chrome-headless-shell' -print -quit 2>/dev/null || true)"
+    if [ -z "$PW_BROWSER_PATH" ]; then
+      PW_BROWSER_PATH="$(find "$PW_CACHE" -type f -name 'chrome' -print -quit 2>/dev/null || true)"
+    fi
     if [ -n "$PW_BROWSER_PATH" ]; then
       PW_HAS_BROWSER=1
     fi
