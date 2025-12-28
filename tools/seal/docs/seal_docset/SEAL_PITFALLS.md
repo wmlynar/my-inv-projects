@@ -1059,6 +1059,8 @@
 
 - Blad: `systemctl` potrafil wisiec (np. brak dbus/systemd w kontenerze), blokujac deploy/testy.
   - Wymaganie: wywolania `systemctl` maja timeout i czytelny SKIP/blad, gdy systemd nie jest dostepny.
+- Blad: brak `sudo` na hoście (lub `sudo` poza PATH) dawalo mylace wyniki `systemctl` i ukryte FAIL.
+  - Wymaganie: preflight sprawdza obecność `sudo` gdy jest wymagane i podaje jasne instrukcje instalacji/konfiguracji.
 
 - Blad: stare releasy rosly bez limitu (brak cleanup).
   - Wymaganie: retention (np. ostatnie N release) + usuwanie starych katalogow.
