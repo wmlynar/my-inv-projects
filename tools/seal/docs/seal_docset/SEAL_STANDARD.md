@@ -81,9 +81,12 @@ Przykład:
 - STD-032c (SHOULD): native dodatki/addony sa kompilowane z naglowkami zgodnymi z wersja runtime Node na target (np. `--target` lub pobrane headers); mismatch = fail-fast w preflight/testach.
 - STD-032d (SHOULD): kod native korzysta z API V8 warunkowo (guardy wersji/feature-detect) i ma fallback dla starszych wersji Node.
 - STD-032e (SHOULD): jezeli addon wymaga konkretnego standardu C++ (np. C++20), preflight wykonuje probe kompilatora i fail‑fast z jasnym komunikatem.
+- STD-032f (SHOULD): release nie zawiera sourcemap (`.map`) ani komentarzy `sourceMappingURL`; testy E2E weryfikuja brak map oraz brak `sourceMappingURL` w bundle.
+- STD-032g (SHOULD): obfuskacja/mangle nie dotyka publicznych kontraktow API/JSON; utrzymuj liste `reserved/keep` dla nazw pol i pokryj to E2E (a gdy brak pewnosci, wylacz renameProperties).
 - STD-035 (SHOULD): build zapisuje wersje narzedzi/zaleznosci; build nie pobiera rzeczy z internetu.
 - STD-040 (SHOULD): preflight uzywa tych samych argumentow i srodowiska co runtime.
 - STD-040a (SHOULD): runtime/serwis uruchamia aplikacje z `NODE_ENV=production` (jesli nie ustawiono inaczej), a testy E2E sprawdzaja ten tryb.
+- STD-040b (SHOULD): runtime sanitizuje ryzykowne ENV (`NODE_OPTIONS`, `NODE_PATH`, `NODE_EXTRA_CA_CERTS`) aby nie wstrzykiwac hookow/inspect z hosta; debug uruchamiaj jawnie przez flagi runtime.
 - STD-041 (SHOULD): release nie moze polegac na toolchainie builda na serwerze.
 
 #### Operacje / niezawodnosc
@@ -110,6 +113,7 @@ Przykład:
 - STD-043 (SHOULD): waliduj wymagania **warunkowo** od poziomu/trybu (np. level 0/1/2), nie wymuszaj danych dla wyzszych poziomow.
 - STD-044 (SHOULD): identyfikatory uzywane w sciezkach plikow musza byc sanitizowane do bezpiecznego alfabetu (brak path traversal).
 - STD-045 (SHOULD): przy wlaczonych zabezpieczeniach/stealth komunikaty bledow musza byc zunifikowane (opaque failure), bez ujawniania sciezek/rolek.
+- STD-045a (SHOULD): endpointy `/health` i `/status` nie zdradzaja obecnosci sentinel/guardow (tresc i timing stabilne); szczegoly tylko w logach instalatora/CLI.
 - STD-046 (SHOULD): idempotentne porownania/zapisy do plikow chronionych musza uzywac tych samych uprawnien co install (sudo lub dedykowana grupa); brak uprawnien = blad z instrukcja.
 - STD-046a (SHOULD): detekcja procesu (status) filtruje wyniki `pgrep`/`ps` tak, aby nie zliczac wlasnych narzedzi; dopasuj sciezke binarki lub PID, nie tylko nazwe procesu.
 - STD-046b (SHOULD): przy dopasowaniu procesu unikaj ucinania komendy (`ps`); preferuj `/proc/<pid>/cmdline` lub `ps -ww`.
@@ -166,6 +170,7 @@ Przykład:
 - STD-129 (SHOULD): limity czasu (expiry/licencja/sentinel) liczymy wg czasu **hosta docelowego**; runtime musi je sprawdzac okresowo (`checkIntervalMs`) i nie blokowac wyjscia (timer `unref`).
 - STD-130 (SHOULD): jesli format bloba ma wiele wersji, runtime akceptuje znane wersje i waliduje spojnosc `version ↔ length`; nie toleruj cichych rozjazdow.
 - STD-129a (SHOULD): rozpakowanie artefaktu odbywa sie w katalogu stagingowym; `current.buildId` aktualizuj dopiero po walidacji.
+- STD-129b (SHOULD): dla sentinela z opoznionym wygasaniem uruchamiaj `sentinel verify` tym samym kodem co runtime przed release/deploy; pomijanie weryfikacji tylko jawnie (flaga/ENV) z ostrzezeniem; testy uzywaja krotszych okresow lub hooka czasu.
 - STD-130b (SHOULD): dla krytycznych binarek nie polegaj na niekontrolowanym `PATH`; uzywaj `command -v` + whitelisty lub absolutnych sciezek, szczegolnie przy `sudo`.
 - STD-130a (SHOULD): wykrywanie narzedzi z `node_modules/.bin` musi uwzgledniac monorepo/workspaces (sprawdzaj kilka poziomow lub uzyj `npm bin -w`/`npm exec`), inaczej CLI/testy beda false‑negative.
 - STD-131 (SHOULD): przy ekstrakcji archiwow w deploy ustaw `--no-same-owner` i `--no-same-permissions` oraz ustaw jawne perm po rozpakowaniu.

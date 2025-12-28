@@ -201,8 +201,15 @@
 - Blad: sourcemapy trafily do release i ułatwiały odtworzenie kodu.
   - Wymaganie: sourcemapy muszą być wyłączone lub trafiać wyłącznie do prywatnych artefaktów debug (nigdy na target); testy E2E sprawdzają brak `.map` w release.
 
+- Blad: bundler zostawial `//# sourceMappingURL=...` w plikach JS mimo braku map, ujawniajac sciezki i prowokujac fetch z targetu.
+  - Wymaganie: usuwaj `sourceMappingURL` w release (strip komentarza), a testy E2E sprawdzaja brak `sourceMappingURL` i brak `.map`.
+
 - Blad: minify/obfuskacja psuły kod zależny od nazw (`Function.name`, `class.name`) albo dynamicznego dostępu do pól.
   - Wymaganie: krytyczne ścieżki mają E2E; jeśli kod zależy od nazw/reflect, wyłącz minify/rename lub użyj konfiguracji zachowującej nazwy na granicach API.
+
+- Blad: renameProperties/mangle zmienialy nazwy pol publicznych (API/JSON) i psuly komunikacje (req/res, `in`, `hasOwnProperty`).
+  - Wymaganie: renameProperties tylko dla prywatnych struktur; publiczne pola i dynamiczne klucze musza byc na liscie `reserved/keep`.
+  - Wymaganie: gdy brak pewnosci, renameProperties wylaczone z jasnym logiem; E2E weryfikuje kontrakty API.
 
 - Blad: `elfPacker.tool="upx"` byl wlaczony, ale jego blad byl ignorowany (build przechodzil mimo `CantUnpackException` itp.).
   - Wymaganie: jezeli `elfPacker.tool="upx"` jest wlaczony i sie nie powiedzie, build **musi** sie przerwac z bledem.
@@ -436,6 +443,10 @@
 
 - Blad: runtime zachowywal sie jak w dev (brak `NODE_ENV=production`), co zmienialo logike lub wydajnosc.
   - Wymaganie: w uruchomieniu produkcyjnym ustaw `NODE_ENV=production` i testuj w tej konfiguracji.
+
+- Blad: runtime dziedziczyl `NODE_OPTIONS`/`NODE_PATH` z hosta (np. `--inspect`, `--require`), co otwieralo debug lub wstrzykiwalo hooki.
+  - Wymaganie: `run-current.sh`/launcher sanitizuje ryzykowne ENV (co najmniej `NODE_OPTIONS`, `NODE_PATH`, `NODE_EXTRA_CA_CERTS`).
+  - Wymaganie: debug/testowe hooki uruchamiaj tylko jawnie przez dedykowane flagi runtime.
 
 ## Testy / CI
 
@@ -968,6 +979,9 @@
 - Blad: tryb security/stealth w launcherze nadal wypisywal szczegolowe bledy (rozroznialne failure paths).
   - Wymaganie: przy aktywnych zabezpieczeniach komunikaty i exit code musza byc zunifikowane (opaque failure).
 
+- Blad: sentinel/anti‑debug zmienialy tresc lub timing `/health`/`/status`, co ujawnialo obecność ochron.
+  - Wymaganie: `/health` i `/status` sa stabilne niezaleznie od obecnosci sentinel/guardow; szczegoly trafiaja tylko do logow instalatora/CLI.
+
 - Blad: `cpuIdSource` wymagal recznego `off` na architekturach bez CPUID (np. ARM).
   - Wymaganie: na architekturach bez CPUID launcher uzywa pustego/neutralnego ID i **nie** wymaga zmiany konfiguracji.
 
@@ -978,6 +992,11 @@
 - Blad: sentinel weryfikowany tylko przed startem, brak okresowej kontroli.
   - Wymaganie: przy `checkIntervalMs>0` okresowo weryfikuj blob i expiry (setInterval + unref).
   - Wymaganie: test E2E musi sprawdzac “start OK → po czasie exitCodeBlock”.
+
+- Blad: sentinel z opoznionym wygasnieciem przechodzil build/testy, ale aplikacja padala po czasie w produkcji.
+  - Wymaganie: przed release/deploy uruchamiaj `sentinel verify` tym samym kodem co runtime (na docelowym hoście lub w identycznym runnerze).
+  - Wymaganie: testy używaja krótkiego `validFor*`/`checkIntervalMs` lub test hooka czasu (bez dlugich sleepów).
+  - Wymaganie: pominiecie weryfikacji jest tylko jawnie (flaga/ENV) i loguje ostrzezenie.
 
 - Blad: zmiana formatu bloba (v1/v2) psula runtime (niezgodne rozmiary / CRC).
   - Wymaganie: runtime akceptuje **oba** rozmiary i waliduje spojnosc (version ↔ length).
