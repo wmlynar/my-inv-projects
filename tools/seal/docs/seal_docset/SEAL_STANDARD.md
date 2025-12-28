@@ -107,6 +107,7 @@ Przykład:
 - STD-030c (SHOULD): wywolania `systemctl` maja timeout i obsługę braku systemd/DBus (SKIP z powodem w testach).
 - STD-031 (SHOULD): brak sudo domyslnie; eskalacja tylko jawnie. Waliduj owner/perms/umask w punktach krytycznych.
 - STD-031a (SHOULD): komendy wymagajace `sudo` w trybie nieinteraktywnym uzywaja `sudo -n` i fail‑fast z instrukcja (brak wiszenia na promptach).
+- STD-031b (SHOULD): gdy `sudo` jest konieczne, przekazuj wymagane ENV jawnie (`sudo -E` lub `sudo VAR=...`) i loguj kluczowe zmienne, aby uniknac rozjazdow zachowania.
 - STD-033 (SHOULD): operacje zewnetrzne (ssh/scp/rsync/http) maja timeout i komunikat "co dalej".
 - STD-033a (SHOULD): pobieranie przez `curl`/`wget` uzywa `--fail` + timeoutów (`--connect-timeout`, `--max-time`) i limitu retry; brak odpowiedzi = fail‑fast.
 - STD-033b (SHOULD): `rsync` uruchamiaj z `--timeout` (limit bez aktywnosci) oraz globalnym timeoutem procesu.
@@ -302,6 +303,7 @@ Przykład:
 - STD-089i (SHOULD): testy dockerowe wymagajace systemd/sshd sprawdzaja cgroup i tryb privileged; brak = SKIP z jasnym powodem i instrukcja flag.
 - STD-089i.a (SHOULD): kontenery testowe uruchamiaj z `--init` (tini) lub zapewnij init w obrazie, aby sprzatac zombie procesy.
 - STD-089i.b (SHOULD): po dodaniu usera do grupy `docker` wymagany jest re‑login; do tego czasu testy powinny uzywac `sudo docker` lub jawnie fail‑fast z instrukcja.
+- STD-089i.c (SHOULD): testy wykrywaja `docker compose` (v2) vs `docker-compose` (v1), loguja wybrana binarke i w razie braku wypisuja instrukcje instalacji.
 - STD-089j (SHOULD): testy uruchamiane jako root nie modyfikuja repo; pracuja na kopii lub temp‑workspace i sprzataja wszystko w `finally`.
 - STD-089k (SHOULD): w testach ustaw `NO_COLOR=1` i `FORCE_COLOR=0`, aby ograniczyc ANSI w outputach narzedzi (latwiejsze parsowanie).
 - STD-089l (SHOULD): w CI/E2E ustaw `NPM_CONFIG_FETCH_*` (retries/timeout) aby uniknac wiszenia npm przy problemach sieciowych.
