@@ -241,11 +241,11 @@ async function testProfile(profile, passes, ctx) {
 async function main() {
   if (process.env.SEAL_OBFUSCATION_E2E !== "1") {
     log("SKIP: set SEAL_OBFUSCATION_E2E=1 to run obfuscation E2E tests");
-    process.exit(0);
+    process.exit(77);
   }
   const prereq = checkPrereqs();
   if (!prereq.ok) {
-    process.exit(prereq.skip ? 0 : 1);
+    process.exit(prereq.skip ? 77 : 1);
   }
 
   const buildTimeoutMs = Number(process.env.SEAL_OBFUSCATION_E2E_BUILD_TIMEOUT_MS || "180000");
@@ -258,7 +258,7 @@ async function main() {
   } catch (e) {
     if (e && e.code === "EPERM") {
       log("SKIP: cannot listen on localhost (EPERM)");
-      process.exit(0);
+      process.exit(77);
     }
     throw e;
   }

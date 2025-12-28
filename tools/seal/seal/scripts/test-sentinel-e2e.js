@@ -928,11 +928,11 @@ async function testSentinelExternalAnchorUnsupported(ctx) {
 async function main() {
   if (process.env.SEAL_SENTINEL_E2E !== "1") {
     log("SKIP: set SEAL_SENTINEL_E2E=1 to run sentinel E2E tests");
-    process.exit(0);
+    process.exit(77);
   }
   const prereq = checkPrereqs();
   if (!prereq.ok) {
-    process.exit(prereq.skip ? 0 : 1);
+    process.exit(prereq.skip ? 77 : 1);
   }
 
   const buildTimeoutMs = Number(process.env.SEAL_SENTINEL_E2E_BUILD_TIMEOUT_MS || "180000");

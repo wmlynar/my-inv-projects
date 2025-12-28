@@ -513,11 +513,11 @@ async function testThinSplitRandomization(ctx) {
 async function main() {
   if (process.env.SEAL_THIN_E2E !== "1") {
     log("SKIP: set SEAL_THIN_E2E=1 to run thin E2E tests");
-    process.exit(0);
+    process.exit(77);
   }
   const prereq = checkPrereqs();
   if (!prereq.ok) {
-    process.exit(prereq.skip ? 0 : 1);
+    process.exit(prereq.skip ? 77 : 1);
   }
 
   const prevChunk = process.env.SEAL_THIN_CHUNK_SIZE;

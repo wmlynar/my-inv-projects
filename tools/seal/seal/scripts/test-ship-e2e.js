@@ -311,7 +311,7 @@ async function testShipThinBootstrapSsh() {
 async function main() {
   if (process.env.SEAL_SHIP_E2E !== "1") {
     log("SKIP: set SEAL_SHIP_E2E=1 to run ship E2E tests");
-    process.exit(0);
+    process.exit(77);
   }
   const sentinelBackup = disableSentinelOnDisk();
   try {

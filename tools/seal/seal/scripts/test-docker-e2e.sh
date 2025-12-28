@@ -247,18 +247,24 @@ if [ "$REMOTE_E2E" = "1" ]; then
     SERVER_LABELS+=(--label "org.seal.server.hash=$SERVER_HASH")
   fi
 
-  if [ "$REBUILD_IMAGES" != "1" ] && [ -n "$SERVER_HASH" ] && [ "$SERVER_LABEL" != "$SERVER_HASH" ]; then
-    log "Server image hash changed; rebuilding..."
-    REBUILD_SERVER=1
-  else
-    REBUILD_SERVER=0
-  fi
-
-  if [ "$REBUILD_IMAGES" != "1" ] && [ "$REBUILD_SERVER" != "1" ] && $DOCKER image inspect "$SERVER_IMAGE" >/dev/null 2>&1; then
-    log "Server image exists; skipping build (set SEAL_DOCKER_E2E_REBUILD=1 to rebuild)."
+  if $DOCKER image inspect "$SERVER_IMAGE" >/dev/null 2>&1; then
+    if [ "$REBUILD_IMAGES" = "1" ]; then
+      log "Rebuilding server image (SEAL_DOCKER_E2E_REBUILD=1)."
+    else
+      if [ -n "$SERVER_HASH" ] && [ "$SERVER_LABEL" != "$SERVER_HASH" ]; then
+        log "Server image hash changed; using cached image (set SEAL_DOCKER_E2E_REBUILD=1 to rebuild)."
+      else
+        log "Server image exists; skipping build (set SEAL_DOCKER_E2E_REBUILD=1 to rebuild)."
+      fi
+      if [ "$SKIP_BUILD" = "1" ]; then
+        log "SEAL_DOCKER_E2E_SKIP_BUILD=1 set; skipping server rebuild."
+      fi
+    fi
   elif [ "$SKIP_BUILD" = "1" ]; then
     fail "Server image missing and SEAL_DOCKER_E2E_SKIP_BUILD=1."
-  else
+  fi
+
+  if [ "$REBUILD_IMAGES" = "1" ] || ! $DOCKER image inspect "$SERVER_IMAGE" >/dev/null 2>&1; then
     DOCKER_BUILDKIT=1 $DOCKER build "${PULL_ARG[@]}" --progress="$PROGRESS_MODE" --network=host \
       "${SERVER_LABELS[@]}" \
       -t "$SERVER_IMAGE" -f "$SERVER_DOCKERFILE" "$REPO_ROOT"
@@ -352,11 +358,22 @@ $DOCKER run --rm \
   -w /workspace \
   -e SEAL_DOCKER_E2E=1 \
   -e SEAL_E2E_SSH="${REMOTE_E2E}" \
+  -e SEAL_E2E_CONFIG="${SEAL_E2E_CONFIG:-}" \
   -e SEAL_E2E_TOOLSET="${TOOLSET}" \
   -e SEAL_E2E_PARALLEL="${SEAL_E2E_PARALLEL:-0}" \
+  -e SEAL_E2E_PARALLEL_MODE="${SEAL_E2E_PARALLEL_MODE:-}" \
   -e SEAL_E2E_JOBS="${SEAL_E2E_JOBS:-}" \
   -e SEAL_E2E_TESTS="${SEAL_E2E_TESTS:-}" \
   -e SEAL_E2E_SKIP="${SEAL_E2E_SKIP:-}" \
+  -e SEAL_E2E_RERUN_FAILED="${SEAL_E2E_RERUN_FAILED:-}" \
+  -e SEAL_E2E_RERUN_FROM="${SEAL_E2E_RERUN_FROM:-}" \
+  -e SEAL_E2E_SUMMARY_PATH="${SEAL_E2E_SUMMARY_PATH:-}" \
+  -e SEAL_E2E_SUMMARY_SCOPE="${SEAL_E2E_SUMMARY_SCOPE:-}" \
+  -e SEAL_E2E_SUMMARY_APPEND="${SEAL_E2E_SUMMARY_APPEND:-}" \
+  -e SEAL_E2E_LOG_DIR="${SEAL_E2E_LOG_DIR:-}" \
+  -e SEAL_E2E_LOG_TAIL_LINES="${SEAL_E2E_LOG_TAIL_LINES:-}" \
+  -e SEAL_E2E_CAPTURE_LOGS="${SEAL_E2E_CAPTURE_LOGS:-}" \
+  -e SEAL_E2E_FAIL_FAST="${SEAL_E2E_FAIL_FAST:-}" \
   -e SEAL_E2E_INSTALL_DEPS="${SEAL_E2E_INSTALL_DEPS:-}" \
   -e SEAL_E2E_INSTALL_PACKERS="${SEAL_E2E_INSTALL_PACKERS:-}" \
   -e SEAL_E2E_INSTALL_OBFUSCATORS="${SEAL_E2E_INSTALL_OBFUSCATORS:-}" \

@@ -289,11 +289,11 @@ async function runRemoteFlow({ tmpRoot, appName }) {
 async function main() {
   if (process.env.SEAL_USER_FLOW_E2E !== "1") {
     log("SKIP: set SEAL_USER_FLOW_E2E=1 to run user-flow E2E");
-    process.exit(0);
+    process.exit(77);
   }
   if (process.platform !== "linux") {
     log(`SKIP: user-flow E2E is linux-only (platform=${process.platform})`);
-    process.exit(0);
+    process.exit(77);
   }
   if (!fs.existsSync(EXAMPLE_ROOT)) {
     fail(`Missing example root: ${EXAMPLE_ROOT}`);

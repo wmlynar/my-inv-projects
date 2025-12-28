@@ -97,6 +97,7 @@ function assertNotIncludes(list, value, label) {
 function run() {
   if (!hasCommand("bash")) {
     log("SKIP: bash not found");
+    process.exitCode = 77;
     return;
   }
   const root = ensureProjectRoot();

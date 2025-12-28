@@ -735,10 +735,10 @@ async function testStripRuntime(res, ctx) {
 async function main() {
   if (process.env.SEAL_STRIP_E2E !== "1") {
     log("SKIP: set SEAL_STRIP_E2E=1 to run strip E2E tests");
-    process.exit(0);
+    process.exit(77);
   }
   const prereq = checkPrereqs();
-  if (!prereq.ok) process.exit(prereq.skip ? 0 : 1);
+  if (!prereq.ok) process.exit(prereq.skip ? 77 : 1);
 
   const prevPath = process.env.PATH;
   const binCandidates = [

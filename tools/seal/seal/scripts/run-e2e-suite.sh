@@ -19,9 +19,6 @@ log() {
   echo "[seal-e2e] $*"
 }
 
-SUMMARY_PATH="${SEAL_E2E_SUMMARY_PATH:-}"
-SUMMARY_GROUP="${SEAL_E2E_GROUP:-default}"
-
 format_duration() {
   local total="$1"
   local h=$((total / 3600))
@@ -81,6 +78,31 @@ trim_list() {
   echo "$raw" | tr ',;' ' ' | tr -s ' ' | sed 's/^ *//;s/ *$//'
 }
 
+intersect_lists() {
+  local left="$1"
+  local right="$2"
+  declare -A seen=()
+  local item
+  for item in $left; do
+    seen["$item"]=1
+  done
+  local out=""
+  for item in $right; do
+    if [ -n "${seen[$item]:-}" ]; then
+      out+="${item} "
+    fi
+  done
+  echo "$out"
+}
+
+load_failed_tests() {
+  local summary_file="$1"
+  if [ ! -f "$summary_file" ]; then
+    return 1
+  fi
+  awk -F'\t' 'NR>1 && $3=="failed" {print $2}' "$summary_file" | tr '\n' ' '
+}
+
 load_e2e_config() {
   local cfg="${SEAL_E2E_CONFIG:-}"
   local default_cfg="$REPO_ROOT/.seal/e2e.env"
@@ -103,11 +125,62 @@ load_e2e_config() {
 
 load_e2e_config
 
+SETUP_ONLY="${SEAL_E2E_SETUP_ONLY:-0}"
+FAIL_FAST="${SEAL_E2E_FAIL_FAST:-0}"
+SKIP_CODE=77
+SUMMARY_GROUP="${SEAL_E2E_GROUP:-default}"
+SUMMARY_SCOPE="${SEAL_E2E_SUMMARY_SCOPE:-all}"
+DEFAULT_SUMMARY_PATH="$CACHE_ROOT/e2e-summary/last.tsv"
+if [ "$SETUP_ONLY" = "1" ]; then
+  SUMMARY_PATH="${SEAL_E2E_SUMMARY_PATH:-}"
+else
+  SUMMARY_PATH="${SEAL_E2E_SUMMARY_PATH:-$DEFAULT_SUMMARY_PATH}"
+fi
+LOG_CAPTURE="${SEAL_E2E_CAPTURE_LOGS:-1}"
+LOG_DIR="${SEAL_E2E_LOG_DIR:-$CACHE_ROOT/e2e-logs/$(date +%Y%m%d-%H%M%S)}"
+LOG_TAIL_LINES="${SEAL_E2E_LOG_TAIL_LINES:-40}"
+if [ "$SETUP_ONLY" = "1" ]; then
+  LOG_CAPTURE=0
+fi
+
 TOOLSET="${SEAL_E2E_TOOLSET:-core}"
 if [ "$TOOLSET" = "core" ]; then
   export SEAL_C_OBF_ALLOW_MISSING=1
   export SEAL_MIDGETPACK_SKIP=1
 fi
+
+MANIFEST_PATH="${SEAL_E2E_MANIFEST:-$SCRIPT_DIR/e2e-tests.tsv}"
+declare -A TEST_CATEGORY=()
+declare -A TEST_DESC=()
+declare -A TEST_SKIP_RISK=()
+declare -A TEST_PARALLEL=()
+declare -A TEST_HINT=()
+declare -A TEST_SCRIPT=()
+declare -A CATEGORY_SEEN=()
+declare -a MANIFEST_ORDER=()
+declare -a CATEGORY_ORDER=()
+
+if [ ! -f "$MANIFEST_PATH" ]; then
+  log "ERROR: missing E2E manifest: $MANIFEST_PATH"
+  exit 1
+fi
+
+while IFS=$'\t' read -r name category parallel desc skip_risk hint script; do
+  if [ -z "$name" ] || [ "$name" = "name" ] || [[ "$name" = \#* ]]; then
+    continue
+  fi
+  TEST_CATEGORY["$name"]="$category"
+  TEST_PARALLEL["$name"]="$parallel"
+  TEST_DESC["$name"]="$desc"
+  TEST_SKIP_RISK["$name"]="$skip_risk"
+  TEST_HINT["$name"]="$hint"
+  TEST_SCRIPT["$name"]="$script"
+  MANIFEST_ORDER+=("$name")
+  if [ -n "$category" ] && [ -z "${CATEGORY_SEEN[$category]:-}" ]; then
+    CATEGORY_SEEN["$category"]=1
+    CATEGORY_ORDER+=("$category")
+  fi
+done < "$MANIFEST_PATH"
 
 init_summary_file() {
   if [ -z "$SUMMARY_PATH" ]; then
@@ -115,10 +188,10 @@ init_summary_file() {
   fi
   mkdir -p "$(dirname "$SUMMARY_PATH")"
   if [ "${SEAL_E2E_SUMMARY_APPEND:-0}" != "1" ]; then
-    printf "group\ttest\tstatus\tduration_s\n" > "$SUMMARY_PATH"
+    printf "group\ttest\tstatus\tduration_s\tcategory\tparallel\tskip_risk\tdescription\tlog_path\tfail_hint\n" > "$SUMMARY_PATH"
   else
     if [ ! -f "$SUMMARY_PATH" ]; then
-      printf "group\ttest\tstatus\tduration_s\n" > "$SUMMARY_PATH"
+      printf "group\ttest\tstatus\tduration_s\tcategory\tparallel\tskip_risk\tdescription\tlog_path\tfail_hint\n" > "$SUMMARY_PATH"
     fi
   fi
 }
@@ -127,11 +200,20 @@ write_summary_file() {
   if [ -z "$SUMMARY_PATH" ]; then
     return
   fi
-  local name status dur
+  local name status dur category parallel skip_risk desc log_path hint
   for name in "${TEST_ORDER[@]}"; do
     status="${TEST_STATUS[$name]}"
     dur="${TEST_DURATIONS[$name]:-0}"
-    printf "%s\t%s\t%s\t%s\n" "$SUMMARY_GROUP" "$name" "$status" "$dur" >> "$SUMMARY_PATH"
+    category="${TEST_CATEGORY[$name]:-}"
+    parallel="${TEST_PARALLEL[$name]:-0}"
+    skip_risk="${TEST_SKIP_RISK[$name]:-}"
+    desc="${TEST_DESC[$name]:-}"
+    hint="${TEST_HINT[$name]:-}"
+    log_path="${TEST_LOGS[$name]:-}"
+    desc="${desc//$'\t'/ }"
+    hint="${hint//$'\t'/ }"
+    printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+      "$SUMMARY_GROUP" "$name" "$status" "$dur" "$category" "$parallel" "$skip_risk" "$desc" "$log_path" "$hint" >> "$SUMMARY_PATH"
   done
 }
 
@@ -139,6 +221,35 @@ declare -A E2E_ONLY=()
 declare -A E2E_SKIP=()
 E2E_ONLY_RAW="$(trim_list "${SEAL_E2E_TESTS:-}")"
 E2E_SKIP_RAW="$(trim_list "${SEAL_E2E_SKIP:-}")"
+RERUN_FAILED="${SEAL_E2E_RERUN_FAILED:-0}"
+RERUN_FROM="${SEAL_E2E_RERUN_FROM:-$SUMMARY_PATH}"
+FAILED_ONLY_RAW=""
+if [ "$RERUN_FAILED" = "1" ] && [ "$SETUP_ONLY" != "1" ]; then
+  if [ -z "$RERUN_FROM" ]; then
+    log "WARN: SEAL_E2E_RERUN_FAILED=1 but no summary path is set."
+  else
+    FAILED_ONLY_RAW="$(trim_list "$(load_failed_tests "$RERUN_FROM" || true)")"
+    if [ -z "$FAILED_ONLY_RAW" ]; then
+      log "No failed tests in $RERUN_FROM; nothing to rerun."
+      exit 0
+    fi
+  fi
+fi
+if [ -n "$FAILED_ONLY_RAW" ]; then
+  if [ -n "$E2E_ONLY_RAW" ]; then
+    E2E_ONLY_RAW="$(trim_list "$(intersect_lists "$E2E_ONLY_RAW" "$FAILED_ONLY_RAW")")"
+  else
+    E2E_ONLY_RAW="$FAILED_ONLY_RAW"
+  fi
+  if [ -z "$E2E_ONLY_RAW" ]; then
+    log "No tests left after rerun/filters."
+    exit 0
+  fi
+  if [ -z "${SEAL_E2E_SUMMARY_SCOPE:-}" ]; then
+    SUMMARY_SCOPE="selected"
+  fi
+  log "Rerun failed tests only: $E2E_ONLY_RAW"
+fi
 if [ -n "$E2E_ONLY_RAW" ]; then
   for item in $E2E_ONLY_RAW; do
     E2E_ONLY["$item"]=1
@@ -165,7 +276,91 @@ START_TS="$(date +%s)"
 SUMMARY_PRINTED=0
 declare -A TEST_DURATIONS=()
 declare -A TEST_STATUS=()
+declare -A TEST_LOGS=()
 declare -a TEST_ORDER=()
+FAILURES=0
+
+print_category_table() {
+  if [ "${#MANIFEST_ORDER[@]}" -eq 0 ]; then
+    return
+  fi
+  log "Category summary:"
+  local category name status total ok_count skip_count fail_count dur par skip_risk desc
+  local -a order_list=("${MANIFEST_ORDER[@]}")
+  local -a categories=()
+  declare -A cat_seen=()
+  if [ "$SUMMARY_SCOPE" = "selected" ]; then
+    order_list=("${TEST_ORDER[@]}")
+  fi
+  for name in "${order_list[@]}"; do
+    category="${TEST_CATEGORY[$name]:-misc}"
+    if [ -z "${cat_seen[$category]:-}" ]; then
+      cat_seen["$category"]=1
+      categories+=("$category")
+    fi
+  done
+  for category in "${categories[@]}"; do
+    total=0
+    ok_count=0
+    skip_count=0
+    fail_count=0
+    for name in "${order_list[@]}"; do
+      if [ "${TEST_CATEGORY[$name]:-}" != "$category" ]; then
+        continue
+      fi
+      status="${TEST_STATUS[$name]:-skipped}"
+      total=$((total + 1))
+      case "$status" in
+        ok) ok_count=$((ok_count + 1)) ;;
+        skipped) skip_count=$((skip_count + 1)) ;;
+        failed) fail_count=$((fail_count + 1)) ;;
+      esac
+    done
+    printf "[seal-e2e] Category %s: total=%s ok=%s skipped=%s failed=%s\n" \
+      "$category" "$total" "$ok_count" "$skip_count" "$fail_count"
+    printf "[seal-e2e]   Test | Status | Time | Parallel | SkipRisk | Description\n"
+    for name in "${order_list[@]}"; do
+      if [ "${TEST_CATEGORY[$name]:-}" != "$category" ]; then
+        continue
+      fi
+      status="${TEST_STATUS[$name]:-skipped}"
+      dur="${TEST_DURATIONS[$name]:-0}"
+      par="${TEST_PARALLEL[$name]:-0}"
+      if [ "$par" = "1" ]; then
+        par="yes"
+      else
+        par="no"
+      fi
+      skip_risk="${TEST_SKIP_RISK[$name]:-}"
+      desc="${TEST_DESC[$name]:-}"
+      printf "[seal-e2e]   - %s | %s | %s | %s | %s | %s\n" \
+        "$name" "$status" "$(format_duration "$dur")" "$par" "$skip_risk" "$desc"
+    done
+  done
+}
+
+print_failure_list() {
+  if [ "$FAILURES" -eq 0 ]; then
+    return
+  fi
+  log "Failures:"
+  local name hint log_path desc
+  for name in "${MANIFEST_ORDER[@]}"; do
+    if [ "${TEST_STATUS[$name]:-}" != "failed" ]; then
+      continue
+    fi
+    desc="${TEST_DESC[$name]:-}"
+    hint="${TEST_HINT[$name]:-}"
+    log_path="${TEST_LOGS[$name]:-}"
+    printf "[seal-e2e]   - %s: %s\n" "$name" "$desc"
+    if [ -n "$hint" ]; then
+      printf "[seal-e2e]     hint: %s\n" "$hint"
+    fi
+    if [ -n "$log_path" ]; then
+      printf "[seal-e2e]     log: %s\n" "$log_path"
+    fi
+  done
+}
 
 print_summary() {
   if [ "$SUMMARY_PRINTED" = "1" ]; then
@@ -202,11 +397,25 @@ print_summary() {
       printf "[seal-e2e]   - %s  %s  (%s)\n" "$name" "$status" "$(format_duration "$dur")"
     done
   fi
-  log "Stats: ok=${ok_count}, skipped=${skip_count}, failed=${fail_count}"
+  local total_count=$((ok_count + skip_count + fail_count))
+  log "Stats: total=${total_count}, ok=${ok_count}, skipped=${skip_count}, failed=${fail_count}"
   if [ "$sum_tests" -gt 0 ] && [ "$total" -gt "$sum_tests" ]; then
     local overhead=$((total - sum_tests))
     log "Non-test time: $(format_duration "$overhead") (setup/deps/copy)"
   fi
+
+  if [ -n "$SUMMARY_PATH" ]; then
+    log "Summary file: $SUMMARY_PATH"
+  fi
+  if [ "$LOG_CAPTURE" = "1" ]; then
+    log "Logs: $LOG_DIR"
+  fi
+  if [ "$fail_count" -ne 0 ] && [ -n "$SUMMARY_PATH" ]; then
+    log "Rerun failed only: SEAL_E2E_RERUN_FAILED=1 SEAL_E2E_RERUN_FROM=$SUMMARY_PATH"
+  fi
+
+  print_category_table
+  print_failure_list
 
   write_summary_file
 }
@@ -301,18 +510,19 @@ if [ "${SEAL_E2E_COPY_EXAMPLE:-1}" = "1" ]; then
 fi
 
 EXAMPLE_DIR="${SEAL_E2E_EXAMPLE_ROOT:-$EXAMPLE_DST}"
+EXAMPLE_NODE_MODULES_DIR="$EXAMPLE_DIR/node_modules"
+if [ -n "${SEAL_E2E_NODE_MODULES_ROOT:-}" ]; then
+  EXAMPLE_NODE_MODULES_DIR="$SEAL_E2E_NODE_MODULES_ROOT"
+fi
 EXAMPLE_SIG="$(make_sig "example" \
   "$EXAMPLE_SRC/package.json" \
   "$EXAMPLE_SRC/package-lock.json")"
 EXAMPLE_STAMP="$STAMPS_DIR/example.sig"
+EXAMPLE_LOCK="$STAMPS_DIR/example.lock"
 NEED_EXAMPLE_DEPS="${SEAL_E2E_INSTALL_EXAMPLE_DEPS:-}"
 if [ -d "$EXAMPLE_DIR" ]; then
   if [ -z "$NEED_EXAMPLE_DEPS" ]; then
     NEED_EXAMPLE_DEPS=0
-    EXAMPLE_NODE_MODULES_DIR="$EXAMPLE_DIR/node_modules"
-    if [ -n "${SEAL_E2E_NODE_MODULES_ROOT:-}" ]; then
-      EXAMPLE_NODE_MODULES_DIR="$SEAL_E2E_NODE_MODULES_ROOT"
-    fi
     if sig_changed "$EXAMPLE_STAMP" "$EXAMPLE_SIG" || ! dir_has_files "$EXAMPLE_NODE_MODULES_DIR"; then
       NEED_EXAMPLE_DEPS=1
     fi
@@ -324,9 +534,22 @@ if [ -d "$EXAMPLE_DIR" ]; then
       ln -s "$SEAL_E2E_NODE_MODULES_ROOT" "$EXAMPLE_DIR/node_modules"
     fi
     if [ "$NEED_EXAMPLE_DEPS" = "1" ]; then
-      log "Installing example dependencies (shared cache)..."
-      (cd "$EXAMPLE_DIR" && npm install)
-      echo "$EXAMPLE_SIG" > "$EXAMPLE_STAMP"
+      if command -v flock >/dev/null 2>&1; then
+        exec {lockfd}>"$EXAMPLE_LOCK"
+        flock "$lockfd"
+        if sig_changed "$EXAMPLE_STAMP" "$EXAMPLE_SIG" || ! dir_has_files "$EXAMPLE_NODE_MODULES_DIR"; then
+          log "Installing example dependencies (shared cache)..."
+          (cd "$EXAMPLE_DIR" && npm install)
+          echo "$EXAMPLE_SIG" > "$EXAMPLE_STAMP"
+        else
+          log "Example dependencies already installed (shared cache)."
+        fi
+        flock -u "$lockfd"
+      else
+        log "Installing example dependencies (shared cache)..."
+        (cd "$EXAMPLE_DIR" && npm install)
+        echo "$EXAMPLE_SIG" > "$EXAMPLE_STAMP"
+      fi
     fi
   else
     if [ "$NEED_EXAMPLE_DEPS" = "1" ]; then
@@ -419,9 +642,19 @@ run_test() {
   shift
   if ! should_run "$name"; then
     log "SKIP: ${name} (filtered)"
-    TEST_STATUS["$name"]="skipped"
+    if [ "$SUMMARY_SCOPE" = "all" ]; then
+      TEST_STATUS["$name"]="skipped"
+      TEST_DURATIONS["$name"]=0
+      TEST_ORDER+=("$name")
+    fi
+    return
+  fi
+  if [ -z "${TEST_SCRIPT[$name]:-}" ]; then
+    log "ERROR: missing manifest entry for test: $name"
+    TEST_STATUS["$name"]="failed"
     TEST_DURATIONS["$name"]=0
     TEST_ORDER+=("$name")
+    FAILURES=$((FAILURES + 1))
     return
   fi
   log "Running ${name}..."
@@ -429,17 +662,45 @@ run_test() {
   local start
   start="$(date +%s)"
   set +e
-  "$@"
-  local status=$?
+  local status=0
+  local log_file=""
+  if [ "$LOG_CAPTURE" = "1" ]; then
+    mkdir -p "$LOG_DIR"
+    log_file="$LOG_DIR/${name}.log"
+    "$@" 2>&1 | tee "$log_file"
+    status="${PIPESTATUS[0]}"
+  else
+    "$@"
+    status=$?
+  fi
   set -e
   local end
   end="$(date +%s)"
   local dur=$((end - start))
   TEST_DURATIONS["$name"]="$dur"
+  if [ -n "$log_file" ]; then
+    TEST_LOGS["$name"]="$log_file"
+  fi
+  if [ "$status" -eq "$SKIP_CODE" ]; then
+    TEST_STATUS["$name"]="skipped"
+    log "SKIP: ${name} (time=$(format_duration "$dur"))"
+    return
+  fi
   if [ "$status" -ne 0 ]; then
     TEST_STATUS["$name"]="failed"
-    log "FAIL: ${name} (time=$(format_duration "$dur"))"
-    exit "$status"
+    FAILURES=$((FAILURES + 1))
+    log "FAIL: ${name} (time=$(format_duration "$dur"), exit=${status})"
+    if [ -n "${TEST_HINT[$name]:-}" ]; then
+      log "HINT: ${TEST_HINT[$name]}"
+    fi
+    if [ -n "$log_file" ] && [ "${LOG_TAIL_LINES:-0}" != "0" ]; then
+      log "Log tail (${LOG_TAIL_LINES} lines): ${log_file}"
+      tail -n "$LOG_TAIL_LINES" "$log_file" | sed 's/^/[seal-e2e]   | /'
+    fi
+    if [ "$FAIL_FAST" = "1" ]; then
+      exit "$status"
+    fi
+    return
   fi
   TEST_STATUS["$name"]="ok"
   log "OK: ${name} (time=$(format_duration "$dur"))"
@@ -456,26 +717,41 @@ fi
 
 cd "$REPO_ROOT"
 
-if [ "${SEAL_E2E_SETUP_ONLY:-0}" = "1" ]; then
+if [ "$SETUP_ONLY" = "1" ]; then
   log "Setup only (SEAL_E2E_SETUP_ONLY=1). Skipping tests."
   exit 0
 fi
-
-SEAL_THIN_E2E_NATIVE_RUN_TIMEOUT_MS="${SEAL_THIN_E2E_NATIVE_RUN_TIMEOUT_MS:-240000}" \
-  run_test "thin" "$NODE_BIN" tools/seal/seal/scripts/test-thin-e2e.js
-run_test "thin-anti-debug" "$NODE_BIN" tools/seal/seal/scripts/test-thin-anti-debug-e2e.js
-run_test "legacy-packagers" "$NODE_BIN" tools/seal/seal/scripts/test-legacy-packagers-e2e.js
-run_test "completion" "$NODE_BIN" tools/seal/seal/scripts/test-completion-e2e.js
-run_test "user-flow" "$NODE_BIN" tools/seal/seal/scripts/test-user-flow-e2e.js
-run_test "sentinel" "$NODE_BIN" tools/seal/seal/scripts/test-sentinel-e2e.js
-run_test "protection" "$NODE_BIN" tools/seal/seal/scripts/test-protection-e2e.js
-run_test "obfuscation" "$NODE_BIN" tools/seal/seal/scripts/test-obfuscation-e2e.js
-run_test "strip" "$NODE_BIN" tools/seal/seal/scripts/test-strip-e2e.js
-run_test "elf-packers" "$NODE_BIN" tools/seal/seal/scripts/test-elf-packers-e2e.js
-run_test "c-obfuscators" "$NODE_BIN" tools/seal/seal/scripts/test-c-obfuscators-e2e.js
-run_test "postject" "$NODE_BIN" tools/seal/seal/scripts/test-postject-e2e.js
-run_test "example-ui" "$NODE_BIN" tools/seal/seal/scripts/test-example-ui-e2e.js
-run_test "decoy" "$NODE_BIN" tools/seal/seal/scripts/test-decoy-e2e.js
-run_test "ship" "$NODE_BIN" tools/seal/seal/scripts/test-ship-e2e.js
+for name in "${MANIFEST_ORDER[@]}"; do
+  script="${TEST_SCRIPT[$name]:-}"
+  if [ -z "$script" ]; then
+    log "ERROR: missing script for test ${name}"
+    TEST_STATUS["$name"]="failed"
+    TEST_DURATIONS["$name"]=0
+    TEST_ORDER+=("$name")
+    FAILURES=$((FAILURES + 1))
+    continue
+  fi
+  if [[ "$script" != /* ]]; then
+    script="$REPO_ROOT/$script"
+  fi
+  if [ ! -f "$script" ]; then
+    log "ERROR: script not found for ${name}: ${script}"
+    TEST_STATUS["$name"]="failed"
+    TEST_DURATIONS["$name"]=0
+    TEST_ORDER+=("$name")
+    FAILURES=$((FAILURES + 1))
+    continue
+  fi
+  if [ "$name" = "thin" ]; then
+    SEAL_THIN_E2E_NATIVE_RUN_TIMEOUT_MS="${SEAL_THIN_E2E_NATIVE_RUN_TIMEOUT_MS:-240000}" \
+      run_test "$name" "$NODE_BIN" "$script"
+  else
+    run_test "$name" "$NODE_BIN" "$script"
+  fi
+done
 
 log "All E2E tests finished."
+if [ "$FAILURES" -ne 0 ]; then
+  log "E2E failures: ${FAILURES}"
+  exit 1
+fi

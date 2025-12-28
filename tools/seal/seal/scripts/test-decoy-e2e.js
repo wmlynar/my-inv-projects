@@ -130,6 +130,7 @@ async function testCollision() {
 async function main() {
   if (process.env.SEAL_DECOY_E2E !== "1") {
     log("SKIP: set SEAL_DECOY_E2E=1 to run decoy E2E");
+    process.exitCode = 77;
     return;
   }
   await testSoftDecoy();

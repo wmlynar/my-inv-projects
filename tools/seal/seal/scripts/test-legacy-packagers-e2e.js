@@ -217,11 +217,11 @@ async function testSeaPackager(ctx) {
 async function main() {
   if (process.env.SEAL_LEGACY_PACKAGERS_E2E !== "1") {
     log("SKIP: set SEAL_LEGACY_PACKAGERS_E2E=1 to run legacy packager E2E");
-    process.exit(0);
+    process.exit(77);
   }
   if (process.platform !== "linux") {
     log(`SKIP: legacy packager tests are linux-only (platform=${process.platform})`);
-    process.exit(0);
+    process.exit(77);
   }
 
   const buildTimeoutMs = Number(process.env.SEAL_LEGACY_PACKAGERS_E2E_BUILD_TIMEOUT_MS || "180000");
