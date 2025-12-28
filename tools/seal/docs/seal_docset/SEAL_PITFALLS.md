@@ -397,6 +397,9 @@
   - Wymaganie: build/test uzywa naglowkow odpowiadajacych wersji runtime Node na target (lub jawnego `--target`); mismatch = fail-fast.
   - Wymaganie: kod native ma guardy wersji/feature-detect dla API V8 i fallback dla starszych wersji Node.
 
+- Blad: kompilacja z `-march=native`/`-mtune=native` powodowala `Illegal instruction` na starszych CPU.
+  - Wymaganie: nie uzywaj `-march=native` w artefaktach dystrybucyjnych; ustaw `-march`/`-mtune` zgodnie z targetem (np. `x86-64`/`generic`).
+
 - Blad: native addon wymagajacy nowszego standardu C++ (np. C++20) byl budowany bez wczesnego probe, a blad kompilacji byl nieczytelny.
   - Wymaganie: preflight sprawdza minimalny standard C++ (probe kompilatora) i fail-fast z jasnym komunikatem.
   - Wymaganie: testy E2E dla funkcji opcjonalnych robia SKIP, gdy brak wsparcia C++ (z powodem).

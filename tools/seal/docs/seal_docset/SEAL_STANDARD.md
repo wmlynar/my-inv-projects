@@ -87,6 +87,7 @@ Przykład:
 - STD-032i (SHOULD): opcje minifikacji typu `unsafe`/`pure_getters` sa domyslnie OFF; wlaczaj je tylko z dedykowanym E2E i logiem "effective config".
 - STD-032j (SHOULD): dynamiczne `require()` i native addon-y (`.node`) sa oznaczone jako `external`, a pliki `.node` kopiowane do release; E2E weryfikuje ladowanie po sealingu.
 - STD-032k (SHOULD): bundler dostaje jawny `NODE_ENV` (np. `define: { 'process.env.NODE_ENV': '\"production\"' }`), aby dead-code elimination dzialalo deterministycznie.
+- STD-032l (SHOULD): nie uzywaj `-march=native`/`-mtune=native` w artefaktach dystrybucyjnych; target CPU musi byc zgodny z docelowa maszyną (np. `-march=x86-64 -mtune=generic`).
 - STD-035 (SHOULD): build zapisuje wersje narzedzi/zaleznosci; build nie pobiera rzeczy z internetu.
 - STD-035a (SHOULD): manifest/hash artefaktow jest liczony po wszystkich krokach post-processingu (strip/packer/obfuscation), jako ostatni etap builda.
 - STD-040 (SHOULD): preflight uzywa tych samych argumentow i srodowiska co runtime.
