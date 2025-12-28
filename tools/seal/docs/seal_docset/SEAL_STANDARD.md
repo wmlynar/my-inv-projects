@@ -684,6 +684,7 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-237 (SHOULD): sekrety przechowywane w dedykowanym katalogu z ograniczonymi perms.
 - STD-238 (SHOULD): tymczasowe pliki z sekretami sa usuwane deterministycznie.
 - STD-239 (SHOULD): core dumpy sa domyslnie wylaczone (opt‑in z ostrzezeniem).
+- STD-239a (SHOULD): gdy proces jest uruchamiany przez systemd, ustaw `LimitCORE=0` (i ewentualnie `CoredumpFilter=`); dodatkowo `ulimit -c 0` w runtime dla spojnoci.
 
 - STD-240 (SHOULD): unknown keys w configu daja warning/blad (strict schema).
 - STD-241 (SHOULD): wartosci z ENV sa trimowane i walidowane.

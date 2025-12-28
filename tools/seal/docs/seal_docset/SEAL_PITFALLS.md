@@ -1508,6 +1508,8 @@
   - Wymaganie: usuwaj je deterministycznie po uzyciu.
 - Blad: core dumpy byly wlaczone w produkcji.
   - Wymaganie: domyslnie wylacz core dumpy (opt‑in z ostrzezeniem).
+- Blad: wylaczenie core dump przez `ulimit` nie dzialalo dla procesu uruchamianego przez systemd (hostowe limity nadpisywaly ustawienia).
+  - Wymaganie: w unit systemd ustaw `LimitCORE=0` (i ewentualnie `CoredumpFilter=`), a w runtime dodatkowo `ulimit -c 0` dla spojnoci.
 
 - Blad: nieznane klucze w configu byly ignorowane.
   - Wymaganie: waliduj schema i ostrzegaj/failuj na unknown keys.
