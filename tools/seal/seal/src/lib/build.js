@@ -167,12 +167,13 @@ function obfuscationOptions(profile) {
 
 function resolveBackendTerser(raw, profile) {
   const isStrong = profile === "strict" || profile === "max";
-  const defaultPasses = profile === "max" ? 4 : (isStrong ? 3 : 2);
-  const defaultToplevel = isStrong;
-  const defaultCompress = isStrong
+  const isTestFast = profile === "test-fast";
+  const defaultPasses = isTestFast ? 4 : (profile === "max" ? 4 : (isStrong ? 3 : 2));
+  const defaultToplevel = isStrong || isTestFast;
+  const defaultCompress = (isStrong || isTestFast)
     ? { passes: defaultPasses, inline: 3 }
     : { passes: defaultPasses, inline: 1 };
-  const defaultMangle = isStrong ? { toplevel: true } : false;
+  const defaultMangle = (isStrong || isTestFast) ? { toplevel: true } : false;
   const defaults = {
     passes: defaultPasses,
     toplevel: defaultToplevel,
