@@ -243,6 +243,7 @@ Przykład:
 - STD-118 (SHOULD): timeouty i pomiary czasu opieraj na zegarze monotonicznym (`process.hrtime`/`performance.now`), nie na `Date.now()`.
 - STD-119 (SHOULD): retry maja limit prób i limit czasu całkowitego (brak nieskończonych pętli), z logowaniem liczby prób.
 - STD-120 (SHOULD): lockfile zawiera PID+timestamp; stale locki sa wykrywane i bezpiecznie czyszczone.
+- STD-120a (SHOULD): gdy skrypt uruchamia zadania w tle (`&`), musi zbierac PIDy i robic `wait` (z propagacja exit code); cleanup w `trap` zabija background joby i czeka na nie.
 - STD-121 (SHOULD): skrypty zawierajace bash‑isms musza byc uruchamiane przez `bash` jawnie (nie domyslny `sh`).
 - STD-121a (SHOULD): zdalne skrypty uruchamiane przez SSH nie zakladaja obecnosci `bash`; preferuj `/bin/sh -lc` albo preflightuj `bash` i fail‑fast z instrukcja.
 - STD-121b (SHOULD): skrypty wykonywalne w repo musza miec bit `+x` i byc sprawdzone w CI (`test -x`); w kontenerach/CI ustaw `chmod +x` lub uruchamiaj jawnie `bash <script>`; unikaj CRLF w shebang.
@@ -754,6 +755,7 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-229 (SHOULD): `current.buildId` zapisuj atomowo (tmp + rename + fsync).
 - STD-229a (SHOULD): `current.buildId` czytany z dysku musi byc walidowany jako bezpieczny segment sciezki (bez `..`/`/`, bez absolutnych, limit dlugosci), a zlozona sciezka musi pozostac w `releasesDir` (realpath‑check).
 - STD-229b (SHOULD): wywolania `systemctl`/`daemon-reload` musza sprawdzac exit code i fail‑fast (z jasnym komunikatem), aby bootstrap/deploy nie raportowal sukcesu po nieudanej operacji.
+- STD-229c (SHOULD): po deploy/naprawie wykonuj `systemctl reset-failed` (lub `--user`) gdy jednostka jest w stanie `failed`; loguj status przed/po.
 
 - STD-230 (SHOULD): child procesy dostaja tylko allowlist ENV (bez wyciekow sekretow).
 - STD-231 (SHOULD): sekrety nie moga byc przekazywane w CLI args (tylko plik/ENV).

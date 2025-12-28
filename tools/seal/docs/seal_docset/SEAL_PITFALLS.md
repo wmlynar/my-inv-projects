@@ -250,6 +250,10 @@
 - Blad: procesy potomne zostawaly jako sieroty (brak process group/kill), co blokowalo kolejne uruchomienia.
   - Wymaganie: przy exit/signal zabijaj caly process group lub sledz wszystkie PIDy i sprzataj deterministycznie.
 
+- Blad: skrypt uruchamial zadania w tle (`&`) i konczyl sie bez `wait`, przez co bledy w tle byly ignorowane, a procesy zostawaly zywe.
+  - Wymaganie: dla kazdego background job zbieraj PID i rob `wait`; jesli ktorys failuje, zwroc nie‑zero.
+  - Wymaganie: cleanup zabija background joby w `trap` (i czeka na ich zakonczenie).
+
 - Blad: `unhandledRejection`/`uncaughtException` nie byly logowane i proces znikał bez informacji.
   - Wymaganie: globalne handlery loguja blad i kończą proces z kodem != 0.
 
@@ -2239,5 +2243,9 @@
   - Wymaganie: cleanup obejmuje `docker compose down -v` lub usuwanie wolumenow per-run; loguj nazwy wolumenow.
 - Blad: unit systemd zostawal w stanie `failed` i kolejne starty byly blokowane mimo naprawy.
   - Wymaganie: po naprawie/deploy wykonuj `systemctl reset-failed <svc>` (lub `--user`) i loguj wynik.
+
+- Blad: `systemctl` bez `reset-failed` zostawial jednostki w `failed`, przez co kolejne `start` konczyly sie od razu mimo poprawnych plikow.
+  - Wymaganie: jesli wykryjesz `failed`, wykonaj `systemctl reset-failed` przed restartem; loguj status przed/po.
+
 - Blad: obrazy Node bez full-ICU dawaly inne wyniki `Intl` (daty/liczby), co psulo testy/UI.
   - Wymaganie: uzywaj obrazu z full-ICU lub ustaw `NODE_ICU_DATA` i jawny locale w testach.

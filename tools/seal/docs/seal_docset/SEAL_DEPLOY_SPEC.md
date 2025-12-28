@@ -1833,7 +1833,7 @@ Przykład (aktualny dla v0.5):
 - `defaultTarget`: `local`.
 - `build.packager`: `auto` (domyślnie `thin-split`).
 - `build.securityProfile`: preset poziomu zabezpieczeń (`minimal|balanced|strict|max`), **domyślnie `strict`**. Preset ustawia **domyślne wartości** (nie nadpisuje jawnych pól).
-- `build.obfuscationProfile`: jeśli nie ustawione jawnie, dziedziczy poziom z `securityProfile` (`minimal|balanced|strict|max`).
+- `build.obfuscationProfile`: jeśli nie ustawione jawnie, dziedziczy poziom z `securityProfile` (`minimal|balanced|strict|max`). Dodatkowe wartości: `none`, `test-fast`.
 - `build.sentinel.profile`: domyślnie `auto` (sentinel włączany tylko dla `thin` + targetów `ssh`); opcje: `off|auto|required|strict`.
 - `build.sentinel.timeLimit.enforce`: `always` (domyślnie) lub `mismatch` (expiry tylko przy niedopasowaniu fingerprintu lub braku blobu).
 - `build.includeDirs`: `["public", "data"]`.
