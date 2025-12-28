@@ -529,6 +529,9 @@
   - Wymaganie: `run-current.sh`/launcher sanitizuje ryzykowne ENV (co najmniej `NODE_OPTIONS`, `NODE_PATH`, `NODE_EXTRA_CA_CERTS`).
   - Wymaganie: debug/testowe hooki uruchamiaj tylko jawnie przez dedykowane flagi runtime.
 
+- Blad: bundler nie dostal jawnego `NODE_ENV`, przez co kod dev zostal w bundle i nie zadzialalo dead-code elimination.
+  - Wymaganie: ustawiaj `define`/`env` w bundlerze (`process.env.NODE_ENV="production"`) i loguj effective config.
+
 ## Testy / CI
 
 - Blad: testy E2E potrafily wisiec bez wyjscia (brak timeoutu na krokach/komendach).
@@ -1415,6 +1418,8 @@
   - Wymaganie: uzywaj `--no-same-owner`/`--numeric-owner`.
 - Blad: brak manifestu plikow utrudnial walidacje releasu.
   - Wymaganie: generuj manifest z hashami.
+- Blad: manifest/hash byl liczony przed strip/packer/obfuscation, przez co nie zgadzal sie z finalnym artefaktem.
+  - Wymaganie: generuj manifest **po** wszystkich krokach post-processingu (ostatni etap builda).
 - Blad: brak metadanych wersji utrudnial diagnostyke.
   - Wymaganie: zapisuj `buildId/packager/config-hash` w metadanych.
 - Blad: ponowne buildy zostawialy stare pliki w release.

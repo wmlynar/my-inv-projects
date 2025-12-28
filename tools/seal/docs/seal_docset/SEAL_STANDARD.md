@@ -86,7 +86,9 @@ Przykład:
 - STD-032h (SHOULD): tree-shaking respektuje `sideEffects`, a moduly z efektami ubocznymi sa jawnie deklarowane/importowane; E2E potwierdza obecnosc efektow po sealingu.
 - STD-032i (SHOULD): opcje minifikacji typu `unsafe`/`pure_getters` sa domyslnie OFF; wlaczaj je tylko z dedykowanym E2E i logiem "effective config".
 - STD-032j (SHOULD): dynamiczne `require()` i native addon-y (`.node`) sa oznaczone jako `external`, a pliki `.node` kopiowane do release; E2E weryfikuje ladowanie po sealingu.
+- STD-032k (SHOULD): bundler dostaje jawny `NODE_ENV` (np. `define: { 'process.env.NODE_ENV': '\"production\"' }`), aby dead-code elimination dzialalo deterministycznie.
 - STD-035 (SHOULD): build zapisuje wersje narzedzi/zaleznosci; build nie pobiera rzeczy z internetu.
+- STD-035a (SHOULD): manifest/hash artefaktow jest liczony po wszystkich krokach post-processingu (strip/packer/obfuscation), jako ostatni etap builda.
 - STD-040 (SHOULD): preflight uzywa tych samych argumentow i srodowiska co runtime.
 - STD-040a (SHOULD): runtime/serwis uruchamia aplikacje z `NODE_ENV=production` (jesli nie ustawiono inaczej), a testy E2E sprawdzaja ten tryb.
 - STD-040b (SHOULD): runtime sanitizuje ryzykowne ENV (`NODE_OPTIONS`, `NODE_PATH`, `NODE_EXTRA_CA_CERTS`) aby nie wstrzykiwac hookow/inspect z hosta; debug uruchamiaj jawnie przez flagi runtime.
