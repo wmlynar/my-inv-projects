@@ -291,6 +291,8 @@
 
 - Blad: walidacja targetu (host/user/serviceName/installDir) byla rozproszona i niespojna miedzy modulami (deploy/ssh/sentinel), co dawalo rozne bledy w zaleznosci od komendy.
   - Wymaganie: jedna centralna walidacja targetu i wspolne helpery w kazdej komendzie.
+- Blad: `appName` z targetu byl raz ignorowany (deploy), a raz respektowany (check/config), co dawalo niespojne nazwy/uslugi i mylace komunikaty.
+  - Wymaganie: jedna zasada dla `appName`/`serviceName` (override dozwolony wszedzie albo zakazany); w obu przypadkach loguj `effective config`.
 
 - Blad: parsowanie danych z narzedzi systemowych (np. `lsblk`) nie normalizowalo `mountpoints` (null/array/string), co dawalo puste wpisy i bledne wnioski o mountach.
   - Wymaganie: zawsze normalizuj output narzedzi (trim, filtruj puste, obsluguj array) przed decyzjami.
@@ -318,6 +320,9 @@
 - Blad: SEA bundle fallback uruchomil build bez postject (cichy spadek poziomu zabezpieczen).
   - Wymaganie: brak `postject` to **blad builda**.
 - Bundle fallback do pakowania JS jest dozwolony **tylko jawnie** (`build.packagerFallback=true` lub `--packager bundle`).
+
+- Blad: pakowanie artefaktu uzywalo stalego katalogu tmp w `outDir` (np. `artifact-tmp`) i kasowalo go przed buildem, co przy rownoleglych buildach uszkadzalo artefakty.
+  - Wymaganie: temp katalog dla artefaktu jest unikalny per build (mkdtemp/buildId), a cleanup jest w `finally`.
 
 - Blad: SEA uruchamiany na Node < 20 (brak wsparcia) powodowal build fail lub runtime mismatch.
   - Wymaganie: `seal check`/`release` fail‑fast dla SEA, gdy `node -v` < 20, z jasna instrukcja podniesienia wersji albo uzycia `packager=bundle`.
@@ -1406,6 +1411,10 @@
 - Blad: w template stringach z bash/script wystapily nie‑escapowane sekwencje `${...}`, co psulo skladnie JS.
   - Wymaganie: w osadzonych skryptach shellowych zawsze escapuj `${` jako `\\${` (lub użyj helpera do here‑doc), zeby uniknac interpolacji JS.
   - Wymaganie: dotyczy to zwlaszcza bash‑owego `${VAR:-default}` — w JS musi byc `\\${VAR:-default}` albo `String.raw`.
+
+- Blad: `${VAR:-default}` pojawilo sie w template stringu jako literal i JS nie parsowal pliku (SyntaxError przy `require`).
+  - Wymaganie: trzymaj takie fragmenty w osobnych stalych (np. `const TMPDIR_EXPR = "${TMPDIR:-/tmp}"`) i wstrzykuj je jako zwykly tekst do skryptu, albo uzyj `String.raw` + walidacji.
+  - Wymaganie: dodaj szybki smoke‑test parsowania (np. `node -e "require('...')"`) dla plikow generatorow po zmianach.
 
 - Blad: generator JS wklejal template literal (backtick + `${...}`) do stringa JS, co psulo skladnie builda.
   - Wymaganie: w kodzie generowanym przez template string unikaj backticków albo escapuj `${` i same backticki.

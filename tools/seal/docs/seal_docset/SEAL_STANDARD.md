@@ -111,6 +111,7 @@ Przykład:
 - STD-034h (SHOULD): `thin.level` walidowany do `low|medium|high`; niepoprawne wartosci = fail‑fast.
 - STD-034i (SHOULD): `thin.antiDebug.seccompNoDebug.mode` akceptuje tylko `errno|kill`; inne wartosci = fail‑fast.
 - STD-034j (SHOULD): `protection.*.args` oraz `protection.strings.obfuscation` sa walidowane typami/allowlista; bledy = fail‑fast lub jawny warning + log `effective config`.
+- STD-034k (SHOULD): `appName`/`serviceName` maja spójne zasady override we wszystkich komendach; gdy override niedozwolony = fail‑fast z instrukcja.
 - STD-025 (SHOULD): wszystkie generowane katalogi (cache/release/tmp) maja retention/pruning i loguja przyczyny czyszczenia.
 - STD-025a (SHOULD): cache jest kluczowany po target+config+wersja/format; zmiana schematu wymusza czyszczenie lub nowy namespace cache.
 - STD-028 (SHOULD): zapisy plikow krytycznych sa atomowe (tmp + rename), aby uniknac polowicznych stanow po crashu.
@@ -164,11 +165,13 @@ Przykład:
 - STD-046a (SHOULD): detekcja procesu (status) filtruje wyniki `pgrep`/`ps` tak, aby nie zliczac wlasnych narzedzi; dopasuj sciezke binarki lub PID, nie tylko nazwe procesu.
 - STD-046b (SHOULD): przy dopasowaniu procesu unikaj ucinania komendy (`ps`); preferuj `/proc/<pid>/cmdline` lub `ps -ww`.
 - STD-047 (SHOULD): osadzone skrypty shellowe w template stringach musza escapowac `${` (np. `\\${VAR}`) oraz znak backtick, lub korzystac z bezpiecznego here-doc helpera, aby uniknac niezamierzonej interpolacji JS.
+- STD-047a (SHOULD): fragmenty shellowe z `${VAR:-default}` trzymaj w stałych (np. `const TMPDIR_EXPR = "${TMPDIR:-/tmp}"`) lub buduj przez `String.raw`, aby uniknac SyntaxError w JS; wymagaj smoke‑testu parsowania po zmianach w generatorach.
 - STD-048 (SHOULD): tymczasowe pliki z danymi wrazliwymi tworz przez `mkdtemp` + pliki `0600`, z unikalna nazwa i sprzataniem w `finally` (unikaj przewidywalnych nazw w `/tmp`).
 - STD-048a (SHOULD): tymczasowe pliki konfiguracyjne/transferowe nie moga miec przewidywalnych nazw (np. `/tmp/<service>-config.json5`); uzywaj `mktemp` i waliduj typ/owner przed uzyciem.
 - STD-048b (SHOULD): tymczasowe pliki z configiem (np. do diffu) sa usuwane po uzyciu; brak cleanup = FAIL w testach.
 - STD-049 (SHOULD): przy zapisie plikow krytycznych (zwl. jako root) ustaw `umask 077`, zapisuj do tmp + `fsync` + `rename`, a potem `fsync` katalogu.
 - STD-050 (SHOULD): nazwy plikow tymczasowych (szczegolnie na zdalnych hostach) musza miec losowy komponent; nie opieraj ich wylacznie na czasie (`Date.now()`).
+- STD-050a (SHOULD): temp katalogi dla artefaktow/buildow sa unikalne per build (mkdtemp/buildId) i sprzatane w `finally`; brak wspolnych `artifact-tmp`.
 - STD-051 (SHOULD): kazda operacja, ktora tworzy tmp na hoście (lokalnym lub zdalnym), musi sprzatac je w `finally`/`trap` (usun takze `*.tmp` po nieudanym zapisie).
 - STD-051a (SHOULD): nie uzywaj `mktemp -u`; zawsze tworz plik/katalog atomowo przez `mktemp` (bez TOCTOU).
 - STD-052 (SHOULD): narzedzia wymagane przez mechanizmy lock (`flock`) musza byc sprawdzone przed uzyciem, z czytelnym bledem i instrukcja instalacji.

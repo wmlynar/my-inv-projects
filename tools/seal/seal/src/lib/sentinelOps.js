@@ -21,6 +21,7 @@ const { buildFingerprintHash, resolveAutoLevel, normalizeCpuIdSource } = require
 const FLAG_REQUIRE_XATTR = 0x0001;
 const FLAG_L4_INCLUDE_PUID = 0x0002;
 const FLAG_INCLUDE_CPUID = 0x0004;
+const TMPDIR_EXPR = "${TMPDIR:-/tmp}";
 
 function shQuote(value) {
   const str = String(value);
@@ -242,7 +243,7 @@ if ! command -v cc >/dev/null 2>&1; then
   exit 3
 fi
 
-TMPDIR_SAFE="\${TMPDIR:-/tmp}"
+TMPDIR_SAFE="${TMPDIR_EXPR}"
 if [ ! -d "$TMPDIR_SAFE" ] || [ ! -w "$TMPDIR_SAFE" ] || [ ! -x "$TMPDIR_SAFE" ]; then
   TMPDIR_SAFE="/tmp"
 fi
@@ -1148,7 +1149,7 @@ XATTR_ERR=""
 XATTR_PATH=""
 XATTR_NOTE=""
 XATTR_SUDO=0
-TMPDIR_SAFE="\${TMPDIR:-/tmp}"
+TMPDIR_SAFE="${TMPDIR_EXPR}"
 if [ ! -d "$TMPDIR_SAFE" ] || [ ! -w "$TMPDIR_SAFE" ] || [ ! -x "$TMPDIR_SAFE" ]; then
   TMPDIR_SAFE="/tmp"
 fi
@@ -1218,7 +1219,7 @@ PY
   fi
 elif command -v setfattr >/dev/null 2>&1 && command -v getfattr >/dev/null 2>&1; then
   if [ "$XATTR_SUDO" = "1" ]; then
-    TMPDIR_SAFE="\${TMPDIR:-/tmp}"
+    TMPDIR_SAFE="${TMPDIR_EXPR}"
     if [ ! -d "$TMPDIR_SAFE" ] || [ ! -w "$TMPDIR_SAFE" ] || [ ! -x "$TMPDIR_SAFE" ]; then
       TMPDIR_SAFE="/tmp"
     fi
@@ -1226,7 +1227,7 @@ elif command -v setfattr >/dev/null 2>&1 && command -v getfattr >/dev/null 2>&1;
 set -e
 XATTR_OK=0
 XATTR_ERR=""
-TMPDIR_SAFE="\${TMPDIR:-/tmp}"
+TMPDIR_SAFE="${TMPDIR_EXPR}"
 if [ ! -d "$TMPDIR_SAFE" ] || [ ! -w "$TMPDIR_SAFE" ] || [ ! -x "$TMPDIR_SAFE" ]; then
   TMPDIR_SAFE="/tmp"
 fi
@@ -1248,7 +1249,7 @@ echo "XATTR_PATH='"$XATTR_PATH"'"
 [ -n "$XATTR_ERR" ] && echo "XATTR_ERR=$XATTR_ERR"
 '
   else
-    TMPDIR_SAFE="\${TMPDIR:-/tmp}"
+    TMPDIR_SAFE="${TMPDIR_EXPR}"
     if [ ! -d "$TMPDIR_SAFE" ] || [ ! -w "$TMPDIR_SAFE" ] || [ ! -x "$TMPDIR_SAFE" ]; then
       TMPDIR_SAFE="/tmp"
     fi
@@ -1311,7 +1312,7 @@ LEASE_BODY_B64=""
 LEASE_BODY_LEN=0
 LEASE_BODY_TRUNC=0
 if [ -n "$EXT_LEASE_URL" ]; then
-  TMPDIR_SAFE="\${TMPDIR:-/tmp}"
+  TMPDIR_SAFE="${TMPDIR_EXPR}"
   if [ ! -d "$TMPDIR_SAFE" ] || [ ! -w "$TMPDIR_SAFE" ] || [ ! -x "$TMPDIR_SAFE" ]; then
     TMPDIR_SAFE="/tmp"
   fi
