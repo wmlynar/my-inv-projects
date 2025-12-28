@@ -1075,6 +1075,8 @@
 - Blad: `target.host` zawieral `user@` lub `:port` (albo surowy IPv6 bez nawiasow), co dawalo `user@user@host` lub bledy parsowania w ssh/scp.
   - Wymaganie: `host` to **tylko** hostname/IP (bez `user@` i bez `:port`); port zawsze w `sshPort`.
   - Wymaganie: IPv6 literal normalizuj do `[addr]` dla ssh/scp/rsync.
+- Blad: `host` zaczynal sie od `-` lub zawieral znaki kontrolne, co bylo interpretowane jako opcje `ssh`.
+  - Wymaganie: waliduj `host` against allowlista (brak `-` na poczatku, brak whitespace/CTL).
 
 - Blad: ssh/scp/rsync w trybie nieinteraktywnym potrafily wisiec na prompt (host key / haslo).
   - Wymaganie: ustawiaj `BatchMode=yes` i fail-fast z jasnym komunikatem, gdy wymagany jest input.
