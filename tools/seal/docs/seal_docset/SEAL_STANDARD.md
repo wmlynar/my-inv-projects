@@ -101,6 +101,9 @@ Przykład:
 #### Operacje / niezawodnosc
 - STD-024 (SHOULD): fallbacki obnizajace zabezpieczenia musza byc jawne (flag/config) i zawsze logowac ostrzezenie.
 - STD-036 (SHOULD): ryzykowne opcje sa OFF domyslnie i wymagaja jawnego wlaczenia.
+- STD-036a (SHOULD): payload-only fallback zawsze loguje powod; pelny upload jest dozwolony tylko gdy artefakt jest dostepny, inaczej fail‑fast z instrukcja (`seal ship` bez `--payload-only` lub `--artifact`).
+- STD-036b (SHOULD): thin‑split payload-only/reuse wymaga zgodnosci wersji runtime (np. `r/nv`); brak/mismatch = pelny upload runtime.
+- STD-036c (SHOULD): gdy `deploy/ship` z restartem i/lub readiness failuje, Seal podejmuje probe rollbacku i loguje wynik.
 - STD-034 (SHOULD): wejscia z CLI/config sa walidowane typami/zakresami; bledne = fail-fast.
 - STD-034a (SHOULD): wartosc podana, ale nieprawidlowa nie moze byc cicho normalizowana do defaultu; musi byc FAIL albo jawny warning + log „effective config”.
 - STD-034b (SHOULD): walidacja configu (np. `packager`) jest wykonywana w loaderze i dotyczy **wszystkich** komend; nie zakladaj, ze uzytkownik uruchomil `seal check`.
@@ -314,6 +317,7 @@ Przykład:
 - STD-027b (SHOULD): testy zawsze sprawdzaja `exit code` i `signal` procesu; crash sygnalem = FAIL z logiem.
 - STD-027c (SHOULD): timeouty helperow/pollingu pochodza z jednego zrodla (run/step timeout) lub maja jawny per-tryb override; brak ukrytych limitow.
 - STD-027d (SHOULD): testy funkcji wielomodalnych (np. kilka trybow bootstrapa) pokrywaja kazdy tryb co najmniej raz i loguja aktywny wariant.
+- STD-027ab (SHOULD): E2E obejmuje rollback po failu restart/ready oraz payload-only fallback (brak runtime lub mismatch wersji).
 - STD-027e (SHOULD): prereq check (narzedzia/feature) jest per‑test/per‑tryb; brak = SKIP z powodem, nie blokuje reszty suite.
 - STD-027f (SHOULD): override timeoutow jest warunkowy i wlacza sie tylko, gdy dana funkcja/artefakt jest aktywna.
 - STD-027g (SHOULD): runner E2E auto‑discoveruje testy lub uzywa manifestu z CI checkiem, aby zadny test nie byl „zapomniany”.

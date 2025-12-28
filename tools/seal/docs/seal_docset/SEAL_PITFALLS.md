@@ -332,11 +332,16 @@
   - Wymaganie: niezalezne tryby uruchamiaj niezaleznie (osobne testy lub `continue-on-error`), aby awaria lokalna nie blokowala weryfikacji SSH.
   - Wymaganie: E2E zawsze pokrywa oba tryby: auto‑bootstrap ON i OFF.
 
+- Blad: po nieudanym restarcie lub braku gotowosci deploy zostawial target na nowym, niezdrowym release bez rollbacku.
+  - Wymaganie: przy failu restart/ready Seal probuje rollback i loguje wynik; E2E pokrywa scenariusz braku gotowosci.
+
 ### Wnioski ogolne (deploy/automation)
 
 - Domyslne automaty uruchamiajace `sudo` musza byc konfigurowalne i jawnie logowane.
 - Kazda funkcja z trybami (auto/manual) musi miec testy E2E dla obu sciezek.
 - Zmiany w zachowaniu deployu musza miec opis w dokumentacji + komunikat w CLI (co sie wydarzylo i dlaczego).
+- Fallbacki musza byc deterministyczne i zawsze logowac powod (ops/CI musi wiedziec, czemu nastapil pelny upload).
+- Kompatybilnosc runtime musi byc kodowana w metadanych release i weryfikowana przed reuse/payload‑only.
 
 ## Build / packaging
 
@@ -594,9 +599,15 @@
   - Wymaganie: `release/r/c` musi istniec i byc porownany z `<installDir>/r/c`.
   - Wymaganie: mismatch lub brak `c` = **fallback do pelnego bootstrap**.
 
+- Blad: payload-only nie weryfikowal wersji runtime Node, co pozwalalo na reuse po upgrade i mismatch runtime/payload.
+  - Wymaganie: release zapisuje wersje runtime (np. `r/nv`) i porownuje z targetem; brak/mismatch = fallback do pelnego uploadu.
+
 - Blad: "szybkie sciezki" (payload-only/fast) pomijaly czesc walidacji lub plikow layoutu, co prowadzilo do niespojnego stanu na target.
   - Wymaganie: fast paths musza miec parytet walidacji i listy plikow z pelnym deployem.
   - Wymaganie: kazda optymalizacja ma test parytetu (full vs fast) dla plikow i walidacji.
+
+- Blad: fallback z payload-only do pelnego uploadu nie logowal powodu lub probowal pelnego uploadu bez artefaktu.
+  - Wymaganie: fallback zawsze loguje powod; pelny upload tylko gdy artefakt jest dostepny, inaczej fail‑fast z instrukcja (np. `seal ship` bez `--payload-only` lub `--artifact`).
 
 - Blad: brak app‑bindingu pozwalal uruchomic runtime/payload z innego projektu na tym samym launcherze.
   - Wymaganie: `thin.appBind` domyslnie wlaczony i weryfikowany w `footer` runtime/payload oraz stopce AIO.
