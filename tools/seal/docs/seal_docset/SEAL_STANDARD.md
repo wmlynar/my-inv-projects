@@ -118,6 +118,7 @@ Przykład:
 - STD-030c (SHOULD): wywolania `systemctl` maja timeout i obsługę braku systemd/DBus (SKIP z powodem w testach).
 - STD-030d (SHOULD): `serviceName` nie zawiera sufiksu `.service`; normalizuj lub fail‑fast z jasnym bledem.
 - STD-030e (SHOULD): dla `serviceScope=system` logi `journalctl` uruchamiaj przez `sudo` lub wymagaj grupy `systemd-journal`; brak uprawnien = jasny blad.
+- STD-030f (SHOULD): `serviceScope` akceptuje tylko `user`/`system`; inne wartosci = fail‑fast (bez cichego fallbacku).
 - STD-031 (SHOULD): brak sudo domyslnie; eskalacja tylko jawnie. Waliduj owner/perms/umask w punktach krytycznych.
 - STD-031a (SHOULD): komendy wymagajace `sudo` w trybie nieinteraktywnym uzywaja `sudo -n` i fail‑fast z instrukcja (brak wiszenia na promptach).
 - STD-031b (SHOULD): gdy `sudo` jest konieczne, przekazuj wymagane ENV jawnie (`sudo -E` lub `sudo VAR=...`) i loguj kluczowe zmienne, aby uniknac rozjazdow zachowania.
@@ -129,6 +130,7 @@ Przykład:
 - STD-033a.a (SHOULD): po pobraniu waliduj format (np. `file`, `tar -tzf` dry‑run, magic bytes); HTML/komunikat błędu zamiast archiwum = fail‑fast z hintem o rate‑limit lub zlym URL.
 - STD-033a.b (SHOULD): dla URLi z przekierowaniami (np. GitHub Releases) uzywaj `curl -L`/`wget --max-redirect`, a liczbe redirectow limituj i loguj finalny URL.
 - STD-033a.c (SHOULD): unikaj `curl | tar` bez weryfikacji; preferuj pobranie do pliku + checksum + `tar -xf` (albo `pipefail` + walidacja rozmiaru/formatu).
+- STD-033a.d (SHOULD): preflight instaluje `ca-certificates` i weryfikuje TLS; brak CA = fail‑fast z instrukcja instalacji.
 - STD-033b (SHOULD): `rsync` uruchamiaj z `--timeout` (limit bez aktywnosci) oraz globalnym timeoutem procesu.
 - STD-033e (SHOULD): loguj `rsync --version` po obu stronach i fail‑fast, gdy wymagane flagi nie sa wspierane (z instrukcja aktualizacji).
 - STD-033c (SHOULD): instalatory narzedzi zewnetrznych pinuja tag/commit, loguja wersje/commit i w miare mozliwosci weryfikuja checksumy; w razie braku zrodla wspieraja mirror/backup.
@@ -146,6 +148,7 @@ Przykład:
 - STD-043 (SHOULD): waliduj wymagania **warunkowo** od poziomu/trybu (np. level 0/1/2), nie wymuszaj danych dla wyzszych poziomow.
 - STD-044 (SHOULD): identyfikatory uzywane w sciezkach plikow musza byc sanitizowane do bezpiecznego alfabetu (brak path traversal).
 - STD-044a (SHOULD): `appName`/`serviceName` sa walidowane do bezpiecznego zestawu znakow (bez spacji/slash), zanim trafia do sciezek lub komend deploy.
+- STD-044b (SHOULD): wartosci wstawiane do generowanych skryptow shellowych sa shell‑escapowane (`$`, backtick, newline) albo walidowane do bezpiecznego alfabetu; nie polegaj na samych cudzyslowach.
 - STD-045 (SHOULD): przy wlaczonych zabezpieczeniach/stealth komunikaty bledow musza byc zunifikowane (opaque failure), bez ujawniania sciezek/rolek.
 - STD-045a (SHOULD): endpointy `/health` i `/status` nie zdradzaja obecnosci sentinel/guardow (tresc i timing stabilne); szczegoly tylko w logach instalatora/CLI.
 - STD-046 (SHOULD): idempotentne porownania/zapisy do plikow chronionych musza uzywac tych samych uprawnien co install (sudo lub dedykowana grupa); brak uprawnien = blad z instrukcja.
@@ -166,6 +169,7 @@ Przykład:
 - STD-061 (SHOULD): smoke test generatora C uruchamia kompilator z `-Werror`, aby warningi nie maskowaly realnych bledow.
 - STD-061a (SHOULD): compile-test C/C++ uruchamia `-Wshadow` (wraz z `-Werror`), aby shadowing nazw nie przechodzil do produkcji.
 - STD-064 (SHOULD): toolchain kompilatora ma jawnie pinowane standardy i flagi (np. `-std=c11`), zeby unikac roznic miedzy maszynami.
+- STD-064a (SHOULD): kompilacja C/C++ ustawia `-fdebug-prefix-map`/`-ffile-prefix-map`, aby nie ujawniac absolutnych sciezek builda w binarkach.
 - STD-067 (SHOULD): walidacja uprawnien nie moze zakladac dostepnosci `sudo`; jesli `serviceUser` == biezacy uzytkownik, uzyj bezposredniego `test -x`/`test -r`.
 - STD-068 (SHOULD): output narzedzi systemowych (np. `lsblk`, `/proc/mounts`) musi byc normalizowany (trim, filtruj puste, obsluguj array/null), zanim podejmiesz decyzje.
 - STD-069 (SHOULD): probe/inspect nie moga hard-fail na braku `sudo`; zwracaj wynik + note i kontynuuj.
@@ -196,6 +200,8 @@ Przykład:
 - STD-106t (SHOULD): unikaj ukrytych promptow SSH: ustaw `PreferredAuthentications=publickey` oraz `KbdInteractiveAuthentication=no`/`PasswordAuthentication=no` w automacji.
 - STD-106u (SHOULD): przy parsowaniu outputu z `ssh` filtruj ostrzezenia (np. host key) albo ustaw `LogLevel=ERROR`, zeby nie psuc parsowania komend.
 - STD-106v (SHOULD): timeouty SSH (`ConnectTimeout`, `ServerAlive*`) sa konfigurowalne per‑target i logowane jako effective config.
+- STD-106w (SHOULD): ustawiaj `ServerAliveCountMax`, aby ograniczyc maksymalny czas wiszenia polaczen SSH przy zerwaniu sieci.
+- STD-106x (SHOULD): komendy SSH nieinteraktywne uruchamiaj z `-n` lub `</dev/null`, aby nie czytaly stdin i nie wieszaly sie na braku inputu.
 - STD-107 (SHOULD): parsowanie outputu narzedzi systemowych powinno wymuszac `LC_ALL=C` (lub `LANG=C`) albo uzywac trybu `--json`/`--output`, aby uniknac roznic locale.
 - STD-108 (SHOULD): unikaj `exec()` z domyslnym `maxBuffer`; uzywaj `spawn`/`execFile` lub ustaw `maxBuffer` i loguj przycinki outputu.
 - STD-109 (SHOULD): zawsze stosuj `--` przed listą sciezek w komendach zewnetrznych (rm/cp/rsync/scp), aby sciezki zaczynajace sie od `-` nie byly traktowane jako opcje.
@@ -224,6 +230,8 @@ Przykład:
 - STD-125 (SHOULD): przed uruchomieniem skryptow czysc ryzykowne ENV (`BASH_ENV`, `ENV`, `CDPATH`, `GLOBIGNORE`) lub ustaw bezpieczne defaulty.
 - STD-125a (SHOULD): build/testy czyszcza `NODE_OPTIONS`, `NODE_PATH`, `NODE_EXTRA_CA_CERTS`, `NODE_V8_COVERAGE`, `NODE_DEBUG` (lub ustawiają jawne wartości), aby uniknac wstrzykiwania hookow.
 - STD-126 (SHOULD): w skryptach shellowych wszystkie zmienne musza byc cytowane (`"$VAR"`), chyba ze jawnie potrzebny jest splitting.
+- STD-126a (SHOULD): gdy potrzebujesz zachowac zmienne po petli `while read`, unikaj `cmd | while read` (subshell); uzyj process substitution (`while ...; do ...; done < <(cmd)`) lub pliku tymczasowego.
+- STD-126b (SHOULD): heredoc dla literalnych tresci uzywa cytowania (`<<'EOF'`), aby uniknac ekspansji zmiennych i backslashy.
 - STD-127 (SHOULD): unikaj `eval`; gdy musisz dynamicznie skladac komendy, uzywaj args array lub whitelisty tokenow.
 - STD-128 (SHOULD): `xargs` uruchamiaj z `-r` (GNU) lub jawnie sprawdzaj, czy input nie jest pusty.
 - STD-129 (SHOULD): limity czasu (expiry/licencja/sentinel) liczymy wg czasu **hosta docelowego**; runtime musi je sprawdzac okresowo (`checkIntervalMs`) i nie blokowac wyjscia (timer `unref`).
@@ -381,6 +389,8 @@ Przykład:
 - STD-089i.a (SHOULD): kontenery testowe uruchamiaj z `--init` (tini) lub zapewnij init w obrazie, aby sprzatac zombie procesy.
 - STD-089i.b (SHOULD): po dodaniu usera do grupy `docker` wymagany jest re‑login; do tego czasu testy powinny uzywac `sudo docker` lub jawnie fail‑fast z instrukcja.
 - STD-089i.c (SHOULD): testy wykrywaja `docker compose` (v2) vs `docker-compose` (v1), loguja wybrana binarke i w razie braku wypisuja instrukcje instalacji.
+- STD-089i.d (SHOULD): skrypty dockerowe loguja i zachowuja `DOCKER_CONTEXT`/`DOCKER_CONFIG` (zwlaszcza przy `sudo`), aby uniknac przypadkowego uzycia innego daemonu.
+- STD-089i.e (SHOULD): obrazy z sshd generuja host keys (`ssh-keygen -A`) podczas builda lub entrypointu; brak kluczy = fail‑fast z instrukcja.
 - STD-089j (SHOULD): testy uruchamiane jako root nie modyfikuja repo; pracuja na kopii lub temp‑workspace i sprzataja wszystko w `finally`.
 - STD-089k (SHOULD): w testach ustaw `NO_COLOR=1` i `FORCE_COLOR=0`, aby ograniczyc ANSI w outputach narzedzi (latwiejsze parsowanie).
 - STD-089l (SHOULD): w CI/E2E ustaw `NPM_CONFIG_FETCH_*` (retries/timeout) aby uniknac wiszenia npm przy problemach sieciowych.
@@ -392,6 +402,7 @@ Przykład:
 - STD-089r (SHOULD): obrazy E2E budowane z Dockerfile maja label z hashem wejsc (Dockerfile/entrypoint); mismatch wymusza rebuild.
 - STD-089s (SHOULD): E2E w Dockerze robi preflight na `node`/`npm` i fail‑fast, gdy brak (z jasna instrukcja), zwlaszcza gdy instalacja zaleznosci jest wylaczona; obraz buildera powinien zawierac minimalny runtime JS.
 - STD-089t (SHOULD): E2E ma jeden kanoniczny wrapper (skrypt/komenda), ktory laduje config z pliku `.env` i loguje **effective config**; dokumentacja nie wymaga kopiowania dlugich, wielolinijkowych komend z dziesiatkami ENV.
+- STD-089t.a (SHOULD): duze konfiguracje przekazuj przez plik `.env`/config (nie przez jedna linie shell), aby uniknac limitu `ARG_MAX`.
 - STD-089u (SHOULD): instalatory narzedzi E2E obsluguja brak pakietu w APT (np. `criu` bez kandydata) przez build ze zrodel lub jawny SKIP z instrukcja; brak pakietu nie moze konczyc sie nieczytelnym `apt-get` error.
 - STD-090c (SHOULD): preflight sprawdza **narzedzia CLI** (np. `postject` w `node_modules/.bin`/PATH), nie tylko obecność modulu.
 - STD-091a (SHOULD): funkcje zalezne od architektury (np. CPUID) musza degradująco dzialac na platformach bez wsparcia (pusty/neutralny ID zamiast twardego bledu).

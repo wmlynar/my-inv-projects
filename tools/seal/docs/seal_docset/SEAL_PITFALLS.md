@@ -68,6 +68,10 @@
 - Blad: narzedzia zewnetrzne (git/ssh/rsync) prosily o haslo/hostkey i testy/deploy wisialy bez wyjscia.
   - Wymaganie: ustaw `GIT_TERMINAL_PROMPT=0`, `GIT_ASKPASS=/bin/false`, `SSH_ASKPASS=/bin/false`.
   - Wymaganie: `ssh/scp/rsync` uruchamiaj z `BatchMode=yes` i timeoutem (`ConnectTimeout`, `ServerAliveInterval`).
+  - Wymaganie: ustaw `ServerAliveCountMax`, aby unikać nieskończonych wiszeń przy zerwanych połączeniach.
+
+- Blad: `ssh` czytal stdin (np. z pipe) i „pożerał” dane wejściowe lub wisiał na braku inputu.
+  - Wymaganie: dla komend nieinteraktywnych używaj `ssh -n` albo `</dev/null`, aby odciąć stdin.
   - Wymaganie: wylacz `KbdInteractiveAuthentication`/`PasswordAuthentication` lub wymus `PreferredAuthentications=publickey`, aby unikac ukrytych promptow.
 
 - Blad: `bash -lc` na hoście zdalnym kończył się kodem != 0 przez `.bash_logout` (np. `clear_console`), mimo że właściwa komenda się wykonała.
@@ -90,6 +94,9 @@
 
 - Blad: pipeline `curl | tar` bez `pipefail` przechodzil mimo bledu pobierania, a `tar` dostawal puste wejscie (cichy FAIL).
   - Wymaganie: preferuj pobranie do pliku + weryfikacja + `tar -xf`; jeśli uzywasz pipe, wlacz `set -o pipefail` i waliduj rozmiar/format.
+
+- Blad: brak `ca-certificates` powodowal bledy TLS przy `curl`/`git`, co maskowalo realny problem (wygladalo jak timeout lub 404).
+  - Wymaganie: preflight instaluje `ca-certificates` i weryfikuje, ze TLS dziala (np. krótki `curl -I https://example.com`).
 
 - Blad: `rsync` bez timeoutu potrafil wisiec na zerwanym polaczeniu.
   - Wymaganie: uzywaj `--timeout` w `rsync` (sekundy bez aktywnosci) oraz jawny limit czasu calkowitego.
@@ -176,6 +183,8 @@
   - Wymaganie: unikaj `eval`; uzywaj args array lub whitelisty dopuszczalnych tokenow.
 - Blad: rozne moduly mialy wlasne implementacje `shQuote/shellQuote`, co prowadzilo do niespojnosci i edge‑case’ow.
   - Wymaganie: jeden wspolny helper do quoting (z testami dla `'`, spacji, newline, backslash), bez lokalnych kopii.
+- Blad: heredoc bez cytowania (`<<EOF`) rozszerzal zmienne i backslash‑e, co psulo generowane skrypty/konfigi i moglo wstrzyknac dane.
+  - Wymaganie: dla literalnych tresci uzywaj `<<'EOF'` (bez ekspansji) albo jawnie escapuj dane wejściowe.
 
 - Blad: `xargs` bez `-r` wykonywal polecenie bez argumentow (na pustym input), co psulo logike.
   - Wymaganie: `xargs -0 -r` albo jawna blokada, gdy input jest pusty.
@@ -672,6 +681,8 @@
 
 - Blad: wielolinijkowe komendy E2E (dziesiatki `SEAL_E2E_*` z `\\`) byly latwe do zepsucia (brak backslasha, przypadkowy komentarz), co ucinalo ENV i uruchamialo inny zakres testow.
   - Wymaganie: udostepnij jeden kanoniczny wrapper (skrypt) lub plik `.env`, a runner waliduje i loguje **effective config**; dokumentacja nie powinna wymagać ręcznego kopiowania długich "ścian" ENV.
+- Blad: bardzo długie linie z wieloma `VAR=...` przekraczały `ARG_MAX` i uruchomienie kończyło się niejasnym błędem lub obciętym ENV.
+  - Wymaganie: duże konfiguracje przekazuj przez plik `.env`/config, nie przez pojedynczą linię shell.
 
 - Blad: docker buildy korzystaly ze starych obrazow bazowych, bo `--pull` nie byl jawnie kontrolowany.
   - Wymaganie: tryb pull jest jawny (`--pull`/`--no-pull`) i logowany, a bazowy obraz jest identyfikowany po tagu/digescie.
@@ -908,6 +919,7 @@
   - Wymaganie: po przypadkowym zapisie w repo wyczysc root‑owned pliki (np. `sudo rm -f tools/seal/seal/docker/e2e/ssh/known_hosts*`).
 
 - Blad: testy dockerowe z systemd/sshd nie startowaly bez `--privileged` i poprawnie zamontowanego cgroup.
+  - Wymaganie: w obrazach testowych generuj host keys (`ssh-keygen -A`) lub upewnij sie, ze sa obecne; brak kluczy powoduje cichy fail startu sshd.
   - Wymaganie: testy wymagajace systemd sprawdzaja dostepnosc cgroup (`/sys/fs/cgroup`) i w razie braku robia SKIP z powodem.
   - Wymaganie: dokumentacja testow podaje wymagane flagi (`--privileged`, `--cgroupns=host`).
 
@@ -919,6 +931,7 @@
 
 - Blad: testy dockerowe uruchamialy sie na innym Docker context/daemon, co dawalo inne obrazy i cache i mylilo wyniki.
   - Wymaganie: skrypty loguja `docker context show` i `docker info` (server), a uruchomienie moze wskazac jawny context (`DOCKER_CONTEXT=`).
+  - Wymaganie: przy `sudo` zachowuj `DOCKER_CONFIG` i `DOCKER_CONTEXT` (albo loguj ich brak), bo inaczej docker moze uzyc innego kontekstu/daemonu.
   - Wymaganie: loguj identyfikatory obrazow (`docker image inspect --format '{{.Id}}'`) i wersje obrazu/testu, zeby nie uruchamiac "starych" buildow.
   - Wymaganie: bind‑mounty z hosta nie moga tworzyc root‑owned artefaktow w repo; uzywaj cache poza repo lub uruchamiaj kontener z mapowanym UID/GID.
   - Wymaganie: loguj architekture hosta i obrazu (`docker info`/`docker inspect`) oraz tryb emulacji; mismatch arch/`--platform` = WARN lub FAIL.
@@ -1109,6 +1122,9 @@
   - Wymaganie: Seal odmawia `rm -rf` jesli `installDir` jest zbyt plytki lub jest katalogiem systemowym.
   - Wymaganie: awaryjnie mozna ustawic `SEAL_ALLOW_UNSAFE_RM=1`, ale jest to **niebezpieczne**.
 
+- Blad: lokalne komendy `systemctl`/`journalctl` dla `serviceScope=system` uzywaly `sudo` nawet przy UID 0, co na minimalnych hostach bez `sudo` konczylo sie bledem.
+  - Wymaganie: gdy proces dziala jako root, uruchamiaj `systemctl`/`journalctl` bez `sudo`.
+
 - Blad: `run-current.sh` i katalog aplikacji mialy zlego wlasciciela (root) i brak prawa wykonania.
   - Wymaganie: `installDir` i `run-current.sh` musza byc wlascicielem uzytkownika uslugi i `run-current.sh` musi byc wykonywalny.
 
@@ -1143,8 +1159,13 @@
   - Wymaganie: nazwa uslugi jest zapisywana w `<root>/service.name` i uzywana konsekwentnie przez `seal` i `appctl`.
 - Blad: `appName` zawieral spacje/znaki specjalne i byl uzywany w sciezkach/nazwach plikow, co psulo deploy i `scp`.
   - Wymaganie: waliduj `appName/serviceName` do bezpiecznego alfabetu (np. `[a-zA-Z0-9._-]`) i normalizuj przed uzyciem w sciezkach/komendach.
+- Blad: generowany `appctl` wstawial `APP_NAME`/`APP_ENTRY` w podwojnych cudzyslowach bez escapingu `$`/`` ``, co powodowalo ekspansje zmiennych lub command substitution przy nietypowych nazwach.
+  - Wymaganie: wartosci wstawiane do skryptow shellowych musza byc shell‑escapowane (np. single quotes/`printf %q`) lub walidowane do bezpiecznego alfabetu.
 - Blad: `serviceName` zawieral sufiks `.service`, co dawalo `foo.service.service` w systemctl i mylace logi.
   - Wymaganie: wymagaj `serviceName` bez sufiksu `.service` (strip lub fail‑fast z jasnym komunikatem).
+
+- Blad: `serviceScope` z nieprawidlowa wartoscia byl cicho traktowany jak `system`, co uruchamialo `sudo` i dawalo mylace bledy.
+  - Wymaganie: `serviceScope` akceptuje tylko `user`/`system`; inne wartosci = fail‑fast z instrukcja.
 
 - Blad: po zmianie pliku unit systemd brakowalo `daemon-reload`, przez co systemd uzywal starej konfiguracji.
   - Wymaganie: po zapisie/aktualizacji unitu zawsze wykonaj `systemctl daemon-reload` (lub `--user` odpowiednio do scope).
@@ -1552,6 +1573,8 @@
 
 - Blad: build nie logowal wersji narzedzi (cc/strip/packer), co utrudnial reprodukcje.
   - Wymaganie: loguj `tool --version` dla kazdego uzytego narzedzia.
+- Blad: binarki C/C++ zawieraly sciezki builda (debug info), co ujawnialo layout projektu mimo stripu.
+  - Wymaganie: ustaw `-fdebug-prefix-map`/`-ffile-prefix-map` (lub odpowiednik w clang/gcc), aby zanonimizowac sciezki builda.
 - Blad: nie bylo wiadomo, z jakiej sciezki pochodzi kompilator (PATH), co utrudnialo diagnoze.
   - Wymaganie: loguj absolutna sciezke do kazdego narzedzia (`which`/`command -v`).
 - Blad: cache buildow byl wspoldzielony miedzy OS/arch, przez co pojawialy sie niezgodne artefakty.
@@ -1958,6 +1981,8 @@
   - Wymaganie: `trap` ustawiaj na poczatku skryptu.
 - Blad: petle `while read` gubily ostatnia linie bez `\\n`.
   - Wymaganie: uzywaj `while IFS= read -r line || [ -n \"$line\" ]; do ...`.
+- Blad: `cmd | while read` uruchamial petle w subshellu, a zmiany zmiennych po petli ginely.
+  - Wymaganie: uzywaj process substitution (`while ...; do ...; done < <(cmd)`) albo zapisuj wyniki do pliku tymczasowego.
 ## Dodatkowe wnioski (batch 131-135)
 
 - Blad: rekurencyjne skanowanie katalogow bralo `.git`, `node_modules`, `seal-out`, co powodowalo spowolnienia i przypadkowe artefakty.
