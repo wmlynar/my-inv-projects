@@ -44,6 +44,22 @@ function ensureConfigDriftOk({ targetCfg, targetName, configFile, acceptDrift })
   }
 }
 
+function attemptRollback({ targetCfg, targetName, timing }) {
+  const timeSync = timing && timing.timeSync ? timing.timeSync : (label, fn) => fn();
+  warn(`Rollback: attempting to revert ${targetName} to previous release.`);
+  try {
+    timeSync("deploy.rollback", () => {
+      if ((targetCfg.kind || "local").toLowerCase() === "ssh") rollbackSsh(targetCfg);
+      else rollbackLocal(targetCfg);
+    });
+    ok(`Rollback OK (${targetName}).`);
+    return true;
+  } catch (e) {
+    warn(`Rollback failed (${targetName}): ${e && e.message ? e.message : e}`);
+    return false;
+  }
+}
+
 function warnConfigDrift({ targetCfg, configFile, acceptDrift, pushConfig }) {
   const kind = (targetCfg.kind || "local").toLowerCase();
   const res = kind === "ssh"
@@ -163,6 +179,8 @@ async function cmdDeploy(cwd, targetArg, opts) {
   const sentinelCfg = resolveSentinelConfig({ projectRoot, projectCfg: proj, targetCfg, targetName, packagerSpec });
   const autoBootstrapEnabled = !(proj && proj.deploy && proj.deploy.autoBootstrap === false);
   const payloadOnly = !!opts.payloadOnly;
+  const waitEnabled = resolveWaitEnabled(opts, targetCfg, false);
+  let rollbackAttempted = false;
 
   const configName = resolveConfigName(targetCfg, null);
   const configFile = getConfigFile(projectRoot, configName);
@@ -296,14 +314,21 @@ async function cmdDeploy(cwd, targetArg, opts) {
     }));
     hr();
     info("Restart requested (--restart)");
-    if ((targetCfg.kind || "local").toLowerCase() === "ssh") {
-      timing.timeSync("deploy.restart", () => restartSsh(targetCfg));
-    } else {
-      timing.timeSync("deploy.restart", () => restartLocal(targetCfg));
+    try {
+      if ((targetCfg.kind || "local").toLowerCase() === "ssh") {
+        timing.timeSync("deploy.restart", () => restartSsh(targetCfg));
+      } else {
+        timing.timeSync("deploy.restart", () => restartLocal(targetCfg));
+      }
+    } catch (err) {
+      if (!rollbackAttempted) {
+        rollbackAttempted = true;
+        attemptRollback({ targetCfg, targetName, timing });
+      }
+      throw err;
     }
   }
 
-  const waitEnabled = resolveWaitEnabled(opts, targetCfg, false);
   if (waitEnabled) {
     if (!opts.restart) warn("Readiness wait requested without --restart; checking current service state.");
     const readiness = resolveReadinessOptions(targetCfg, opts, {
@@ -312,10 +337,18 @@ async function cmdDeploy(cwd, targetArg, opts) {
       httpTimeoutMs: 2000,
     });
     hr();
-    if ((targetCfg.kind || "local").toLowerCase() === "ssh") {
-      await timing.timeAsync("deploy.wait", async () => waitForReadySsh(targetCfg, readiness));
-    } else {
-      await timing.timeAsync("deploy.wait", async () => waitForReadyLocal(targetCfg, readiness));
+    try {
+      if ((targetCfg.kind || "local").toLowerCase() === "ssh") {
+        await timing.timeAsync("deploy.wait", async () => waitForReadySsh(targetCfg, readiness));
+      } else {
+        await timing.timeAsync("deploy.wait", async () => waitForReadyLocal(targetCfg, readiness));
+      }
+    } catch (err) {
+      if (opts.restart && !rollbackAttempted) {
+        rollbackAttempted = true;
+        attemptRollback({ targetCfg, targetName, timing });
+      }
+      throw err;
     }
   }
 

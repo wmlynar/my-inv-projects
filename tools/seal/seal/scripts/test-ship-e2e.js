@@ -283,6 +283,62 @@ async function testShipThinBootstrapReuse() {
   }
 }
 
+async function testShipRollbackLocal() {
+  log("Testing seal ship rollback on readiness failure (local)...");
+  const targetName = `ship-e2e-rollback-${Date.now()}-${process.pid}`;
+  const serviceName = `seal-example-ship-rollback-${Date.now()}`;
+  const installDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-ship-rollback-"));
+  const targetCfg = {
+    target: targetName,
+    kind: "local",
+    host: "127.0.0.1",
+    user: "local",
+    serviceScope: "user",
+    installDir,
+    serviceName,
+    packager: "thin-split",
+    config: "local",
+  };
+
+  const targetPath = path.join(EXAMPLE_ROOT, "seal-config", "targets", `${targetName}.json5`);
+  const backup = readFileMaybe(targetPath);
+  writeTargetConfig(targetName, targetCfg);
+
+  try {
+    await shipOnce(targetCfg, { bootstrap: true, pushConfig: true, skipCheck: true, packager: "thin-split" });
+    const currentFile = path.join(installDir, "current.buildId");
+    const before = fs.readFileSync(currentFile, "utf-8").trim();
+
+    let failed = false;
+    try {
+      await cmdShip(EXAMPLE_ROOT, targetCfg.target, {
+        bootstrap: false,
+        pushConfig: false,
+        skipCheck: true,
+        packager: "thin-split",
+        waitMode: "http",
+        waitUrl: "http://127.0.0.1:1/healthz",
+        waitTimeout: 3000,
+        waitInterval: 500,
+        waitHttpTimeout: 500,
+      });
+    } catch {
+      failed = true;
+    }
+    assert.ok(failed, "Expected ship to fail readiness and trigger rollback");
+
+    const after = fs.readFileSync(currentFile, "utf-8").trim();
+    assert.strictEqual(after, before, "Rollback should restore previous current.buildId");
+  } finally {
+    try {
+      uninstallLocal(targetCfg);
+    } catch {
+      cleanupServiceArtifacts(targetCfg);
+    }
+    cleanupTargetConfig(targetName, backup);
+  }
+}
+
 async function testShipThinBootstrapSsh() {
   if (process.env.SEAL_SHIP_SSH_E2E !== "1") {
     log("SKIP: set SEAL_SHIP_SSH_E2E=1 to run SSH ship E2E");
@@ -401,7 +457,7 @@ async function testShipThinBootstrapSsh() {
     const nvWrite = sshOk(
       user,
       host,
-      `printf %s ${shellQuote("v0.0.0\n")} > ${shellQuote(`${installDir}/r/nv`)}`,
+      `printf %s ${shellQuote("v0.0.0")} > ${shellQuote(`${installDir}/r/nv`)}`,
       sshPort
     );
     assert.ok(nvWrite.ok, `Failed to write runtime version before mismatch test: ${nvWrite.out}`);
@@ -455,6 +511,12 @@ async function main() {
         log("OK: testShipThinBootstrapReuse");
       } catch (e) {
         failures.push({ name: "local", error: e && e.stack ? e.stack : e && e.message ? e.message : String(e) });
+      }
+      try {
+        await testShipRollbackLocal();
+        log("OK: testShipRollbackLocal");
+      } catch (e) {
+        failures.push({ name: "local-rollback", error: e && e.stack ? e.stack : e && e.message ? e.message : String(e) });
       }
     }
     try {
