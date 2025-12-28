@@ -113,6 +113,8 @@ Przykład:
 - STD-034i (SHOULD): `thin.antiDebug.seccompNoDebug.mode` akceptuje tylko `errno|kill`; inne wartosci = fail‑fast.
 - STD-034j (SHOULD): `protection.*.args` oraz `protection.strings.obfuscation` sa walidowane typami/allowlista; bledy = fail‑fast lub jawny warning + log `effective config`.
 - STD-034k (SHOULD): `appName`/`serviceName` maja spójne zasady override we wszystkich komendach; gdy override niedozwolony = fail‑fast z instrukcja.
+- STD-034l (SHOULD): `target.kind` akceptuje tylko `local|ssh`; inne wartosci = fail‑fast.
+- STD-034m (SHOULD): `defaultTarget` wskazuje istniejacy target; brak = fail‑fast w `seal check`.
 - STD-025 (SHOULD): wszystkie generowane katalogi (cache/release/tmp) maja retention/pruning i loguja przyczyny czyszczenia.
 - STD-025a (SHOULD): cache jest kluczowany po target+config+wersja/format; zmiana schematu wymusza czyszczenie lub nowy namespace cache.
 - STD-028 (SHOULD): zapisy plikow krytycznych sa atomowe (tmp + rename), aby uniknac polowicznych stanow po crashu.
@@ -242,6 +244,7 @@ Przykład:
 - STD-120 (SHOULD): lockfile zawiera PID+timestamp; stale locki sa wykrywane i bezpiecznie czyszczone.
 - STD-121 (SHOULD): skrypty zawierajace bash‑isms musza byc uruchamiane przez `bash` jawnie (nie domyslny `sh`).
 - STD-121a (SHOULD): zdalne skrypty uruchamiane przez SSH nie zakladaja obecnosci `bash`; preferuj `/bin/sh -lc` albo preflightuj `bash` i fail‑fast z instrukcja.
+- STD-121b (SHOULD): skrypty wykonywalne w repo musza miec bit `+x` i byc sprawdzone w CI (`test -x`); w kontenerach/CI ustaw `chmod +x` lub uruchamiaj jawnie `bash <script>`; unikaj CRLF w shebang.
 - STD-122 (SHOULD): destrukcyjne kasowanie katalogow odbywa sie przez helper z walidacja niepustej sciezki i `realpath` w dozwolonym root.
 - STD-123 (SHOULD): w skryptach z `set -e` operacje typu `grep`/`diff` musza miec jawne sprawdzenie exit code (1 = brak dopasowania) zamiast przerywac skrypt.
 - STD-124 (SHOULD): nie parsuj `ls`; do list plikow uzywaj `find -print0`/`xargs -0` lub globbing z `nullglob`, aby uniknac bledow na spacjach/pustych katalogach.

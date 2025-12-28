@@ -293,6 +293,10 @@
   - Wymaganie: jedna centralna walidacja targetu i wspolne helpery w kazdej komendzie.
 - Blad: `appName` z targetu byl raz ignorowany (deploy), a raz respektowany (check/config), co dawalo niespojne nazwy/uslugi i mylace komunikaty.
   - Wymaganie: jedna zasada dla `appName`/`serviceName` (override dozwolony wszedzie albo zakazany); w obu przypadkach loguj `effective config`.
+- Blad: `target.kind` z literowka (np. `shh`, `remote`) byl traktowany jak `local`, co moglo uruchomic deploy na zlym hoście.
+  - Wymaganie: `target.kind` akceptuje tylko `local|ssh`; inne wartosci = fail‑fast z instrukcja.
+- Blad: `defaultTarget` wskazywal na nieistniejacy target, co dawalo mylace bledy dopiero w trakcie deployu.
+  - Wymaganie: `seal check` waliduje, ze `defaultTarget` istnieje w `seal-config/targets`.
 
 - Blad: parsowanie danych z narzedzi systemowych (np. `lsblk`) nie normalizowalo `mountpoints` (null/array/string), co dawalo puste wpisy i bledne wnioski o mountach.
   - Wymaganie: zawsze normalizuj output narzedzi (trim, filtruj puste, obsluguj array) przed decyzjami.
@@ -1423,6 +1427,11 @@
   - Wymaganie: przed uruchomieniem przez `sudo` waliduj wersje Node i `PATH` (fail‑fast przy niezgodnosci).
   - Wymaganie: uruchamiaj `sudo` z jawnie ustawionym `PATH`/`HOME`/`XDG_CACHE_HOME`/`SEAL_CACHE` (tak, by cache trafial do projektu, nie do `/root`).
   - Wymaganie: loguj effective `node -v` i `which node` w trybie E2E.
+
+- Blad: skrypt uruchamiany w kontenerze/CI skonczyl sie `Permission denied` (brak bitu wykonywalnego albo CRLF w shebangu).
+  - Wymaganie: skrypty wykonywalne w repo musza miec ustawiony bit `+x` i byc weryfikowane w CI (test `-x`).
+  - Wymaganie: w Dockerfile/entrypoint ustaw `chmod +x` dla skryptow uruchamianych; alternatywnie uruchamiaj jawnie `bash <script>`.
+  - Wymaganie: normalizuj newline do LF w skryptach (CRLF moze psuc shebang).
 
 - Blad: tryb decoy nadpisywal pliki release „po cichu” lub w nieprzewidywalnym zakresie.
   - Wymaganie: domyślne zachowanie decoya musi być **jawne** (overwrite ON/OFF).
