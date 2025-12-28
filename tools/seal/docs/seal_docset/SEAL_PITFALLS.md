@@ -1131,6 +1131,8 @@
   - Wymaganie: wywolania `systemctl` maja timeout i czytelny SKIP/blad, gdy systemd nie jest dostepny.
 - Blad: brak `sudo` na hoście (lub `sudo` poza PATH) dawalo mylace wyniki `systemctl` i ukryte FAIL.
   - Wymaganie: preflight sprawdza obecność `sudo` gdy jest wymagane i podaje jasne instrukcje instalacji/konfiguracji.
+- Blad: komendy na SSH uzywaly `sudo` nawet gdy user to `root`, co psulo deploy na minimalnych hostach bez `sudo`.
+  - Wymaganie: gdy user= root, nie uzywaj `sudo` (lub preflightuj `sudo` tylko gdy faktycznie potrzebne).
 
 - Blad: stare releasy rosly bez limitu (brak cleanup).
   - Wymaganie: retention (np. ostatnie N release) + usuwanie starych katalogow.

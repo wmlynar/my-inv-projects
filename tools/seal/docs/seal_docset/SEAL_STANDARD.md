@@ -120,6 +120,7 @@ Przykład:
 - STD-031b (SHOULD): gdy `sudo` jest konieczne, przekazuj wymagane ENV jawnie (`sudo -E` lub `sudo VAR=...`) i loguj kluczowe zmienne, aby uniknac rozjazdow zachowania.
 - STD-031c (SHOULD): preferuj allowliste zmiennych przekazywanych do `sudo` (`sudo VAR=...`) zamiast pelnego `sudo -E`, aby ograniczyc niekontrolowany ENV.
 - STD-031d (SHOULD): gdy `sudo` jest wymagane, preflight sprawdza jego obecność w PATH; brak `sudo` = fail‑fast z instrukcja instalacji/konfiguracji.
+- STD-031e (SHOULD): gdy operacja jest uruchamiana jako `root`, nie uzywaj `sudo`; inaczej minimalne hosty bez `sudo` beda failowac.
 - STD-033 (SHOULD): operacje zewnetrzne (ssh/scp/rsync/http) maja timeout i komunikat "co dalej".
 - STD-033a (SHOULD): pobieranie przez `curl`/`wget` uzywa `--fail` + timeoutów (`--connect-timeout`, `--max-time`) i limitu retry; brak odpowiedzi = fail‑fast.
 - STD-033b (SHOULD): `rsync` uruchamiaj z `--timeout` (limit bez aktywnosci) oraz globalnym timeoutem procesu.
