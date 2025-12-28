@@ -743,6 +743,10 @@
 - Blad: E2E budowaly ciezkie warianty (np. wysoki poziom `thin`) przez co testy byly zbyt wolne.
   - Wymaganie: testy E2E wymuszaja szybkie ustawienia (`thin.level=low` lub mniejsze chunkSize) i minimalne payloady.
 
+- Blad: `SEAL_E2E_EXAMPLE_ROOT`/`SEAL_E2E_SEED_ROOT` wskazywal na niebezpieczna sciezke (np. repo lub katalog systemowy), a runner wykonywal `rm -rf`, co grozilo utrata danych.
+  - Wymaganie: E2E waliduje, ze rooty workspace/seed sa w bezpiecznym katalogu (np. `/tmp`/`$TMPDIR`) i nie wskazuja na repo; inaczej fail‑fast z instrukcja.
+  - Wymaganie: ewentualne obejscie wymaga jawnej flagi typu `SEAL_E2E_ALLOW_UNSAFE_ROOT=1` z ostrzezeniem.
+
 - Blad: zabezpieczenia anti‑debug/snapshot nie mialy deterministycznych wyzwalaczy w testach, przez co E2E byly flakey.
   - Wymaganie: kazda funkcja ochronna ma dedykowane, jawne “test hooks” (ENV) do deterministycznego wywolania w E2E.
   - Wymaganie: test hooks sa aktywne tylko w trybie testowym i domyslnie wylaczone w produkcji.

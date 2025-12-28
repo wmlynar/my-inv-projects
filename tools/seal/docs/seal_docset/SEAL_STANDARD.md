@@ -250,6 +250,7 @@ Przykład:
 - STD-027n (SHOULD): runner E2E loguje aktywny toolset (np. core/full), a testy/instalatory respektuja go (brak narzedzi w toolsecie = SKIP lub jawny FAIL w trybie strict).
 - STD-027s (SHOULD): wartosc `SEAL_E2E_TOOLSET` jest walidowana (allowlista), a nieznana wartosc daje FAIL lub wyrazny warning + fallback.
 - STD-027t (SHOULD): ustawienia rownoległosci E2E (`SEAL_E2E_PARALLEL`, `SEAL_E2E_PARALLEL_MODE`, `SEAL_E2E_JOBS`) sa walidowane i logowane jako effective config; niepoprawne wartosci = FAIL lub jawny fallback.
+- STD-027u (SHOULD): sciezki `SEAL_E2E_EXAMPLE_ROOT`/`SEAL_E2E_SEED_ROOT` sa walidowane jako bezpieczne (np. `/tmp`/`$TMPDIR`), nie wskazuja na repo/systemowe rooty; niebezpieczne = FAIL z instrukcja, chyba ze jawny override.
 - STD-027o (SHOULD): jesli `SEAL_E2E_CONFIG` jest ustawiony i plik nie istnieje lub nie jest czytelny, runner daje FAIL albo wyrazny warning + log fallback.
 - STD-027p (SHOULD): plik configu E2E jest parsowany jako `KEY=VALUE` (bez wykonywania kodu); jesli uzywasz `source`, sprawdz ownership/perms i blokuj world‑writable pliki.
 - STD-027q (SHOULD): cache narzedzi E2E ma bezpieczne perms/ownership (nie world‑writable); wykrycie niebezpiecznych perms = fail‑fast.
