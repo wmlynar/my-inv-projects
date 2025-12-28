@@ -2269,5 +2269,17 @@
 - Blad: `systemctl` bez `reset-failed` zostawial jednostki w `failed`, przez co kolejne `start` konczyly sie od razu mimo poprawnych plikow.
   - Wymaganie: jesli wykryjesz `failed`, wykonaj `systemctl reset-failed` przed restartem; loguj status przed/po.
 
+- Blad: Docker build wlaczal do obrazu pliki z sekretami (`.npmrc`, `.env`, klucze SSH), a pozostawione warstwy ujawnialy je w historii.
+  - Wymaganie: `.dockerignore` musi wykluczac pliki sekretow; build uzywa BuildKit secrets/SSH mounts zamiast `COPY` sekretow; po buildzie sprzataj tymczasowe kredencjale.
+
 - Blad: obrazy Node bez full-ICU dawaly inne wyniki `Intl` (daty/liczby), co psulo testy/UI.
   - Wymaganie: uzywaj obrazu z full-ICU lub ustaw `NODE_ICU_DATA` i jawny locale w testach.
+
+## Dodatkowe wnioski (batch 231-235)
+
+- Blad: preflight sprawdzal inny binarny plik niz uzywany w runtime (np. Playwright uruchamia `chrome-headless-shell`, a check weryfikowal `chromium`), przez co brakujace biblioteki wychodzily dopiero w trakcie testu.
+  - Wymaganie: detekcja zaleznosci sprawdza **dokladny** binarny plik uzywany w runtime (sciezka z narzedzia/ENV), a brak libs = reinstall lub SKIP z jasnym logiem.
+- Blad: logi E2E w trybie rownoleglym trafialy do katalogow tmp sprzatanych po runie, przez co brakowalo artefaktow diagnostycznych.
+  - Wymaganie: log dir E2E jest w stalym cache (poza tmp rootem), per‑grupa/test ma osobny podkatalog, a sciezka jest logowana.
+- Blad: Docker E2E probowal uruchamiac testy wymagajace pelnego hosta (systemd/kernel) bez jawnego opt‑in, co dawalo FAIL/flake.
+  - Wymaganie: domyslnie w Docker E2E dziala tryb host‑limited (skip host‑only), a testy wymagajace pelnego hosta sa oznaczone w manifeście i uruchamiane tylko po explicit opt‑in.

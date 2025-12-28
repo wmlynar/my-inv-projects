@@ -334,6 +334,9 @@ Przykład:
 - STD-027v (SHOULD): `SEAL_E2E_SUMMARY_PATH` jest unikalny per‑run/grupa lub zapisy sa chronione lockiem, aby uniknac przeplatania w trybie rownoleglym.
 - STD-027w (SHOULD): summary jest zapisywane poza repo (np. `/tmp`/`$TMPDIR`); zapis w repo wymaga jawnego override i ostrzezenia (zwl. przy uruchomieniu jako root).
 - STD-027x (SHOULD): pola summary (group/test) sa sanitizowane (bez `\\t`/`\\n`) lub escapowane w stabilny sposob.
+- STD-027y (SHOULD): preflight zaleznosci E2E weryfikuje **dokladny** binarny plik uzywany w runtime (np. `chrome-headless-shell`), a brakujace biblioteki oznacza reinstall lub SKIP z jasnym logiem.
+- STD-027z (SHOULD): log capture w E2E (zwl. tryb rownolegly) zapisuje logi w stalym cache poza tmp rootem; per‑grupa/test ma osobny podkatalog, a sciezka jest logowana.
+- STD-027aa (SHOULD): Docker E2E domyslnie uruchamia tryb host‑limited (skip host‑only), a testy wymagajace pelnego hosta sa oznaczone w manifeście i wymagaja jawnego opt‑in.
 - STD-027o (SHOULD): jesli `SEAL_E2E_CONFIG` jest ustawiony i plik nie istnieje lub nie jest czytelny, runner daje FAIL albo wyrazny warning + log fallback.
 - STD-027p (SHOULD): plik configu E2E jest parsowany jako `KEY=VALUE` (bez wykonywania kodu); jesli uzywasz `source`, sprawdz ownership/perms i blokuj world‑writable pliki.
 - STD-027q (SHOULD): cache narzedzi E2E ma bezpieczne perms/ownership (nie world‑writable); wykrycie niebezpiecznych perms = fail‑fast.
@@ -437,6 +440,7 @@ Przykład:
 - STD-089v (SHOULD): testy E2E loguja zuzycie dysku (np. `df -h` dla cache/log/tmp) na starcie i koncu, aby szybko wykryc leak/rozrost.
 - STD-089w (SHOULD): E2E ma retention/limit dla cache/logow/artefaktow (liczba/rozmiar/TTL) i czytelne instrukcje cleanup przy `ENOSPC`.
 - STD-089x (SHOULD): testy dockerowe raportuja rozmiar cache/obrazow (`docker system df`) i maja jawny tryb cleanup (`docker builder prune`/`docker image prune`); rekomenduj dedykowany `data-root` dla cache obrazow.
+- STD-089y (SHOULD): docker build nie moze kopiowac sekretow do warstw; `.dockerignore` wyklucza `.env`, `.npmrc`, klucze SSH; uzywaj BuildKit secrets/SSH mounts, a build-time kredencjale są sprzątane po uzyciu.
 - STD-090c (SHOULD): preflight sprawdza **narzedzia CLI** (np. `postject` w `node_modules/.bin`/PATH), nie tylko obecność modulu.
 - STD-091a (SHOULD): funkcje zalezne od architektury (np. CPUID) musza degradująco dzialac na platformach bez wsparcia (pusty/neutralny ID zamiast twardego bledu).
 - STD-092a (SHOULD): `--skip-check` jest wyraznie oznaczony jako ryzykowny i zawsze wypisuje ostrzezenie; krytyczne braki toolchaina nie powinny byc maskowane.

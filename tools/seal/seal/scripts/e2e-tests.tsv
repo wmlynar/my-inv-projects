@@ -12,6 +12,6 @@ strip	hardening	1	Verifies strip/ELF cleanup rules and runtime smoke.	medium	Che
 elf-packers	hardening	1	Validates ELF packers (upx/kiteshield/midgetpack) and runtime.	medium	Check packer availability and settings.	tools/seal/seal/scripts/test-elf-packers-e2e.js	0
 c-obfuscators	obfuscation	1	Tests C obfuscator variants and runtime checks.	medium	Check C++ toolchain and obfuscator binaries.	tools/seal/seal/scripts/test-c-obfuscators-e2e.js	0
 postject	misc	1	Ensures postject/SEA injection workflow is functional.	medium	Check postject availability and SEA metadata.	tools/seal/seal/scripts/test-postject-e2e.js	0
-example-ui	ui	1	Verifies example UI flow (build/run/playwright).	medium	Check Playwright browsers and port availability.	tools/seal/seal/scripts/test-example-ui-e2e.js	0
+example-ui	ui	0	Verifies example UI flow (build/run/playwright).	medium	Check Playwright browsers and port availability.	tools/seal/seal/scripts/test-example-ui-e2e.js	0
 decoy	obfuscation	1	Validates decoy file installation and collision handling.	low	Check decoy config and output integrity.	tools/seal/seal/scripts/test-decoy-e2e.js	0
 ship	deploy	0	Covers ship/deploy flow (bootstrap and SSH).	high	Check SSH, sudo, and target config.	tools/seal/seal/scripts/test-ship-e2e.js	1

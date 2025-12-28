@@ -30,6 +30,25 @@ trim() {
   printf "%s" "$s"
 }
 
+LOCK_FILE="$CACHE_ROOT/.install-tools.lock"
+LOCK_DIR="$CACHE_ROOT/.install-tools.lock.d"
+
+acquire_lock() {
+  if command -v flock >/dev/null 2>&1; then
+    exec {LOCK_FD}>"$LOCK_FILE"
+    log "Waiting for tool cache lock..."
+    flock "$LOCK_FD"
+    return
+  fi
+  log "Waiting for tool cache lock..."
+  while ! mkdir "$LOCK_DIR" 2>/dev/null; do
+    sleep 0.2
+  done
+  trap 'rmdir "$LOCK_DIR" >/dev/null 2>&1 || true' EXIT
+}
+
+acquire_lock
+
 declare -A TOOL_URL=()
 declare -A TOOL_REV=()
 declare -A TOOL_BIN=()

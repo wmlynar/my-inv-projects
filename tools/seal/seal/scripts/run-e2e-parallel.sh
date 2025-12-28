@@ -124,6 +124,10 @@ done < "$MANIFEST_PATH"
 
 DEFAULT_SUMMARY_PATH="$CACHE_ROOT/e2e-summary/last.tsv"
 SUMMARY_PATH="${SEAL_E2E_SUMMARY_PATH:-$DEFAULT_SUMMARY_PATH}"
+LOG_ROOT="${SEAL_E2E_LOG_DIR:-}"
+if [ -n "$LOG_ROOT" ]; then
+  mkdir -p "$LOG_ROOT"
+fi
 
 E2E_ONLY_RAW="$(trim_list "${SEAL_E2E_TESTS:-}")"
 E2E_SKIP_RAW="$(trim_list "${SEAL_E2E_SKIP:-}")"
@@ -258,6 +262,9 @@ run_group() {
   local root="$3"
   local summary_path="$root/.e2e-summary.tsv"
   local log_dir="$root/.e2e-logs"
+  if [ -n "$LOG_ROOT" ]; then
+    log_dir="$LOG_ROOT/$group"
+  fi
   local example_deps="0"
   if [ -z "$NODE_MODULES_ROOT" ]; then
     example_deps="${SEAL_E2E_INSTALL_EXAMPLE_DEPS:-1}"

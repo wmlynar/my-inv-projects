@@ -54,6 +54,18 @@ load_e2e_config() {
 
 load_e2e_config
 
+if [ -z "${SEAL_E2E_LIMITED_HOST:-}" ]; then
+  SEAL_E2E_LIMITED_HOST=1
+fi
+
+if [ -z "${SEAL_E2E_LOG_DIR:-}" ]; then
+  SEAL_E2E_LOG_DIR="/root/.cache/seal/e2e-logs/$(date +%Y%m%d-%H%M%S)-$$"
+fi
+
+if [ -z "${SEAL_E2E_LOG_FILTERED:-}" ]; then
+  SEAL_E2E_LOG_FILTERED=0
+fi
+
 fail() {
   echo "[docker-e2e] ERROR: $*" >&2
   exit 1
@@ -484,6 +496,7 @@ $DOCKER run --rm \
   -e SEAL_E2E_LOG_DIR="${SEAL_E2E_LOG_DIR:-}" \
   -e SEAL_E2E_LOG_TAIL_LINES="${SEAL_E2E_LOG_TAIL_LINES:-}" \
   -e SEAL_E2E_CAPTURE_LOGS="${SEAL_E2E_CAPTURE_LOGS:-}" \
+  -e SEAL_E2E_LOG_FILTERED="${SEAL_E2E_LOG_FILTERED:-}" \
   -e SEAL_E2E_FAIL_FAST="${SEAL_E2E_FAIL_FAST:-}" \
   -e SEAL_E2E_INSTALL_DEPS="${SEAL_E2E_INSTALL_DEPS:-}" \
   -e SEAL_E2E_INSTALL_PACKERS="${SEAL_E2E_INSTALL_PACKERS:-}" \

@@ -139,6 +139,7 @@ fi
 LOG_CAPTURE="${SEAL_E2E_CAPTURE_LOGS:-1}"
 LOG_DIR="${SEAL_E2E_LOG_DIR:-$CACHE_ROOT/e2e-logs/$(date +%Y%m%d-%H%M%S)}"
 LOG_TAIL_LINES="${SEAL_E2E_LOG_TAIL_LINES:-40}"
+LOG_FILTERED="${SEAL_E2E_LOG_FILTERED:-1}"
 if [ "$SETUP_ONLY" = "1" ]; then
   LOG_CAPTURE=0
 fi
@@ -758,7 +759,9 @@ run_test() {
   local name="$1"
   shift
   if ! should_run "$name"; then
-    log "SKIP: ${name} (filtered)"
+    if [ "$LOG_FILTERED" = "1" ]; then
+      log "SKIP: ${name} (filtered)"
+    fi
     if [ "$SUMMARY_SCOPE" = "all" ]; then
       TEST_STATUS["$name"]="skipped"
       TEST_DURATIONS["$name"]=0
