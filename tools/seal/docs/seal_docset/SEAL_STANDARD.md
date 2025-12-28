@@ -211,6 +211,9 @@ Przykład:
 - STD-027d (SHOULD): testy funkcji wielomodalnych (np. kilka trybow bootstrapa) pokrywaja kazdy tryb co najmniej raz i loguja aktywny wariant.
 - STD-027e (SHOULD): prereq check (narzedzia/feature) jest per‑test/per‑tryb; brak = SKIP z powodem, nie blokuje reszty suite.
 - STD-027f (SHOULD): override timeoutow jest warunkowy i wlacza sie tylko, gdy dana funkcja/artefakt jest aktywna.
+- STD-027g (SHOULD): runner E2E auto‑discoveruje testy lub uzywa manifestu z CI checkiem, aby zadny test nie byl „zapomniany”.
+- STD-027h (SHOULD): gdy ustawiony jest filtr testow, runner loguje liste dopasowanych testow; brak dopasowan = FAIL lub jawny SKIP z instrukcja.
+- STD-027i (SHOULD): defaulty E2E sa w pliku wzorcowym w repo, a lokalne override w `.seal/e2e.env` (lub `SEAL_E2E_CONFIG`); runner loguje zrodlo configu, a override jest gitignored.
 - STD-056 (SHOULD): drenaż stdout/stderr dotyczy **wszystkich** scenariuszy testowych (takze gdy spodziewasz sie porazki procesu).
 - STD-059 (SHOULD): testy E2E musza obejmowac scenariusze negatywne (brak plikow, zle uprawnienia, symlink), bo tam najczesciej wychodza regresje.
 - STD-060 (SHOULD): testy musza deterministycznie sprzatac zasoby (tmp/porty/procesy), a brak sprzatania jest traktowany jako fail.
@@ -824,6 +827,9 @@ Ten moduł dotyczy testów E2E (zwłaszcza po sealingu), które mają potwierdza
 - TEST-006 (SHOULD): zewnętrzne integracje są stubowane lokalnie (brak zależności od internetu).
 - TEST-007 (SHOULD): testy używają losowych portów (brak hardcode `3000`).
 - TEST-008 (SHOULD): testy sprzątają katalogi tymczasowe po zakończeniu (żeby nie zapychać dysku).
+- TEST-009 (SHOULD): testy wypisują podsumowanie SKIP i mają tryb strict, w którym SKIP = FAIL (runy certyfikacyjne).
+- TEST-010 (SHOULD): testy wykrywają ograniczenia środowiska (OS, brak systemd, brak capów) i oznaczają je jako SKIP z instrukcją naprawy.
+- TEST-011 (SHOULD): testy bezpieczeństwa logują kontekst hosta (kernel/arch, seccomp, kluczowe sysctl), żeby wyniki były porównywalne.
 
 ## 11. Minimalny „kontrakt dla AI” (wersja promptable)
 

@@ -540,8 +540,18 @@
 - Blad: testy/skrypty pomijaly kroki (np. instalacje narzedzi, runtime checki) bez jasnej informacji.
   - Wymaganie: kazdy SKIP musi wypisac powód i instrukcje jak wymusic pelny test.
 
+- Blad: zmiana domyslnych ustawien E2E wymagala edycji skryptow w repo, co zostawialo lokalne diffy i rozjazdy miedzy srodowiskami.
+  - Wymaganie: defaulty E2E sa w repo jako plik wzorcowy, a lokalne override przechowuj w `.seal/e2e.env` lub pod `SEAL_E2E_CONFIG` (poza repo); runner loguje zrodlo configu.
+  - Wymaganie: lokalny plik override jest ignorowany przez git (brak przypadkowych commitow).
+
 - Blad: brak podsumowania SKIP dawał fałszywe poczucie “all green”.
   - Wymaganie: testy musza wypisać liczbę i listę SKIP oraz mieć tryb strict, który traktuje SKIP jako FAIL w runach certyfikacyjnych.
+
+- Blad: filtr testow E2E (np. `SEAL_E2E_TESTS`) z literowka powodowal pusta suite lub pomijal testy bez ostrzezenia.
+  - Wymaganie: przy aktywnym filtrze loguj liste dopasowanych testow; brak dopasowan = FAIL lub jawny SKIP z instrukcja.
+
+- Blad: nowe pliki testow E2E nie byly dodawane do runnera i w praktyce nigdy sie nie uruchamialy.
+  - Wymaganie: runner ma auto‑discover albo manifest z CI checkiem, ktory failuje, gdy test nie jest zarejestrowany.
 
 - Blad: `NODE_OPTIONS`/`NODE_PATH` z srodowiska wstrzykiwaly `--require` lub inne hooki, psujac build/testy.
   - Wymaganie: testy i buildy czyszcza ryzykowne ENV (`NODE_OPTIONS`, `NODE_PATH`, `NODE_EXTRA_CA_CERTS`) albo jawnie ustawiają bezpieczne wartości.
