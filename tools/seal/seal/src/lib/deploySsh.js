@@ -1013,9 +1013,11 @@ function checkHttpSsh(targetCfg, url, timeoutMs) {
   const tm = Math.max(1, Math.ceil(timeoutMs / 1000));
   const script = [
     "set -euo pipefail",
+    "export NO_PROXY=127.0.0.1,localhost",
+    "export no_proxy=127.0.0.1,localhost",
     `URL=${shQuote(url)}`,
     `TM=${shQuote(String(tm))}`,
-    "if command -v curl >/dev/null 2>&1; then curl -fsS --max-time \"$TM\" \"$URL\" >/dev/null; exit $?; fi",
+    "if command -v curl >/dev/null 2>&1; then curl -fsS --noproxy \"*\" --max-time \"$TM\" \"$URL\" >/dev/null; exit $?; fi",
     "if command -v wget >/dev/null 2>&1; then wget -q -O /dev/null --timeout=\"$TM\" \"$URL\"; exit $?; fi",
     "echo '__SEAL_HTTP_TOOL_MISSING__' >&2; exit 127",
   ].join("\n");
