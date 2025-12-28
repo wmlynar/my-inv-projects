@@ -132,6 +132,8 @@
 
 - Blad: `rsync` byl uruchamiany przez `sudo` bez `-n`, co powodowalo wiszenie na promptach hasla.
   - Wymaganie: dla `--rsync-path` uzywaj `sudo -n rsync` (albo NOPASSWD tylko dla rsync) i loguj ostrzezenie, gdy sudo nie jest dostepne.
+- Blad: sciezki z spacjami lub znakami specjalnymi byly interpretowane przez zdalny shell w `rsync`, co psulo transfer.
+  - Wymaganie: uzywaj `rsync --protect-args` (lub `-s`) i preflightuj wsparcie opcji; bez wsparcia fail‑fast lub wymagaj sciezek bez spacji/shell‑metachar.
 
 - Blad: `sudo` na hoście wymagalo TTY (`requiretty`), przez co nieinteraktywne komendy failowaly mimo poprawnych uprawnien.
   - Wymaganie: dla uzytkownika deploy wylacz `requiretty` lub w ostatecznosci uruchom `ssh -tt` tylko gdy to niezbedne (loguj ten fakt).

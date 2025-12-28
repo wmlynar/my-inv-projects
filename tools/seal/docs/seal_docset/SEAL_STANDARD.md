@@ -91,7 +91,7 @@ Przykład:
 - STD-035a (SHOULD): manifest/hash artefaktow jest liczony po wszystkich krokach post-processingu (strip/packer/obfuscation), jako ostatni etap builda.
 - STD-040 (SHOULD): preflight uzywa tych samych argumentow i srodowiska co runtime.
 - STD-040a (SHOULD): runtime/serwis uruchamia aplikacje z `NODE_ENV=production` (jesli nie ustawiono inaczej), a testy E2E sprawdzaja ten tryb.
-- STD-040b (SHOULD): runtime sanitizuje ryzykowne ENV (`NODE_OPTIONS`, `NODE_PATH`, `NODE_EXTRA_CA_CERTS`) aby nie wstrzykiwac hookow/inspect z hosta; debug uruchamiaj jawnie przez flagi runtime.
+- STD-040b (SHOULD): runtime sanitizuje ryzykowne ENV (`NODE_OPTIONS`, `NODE_PATH`, `NODE_EXTRA_CA_CERTS`, `NODE_V8_COVERAGE`, `NODE_DEBUG`) aby nie wstrzykiwac hookow/inspect z hosta; debug uruchamiaj jawnie przez flagi runtime.
 - STD-041 (SHOULD): release nie moze polegac na toolchainie builda na serwerze.
 
 #### Operacje / niezawodnosc
@@ -179,6 +179,7 @@ Przykład:
 - STD-111b (SHOULD): gdy uzywasz `tee`/pipeline z `pipefail`, obsłuż SIGPIPE (np. kontrola `PIPESTATUS` lub lokalne wyłączenie `pipefail`), aby nie failować na zamkniętym odbiorcy.
 - STD-111c (SHOULD): jesli uzywasz `pipefail`, uruchamiaj skrypt przez `bash` albo sprawdz wsparcie i ustawiaj `pipefail` warunkowo (dash tego nie obsluguje).
 - STD-112 (SHOULD): dla synchronizacji katalogow przez rsync stosuj jawna semantyke trailing slash (sync zawartosci vs katalogu) i pokryj to testem.
+- STD-112a (SHOULD): uzywaj `rsync --protect-args` (lub `-s`) aby uniknac interpretacji sciezek przez zdalny shell; brak wsparcia opcji = fail‑fast lub wymagaj sciezek bez spacji/metachar.
 - STD-113 (SHOULD): parser JSON/JSON5 usuwa BOM i normalizuje CRLF (unikaj bledow na plikach z Windows).
 - STD-114 (SHOULD): tmp dla operacji atomowych jest tworzony w tym samym katalogu/FS co plik docelowy (unikaj `EXDEV`).
 - STD-115 (SHOULD): rozpakowywanie archiwow wymaga walidacji sciezek (brak `..`, brak absolutnych, brak symlink/hardlink) i twardego fail na naruszenia.
@@ -193,7 +194,7 @@ Przykład:
 - STD-123 (SHOULD): w skryptach z `set -e` operacje typu `grep`/`diff` musza miec jawne sprawdzenie exit code (1 = brak dopasowania) zamiast przerywac skrypt.
 - STD-124 (SHOULD): nie parsuj `ls`; do list plikow uzywaj `find -print0`/`xargs -0` lub globbing z `nullglob`, aby uniknac bledow na spacjach/pustych katalogach.
 - STD-125 (SHOULD): przed uruchomieniem skryptow czysc ryzykowne ENV (`BASH_ENV`, `ENV`, `CDPATH`, `GLOBIGNORE`) lub ustaw bezpieczne defaulty.
-- STD-125a (SHOULD): build/testy czyszcza `NODE_OPTIONS`, `NODE_PATH`, `NODE_EXTRA_CA_CERTS` (lub ustawiają jawne wartości), aby uniknac wstrzykiwania hookow.
+- STD-125a (SHOULD): build/testy czyszcza `NODE_OPTIONS`, `NODE_PATH`, `NODE_EXTRA_CA_CERTS`, `NODE_V8_COVERAGE`, `NODE_DEBUG` (lub ustawiają jawne wartości), aby uniknac wstrzykiwania hookow.
 - STD-126 (SHOULD): w skryptach shellowych wszystkie zmienne musza byc cytowane (`"$VAR"`), chyba ze jawnie potrzebny jest splitting.
 - STD-127 (SHOULD): unikaj `eval`; gdy musisz dynamicznie skladac komendy, uzywaj args array lub whitelisty tokenow.
 - STD-128 (SHOULD): `xargs` uruchamiaj z `-r` (GNU) lub jawnie sprawdzaj, czy input nie jest pusty.
