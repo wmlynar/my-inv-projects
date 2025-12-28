@@ -24,6 +24,9 @@
   - Wymaganie: uzywaj `spawn`/`execFile` z args array i `shell: false`.
   - Wymaganie: gdy shell jest konieczny (ssh/rsync), stosuj `--` i bezpieczne quoting; sanitizuj wszystkie fragmenty pochodzace z configu.
 
+- Blad: `shQuote()` chronil przed metaznakami, ale wartosci z `\\n`/znakami kontrolnymi rozbijaly skrypt bash (multi‑line injection) przy wstawianiu do komend lub heredoc.
+  - Wymaganie: przed `shQuote` waliduj brak znakow kontrolnych (`<0x20` i `DEL`), w tym `\\n/\\r/\\t`; invalid = fail‑fast.
+
 - Blad: `exec()` z domyslnym `maxBuffer` obcinal output lub powodowal bledy przy wiekszych logach.
   - Wymaganie: preferuj `spawn`/`execFile`; jesli uzywasz `exec`, ustaw `maxBuffer` i loguj gdy zostal przekroczony.
 
@@ -49,6 +52,9 @@
 - Blad: skrypty shellowe nie mialy `set -euo pipefail`, przez co ukrywaly bledy w pipeline.
   - Wymaganie: kazdy skrypt zdalny/produkcyjny zaczyna sie od `set -euo pipefail`.
 
+- Blad: `echo "$VAR" | tee` zapisywalo dane w sposob nieprzewidywalny (wartosci zaczynajace sie od `-`, sekwencje `\\`, brak newline), co dawalo puste lub zmienione pliki konfiguracyjne.
+  - Wymaganie: do zapisu danych uzywaj `printf '%s\\n' "$VAR"` (bez `echo`), zgodnie z STD-382.
+
 - Blad: `pipefail` bylo uzywane pod `/bin/sh` (dash) i skrypt nie startowal (`set: Illegal option -o pipefail`).
   - Wymaganie: jesli uzywasz `pipefail`, uruchamiaj skrypt przez `bash` albo sprawdz wsparcie i ustawiaj `pipefail` warunkowo.
 
@@ -61,6 +67,9 @@
 
 - Blad: `set -e` przerywal skrypt na `grep`/`diff` zwracajacych 1 (brak dopasowania), mimo ze to nie byl błąd.
   - Wymaganie: dla `grep`/`diff` uzywaj jawnego sprawdzania exit code lub `|| true` + test warunku.
+
+- Blad: `grep` byl uzywany bez `-F` do wyszukiwania literalnych sciezek (np. `ExecStart=/path/run-current.sh`), przez co znaki regex (np. kropki) dawaly falszywe dopasowania.
+  - Wymaganie: dla literalnych matchy uzywaj `grep -F` (lub escapuj regex), a dla sciezek zawsze traktuj wzorzec jako literal.
 
 - Blad: procesy uruchamiane w trybie automatycznym miały stdin z TTY i wchodzily w tryb interaktywny.
   - Wymaganie: dla nieinteraktywnych komend ustaw `stdio: ["ignore", ...]` lub `input: ""`.
@@ -327,6 +336,9 @@
 
 - Blad: pakowanie artefaktu uzywalo stalego katalogu tmp w `outDir` (np. `artifact-tmp`) i kasowalo go przed buildem, co przy rownoleglych buildach uszkadzalo artefakty.
   - Wymaganie: temp katalog dla artefaktu jest unikalny per build (mkdtemp/buildId), a cleanup jest w `finally`.
+
+- Blad: `outDir`/`outDirOverride` byl czyszczony przez `rmrf` bez walidacji bezpiecznego rootu, co przy blednej sciezce moglo usunac niezamierzone katalogi.
+  - Wymaganie: waliduj `outDir` jak `installDir` (absolutny, nie‑systemowy, minimalna glebokosc); `rmrf` tylko w dozwolonym root.
 
 - Blad: SEA uruchamiany na Node < 20 (brak wsparcia) powodowal build fail lub runtime mismatch.
   - Wymaganie: `seal check`/`release` fail‑fast dla SEA, gdy `node -v` < 20, z jasna instrukcja podniesienia wersji albo uzycia `packager=bundle`.
@@ -783,6 +795,9 @@
 - Blad: `npm` uruchamiany jako root w containerze blokowal skrypty postinstall (brak `unsafe-perm`) lub wykonywal je z innymi uprawnieniami.
   - Wymaganie: w kontenerach uruchamiaj `npm` jako nie‑root lub ustaw `NPM_CONFIG_UNSAFE_PERM=true`.
 
+- Blad: `npm ci/install` uruchomione jako root tworzylo root‑owned `node_modules` w workspace, blokujac kolejne runy (EACCES) i zostawiajac brud w repo.
+  - Wymaganie: instaluj zaleznosci jako nie‑root (mapuj UID/GID w kontenerze) albo instaluj do cache poza repo; jesli musisz uzyc root, wykonaj `chown -R` po instalacji i loguj ownership.
+
 - Blad: E2E uruchomione przez `sudo` zapisywaly cache npm w `/root` (inny `HOME`), co powodowalo powtórne instalacje i root‑owned artefakty.
   - Wymaganie: przy `sudo` ustaw jawny `HOME` i `NPM_CONFIG_CACHE` (np. do katalogu temp/volume) albo uruchamiaj testy bez `sudo` z odpowiednimi uprawnieniami.
 
@@ -1124,6 +1139,9 @@
 - Blad: brak zainstalowanych przegladarek Playwright (offline) powodowal fail/skip UI E2E.
   - Wymaganie: pre‑bake przegladarki w obrazie testowym albo jawnie wylacz UI E2E (`SEAL_UI_E2E=0`) w srodowiskach offline.
 
+- Blad: Playwright mial pobrane przegladarki, ale brakowalo bibliotek systemowych (np. `libasound2`), co dawalo `error while loading shared libraries`.
+  - Wymaganie: instaluj zaleznosci Playwright w obrazie testowym (np. `npx playwright install --with-deps chromium` albo preinstalowane pakiety), a marker instalacji nie moze pomijac brakujacych libs.
+
 - Blad: UI E2E uruchomione w trybie nie‑headless bez X11/Xvfb powodowaly fail.
   - Wymaganie: w kontenerach/CI ustaw `SEAL_UI_E2E_HEADLESS=1` albo zainstaluj i uruchom `xvfb`.
 
@@ -1214,6 +1232,8 @@
 
 - Blad: po zmianie pliku unit systemd brakowalo `daemon-reload`, przez co systemd uzywal starej konfiguracji.
   - Wymaganie: po zapisie/aktualizacji unitu zawsze wykonaj `systemctl daemon-reload` (lub `--user` odpowiednio do scope).
+- Blad: `daemon-reload` bylo wywolywane bez sprawdzenia exit code, a bootstrap raportowal sukces mimo braku systemd lub bledu komendy.
+  - Wymaganie: sprawdzaj wynik `systemctl` i fail‑fast z instrukcja (np. brak systemd, brak uprawnien).
 
 - Blad: `systemctl` potrafil wisiec (np. brak dbus/systemd w kontenerze), blokujac deploy/testy.
   - Wymaganie: wywolania `systemctl` maja timeout i czytelny SKIP/blad, gdy systemd nie jest dostepny.
@@ -1383,6 +1403,16 @@
 - Blad: nazwa targetu byla uzywana w sciezkach bez sanitizacji (mozliwy path traversal).
   - Wymaganie: wszystkie identyfikatory uzywane jako fragment sciezki musza byc normalizowane do bezpiecznego alfabetu (`[a-zA-Z0-9_.-]`).
 
+- Blad: `current.buildId` byl czytany bez walidacji i uzywany jako fragment sciezki (`$ROOT/releases/$CUR` / `path.join`), wiec podmieniony plik mogl wskazac poza `releases/` (absolutna sciezka lub `../`), a `rm/pkill/exec` dzialaly na niepoprawnym katalogu.
+  - Wymaganie: waliduj `current.buildId` przy odczycie (bez `/` i `..`, tylko bezpieczny alfabet, limit dlugosci).
+  - Wymaganie: po zlozeniu sciezki wymusz, by `realpath` byl w `releasesDir`; niezgodnosc = fail‑fast z komunikatem.
+
+- Blad: `buildId` przekazywany z CLI (np. `--buildId` w FAST/payload) byl uzywany w nazwach plikow i sciezkach bez walidacji, co prowadzilo do zlych sciezek (spacje, `/`, `..`) i problemow ze scp/rsync.
+  - Wymaganie: waliduj `buildId` do bezpiecznego alfabetu (`[a-zA-Z0-9._-]`), limit dlugosci, brak `/`/`..`/znakow kontrolnych; w razie potrzeby normalizuj.
+
+- Blad: pliki wskaznikowe (`current.buildId`, `service.name`, `service.scope`) byly czytane bez sprawdzenia typu/rozmiaru; symlink do urzadzenia lub bardzo duzy plik mogl spowodowac hang/DoS.
+  - Wymaganie: `lstat` + tylko regular file + limit rozmiaru (np. 4KB) + `O_NOFOLLOW` gdzie mozliwe.
+
 - Blad: tryb security/stealth w launcherze nadal wypisywal szczegolowe bledy (rozroznialne failure paths).
   - Wymaganie: przy aktywnych zabezpieczeniach komunikaty i exit code musza byc zunifikowane (opaque failure).
 
@@ -1432,6 +1462,10 @@
   - Wymaganie: skrypty wykonywalne w repo musza miec ustawiony bit `+x` i byc weryfikowane w CI (test `-x`).
   - Wymaganie: w Dockerfile/entrypoint ustaw `chmod +x` dla skryptow uruchamianych; alternatywnie uruchamiaj jawnie `bash <script>`.
   - Wymaganie: normalizuj newline do LF w skryptach (CRLF moze psuc shebang).
+
+- Blad: skrypt zawieral bash‑isms (`[[`/`source`/`{1..3}`/process substitution), ale byl uruchamiany przez `/bin/sh` w kontenerze/CI i failowal.
+  - Wymaganie: jesli skrypt uzywa bash‑isms, musi miec shebang `#!/usr/bin/env bash` i preflight sprawdza obecność `bash` (fail‑fast z instrukcja).
+  - Wymaganie: dla `/bin/sh` stosuj wyłącznie POSIX (`[ ]`, `.` zamiast `source`, brak process substitution).
 
 - Blad: tryb decoy nadpisywal pliki release „po cichu” lub w nieprzewidywalnym zakresie.
   - Wymaganie: domyślne zachowanie decoya musi być **jawne** (overwrite ON/OFF).
@@ -1997,6 +2031,8 @@
   - Wymaganie: unikaj nieportowalnych opcji lub wykrywaj wariant i stosuj alternatywy.
 - Blad: `readlink -f` nie dzialal na macOS, co psulo realpath.
   - Wymaganie: uzywaj portable `realpath` (python/node) albo wykrywaj platforme.
+- Blad: uzycie nieportable `date -d`/`stat -c`/`stat -f` psulo skrypty na macOS/BSD (inne flagi/formaty).
+  - Wymaganie: do dat/rozmiarow uzywaj portablego helpera (python/node) lub wykrywaj OS i wybieraj odpowiednie flagi; brak zgodnosci = fail‑fast z instrukcja.
 - Blad: brak `sha256sum` powodowal awarie w weryfikacji checksum.
   - Wymaganie: sprawdz dostepnosc hashera i zapewnij fallback (`shasum -a 256`/`openssl dgst`).
 - Blad: skrypty zakladaly GNU tar, a na busybox brakowalo flag.
@@ -2040,6 +2076,10 @@
   - Wymaganie: uzywaj `printf` zamiast `echo -e`.
 - Blad: `trap` na cleanup byl ustawiany za pozno, więc bledy wczesne zostawialy smieci.
   - Wymaganie: `trap` ustawiaj na poczatku skryptu.
+
+- Blad: `trap 'cleanup' EXIT` nadpisywal kod wyjscia skryptu (cleanup konczyl sie sukcesem), przez co realny fail znikał.
+  - Wymaganie: w `trap` zachowaj `status=$?`, wylacz `set -e/-u` na czas sprzatania i zakoncz `exit $status`.
+  - Wymaganie: cleanup nie moze zmieniac exit code (chyba ze jawnie nadpisujesz go w celach testowych).
 - Blad: petle `while read` gubily ostatnia linie bez `\\n`.
   - Wymaganie: uzywaj `while IFS= read -r line || [ -n \"$line\" ]; do ...`.
 - Blad: `cmd | while read` uruchamial petle w subshellu, a zmiany zmiennych po petli ginely.

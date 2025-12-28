@@ -229,6 +229,7 @@ Przykład:
 - STD-111a (SHOULD): instalatory systemowe (apt/dpkg) uruchamiaj w trybie nieinteraktywnym (`DEBIAN_FRONTEND=noninteractive`, `TZ=UTC`, `apt-get -y`); brak trybu non‑interactive = fail‑fast.
 - STD-111b (SHOULD): gdy uzywasz `tee`/pipeline z `pipefail`, obsłuż SIGPIPE (np. kontrola `PIPESTATUS` lub lokalne wyłączenie `pipefail`), aby nie failować na zamkniętym odbiorcy.
 - STD-111c (SHOULD): jesli uzywasz `pipefail`, uruchamiaj skrypt przez `bash` albo sprawdz wsparcie i ustawiaj `pipefail` warunkowo (dash tego nie obsluguje).
+- STD-111d (SHOULD): `trap ... EXIT` musi zachowac exit code (`status=$?; ...; exit $status`) i tymczasowo wylaczyc `set -e/-u` w cleanup, aby nie maskowac realnych bledow.
 - STD-112 (SHOULD): dla synchronizacji katalogow przez rsync stosuj jawna semantyke trailing slash (sync zawartosci vs katalogu) i pokryj to testem.
 - STD-112a (SHOULD): uzywaj `rsync --protect-args` (lub `-s`) aby uniknac interpretacji sciezek przez zdalny shell; brak wsparcia opcji = fail‑fast lub wymagaj sciezek bez spacji/metachar.
 - STD-112b (SHOULD): przy uruchamianiu Node przez `sudo` waliduj wersje (`node -v`) i binarke (`which node`) po eskalacji; `PATH`/`HOME`/`XDG_CACHE_HOME`/`SEAL_CACHE` ustawiaj jawnie, aby uniknac root‑owned cache i rozjechanej wersji runtime.
@@ -245,11 +246,14 @@ Przykład:
 - STD-121 (SHOULD): skrypty zawierajace bash‑isms musza byc uruchamiane przez `bash` jawnie (nie domyslny `sh`).
 - STD-121a (SHOULD): zdalne skrypty uruchamiane przez SSH nie zakladaja obecnosci `bash`; preferuj `/bin/sh -lc` albo preflightuj `bash` i fail‑fast z instrukcja.
 - STD-121b (SHOULD): skrypty wykonywalne w repo musza miec bit `+x` i byc sprawdzone w CI (`test -x`); w kontenerach/CI ustaw `chmod +x` lub uruchamiaj jawnie `bash <script>`; unikaj CRLF w shebang.
+- STD-121c (SHOULD): jesli skrypt uzywa bash‑isms (`[[`/`source`/brace expansion/process substitution/arrays), musi miec shebang `#!/usr/bin/env bash` i wymuszona obecnosc `bash`; w `/bin/sh` uzywaj tylko POSIX.
 - STD-122 (SHOULD): destrukcyjne kasowanie katalogow odbywa sie przez helper z walidacja niepustej sciezki i `realpath` w dozwolonym root.
 - STD-123 (SHOULD): w skryptach z `set -e` operacje typu `grep`/`diff` musza miec jawne sprawdzenie exit code (1 = brak dopasowania) zamiast przerywac skrypt.
+- STD-123a (SHOULD): przy wyszukiwaniu literalnych sciezek/identyfikatorow uzywaj `grep -F` (nie regex), aby uniknac falszywych dopasowan przez znaki specjalne.
 - STD-124 (SHOULD): nie parsuj `ls`; do list plikow uzywaj `find -print0`/`xargs -0` lub globbing z `nullglob`, aby uniknac bledow na spacjach/pustych katalogach.
 - STD-125 (SHOULD): przed uruchomieniem skryptow czysc ryzykowne ENV (`BASH_ENV`, `ENV`, `CDPATH`, `GLOBIGNORE`) lub ustaw bezpieczne defaulty.
 - STD-125a (SHOULD): build/testy czyszcza `NODE_OPTIONS`, `NODE_PATH`, `NODE_EXTRA_CA_CERTS`, `NODE_V8_COVERAGE`, `NODE_DEBUG` (lub ustawiają jawne wartości), aby uniknac wstrzykiwania hookow.
+- STD-125b (SHOULD): wartosci wstawiane do skryptow/komend shellowych musza byc walidowane (brak znakow kontrolnych, w tym `\\n/\\r/\\t`); sama funkcja quoting nie wystarcza.
 - STD-126 (SHOULD): w skryptach shellowych wszystkie zmienne musza byc cytowane (`"$VAR"`), chyba ze jawnie potrzebny jest splitting.
 - STD-126a (SHOULD): gdy potrzebujesz zachowac zmienne po petli `while read`, unikaj `cmd | while read` (subshell); uzyj process substitution (`while ...; do ...; done < <(cmd)`) lub pliku tymczasowego.
 - STD-126b (SHOULD): heredoc dla literalnych tresci uzywa cytowania (`<<'EOF'`), aby uniknac ekspansji zmiennych i backslashy.
@@ -416,6 +420,7 @@ Przykład:
 - STD-089k (SHOULD): w testach ustaw `NO_COLOR=1` i `FORCE_COLOR=0`, aby ograniczyc ANSI w outputach narzedzi (latwiejsze parsowanie).
 - STD-089l (SHOULD): w CI/E2E ustaw `NPM_CONFIG_FETCH_*` (retries/timeout) aby uniknac wiszenia npm przy problemach sieciowych.
 - STD-089m (SHOULD): gdy npm działa jako root w CI/containers, ustaw `NPM_CONFIG_UNSAFE_PERM=true` lub uruchom npm jako nie‑root.
+- STD-089m.a (SHOULD): nie tworz `node_modules` jako root w repo/workspace; mapuj UID/GID w kontenerze albo instaluj do cache poza repo, a w razie potrzeby napraw ownership po instalacji.
 - STD-089n (SHOULD): w CI/E2E wyłącz `npm audit`/`fund` i progress (`NPM_CONFIG_AUDIT=false`, `NPM_CONFIG_FUND=false`, `NPM_CONFIG_PROGRESS=false`).
 - STD-089o (SHOULD): w testach/CI ustaw `CI=1`, aby wymusic nieinteraktywny tryb narzedzi (brak promptow/spinnerow).
 - STD-089p (SHOULD): w CI/E2E ustaw `NPM_CONFIG_UPDATE_NOTIFIER=false`, aby uniknac sieciowych promptow npm.
@@ -747,6 +752,8 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-227 (SHOULD): brak systemd = fail‑fast z instrukcja (bez cichych fallbackow).
 - STD-228 (SHOULD): po deploy waliduj owner/perms kluczowych plikow.
 - STD-229 (SHOULD): `current.buildId` zapisuj atomowo (tmp + rename + fsync).
+- STD-229a (SHOULD): `current.buildId` czytany z dysku musi byc walidowany jako bezpieczny segment sciezki (bez `..`/`/`, bez absolutnych, limit dlugosci), a zlozona sciezka musi pozostac w `releasesDir` (realpath‑check).
+- STD-229b (SHOULD): wywolania `systemctl`/`daemon-reload` musza sprawdzac exit code i fail‑fast (z jasnym komunikatem), aby bootstrap/deploy nie raportowal sukcesu po nieudanej operacji.
 
 - STD-230 (SHOULD): child procesy dostaja tylko allowlist ENV (bez wyciekow sekretow).
 - STD-231 (SHOULD): sekrety nie moga byc przekazywane w CLI args (tylko plik/ENV).
@@ -805,6 +812,7 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-279 (SHOULD): nieznane argumenty = blad z sugestiami.
 
 - STD-280 (SHOULD): `rm -rf` wymaga guardu (sciezka niepusta, w dozwolonym root).
+- STD-280a (SHOULD): `outDir`/`outDirOverride` musi przechodzic walidacje bezpiecznego rootu (absolutny, nie‑systemowy, minimalna glebokosc) przed cleanupem; bledny = fail‑fast.
 - STD-281 (SHOULD): kopiowanie katalogow nie dereferuje symlinkow (albo jawnie blokuje).
 - STD-281a (SHOULD): kopiowanie katalogow nie pomija symlinkow po cichu; brak wsparcia = twardy blad z komunikatem.
 - STD-282 (SHOULD): generowane pliki sa tylko w `seal-out`/outDir.
@@ -813,7 +821,7 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-285 (SHOULD): przed `kill` sprawdzaj PID/`cmdline`, nie tylko nazwe procesu.
 - STD-286 (SHOULD): ustaw `FD_CLOEXEC` na deskryptorach tymczasowych/pipes.
 - STD-287 (SHOULD): unikaj `chmod -R` na release; ustawiaj perms selektywnie.
-- STD-288 (SHOULD): segmenty sciezek sanitizowane (brak `..`, brak absolutnych).
+- STD-288 (SHOULD): segmenty sciezek sanitizowane (brak `..`, brak absolutnych) oraz ograniczone do bezpiecznego alfabetu i dlugosci; dotyczy identyfikatorow typu `appName`, `target`, `buildId`.
 - STD-289 (SHOULD): `fsync` pliku i katalogu po zapisie krytycznych plikow.
 
 - STD-290 (SHOULD): HTTP ma `connect` i `total` timeout dla kazdego requestu.
@@ -827,6 +835,7 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-296 (SHOULD): sockety HTTP maja timeout/cleanup (brak wyciekow).
 - STD-297 (SHOULD): polaczenia dlugie maja heartbeat/ping + timeout.
 - STD-298 (SHOULD): skrypty używają portable `sed_inplace` (GNU/BSD) lub `perl -pi`/`python -i`; brak `sed -i` na ślepo.
+- STD-298a (SHOULD): unikaj nieportable `date -d`/`stat -c`/`stat -f`; do dat/rozmiarow uzywaj helpera (python/node) lub wykrywaj OS i wybieraj odpowiednie flagi.
 - STD-299 (SHOULD): archiwa są deterministyczne (`gzip -n`, `tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner`).
 - STD-299a (SHOULD): dla dlugich sciezek uzywaj `tar --format=gnu` lub `--format=pax` i fail‑fast na ostrzezeniach truncation.
 - STD-300 (SHOULD): przed ciężkimi operacjami sprawdzaj lokalne wolne miejsce (preflight).
@@ -850,6 +859,7 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-318 (SHOULD): bledy CLI trafiaja na stderr, a exit code jest nie‑zero; bledy uzycia maja osobny kod (np. 2).
 - STD-319 (SHOULD): przed odczytem configu/sekretow wymusz `regular file` (odrzuc FIFO/urzadzenia).
 - STD-320 (SHOULD): przy otwieraniu wrazliwych plikow stosuj `O_NOFOLLOW` lub `lstat` + `open` tylko na regular file.
+- STD-320a (SHOULD): pliki wskaznikowe/markerowe (`current.buildId`, `service.*`, itp.) musza byc regular file z limitem rozmiaru (np. <=4KB); brak zgodnosci = fail‑fast.
 - STD-321 (SHOULD): rozpakowanie archiwow odrzuca entries typu device/FIFO; dopuszczalne tylko file/dir/symlink.
 - STD-322 (SHOULD): `--help` i komunikat “usage” pojawiaja sie przy bledach uzycia.
 - STD-323 (SHOULD): `buildId`/timestamp uzywa UTC i stabilnego formatu (np. `YYYYMMDD-HHMMSS`).
