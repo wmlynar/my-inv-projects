@@ -44,6 +44,39 @@ function ensureConfigDriftOk({ targetCfg, targetName, configFile, acceptDrift })
   }
 }
 
+function warnConfigDrift({ targetCfg, configFile, acceptDrift, pushConfig }) {
+  const kind = (targetCfg.kind || "local").toLowerCase();
+  const res = kind === "ssh"
+    ? checkConfigDriftSsh({ targetCfg, localConfigPath: configFile, showDiff: false })
+    : checkConfigDriftLocal({ targetCfg, localConfigPath: configFile, showDiff: false });
+
+  if (!res || res.status === "same") return;
+  if (res.status === "missing") {
+    const pathLabel = res.path || "shared/config.json5";
+    if (pushConfig) {
+      warn(`Config missing on target (${pathLabel}). Will be created by --push-config.`);
+    } else if (acceptDrift) {
+      warn(`Config missing on target (${pathLabel}). Restart allowed by --accept-drift.`);
+    } else {
+      warn(`Config missing on target (${pathLabel}). Deploy will proceed; restart may fail unless you push config or use --accept-drift.`);
+    }
+    return;
+  }
+  if (res.status === "diff") {
+    if (pushConfig) {
+      warn("Config drift detected (preflight). Target config will be overwritten by --push-config.");
+    } else if (acceptDrift) {
+      warn("Config drift detected (preflight). Restart allowed by --accept-drift.");
+    } else {
+      warn("Config drift detected (preflight). Deploy will proceed; restart may fail unless you push config or use --accept-drift.");
+    }
+    return;
+  }
+  if (res.status === "error") {
+    warn(`Config drift preflight failed: ${res.message || "unknown error"}`);
+  }
+}
+
 function normalizeWaitMs(raw, fallback) {
   if (raw === undefined || raw === null || raw === "") return fallback;
   const n = Number(raw);
@@ -134,6 +167,14 @@ async function cmdDeploy(cwd, targetArg, opts) {
   const configName = resolveConfigName(targetCfg, null);
   const configFile = getConfigFile(projectRoot, configName);
   if (!fileExists(configFile)) throw new Error(`Missing repo config: ${configFile}`);
+  if (opts.warnDrift) {
+    warnConfigDrift({
+      targetCfg,
+      configFile,
+      acceptDrift: !!opts.acceptDrift,
+      pushConfig: !!opts.pushConfig,
+    });
+  }
 
   const isFast = !!opts.fast;
   const isSsh = (targetCfg.kind || "local").toLowerCase() === "ssh";
@@ -153,10 +194,14 @@ async function cmdDeploy(cwd, targetArg, opts) {
   const fastRelease = isFast
     ? await timing.timeAsync("deploy.fast_build", async () => ensureFastRelease(projectRoot, proj, targetCfg, configName, opts, timing))
     : null;
-  const artifactInfo = (!isFast && !payloadOnly)
-    ? await timing.timeAsync("deploy.ensure_artifact", async () => ensureArtifact(projectRoot, proj, opts, targetName, configName, timing))
-    : null;
-  const artifactPath = artifactInfo ? artifactInfo.path : null;
+  let artifactInfo = null;
+  let artifactPath = null;
+  if (!isFast && !payloadOnly) {
+    artifactInfo = await timing.timeAsync("deploy.ensure_artifact", async () => ensureArtifact(projectRoot, proj, opts, targetName, configName, timing));
+    artifactPath = artifactInfo ? artifactInfo.path : null;
+  } else if (!isFast && opts.artifact) {
+    artifactPath = path.resolve(opts.artifact);
+  }
 
   hr();
   info(`Deploy -> ${targetName} (${targetCfg.kind})`);
@@ -304,6 +349,7 @@ async function cmdShip(cwd, targetArg, opts) {
       fast: true,
       fastNoNodeModules: !!opts.fastNoNodeModules,
       acceptDrift: !!opts.acceptDrift,
+      warnDrift: !!opts.warnDrift,
       wait: opts.wait !== false,
       waitTimeout: opts.waitTimeout,
       waitInterval: opts.waitInterval,
@@ -337,6 +383,7 @@ async function cmdShip(cwd, targetArg, opts) {
     releaseDir: releaseRes && releaseRes.releaseDir ? releaseRes.releaseDir : null,
     buildId: releaseRes && releaseRes.buildId ? releaseRes.buildId : null,
     acceptDrift: !!opts.acceptDrift,
+    warnDrift: !!opts.warnDrift,
     payloadOnly,
     wait: opts.wait !== false,
     waitTimeout: opts.waitTimeout,

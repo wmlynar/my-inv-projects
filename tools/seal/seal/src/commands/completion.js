@@ -133,8 +133,8 @@ _seal_complete() {
     run-local) opts="--sealed --config" ;;
     verify) opts="--explain" ;;
     sentinel) opts="--force --insecure --skip-verify --json" ;;
-    deploy) opts="--bootstrap --push-config --skip-sentinel-verify --restart --wait --wait-timeout --wait-interval --wait-url --wait-mode --wait-http-timeout --accept-drift --allow-drift --artifact --fast --fast-no-node-modules --timing" ;;
-    ship) opts="--bootstrap --push-config --skip-sentinel-verify --no-wait --wait-timeout --wait-interval --wait-url --wait-mode --wait-http-timeout --accept-drift --allow-drift --skip-check --check-verbose --check-cc --packager --payload-only --fast --fast-no-node-modules --timing" ;;
+    deploy) opts="--bootstrap --push-config --skip-sentinel-verify --restart --wait --wait-timeout --wait-interval --wait-url --wait-mode --wait-http-timeout --accept-drift --allow-drift --warn-drift --artifact --fast --fast-no-node-modules --timing" ;;
+    ship) opts="--bootstrap --push-config --skip-sentinel-verify --no-wait --wait-timeout --wait-interval --wait-url --wait-mode --wait-http-timeout --accept-drift --allow-drift --warn-drift --skip-check --check-verbose --check-cc --packager --payload-only --fast --fast-no-node-modules --timing" ;;
     run) opts="--kill --sudo --accept-drift --allow-drift" ;;
     rollback) opts="--accept-drift --allow-drift" ;;
     remote) opts="--accept-drift --allow-drift --skip-sentinel-verify" ;;

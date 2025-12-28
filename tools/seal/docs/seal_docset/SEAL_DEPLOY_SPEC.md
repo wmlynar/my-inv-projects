@@ -563,6 +563,7 @@ Plik `seal-config/targets/<target>.json5` zawiera wyłącznie:
 - REQ-CFG-005 (MUST): `seal deploy` wykrywa **drift** (różnice) pomiędzy `seal-config/configs/<config>.json5` w repo a `shared/config.json5` na serwerze.
   - Domyślnie drift = **błąd** (exit != 0) z jasną instrukcją „co dalej”.
 - REQ-CFG-006 (MAY): flaga `--allow-drift` zmienia drift z błędu w ostrzeżenie (dla przypadków, gdzie celowo zarządzasz configiem ręcznie na serwerze).
+- REQ-CFG-006a (MAY): flaga `--warn-drift` uruchamia preflight diff przed deployem i tylko ostrzega (bez przerywania), aby wykryć drift przed uploadem.
 
 ### 10.5. Konwencja `target == config` oraz wyjątki
 
