@@ -55,6 +55,10 @@
 - Blad: pipeline z `tee` przerywal testy (SIGPIPE) gdy odbiorca zamknal stdout, a `pipefail` traktowal to jako błąd.
   - Wymaganie: przy `tee` obsłuż SIGPIPE (np. `set +o pipefail` dla tej linii lub kontrola `PIPESTATUS`), aby unikac fałszywych porażek.
 
+- Blad: `npm install` uruchomione na symlinkowanym `node_modules` usuwało symlink i zostawiało niekompletny cache (brak zależności w `node_modules`).
+  - Wymaganie: dla shared cache instaluj dependencies w lokalnym katalogu, potem synchronizuj (`rsync`/`cp`) do cache i dopiero linkuj `node_modules`.
+  - Wymaganie: cache ma stabilny layout `.../node_modules` (nie „goły” katalog z paczkami), inaczej bundler nie rozwiąże zależności.
+
 - Blad: `rm -rf "$DIR"/*` przy pustym `DIR` kasowal `/` (lub inne krytyczne katalogi).
   - Wymaganie: przed destrukcyjnym `rm` wymagaj niepustego `DIR` + `realpath` w dozwolonym root.
   - Wymaganie: stosuj helper typu `safeRmDir(dir, root)` zamiast inline `rm`.
@@ -69,6 +73,9 @@
   - Wymaganie: ustaw `GIT_TERMINAL_PROMPT=0`, `GIT_ASKPASS=/bin/false`, `SSH_ASKPASS=/bin/false`.
   - Wymaganie: `ssh/scp/rsync` uruchamiaj z `BatchMode=yes` i timeoutem (`ConnectTimeout`, `ServerAliveInterval`).
   - Wymaganie: wylacz `KbdInteractiveAuthentication`/`PasswordAuthentication` lub wymus `PreferredAuthentications=publickey`, aby unikac ukrytych promptow.
+
+- Blad: `bash -lc` na hoście zdalnym kończył się kodem != 0 przez `.bash_logout` (np. `clear_console`), mimo że właściwa komenda się wykonała.
+  - Wymaganie: do zdalnych jednorazowych komend używaj `bash -c` (nie login shell), albo zapewnij, że `.bash_logout` zwraca 0 i nie emituje outputu.
 
 - Blad: polecenia z `sudo` w trybie nieinteraktywnym wisialy na promptach hasla.
   - Wymaganie: uzywaj `sudo -n` (fail‑fast bez promptu) i wypisz instrukcje, gdy brak uprawnien.
@@ -152,6 +159,9 @@
 
 - Blad: `apt-get` failowal przez blokady `apt-daily`/`unattended-upgrades`, co powodowało flakey CI.
   - Wymaganie: przed instalacją sprawdź locki i poczekaj/wyłącz `apt-daily` w obrazie testowym.
+
+- Blad: pakiet z repo APT nie istnial w danej dystrybucji (np. `criu` na niektorych Ubuntu), co przerywalo instalacje i blokowalo E2E.
+  - Wymaganie: instalatory narzedzi musza obslugiwac brak pakietu (source build lub SKIP z instrukcja), a preflight/diagnostyka jasno wypisuje, ze pakiet nie ma kandydata w APT.
 
 - Blad: `eval`/`bash -lc "$CMD"` z danymi z configu pozwalal na wstrzykniecia lub bledy quoting.
   - Wymaganie: unikaj `eval`; uzywaj args array lub whitelisty dopuszczalnych tokenow.
@@ -238,6 +248,9 @@
   - Wymaganie: jesli `serviceUser` == biezacy uzytkownik, sprawdzaj uprawnienia bez `sudo`.
   - Wymaganie: brak `sudo` nie moze maskowac dostepu; fallback do lokalnego `test -x`.
   - Wymaganie: skrypty typu probe/inspect musza dzialac bez `sudo` (zamiast fail, zwracaja wynik + note).
+
+- Blad: walidacja targetu (host/user/serviceName/installDir) byla rozproszona i niespojna miedzy modulami (deploy/ssh/sentinel), co dawalo rozne bledy w zaleznosci od komendy.
+  - Wymaganie: jedna centralna walidacja targetu i wspolne helpery w kazdej komendzie.
 
 - Blad: parsowanie danych z narzedzi systemowych (np. `lsblk`) nie normalizowalo `mountpoints` (null/array/string), co dawalo puste wpisy i bledne wnioski o mountach.
   - Wymaganie: zawsze normalizuj output narzedzi (trim, filtruj puste, obsluguj array) przed decyzjami.
@@ -595,6 +608,10 @@
   - Wymaganie: testy CLI uruchamiaj przez `bin/seal.js`/`seal`, nie przez `src/cli.js` (tam `main` nie jest auto‑run); ustaw `SEAL_BATCH_SKIP=1` w testach.
   - Wymaganie: dla narzedzi typu `strings` ustawiaj timeout i `maxBuffer` (albo streamuj output), bo duze binarki potrafia przeladowac bufor `spawnSync`.
 
+- Blad: timeouts E2E były stałe i za niskie w Dockerze/na wolnych hostach, co powodowało fałszywe FAIL mimo poprawnego działania.
+  - Wymaganie: wszystkie timeouty E2E (build/run/test, zstd/strings) muszą wspierać globalną skalę (`SEAL_E2E_TIMEOUT_SCALE` lub `SEAL_E2E_SLOW`).
+  - Wymaganie: Docker E2E domyślnie podnosi timeouty (np. 2x) i loguje efektywną skalę.
+
 - Blad: pomocnicze timeouty (np. polling/healthcheck) byly krotsze niz globalny `runTimeoutMs`, co dawalo falszywe FAIL mimo trwajacego startu.
   - Wymaganie: wszystkie timeouty w E2E pochodza z jednego zrodla (run/step timeout) albo maja jawny per-tryb override; brak ukrytych limitow.
 
@@ -623,9 +640,21 @@
   - Wymaganie: weryfikuj, czy wspolny `node_modules`/symlink wskazuje na istniejący, zapisywalny katalog; inaczej rebuild lub fail‑fast z instrukcja.
   - Wymaganie: cache invaliduje sie po zmianie skryptow instalacyjnych lub wersji narzedzi; hash skryptow i wersji wchodzi do klucza cache.
   - Wymaganie: wspoldzielony `node_modules` jest chroniony lockiem podczas `npm ci/install`, aby uniknac uszkodzen przy rownoleglych runach.
+  - Wymaganie: instalacja w shared cache musi tworzyc **pelny** layout `node_modules` (nie „goły” katalog), inaczej bundler nie rozwiaze zaleznosci.
+  - Wymaganie: docker E2E cache nie jest współdzielony z lokalnym E2E (oddzielny katalog), aby uniknąć konfliktów ownership/ABI.
+  - Wymaganie: loguj właściciela cache (`stat -c %U:%G`) i ostrzegaj, gdy różni się od użytkownika uruchamiającego testy.
 
 - Blad: wspoldzielony cache E2E nie mial jawnego sposobu resetu i prowadzil do trudnych w debugowaniu falszywych "pass".
   - Wymaganie: skrypty maja flage/ENV do wymuszenia reinstall/flush cache i loguja aktywne ustawienia.
+
+- Blad: skrypt E2E uruchamiany w Dockerze nie mial bitu wykonywalnosci, co konczylo sie `Permission denied` (np. `run-e2e-parallel.sh`).
+  - Wymaganie: wszystkie skrypty uruchamiane bezposrednio maja `chmod +x` w repo i test walidujacy `git ls-files -m`/`stat`; alternatywnie uruchamiaj je jawnie jako `bash /path/script.sh`.
+
+- Blad: obraz buildera nie mial `node`/`npm`, a uruchomienie z `SEAL_E2E_INSTALL_DEPS=0` konczylo sie `npm: command not found`.
+  - Wymaganie: E2E robi preflight i fail‑fast z jasna instrukcja, jesli `node`/`npm` nie sa dostepne; w trybie "install deps=0" obraz musi miec minimalny runtime (`node`, `npm`) lub runner sam instaluje te narzedzia.
+
+- Blad: wielolinijkowe komendy E2E (dziesiatki `SEAL_E2E_*` z `\\`) byly latwe do zepsucia (brak backslasha, przypadkowy komentarz), co ucinalo ENV i uruchamialo inny zakres testow.
+  - Wymaganie: udostepnij jeden kanoniczny wrapper (skrypt) lub plik `.env`, a runner waliduje i loguje **effective config**; dokumentacja nie powinna wymagać ręcznego kopiowania długich "ścian" ENV.
 
 - Blad: docker buildy korzystaly ze starych obrazow bazowych, bo `--pull` nie byl jawnie kontrolowany.
   - Wymaganie: tryb pull jest jawny (`--pull`/`--no-pull`) i logowany, a bazowy obraz jest identyfikowany po tagu/digescie.
@@ -648,6 +677,10 @@
 
 - Blad: ustawienia rownoległosci E2E (mode/jobs) nie byly walidowane ani logowane, co dawalo nieoczekiwany zakres testow i trudne debugowanie.
   - Wymaganie: runner loguje effective `SEAL_E2E_PARALLEL`, `SEAL_E2E_PARALLEL_MODE` i `SEAL_E2E_JOBS`, a niepoprawne wartosci sa odrzucane lub fallbackowane z ostrzezeniem.
+  - Wymaganie: w kontenerach/drodkach CI domyslny `SEAL_E2E_JOBS` nie powinien byc rowny `nproc` hosta; ustaw limit (np. min(nproc, 8)) i loguj cap.
+
+- Blad: uruchomienie E2E przez `sudo` bez zachowania ENV kasowalo filtry (`SEAL_E2E_TESTS`), co uruchamialo pelna suite mimo intencji.
+  - Wymaganie: przy `sudo` zawsze przekazuj ENV jawnie (`sudo VAR=...`) albo uzywaj `sudo -E` + allowlista; runner loguje effective filters.
 
 - Blad: rownolegle uruchomienia E2E probowaly instalowac globalne narzedzia (packery/obfuscatory) jednoczesnie, co powodowalo wyscigi i uszkodzenia.
   - Wymaganie: instalatory narzedzi globalnych uzywaja locka (np. `flock` na cache) i czekaja/skipuja, gdy instalacja juz trwa.
@@ -682,6 +715,9 @@
 
 - Blad: `npm` uruchamiany jako root w containerze blokowal skrypty postinstall (brak `unsafe-perm`) lub wykonywal je z innymi uprawnieniami.
   - Wymaganie: w kontenerach uruchamiaj `npm` jako nie‑root lub ustaw `NPM_CONFIG_UNSAFE_PERM=true`.
+
+- Blad: E2E uruchomione przez `sudo` zapisywaly cache npm w `/root` (inny `HOME`), co powodowalo powtórne instalacje i root‑owned artefakty.
+  - Wymaganie: przy `sudo` ustaw jawny `HOME` i `NPM_CONFIG_CACHE` (np. do katalogu temp/volume) albo uruchamiaj testy bez `sudo` z odpowiednimi uprawnieniami.
 
 - Blad: `npm` uruchamial audit/fund i siegal do sieci, co w CI powodowalo timeouty lub flakey wyniki.
   - Wymaganie: w CI/E2E ustaw `NPM_CONFIG_AUDIT=false`, `NPM_CONFIG_FUND=false`, `NPM_CONFIG_PROGRESS=false`.
@@ -746,6 +782,7 @@
 - Blad: zmiana domyslnych ustawien E2E wymagala edycji skryptow w repo, co zostawialo lokalne diffy i rozjazdy miedzy srodowiskami.
   - Wymaganie: defaulty E2E sa w repo jako plik wzorcowy, a lokalne override przechowuj w `.seal/e2e.env` lub pod `SEAL_E2E_CONFIG` (poza repo); runner loguje zrodlo configu.
   - Wymaganie: lokalny plik override jest ignorowany przez git (brak przypadkowych commitow).
+  - Wymaganie: jawne ENV ustawione przez uzytkownika (np. `SEAL_E2E_TESTS`) ma wyzszy priorytet niz config plik; jeśli chcesz pominąć config, ustaw `SEAL_E2E_CONFIG=/dev/null`.
 
 - Blad: `SEAL_E2E_CONFIG` wskazywal na nieistniejacy plik, a runner cicho wracal do defaultow, co mylilo wyniki.
   - Wymaganie: przy jawnym wskazaniu pliku brak = FAIL albo wyrazny warning + log fallback.
@@ -832,6 +869,9 @@
 - Blad: testy E2E uruchamialy operacje systemowe (systemd/`installDir` w realnych sciezkach) i psuly srodowisko.
   - Wymaganie: testy uzywaja sandbox `installDir` w temp i unikalnych nazw uslug.
   - Wymaganie: operacje systemowe sa gated env‑flaga i domyslnie SKIP.
+
+- Blad: E2E remote/user‑flow failowal przez brak configu na target (drift), bo test nie pushował konfiguracji.
+  - Wymaganie: testy remote zawsze używają `--push-config` (lub jawnie `--accept-drift`) i nie polegają na stanie z poprzednich uruchomień.
 
 - Blad: testy polegaly na `localhost`, co w niektorych systemach rozwiązywalo sie do IPv6 i powodowalo fail.
   - Wymaganie: testy jawnie binduja do `127.0.0.1` i uzywaja adresu IPv4.
@@ -1586,6 +1626,8 @@
   - Wymaganie: parse + walidacja zakresu.
 - Blad: nieprawidlowe wartosci w configu (np. `sshPort`, `sshStrictHostKeyChecking`) byly cicho normalizowane do defaultow, co ukrywalo bledy konfiguracji.
   - Wymaganie: jesli wartosc jest podana i nieprawidlowa, fail‑fast z jasnym bledem; fallback tylko jawnie i z logiem „effective config”.
+- Blad: booleany z configu byly „coerced” (`!!value`), wiec `"false"` stawalo sie `true` i wlaczalo funkcje mimo intencji.
+  - Wymaganie: booleany musza byc typu `true/false`; stringi/number = blad walidacji (fail‑fast).
 - Blad: sciezki w configu nie byly normalizowane.
   - Wymaganie: `path.resolve` + walidacja w dozwolonym root.
 - Blad: merge configu byl plytki i gubil nested klucze.

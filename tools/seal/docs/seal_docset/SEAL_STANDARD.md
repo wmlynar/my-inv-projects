@@ -102,6 +102,8 @@ Przykład:
 - STD-034 (SHOULD): wejscia z CLI/config sa walidowane typami/zakresami; bledne = fail-fast.
 - STD-034a (SHOULD): wartosc podana, ale nieprawidlowa nie moze byc cicho normalizowana do defaultu; musi byc FAIL albo jawny warning + log „effective config”.
 - STD-034b (SHOULD): walidacja configu (np. `packager`) jest wykonywana w loaderze i dotyczy **wszystkich** komend; nie zakladaj, ze uzytkownik uruchomil `seal check`.
+- STD-034c (SHOULD): booleany w configu sa typu `true/false`; stringi/numbery nie sa akceptowane (brak `!!` coercion).
+- STD-034d (SHOULD): walidacja targetu (host/user/serviceName/installDir) jest scentralizowana i uzywana przez wszystkie komendy (deploy/check/sentinel).
 - STD-025 (SHOULD): wszystkie generowane katalogi (cache/release/tmp) maja retention/pruning i loguja przyczyny czyszczenia.
 - STD-025a (SHOULD): cache jest kluczowany po target+config+wersja/format; zmiana schematu wymusza czyszczenie lub nowy namespace cache.
 - STD-028 (SHOULD): zapisy plikow krytycznych sa atomowe (tmp + rename), aby uniknac polowicznych stanow po crashu.
@@ -269,6 +271,7 @@ Przykład:
 - STD-027g (SHOULD): runner E2E auto‑discoveruje testy lub uzywa manifestu z CI checkiem, aby zadny test nie byl „zapomniany”.
 - STD-027h (SHOULD): gdy ustawiony jest filtr testow, runner loguje liste dopasowanych testow; brak dopasowan = FAIL lub jawny SKIP z instrukcja.
 - STD-027i (SHOULD): defaulty E2E sa w pliku wzorcowym w repo, a lokalne override w `.seal/e2e.env` (lub `SEAL_E2E_CONFIG`); runner loguje zrodlo configu, a override jest gitignored.
+- STD-027i.a (SHOULD): jawne ENV użytkownika (np. `SEAL_E2E_TESTS`) ma wyższy priorytet niż plik configu; jeśli chcesz pominąć config, użyj `SEAL_E2E_CONFIG=/dev/null`.
 - STD-027j (SHOULD): instalatory narzedzi E2E uzywaja locka per‑tool/cache i atomowego swapu (tmp + rename), a stamp jest zapisywany po sukcesie.
 - STD-027k (SHOULD): lockfile narzedzi E2E jest walidowany schematem; brakujace pola (url/rev/bin) = fail‑fast z lista brakow.
 - STD-027l (SHOULD): lokalne patche do narzedzi sa jawnie logowane i sterowane ENV, a wersja patcha/flag wchodzi do stempla cache.
@@ -276,6 +279,9 @@ Przykład:
 - STD-027n (SHOULD): runner E2E loguje aktywny toolset (np. core/full), a testy/instalatory respektuja go (brak narzedzi w toolsecie = SKIP lub jawny FAIL w trybie strict).
 - STD-027s (SHOULD): wartosc `SEAL_E2E_TOOLSET` jest walidowana (allowlista), a nieznana wartosc daje FAIL lub wyrazny warning + fallback.
 - STD-027t (SHOULD): ustawienia rownoległosci E2E (`SEAL_E2E_PARALLEL`, `SEAL_E2E_PARALLEL_MODE`, `SEAL_E2E_JOBS`) sa walidowane i logowane jako effective config; niepoprawne wartosci = FAIL lub jawny fallback.
+- STD-027t.a (SHOULD): E2E wspiera globalne skalowanie timeoutów (`SEAL_E2E_TIMEOUT_SCALE` lub `SEAL_E2E_SLOW`); wszystkie testy używają tej skali (build/run/test/zstd/strings) i logują efektywną wartość.
+- STD-027t.b (SHOULD): w Docker E2E domyślna skala timeoutów jest podniesiona (np. 2x) i jawnie raportowana w logach.
+- STD-027t.c (SHOULD): w kontenerach/CI domyślny `SEAL_E2E_JOBS` powinien być capped (np. min(nproc, 8)) i logowany, aby uniknąć oversubscription.
 - STD-027u (SHOULD): sciezki `SEAL_E2E_EXAMPLE_ROOT`/`SEAL_E2E_SEED_ROOT` sa walidowane jako bezpieczne (np. `/tmp`/`$TMPDIR`), nie wskazuja na repo/systemowe rooty; niebezpieczne = FAIL z instrukcja, chyba ze jawny override.
 - STD-027v (SHOULD): `SEAL_E2E_SUMMARY_PATH` jest unikalny per‑run/grupa lub zapisy sa chronione lockiem, aby uniknac przeplatania w trybie rownoleglym.
 - STD-027w (SHOULD): summary jest zapisywane poza repo (np. `/tmp`/`$TMPDIR`); zapis w repo wymaga jawnego override i ostrzezenia (zwl. przy uruchomieniu jako root).
@@ -283,6 +289,8 @@ Przykład:
 - STD-027o (SHOULD): jesli `SEAL_E2E_CONFIG` jest ustawiony i plik nie istnieje lub nie jest czytelny, runner daje FAIL albo wyrazny warning + log fallback.
 - STD-027p (SHOULD): plik configu E2E jest parsowany jako `KEY=VALUE` (bez wykonywania kodu); jesli uzywasz `source`, sprawdz ownership/perms i blokuj world‑writable pliki.
 - STD-027q (SHOULD): cache narzedzi E2E ma bezpieczne perms/ownership (nie world‑writable); wykrycie niebezpiecznych perms = fail‑fast.
+- STD-027q.a (SHOULD): shared `node_modules` używa stabilnego layoutu `.../node_modules`; instalacja odbywa się lokalnie, potem synchronizacja do cache i dopiero link (`npm install` nie może działać bezpośrednio na symlink).
+- STD-027q.b (SHOULD): docker E2E używa osobnego cache (np. `/var/tmp/seal-e2e-cache`) i nie współdzieli go z lokalnym E2E; loguje ownera cache i ostrzega przy mismatch.
 - STD-027r (SHOULD): stempel cache narzedzi buildowanych ze zrodel uwzglednia wersje kompilatora/toolchaina i kluczowe flagi/patch version, aby wymusic rebuild przy zmianie.
 - STD-056 (SHOULD): drenaż stdout/stderr dotyczy **wszystkich** scenariuszy testowych (takze gdy spodziewasz sie porazki procesu).
 - STD-059 (SHOULD): testy E2E musza obejmowac scenariusze negatywne (brak plikow, zle uprawnienia, symlink), bo tam najczesciej wychodza regresje.
@@ -370,6 +378,9 @@ Przykład:
 - STD-089p (SHOULD): w CI/E2E ustaw `NPM_CONFIG_UPDATE_NOTIFIER=false`, aby uniknac sieciowych promptow npm.
 - STD-089q (SHOULD): narzedzia E2E maja pinowane wersje w repo (lockfile) i wspolny installer korzystajacy z locka; ten sam lock obowiazuje lokalnie i w CI/Dockerze.
 - STD-089r (SHOULD): obrazy E2E budowane z Dockerfile maja label z hashem wejsc (Dockerfile/entrypoint); mismatch wymusza rebuild.
+- STD-089s (SHOULD): E2E w Dockerze robi preflight na `node`/`npm` i fail‑fast, gdy brak (z jasna instrukcja), zwlaszcza gdy instalacja zaleznosci jest wylaczona; obraz buildera powinien zawierac minimalny runtime JS.
+- STD-089t (SHOULD): E2E ma jeden kanoniczny wrapper (skrypt/komenda), ktory laduje config z pliku `.env` i loguje **effective config**; dokumentacja nie wymaga kopiowania dlugich, wielolinijkowych komend z dziesiatkami ENV.
+- STD-089u (SHOULD): instalatory narzedzi E2E obsluguja brak pakietu w APT (np. `criu` bez kandydata) przez build ze zrodel lub jawny SKIP z instrukcja; brak pakietu nie moze konczyc sie nieczytelnym `apt-get` error.
 - STD-090c (SHOULD): preflight sprawdza **narzedzia CLI** (np. `postject` w `node_modules/.bin`/PATH), nie tylko obecność modulu.
 - STD-091a (SHOULD): funkcje zalezne od architektury (np. CPUID) musza degradująco dzialac na platformach bez wsparcia (pusty/neutralny ID zamiast twardego bledu).
 - STD-092a (SHOULD): `--skip-check` jest wyraznie oznaczony jako ryzykowny i zawsze wypisuje ostrzezenie; krytyczne braki toolchaina nie powinny byc maskowane.
