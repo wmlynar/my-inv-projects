@@ -188,6 +188,7 @@ Przykład:
 - STD-106s (SHOULD): wykrywaj `requiretty` w `sudo` na hoście i podawaj instrukcje wylaczenia; `ssh -tt` tylko awaryjnie i jawnie logowane.
 - STD-106t (SHOULD): unikaj ukrytych promptow SSH: ustaw `PreferredAuthentications=publickey` oraz `KbdInteractiveAuthentication=no`/`PasswordAuthentication=no` w automacji.
 - STD-106u (SHOULD): przy parsowaniu outputu z `ssh` filtruj ostrzezenia (np. host key) albo ustaw `LogLevel=ERROR`, zeby nie psuc parsowania komend.
+- STD-106v (SHOULD): timeouty SSH (`ConnectTimeout`, `ServerAlive*`) sa konfigurowalne per‑target i logowane jako effective config.
 - STD-107 (SHOULD): parsowanie outputu narzedzi systemowych powinno wymuszac `LC_ALL=C` (lub `LANG=C`) albo uzywac trybu `--json`/`--output`, aby uniknac roznic locale.
 - STD-108 (SHOULD): unikaj `exec()` z domyslnym `maxBuffer`; uzywaj `spawn`/`execFile` lub ustaw `maxBuffer` i loguj przycinki outputu.
 - STD-109 (SHOULD): zawsze stosuj `--` przed listą sciezek w komendach zewnetrznych (rm/cp/rsync/scp), aby sciezki zaczynajace sie od `-` nie byly traktowane jako opcje.

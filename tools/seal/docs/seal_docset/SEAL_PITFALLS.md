@@ -55,10 +55,6 @@
 - Blad: pipeline z `tee` przerywal testy (SIGPIPE) gdy odbiorca zamknal stdout, a `pipefail` traktowal to jako błąd.
   - Wymaganie: przy `tee` obsłuż SIGPIPE (np. `set +o pipefail` dla tej linii lub kontrola `PIPESTATUS`), aby unikac fałszywych porażek.
 
-- Blad: `npm install` uruchomione na symlinkowanym `node_modules` usuwało symlink i zostawiało niekompletny cache (brak zależności w `node_modules`).
-  - Wymaganie: dla shared cache instaluj dependencies w lokalnym katalogu, potem synchronizuj (`rsync`/`cp`) do cache i dopiero linkuj `node_modules`.
-  - Wymaganie: cache ma stabilny layout `.../node_modules` (nie „goły” katalog z paczkami), inaczej bundler nie rozwiąże zależności.
-
 - Blad: `rm -rf "$DIR"/*` przy pustym `DIR` kasowal `/` (lub inne krytyczne katalogi).
   - Wymaganie: przed destrukcyjnym `rm` wymagaj niepustego `DIR` + `realpath` w dozwolonym root.
   - Wymaganie: stosuj helper typu `safeRmDir(dir, root)` zamiast inline `rm`.
@@ -114,6 +110,8 @@
 
 - Blad: rownolegle polaczenia SSH byly zrywane przez limity serwera (`MaxStartups`/`MaxSessions`), co dawalo flakey deploy.
   - Wymaganie: limituj rownoleglosc polaczen lub dodaj retry/backoff; w srodowiskach kontrolowanych zwieksz limity w `sshd_config`.
+- Blad: timeouts SSH byly zakodowane na sztywno (ConnectTimeout/ServerAlive), co failowalo na wolnych sieciach lub dalekich hostach.
+  - Wymaganie: timeouty SSH musza byc konfigurowalne per‑target i logowane jako effective config.
 
 - Blad: `~/.ssh/config` uzytkownika zmienial zachowanie (ProxyJump/ControlMaster/GSSAPI) i psul deterministycznosc deployu/testow.
   - Wymaganie: uzywaj `ssh -F /dev/null` lub jawnie nadpisuj opcje w `-o ...`; loguj kluczowe opcje SSH.
@@ -785,6 +783,7 @@
   - Wymaganie: defaulty E2E sa w repo jako plik wzorcowy, a lokalne override przechowuj w `.seal/e2e.env` lub pod `SEAL_E2E_CONFIG` (poza repo); runner loguje zrodlo configu.
   - Wymaganie: lokalny plik override jest ignorowany przez git (brak przypadkowych commitow).
   - Wymaganie: jawne ENV ustawione przez uzytkownika (np. `SEAL_E2E_TESTS`) ma wyzszy priorytet niz config plik; jeśli chcesz pominąć config, ustaw `SEAL_E2E_CONFIG=/dev/null`.
+  - Wymaganie: pliki env powinny ustawiać tylko defaulty (`VAR="${VAR:-default}"`), aby nie nadpisywać jawnie ustawionych wartości.
 
 - Blad: `SEAL_E2E_CONFIG` wskazywal na nieistniejacy plik, a runner cicho wracal do defaultow, co mylilo wyniki.
   - Wymaganie: przy jawnym wskazaniu pliku brak = FAIL albo wyrazny warning + log fallback.
@@ -822,6 +821,7 @@
 
 - Blad: testy E2E uruchamialy build z wlaczona obfuskacja C, ale bez zainstalowanego obfuscating clang, co konczylo sie nieczytelnym bledem.
   - Wymaganie: testy wykrywaja brak obfuscatora i **jawnie** wylaczaja launcherObfuscation (lub robia SKIP), z jasnym logiem.
+  - Wymaganie: testy obfuskacji logują wymagania (np. `SEAL_E2E_TOOLSET=full`, `SEAL_E2E_INSTALL_OBFUSCATORS=1`) i wskazują jak je spełnić.
 
 - Blad: testy E2E nie wypisywaly wystarczajacego kontekstu przy porazce (brak stdout/stderr/command/config).
   - Wymaganie: przy failu test wypisuje command line, fragment stdout/stderr (z limitem) i effective config.
@@ -1073,6 +1073,9 @@
 - Blad: Playwright pobieral przegladarki przy kazdym uruchomieniu (brak cache), co wydluzalo E2E i zwiekszalo flakey.
   - Wymaganie: ustaw `PLAYWRIGHT_BROWSERS_PATH` na trwały cache (poza repo) i loguj jego lokalizacje.
   - Wymaganie: cache przegladarek jest kluczowany po wersji Playwright; mismatch = reinstall.
+
+- Blad: marker instalacji Playwright istnial, ale binarki przegladarek zostaly usuniete, co powodowalo fail mimo „cache ok”.
+  - Wymaganie: przed pominieciem instalacji sprawdzaj realna obecność binarek w `PLAYWRIGHT_BROWSERS_PATH`; brak = reinstall i jawny log.
 
 - Blad: UI E2E nie failowal na `console.error`/unhandled rejection, co maskowalo regresje w runtime.
   - Wymaganie: testy UI zbieraja `console` i `pageerror`, a bledy failuja test (z whitelist dla znanych, niekrytycznych warningow).
