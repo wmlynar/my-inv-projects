@@ -201,6 +201,7 @@ fi
 log "Done."
 log "Optional extras (run only if needed):"
 log "  - $SCRIPT_DIR/install-e2e-tools.sh"
+log "  - $SCRIPT_DIR/install-e2e-antidebug-deps.sh"
 log "  - $SCRIPT_DIR/install-upx.sh"
 log "  - $SCRIPT_DIR/install-strip.sh"
 log "  - $SCRIPT_DIR/install-ollvm.sh"

@@ -1,0 +1,78 @@
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV SEAL_THIRD_PARTY_CACHE=/root/.cache/seal/third-party
+ARG NODE_MAJOR=24
+ARG SEAL_TOOLS_LOCK=tools/seal/seal/docker/e2e/tools.lock
+
+RUN --mount=type=cache,target=/var/cache/apt \
+  --mount=type=cache,target=/var/lib/apt/lists \
+  apt-get update && apt-get install -y \
+  ca-certificates \
+  curl \
+  bash \
+  git \
+  openssh-client \
+  rsync \
+  build-essential \
+  cmake \
+  ninja-build \
+  pkg-config \
+  clang \
+  llvm \
+  lld \
+  python3 \
+  cargo \
+  libxml2-dev \
+  libedit-dev \
+  zlib1g-dev \
+  libssl-dev \
+  libffi-dev \
+  liblzma-dev \
+  libncurses5-dev \
+  libncursesw5-dev \
+  zstd \
+  libzstd-dev \
+  binutils \
+  && rm -rf /var/lib/apt/lists/*
+
+# Install UPX (package name varies across distros).
+RUN --mount=type=cache,target=/var/cache/apt \
+  --mount=type=cache,target=/var/lib/apt/lists \
+  apt-get update \
+  && (apt-get install -y upx-ucl || apt-get install -y upx) \
+  && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js (needed for E2E runner inside the builder container).
+RUN --mount=type=cache,target=/var/cache/apt \
+  --mount=type=cache,target=/var/lib/apt/lists \
+  curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - \
+  && apt-get install -y nodejs \
+  && rm -rf /var/lib/apt/lists/*
+
+# Install E2E tools and heavy dependencies at image build time.
+# Put the slowest (compile-heavy) steps first to maximize cache reuse.
+# Only default compiler/packer are prebuilt (ollvm + kiteshield).
+COPY ${SEAL_TOOLS_LOCK} /tmp/seal-tools.lock
+COPY tools/seal/seal/docker/e2e/install-tools-from-lock.sh /tmp/install-tools-from-lock.sh
+RUN --mount=type=cache,target=/root/.cache/seal/third-party \
+  bash /tmp/install-tools-from-lock.sh /tmp/seal-tools.lock \
+  && rm -f /tmp/install-tools-from-lock.sh /tmp/seal-tools.lock
+
+COPY tools/seal/seal/scripts/install-e2e-tools.sh /tmp/install-e2e-tools.sh
+COPY tools/seal/seal/scripts/install-e2e-antidebug-deps.sh /tmp/install-e2e-antidebug-deps.sh
+RUN bash /tmp/install-e2e-antidebug-deps.sh \
+  && rm -f /tmp/install-e2e-antidebug-deps.sh
+
+COPY tools/seal/seal/scripts/install-criu.sh /tmp/install-criu.sh
+RUN bash /tmp/install-e2e-tools.sh \
+  && rm -f /tmp/install-e2e-tools.sh /tmp/install-criu.sh
+
+COPY backup/third-party/backup-third-party.sh /usr/local/bin/seal-backup-third-party
+RUN chmod 755 /usr/local/bin/seal-backup-third-party
+
+COPY tools/seal/seal/docker/e2e/builder-entrypoint.sh /usr/local/bin/seal-builder-entrypoint
+RUN chmod 755 /usr/local/bin/seal-builder-entrypoint
+
+ENTRYPOINT ["/usr/local/bin/seal-builder-entrypoint"]
+WORKDIR /workspace

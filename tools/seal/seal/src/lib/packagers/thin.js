@@ -1319,7 +1319,8 @@ function renderLauncherSource(
   appBindValue,
   appBindEnabled,
   snapshotGuardCfg,
-  nativeBootstrapEnabled
+  nativeBootstrapEnabled,
+  nativeBootstrapMode
 ) {
   const sentinelDefs = renderSentinelDefs(sentinelCfg);
   const sentinelCode = renderSentinelCode();
@@ -1331,6 +1332,7 @@ function renderLauncherSource(
   const adEnabled = antiDebug.enabled !== false;
   const adTracerPid = adEnabled && antiDebug.tracerPid !== false;
   const adDenyEnv = adEnabled && antiDebug.denyEnv !== false;
+  const adArgvDeny = adEnabled && antiDebug.argvDeny === true;
   const adTracerPidIntervalMs = adTracerPid && Number.isFinite(Number(antiDebug.tracerPidIntervalMs))
     ? Math.max(0, Math.floor(Number(antiDebug.tracerPidIntervalMs)))
     : 0;
@@ -1347,6 +1349,69 @@ function renderLauncherSource(
   const mapsCArray = mapsItems.length
     ? `static const char *THIN_AD_MAPS_DENY[] = {\n  ${mapsItems.map((v) => `"${v}"`).join(",\n  ")},\n  NULL\n};\n`
     : "";
+
+  const argvDenyPrefix = [
+    "--inspect",
+    "--inspect-brk",
+    "--inspect-port",
+    "--debug",
+    "--debug-brk",
+    "--debug-port",
+    "--require",
+    "--loader",
+    "--experimental-loader",
+    "--import",
+    "--cpu-prof",
+    "--cpu-prof-name",
+    "--cpu-prof-interval",
+    "--cpu-prof-dir",
+    "--heap-prof",
+    "--heap-prof-name",
+    "--heap-prof-interval",
+    "--heap-prof-dir",
+    "--diagnostic-report",
+    "--report-on-fatalerror",
+    "--report-on-signal",
+    "--report-signal",
+    "--report-dir",
+    "--report-filename",
+    "--report-compact",
+    "--report-verbose",
+    "--heapsnapshot-signal",
+    "--trace-gc",
+    "--trace-gc-verbose",
+    "--trace-gc-ignore-scavenger",
+    "--trace-events-enabled",
+    "--trace-events-categories",
+    "--trace-turbo",
+    "--trace-ic",
+    "--trace-opt",
+    "--trace-deopt",
+    "--trace-exit",
+    "--perf-basic-prof",
+    "--perf-basic-prof-only-functions",
+    "--perf-prof",
+    "--perf-prof-unwinding-info",
+    "--perf-prof-annotate-wasm",
+    "--perf-prof-annotate-wasm-function-names",
+    "--perf-prof-annotate-wasm-function-indices",
+  ];
+  const argvDenyExact = ["-r"];
+  const argvDenyPrefixItems = argvDenyPrefix
+    .map((v) => String(v || "").trim())
+    .filter(Boolean)
+    .map((v) => v.replace(/\\/g, "\\\\").replace(/"/g, '\\"'));
+  const argvDenyExactItems = argvDenyExact
+    .map((v) => String(v || "").trim())
+    .filter(Boolean)
+    .map((v) => v.replace(/\\/g, "\\\\").replace(/"/g, '\\"'));
+  const argvDenyPrefixArray = argvDenyPrefixItems.length
+    ? `static const char *THIN_AD_ARGV_DENY_PREFIX[] = {\n  ${argvDenyPrefixItems.map((v) => `"${v}"`).join(",\n  ")},\n  NULL\n};\n`
+    : "";
+  const argvDenyExactArray = argvDenyExactItems.length
+    ? `static const char *THIN_AD_ARGV_DENY_EXACT[] = {\n  ${argvDenyExactItems.map((v) => `"${v}"`).join(",\n  ")},\n  NULL\n};\n`
+    : "";
+  const argvDenyCArray = adArgvDeny ? `${argvDenyPrefixArray}${argvDenyExactArray}` : "";
 
   const integrity = (integrityCfg && typeof integrityCfg === "object") ? integrityCfg : {};
   const selfHashEnabled = integrity.enabled === true;
@@ -2360,6 +2425,7 @@ function wipeKeyBuf() {
 }
 
 const NATIVE_BOOTSTRAP_ENABLED = ${nativeBootstrapEnabled ? 1 : 0};
+const NATIVE_BOOTSTRAP_MODE = ${JSON.stringify(nativeBootstrapMode || "compile")};
 const NATIVE_BOOTSTRAP_PATH = process.env.SEAL_THIN_NATIVE || path.join(process.cwd(), "r", "nb.node");
 
 let nativeAddon = null;
@@ -2825,15 +2891,77 @@ function nativeFail() {
 }
 
 let code = null;
+let compiled = null;
 let usedNative = false;
+
+function dupBootstrapFd(srcFd) {
+  if (!Number.isFinite(srcFd) || srcFd < 0) return -1;
+  const paths = ["/proc/self/fd/" + srcFd, "/dev/fd/" + srcFd];
+  for (const p of paths) {
+    try {
+      return fs.openSync(p, "r");
+    } catch {}
+  }
+  return -1;
+}
+
+function readFdUtf8(sourceFd) {
+  if (!Number.isFinite(sourceFd) || sourceFd < 0) return null;
+  let out = null;
+  try {
+    const stat = fs.fstatSync(sourceFd);
+    const size = stat && Number.isFinite(stat.size) ? stat.size : 0;
+    if (size <= 0) return "";
+    const buf = Buffer.allocUnsafe(size);
+    const bytes = fs.readSync(sourceFd, buf, 0, size, 0);
+    const view = bytes < size ? buf.subarray(0, bytes) : buf;
+    out = view.toString("utf8");
+    try { view.fill(0); } catch {}
+    if (view !== buf) {
+      try { buf.fill(0); } catch {}
+    }
+  } catch {
+    out = null;
+  } finally {
+    try { fs.closeSync(sourceFd); } catch {}
+  }
+  return out;
+}
+
+function readE2eCodeFromFd(sourceFd) {
+  if (!Number.isFinite(sourceFd) || sourceFd < 0) return null;
+  if (nativeAddon && typeof nativeAddon.readExternalStringFromFd === "function") {
+    try {
+      return nativeAddon.readExternalStringFromFd(sourceFd);
+    } catch {}
+  }
+  return readFdUtf8(sourceFd);
+}
+
 if (NATIVE_BOOTSTRAP_ENABLED) {
   try {
     nativeAddon = require(NATIVE_BOOTSTRAP_PATH);
-    if (nativeAddon && typeof nativeAddon.readExternalStringFromFd === "function") {
-      code = nativeAddon.readExternalStringFromFd(fd);
-      usedNative = true;
+    if (NATIVE_BOOTSTRAP_MODE === "string") {
+      if (nativeAddon && typeof nativeAddon.readExternalStringFromFd === "function") {
+        code = nativeAddon.readExternalStringFromFd(fd);
+        usedNative = true;
+      } else {
+        nativeFail();
+      }
     } else {
-      nativeFail();
+      if (nativeAddon && typeof nativeAddon.compileCjsFromFd === "function") {
+        if (E2E_TEST_MODE && (E2E_SELF_SCAN || E2E_STACK_SCAN || E2E_MODULE_SCAN)) {
+          const dup = dupBootstrapFd(fd);
+          if (dup >= 0) {
+            code = readE2eCodeFromFd(dup);
+          }
+        }
+        compiled = nativeAddon.compileCjsFromFd(fd, entry);
+        if (typeof compiled !== "function") nativeFail();
+        usedNative = true;
+      } else {
+        nativeFail();
+      }
     }
   } catch {
     nativeFail();
@@ -2859,11 +2987,34 @@ e2eArgvEnvCheck("decoded");
 e2eMaybeCrash("decoded");
 process.argv[1] = entry;
 
+function makeRequire(mod) {
+  function req(request) {
+    return mod.require(request);
+  }
+  req.resolve = function resolve(request, options) {
+    return Module._resolveFilename(request, mod, false, options);
+  };
+  req.resolve.paths = function resolvePaths(request) {
+    return Module._resolveLookupPaths(request, mod);
+  };
+  req.main = process.mainModule;
+  req.extensions = Module._extensions;
+  req.cache = Module._cache;
+  return req;
+}
+
 const m = new Module(entry, module);
 m.filename = entry;
 m.paths = Module._nodeModulePaths(path.dirname(entry));
-m._compile(code, entry);
+if (compiled) {
+  const req = makeRequire(m);
+  compiled.call(m.exports, m.exports, req, m, entry, path.dirname(entry));
+  m.loaded = true;
+} else {
+  m._compile(code, entry);
+}
 code = null;
+compiled = null;
 if (global.gc) {
   global.gc();
   global.gc();
@@ -2985,6 +3136,7 @@ extern char **environ;
 #define THIN_AD_TRACERPID ${adTracerPid ? 1 : 0}
 #define THIN_AD_TRACERPID_THREADS ${adTracerPidThreads ? 1 : 0}
 #define THIN_AD_DENY_ENV ${adDenyEnv ? 1 : 0}
+#define THIN_AD_ARGV_DENY ${adArgvDeny ? 1 : 0}
 #define THIN_AD_MAPS ${adMaps ? 1 : 0}
 #define THIN_AD_PTRACE_GUARD ${adPtraceGuard ? 1 : 0}
 #define THIN_AD_PTRACE_DUMPABLE ${adPtraceDumpable ? 1 : 0}
@@ -3002,6 +3154,7 @@ extern char **environ;
 ${sentinelDefs}
 ${selfHashDefs}
 ${mapsCArray}
+${argvDenyCArray}
 #if SENTINEL_ENABLED
 #define THIN_FAIL(code) SENTINEL_EXIT_BLOCK
 #else
@@ -3835,6 +3988,42 @@ static int loader_guard_check(void) {
   return 0;
 }
 
+#if THIN_AD_ENABLED && THIN_AD_ARGV_DENY
+static int argv_has_deny(int argc, char **argv) {
+  if (argc <= 1 || !argv) return 0;
+  for (int i = 1; i < argc; i++) {
+    const char *arg = argv[i];
+    if (!arg || !arg[0]) continue;
+    for (int j = 0; THIN_AD_ARGV_DENY_EXACT[j]; j++) {
+      if (strcmp(arg, THIN_AD_ARGV_DENY_EXACT[j]) == 0) {
+        return 1;
+      }
+    }
+    for (int j = 0; THIN_AD_ARGV_DENY_PREFIX[j]; j++) {
+      const char *prefix = THIN_AD_ARGV_DENY_PREFIX[j];
+      size_t len = strlen(prefix);
+      if (strncmp(arg, prefix, len) == 0 && (arg[len] == 0 || arg[len] == '=')) {
+        return 1;
+      }
+    }
+  }
+  return 0;
+}
+
+static int anti_debug_argv_check(int argc, char **argv) {
+  if (argv_has_deny(argc, argv)) {
+    return fail_msg("[thin] runtime invalid", 85);
+  }
+  return 0;
+}
+#else
+static int anti_debug_argv_check(int argc, char **argv) {
+  (void)argc;
+  (void)argv;
+  return 0;
+}
+#endif
+
 static int anti_debug_checks(void) {
 #if THIN_AD_ENABLED && THIN_AD_TRACERPID
   long pid = 0;
@@ -4242,14 +4431,16 @@ static int anti_debug_e2e_probe(void) {
 }
 
 int main(int argc, char **argv) {
-  (void)argc;
-  (void)argv;
-
   char root[PATH_MAX + 1];
   if (resolve_root(root, sizeof(root)) != 0) {
     if (!getcwd(root, sizeof(root))) {
       snprintf(root, sizeof(root), ".");
     }
+  }
+
+  int av = anti_debug_argv_check(argc, argv);
+  if (av != 0) {
+    return av;
   }
 
   int pg = apply_ptrace_guard();
@@ -4484,7 +4675,8 @@ function buildLauncher(
   snapshotGuardCfg,
   launcherHardening,
   launcherHardeningCET,
-  nativeBootstrapEnabled
+  nativeBootstrapEnabled,
+  nativeBootstrapMode
 ) {
   const limits = DEFAULT_LIMITS;
   if (cObfuscator && cObfuscator.kind) {
@@ -4529,7 +4721,8 @@ function buildLauncher(
       appBindValue,
       appBindEnabled,
       snapshotGuardCfg,
-      nativeBootstrapEnabled
+      nativeBootstrapEnabled,
+      nativeBootstrapMode
     ),
     "utf-8"
   );
@@ -4680,6 +4873,7 @@ async function packThin({
     const integrityCfg = integrity && typeof integrity === "object" ? integrity : {};
     const nativeBootstrapCfg = nativeBootstrap && typeof nativeBootstrap === "object" ? nativeBootstrap : {};
     const nativeBootstrapEnabled = nativeBootstrapCfg.enabled === true;
+    const nativeBootstrapMode = nativeBootstrapCfg.mode === "string" ? "string" : "compile";
     if (integrityCfg.enabled && thinMode !== "bootstrap") {
       return { ok: false, errorShort: "thin.integrity requires thin-split", error: "integrity_requires_bootstrap" };
     }
@@ -4751,7 +4945,8 @@ async function packThin({
       snapshotGuard,
       launcherHardening,
       launcherHardeningCET,
-      nativeBootstrapEnabled
+      nativeBootstrapEnabled,
+      nativeBootstrapMode
     );
     if (!launcherRes.ok) return launcherRes;
 

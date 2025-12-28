@@ -113,8 +113,12 @@ npx seal release prod --packager thin-split
   - `memfd` wymaga wsparcia jądra; brak wsparcia = błąd uruchomienia.
   - `tmpfile` używa `mkstemp` i usuwa plik z dysku (unlink), ale nie używa memfd; pliki tymczasowe są tworzone z `umask(077)`.
 - Native bootstrap (opcjonalny, tylko thin-split):
-  - `build.thin.nativeBootstrap: { enabled: false }`.
-  - Buduje natywny addon, który czyta bundle z FD 4 do zewnętrznego stringa (MADV_DONTDUMP + mlock) i minimalizuje czas plaintextu w heapie V8.
+  - `build.thin.nativeBootstrap: { enabled: false, mode: "compile" }`.
+  - `mode: "compile" | "string"`:
+    - `compile` (domyślnie): natywny addon kompiluje CJS w native (`CompileFunction`), bez JS‑owego stringa źródła i bez wrappera w JS.
+    - `string` (legacy): natywny addon tworzy `ExternalString`, a bootstrap używa klasycznego `_compile`.
+  - Zysk: mniej kopii plaintextu w JS heapie i krótszy czas życia jawnego kodu (poza pamięcią wewnętrzną V8).
+  - W trybie E2E może zostać wygenerowany dodatkowy string wyłącznie na potrzeby self‑scan.
   - Wymaga nagłówków Node (np. `/usr/include/node` lub `SEAL_NODE_INCLUDE_DIR`) oraz kompilatora C++ z obsługą C++20.
 
 **Anti‑debug / integrity (opcjonalne):**

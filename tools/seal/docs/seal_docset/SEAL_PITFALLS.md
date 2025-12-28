@@ -193,6 +193,12 @@
 - Blad: obfuskacja/minifikacja frontendu byla wylaczona.
   - Wymaganie: `build.frontendObfuscation` i `build.frontendMinify` sa **domyslnie wlaczone** dla UI.
 
+- Blad: sourcemapy trafily do release i ułatwiały odtworzenie kodu.
+  - Wymaganie: sourcemapy muszą być wyłączone lub trafiać wyłącznie do prywatnych artefaktów debug (nigdy na target); testy E2E sprawdzają brak `.map` w release.
+
+- Blad: minify/obfuskacja psuły kod zależny od nazw (`Function.name`, `class.name`) albo dynamicznego dostępu do pól.
+  - Wymaganie: krytyczne ścieżki mają E2E; jeśli kod zależy od nazw/reflect, wyłącz minify/rename lub użyj konfiguracji zachowującej nazwy na granicach API.
+
 - Blad: `elfPacker.tool="upx"` byl wlaczony, ale jego blad byl ignorowany (build przechodzil mimo `CantUnpackException` itp.).
   - Wymaganie: jezeli `elfPacker.tool="upx"` jest wlaczony i sie nie powiedzie, build **musi** sie przerwac z bledem.
   - Wymaganie: `elfPacker.tool="upx"` domyslnie wylaczony dla SEA; wlaczaj tylko po potwierdzeniu `upx -t` na binarce.
@@ -245,6 +251,9 @@
 - Blad: thin build failowal dopiero w trakcie kompilacji launchera (brak `libzstd-dev`), bez jasnej instrukcji instalacji.
   - Wymaganie: `seal check` wykrywa brakujace pakiety (np. `libzstd-dev`) i podaje **konkretne** `apt-get install ...`.
   - Wymaganie: `seal release` (thin) fail‑fast z czytelnym komunikatem, gdy toolchain jest niekompletny.
+
+- Blad: `nativeBootstrap` failowal na starszych kompilatorach (brak C++20) albo bez naglowkow Node, dajac nieczytelne błędy.
+  - Wymaganie: preflight sprawdza wsparcie C++20 i obecność naglowkow Node (np. `SEAL_NODE_INCLUDE_DIR`) i fail‑fast z instrukcją instalacji.
 
 - Blad: build byl niedeterministyczny lub wykonany na innej architekturze/OS niz target (AIO zawiera runtime z build machine).
   - Wymaganie: preflight waliduje OS/arch i wersje narzedzi; mismatch = fail-fast.
@@ -355,6 +364,9 @@
 
 - Blad: obfuscating clang (O‑LLVM) nie widzial systemowych naglowkow (`stddef.h`) i kompilacja launchera failowala.
   - Wymaganie: przy uzyciu obfuscatora C dodaj include paths z toolchaina systemowego (np. `gcc -print-file-name=include`), albo jasno dokumentuj wymagany `--gcc-toolchain`.
+
+- Blad: wersje obfuscatorów C nie pasowały do LLVM/Clanga w systemie, co kończyło się nieczytelnymi błędami kompilacji.
+  - Wymaganie: pinuj wersje O‑LLVM/Hikari i loguj `clang --version`; mismatch = fail‑fast z instrukcją instalacji właściwego toolchaina.
 
 - Blad: `thin.integrity` (inline) wlaczony razem z `protection.elfPacker` powodowal brak markera i fail weryfikacji.
   - Wymaganie: `thin.integrity` w trybie `inline` jest niekompatybilny z `protection.elfPacker`; build ma fail‑fast z jasnym komunikatem.
@@ -480,12 +492,24 @@
 - Blad: testy zalezne od narzedzi (postject/strip/packery) failowaly zamiast graczejnego SKIP, gdy narzedzia nie byly zainstalowane.
   - Wymaganie: testy tool‑dependent sprawdzaja dostepnosc narzedzi i robia SKIP z powodem (chyba ze env wymusza fail).
 
+- Blad: testy `strip`/packer mialy tylko czesciowa weryfikacje, bo brakowalo narzedzi weryfikacyjnych (np. `readelf`, `eu-readelf`, `objdump`, `dwarfdump`, `binwalk`, `file`, `strings`, `zstd`).
+  - Wymaganie: na maszynie testowej zainstaluj `binutils` + `elfutils` + `binwalk` + `zstd` + `dwarfdump`; w trybie strict brak narzedzi = FAIL.
+
+- Blad: brak metryk czasu ukrywal najwolniejsze testy i utrudnial planowanie rownoległości.
+  - Wymaganie: testy E2E logują czas per‑test/per‑grupa oraz sumaryczny czas, zeby mozna było priorytetyzowac optymalizacje.
+
+- Blad: E2E uruchamiane na nielinuxowych systemach dawaly false‑negative (testy packer/obfuscation są linux‑only).
+  - Wymaganie: pelny zestaw E2E uruchamiaj na Linux; inne OS powinny jawnie SKIP z powodem.
+
 - Blad: testy E2E auto‑modyfikowaly konfiguracje (np. wylaczenie ochron/packerow) bez jawnego logu, przez co maskowaly regresje.
   - Wymaganie: kazda automatyczna zmiana configu w testach musi byc logowana i uzasadniona.
   - Wymaganie: wylaczenia musza byc granularne (tylko niekompatybilna opcja), bez globalnego `protection.enabled=false` jako obejscia.
 
 - Blad: testy/skrypty pomijaly kroki (np. instalacje narzedzi, runtime checki) bez jasnej informacji.
   - Wymaganie: kazdy SKIP musi wypisac powód i instrukcje jak wymusic pelny test.
+
+- Blad: brak podsumowania SKIP dawał fałszywe poczucie “all green”.
+  - Wymaganie: testy musza wypisać liczbę i listę SKIP oraz mieć tryb strict, który traktuje SKIP jako FAIL w runach certyfikacyjnych.
 
 - Blad: `NODE_OPTIONS`/`NODE_PATH` z srodowiska wstrzykiwaly `--require` lub inne hooki, psujac build/testy.
   - Wymaganie: testy i buildy czyszcza ryzykowne ENV (`NODE_OPTIONS`, `NODE_PATH`, `NODE_EXTRA_CA_CERTS`) albo jawnie ustawiają bezpieczne wartości.
@@ -618,14 +642,44 @@
 - Blad: testy anti-debug byly uruchamiane w kontenerze z restrykcyjnym seccomp/AppArmor/Yama, co blokowalo attach i dawalo falszywe “OK”.
   - Wymaganie: uruchom przynajmniej jeden baseline test na procesie **niechronionym** (attach ma sie udac), albo uruchom pelny zestaw w srodowisku permissive (`seccomp=unconfined` / bez AppArmor). Loguj aktywne polityki.
 
+- Blad: brak flag `SEAL_E2E_STRICT_*` powodowal, ze udany attach byl raportowany jako SKIP zamiast FAIL.
+  - Wymaganie: dla certyfikacji bezpieczenstwa wlacz `SEAL_E2E_STRICT_PTRACE=1` oraz odpowiadajace flagi (perf/rr/bpftrace/...), aby sukces attach byl traktowany jako regresja.
+
 - Blad: brak `debugfs`/`tracefs`/`bpffs` powodowal SKIP dla bpftrace/perf/trace-cmd/lttng.
   - Wymaganie: przy testach strict montuj `/sys/kernel/debug`, `/sys/kernel/tracing`, `/sys/fs/bpf` z hosta (w kontenerze tylko `--privileged`) i weryfikuj mounty przed startem.
+
+- Blad: rootless Docker/WSL ograniczal ptrace/perf/cgroup i uniemożliwiał pełne testy anti-debug.
+  - Wymaganie: pelne anti-debug E2E uruchamiaj na bare‑metal/VM z uprzywilejowanym kontenerem; w rootless/WSL ustaw jawny SKIP.
 
 - Blad: `perf`/`trace-cmd`/`rr` nie dzialaly, bo narzedzia nie pasowaly do kernela hosta.
   - Wymaganie: instaluj `linux-tools-$(uname -r)` na hoście testowym (a nie tylko w kontenerze) i loguj `uname -r` + `perf --version`.
 
 - Blad: `systemtap`/`lttng`/`sysdig` zwracaly “not supported / no debuginfo” (brak modulow/headers).
   - Wymaganie: na hoście testowym musza byc kernel headers + debug packages + możliwość ładowania modułów; w kontenerach bez tego traktuj jako SKIP z jasnym powodem.
+
+- Blad: `auditctl`/`auditd` nie byly dostępne lub brakowalo CAP_AUDIT_CONTROL, przez co testy mogly byc puste.
+  - Wymaganie: na maszynie testowej zainstaluj i uruchom `auditd` oraz loguj, czy `auditctl` dziala; w kontenerze bez capów oznacz SKIP.
+
+- Blad: `sysdig` nie dzialal bez zainstalowanego drivera (kernel module / eBPF), co mylnie wygladalo jak “blocked”.
+  - Wymaganie: upewnij sie, ze sysdig ma aktywny driver (np. `sysdig-probe` lub eBPF) i loguj tryb pracy; inaczej SKIP z powodem.
+
+- Blad: `bpftrace` nie dzialal (brak BTF / eBPF) i testy zwracaly “unsupported”.
+  - Wymaganie: kernel musi miec BTF (`/sys/kernel/btf/vmlinux`) i eBPF; loguj `kernel.unprivileged_bpf_disabled` i wersje kernela.
+
+- Blad: `rr` nie dzialal przez restrykcyjny `perf_event_paranoid` i brak uprawnień.
+  - Wymaganie: na maszynie testowej ustaw `kernel.perf_event_paranoid` odpowiednio nisko lub uruchamiaj testy jako root i loguj wartość sysctl.
+
+- Blad: zbyt permisyjny `kernel.yama.ptrace_scope=0` powodowal, ze attach mogl sie udac i test konczyl sie SKIP zamiast FAIL.
+  - Wymaganie: w srodowisku certyfikacyjnym ustaw `kernel.yama.ptrace_scope>=1` i wlacz `SEAL_E2E_STRICT_PTRACE=1` (attach success = FAIL).
+
+- Blad: `dmesg` byl zablokowany (`kernel.dmesg_restrict=1` lub brak CAP_SYSLOG) i skan logow byl zawsze SKIP.
+  - Wymaganie: na maszynie testowej odblokuj `dmesg` (sysctl lub cap) albo traktuj SKIP jako brak weryfikacji.
+
+- Blad: snapshot‑guard oparty o cgroup v2 byl zawsze SKIP, bo cgroup v2 nie byl dostepny lub niewritable w kontenerze.
+  - Wymaganie: uruchamiaj testy na hoście z cgroup v2 i montuj `/sys/fs/cgroup` jako RW; loguj, czy `cgroup.freeze` jest dostępny.
+
+- Blad: narzedzia DynamoRIO/Pin byly zainstalowane, ale brakowalo konfiguracji klienta.
+  - Wymaganie: ustaw `SEAL_E2E_DRRUN_TOOL` (dla `drrun`) oraz `SEAL_E2E_PIN_TOOL`/`SEAL_E2E_PIN_CMD` (dla Pin); bez tego testy sa SKIP.
 
 - Blad: brak `/dev/disk/by-uuid` w kontenerze powodowal SKIP dla sentinel level=2 (RID).
   - Wymaganie: bind‑mount `/dev/disk` z hosta lub uruchamiaj test na VM/bare‑metal; loguj źródło root device (overlay vs real disk).
@@ -639,6 +693,9 @@
 - Blad: narzedzia “manual-only” (np. Intel Pin / AVML) nie byly zainstalowane, przez co testy byly zawsze SKIP.
   - Wymaganie: instaluj je ręcznie na maszynie testowej i dodaj do `PATH`; w CI oznacz jawnie, że te subtesty są opcjonalne.
 
+- Blad: `frida` nie byla dostępna w repozytoriach dystrybucji, przez co testy byly stale SKIP.
+  - Wymaganie: instaluj `frida-tools` przez pip lub dostarcz binarke w toolchainie testowym; loguj sposób instalacji.
+
 ### Sentinel E2E (środowisko testowe)
 
 - Blad: brak `/etc/machine-id` w kontenerze powodowal SKIP lub flakey wyniki sentinela.
@@ -651,6 +708,12 @@
 
 - Blad: brak zainstalowanych przegladarek Playwright (offline) powodowal fail/skip UI E2E.
   - Wymaganie: pre‑bake przegladarki w obrazie testowym albo jawnie wylacz UI E2E (`SEAL_UI_E2E=0`) w srodowiskach offline.
+
+- Blad: UI E2E uruchomione w trybie nie‑headless bez X11/Xvfb powodowaly fail.
+  - Wymaganie: w kontenerach/CI ustaw `SEAL_UI_E2E_HEADLESS=1` albo zainstaluj i uruchom `xvfb`.
+
+- Blad: Playwright w Dockerze crashowal (małe `/dev/shm`), co dawalo losowe błędy przeglądarki.
+  - Wymaganie: uruchamiaj kontener z wiekszym `/dev/shm` (np. `--shm-size=1g`) albo ustaw `--disable-dev-shm-usage` w uruchomieniu Chromium.
 
 ## Deploy / infrastruktura
 
@@ -852,6 +915,9 @@
 - Blad: zmiana formatu bloba (v1/v2) psula runtime (niezgodne rozmiary / CRC).
   - Wymaganie: runtime akceptuje **oba** rozmiary i waliduje spojnosc (version ↔ length).
   - Wymaganie: nowe pole (np. `expires_at`) musi byc ignorowane przez v1 i jawnie sprawdzane w v2.
+
+- Blad: zegar hosta byl rozjechany (brak NTP), przez co sentinel z limitem czasu wygasal natychmiast albo za późno.
+  - Wymaganie: na hostach produkcyjnych i testowych wymagaj synchronizacji czasu (NTP) i loguj odchyłkę, jeśli dostępna.
 
 - Blad: w template stringach z bash/script wystapily nie‑escapowane sekwencje `${...}`, co psulo skladnie JS.
   - Wymaganie: w osadzonych skryptach shellowych zawsze escapuj `${` jako `\\${` (lub użyj helpera do here‑doc), zeby uniknac interpolacji JS.

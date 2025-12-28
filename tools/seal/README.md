@@ -256,6 +256,19 @@ SEAL_OBFUSCATION_E2E=1 node tools/seal/seal/scripts/test-obfuscation-e2e.js
 
 Test odpala sealed binarkę i weryfikuje `/api/obf/checks` oraz `/api/md5`.
 
+## E2E thin packager (thin-split / thin-single)
+
+```bash
+SEAL_THIN_E2E=1 node tools/seal/seal/scripts/test-thin-e2e.js
+```
+
+Jeśli build używa native bootstrap (`r/nb.node`) i start jest wolny na danym hoście, ustaw:
+
+```bash
+SEAL_THIN_E2E=1 SEAL_THIN_E2E_NATIVE_RUN_TIMEOUT_MS=240000 \
+  node tools/seal/seal/scripts/test-thin-e2e.js
+```
+
 ## E2E anti-debug (thin-split)
 
 Wymaga narzędzi systemowych: `gdb`, `gdbserver`, `strace`, `ltrace` (opcjonalnie `coredumpctl`).
@@ -264,6 +277,14 @@ Instalacja:
 ```bash
 tools/seal/seal/scripts/install-e2e-tools.sh
 ```
+
+Na maszynie testowej (docker/host) z pełnymi checkami anti-debug:
+
+```bash
+tools/seal/seal/scripts/install-e2e-antidebug-deps.sh
+```
+
+To nie jest wymagane do normalnego używania SEAL.
 
 Lub przez główny installer:
 

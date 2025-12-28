@@ -158,6 +158,93 @@ class ExternalTwoByteResource : public v8::String::ExternalStringResource {
   size_t len_;
 };
 
+static bool ReadExternalStringFromFdInternal(v8::Isolate *isolate, int fd, v8::Local<v8::String> *out) {
+  if (!out) {
+    (void)close(fd);
+    throw_error(isolate, "invalid output");
+    return false;
+  }
+  struct stat st;
+  if (fstat(fd, &st) != 0) {
+    (void)close(fd);
+    throw_error(isolate, "fstat failed");
+    return false;
+  }
+  if (st.st_size == 0) {
+    (void)close(fd);
+    *out = v8::String::Empty(isolate);
+    return true;
+  }
+  if (st.st_size < 0 || static_cast<unsigned long long>(st.st_size) > static_cast<unsigned long long>(SIZE_MAX)) {
+    (void)close(fd);
+    throw_error(isolate, "invalid size");
+    return false;
+  }
+
+  size_t len = static_cast<size_t>(st.st_size);
+  void *raw_map = mmap(nullptr, len, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  if (raw_map == MAP_FAILED) {
+    (void)close(fd);
+    throw_error(isolate, "mmap failed");
+    return false;
+  }
+
+  uint8_t *raw = reinterpret_cast<uint8_t *>(raw_map);
+  if (!read_fully(fd, raw, len)) {
+    (void)close(fd);
+    wipe_bytes(raw, len);
+    munmap(raw, len);
+    throw_error(isolate, "read failed");
+    return false;
+  }
+  (void)close(fd);
+
+  if (is_ascii(raw, len)) {
+    best_effort_protect(raw, len);
+    ExternalOneByteResource *res = new ExternalOneByteResource(reinterpret_cast<char *>(raw), len);
+    v8::Local<v8::String> str;
+    if (!v8::String::NewExternalOneByte(isolate, res).ToLocal(&str)) {
+      res->Dispose();
+      throw_error(isolate, "external string failed");
+      return false;
+    }
+    *out = str;
+    return true;
+  }
+
+  if (len > SIZE_MAX / sizeof(uint16_t)) {
+    wipe_bytes(raw, len);
+    munmap(raw, len);
+    throw_error(isolate, "size overflow");
+    return false;
+  }
+
+  void *out_map = mmap(nullptr, len * sizeof(uint16_t), PROT_READ | PROT_WRITE,
+                       MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  if (out_map == MAP_FAILED) {
+    wipe_bytes(raw, len);
+    munmap(raw, len);
+    throw_error(isolate, "mmap failed");
+    return false;
+  }
+
+  uint16_t *utf16 = reinterpret_cast<uint16_t *>(out_map);
+  size_t out_len = utf8_to_utf16(raw, len, utf16);
+  wipe_bytes(raw, len);
+  munmap(raw, len);
+
+  best_effort_protect(utf16, out_len * sizeof(uint16_t));
+  ExternalTwoByteResource *res = new ExternalTwoByteResource(utf16, out_len);
+  v8::Local<v8::String> str;
+  if (!v8::String::NewExternalTwoByte(isolate, res).ToLocal(&str)) {
+    res->Dispose();
+    throw_error(isolate, "external string failed");
+    return false;
+  }
+  *out = str;
+  return true;
+}
+
 static void ReadExternalStringFromFd(const v8::FunctionCallbackInfo<v8::Value> &args) {
   v8::Isolate *isolate = args.GetIsolate();
   v8::HandleScope scope(isolate);
@@ -173,84 +260,62 @@ static void ReadExternalStringFromFd(const v8::FunctionCallbackInfo<v8::Value> &
     return;
   }
 
-  struct stat st;
-  if (fstat(fd, &st) != 0) {
-    (void)close(fd);
-    throw_error(isolate, "fstat failed");
-    return;
-  }
-  if (st.st_size == 0) {
-    (void)close(fd);
-    args.GetReturnValue().Set(v8::String::Empty(isolate));
-    return;
-  }
-  if (st.st_size < 0 || static_cast<unsigned long long>(st.st_size) > static_cast<unsigned long long>(SIZE_MAX)) {
-    (void)close(fd);
-    throw_error(isolate, "invalid size");
-    return;
-  }
-
-  size_t len = static_cast<size_t>(st.st_size);
-  void *raw_map = mmap(nullptr, len, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-  if (raw_map == MAP_FAILED) {
-    (void)close(fd);
-    throw_error(isolate, "mmap failed");
-    return;
-  }
-
-  uint8_t *raw = reinterpret_cast<uint8_t *>(raw_map);
-  if (!read_fully(fd, raw, len)) {
-    (void)close(fd);
-    wipe_bytes(raw, len);
-    munmap(raw, len);
-    throw_error(isolate, "read failed");
-    return;
-  }
-  (void)close(fd);
-
-  if (is_ascii(raw, len)) {
-    best_effort_protect(raw, len);
-    ExternalOneByteResource *res = new ExternalOneByteResource(reinterpret_cast<char *>(raw), len);
-    v8::Local<v8::String> str;
-    if (!v8::String::NewExternalOneByte(isolate, res).ToLocal(&str)) {
-      res->Dispose();
-      throw_error(isolate, "external string failed");
-      return;
-    }
-    args.GetReturnValue().Set(str);
-    return;
-  }
-
-  if (len > SIZE_MAX / sizeof(uint16_t)) {
-    wipe_bytes(raw, len);
-    munmap(raw, len);
-    throw_error(isolate, "size overflow");
-    return;
-  }
-
-  void *out_map = mmap(nullptr, len * sizeof(uint16_t), PROT_READ | PROT_WRITE,
-                       MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-  if (out_map == MAP_FAILED) {
-    wipe_bytes(raw, len);
-    munmap(raw, len);
-    throw_error(isolate, "mmap failed");
-    return;
-  }
-
-  uint16_t *out = reinterpret_cast<uint16_t *>(out_map);
-  size_t out_len = utf8_to_utf16(raw, len, out);
-  wipe_bytes(raw, len);
-  munmap(raw, len);
-
-  best_effort_protect(out, out_len * sizeof(uint16_t));
-  ExternalTwoByteResource *res = new ExternalTwoByteResource(out, out_len);
   v8::Local<v8::String> str;
-  if (!v8::String::NewExternalTwoByte(isolate, res).ToLocal(&str)) {
-    res->Dispose();
-    throw_error(isolate, "external string failed");
+  if (!ReadExternalStringFromFdInternal(isolate, fd, &str)) return;
+  args.GetReturnValue().Set(str);
+}
+
+static void CompileCjsFromFd(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  v8::Isolate *isolate = args.GetIsolate();
+  v8::HandleScope scope(isolate);
+
+  if (args.Length() < 2 || !args[0]->IsInt32() || !args[1]->IsString()) {
+    throw_error(isolate, "expected (fd, filename)");
     return;
   }
-  args.GetReturnValue().Set(str);
+
+  int fd = args[0]->Int32Value(isolate->GetCurrentContext()).FromMaybe(-1);
+  if (fd < 0) {
+    throw_error(isolate, "invalid fd");
+    return;
+  }
+
+  v8::Local<v8::Context> context = isolate->GetCurrentContext();
+  v8::Local<v8::String> source;
+  if (!ReadExternalStringFromFdInternal(isolate, fd, &source)) return;
+
+  v8::Local<v8::String> resource_name;
+  if (!args[1]->ToString(context).ToLocal(&resource_name)) {
+    throw_error(isolate, "invalid filename");
+    return;
+  }
+  if (resource_name.IsEmpty()) {
+    resource_name = v8::String::NewFromUtf8(isolate, "<anonymous>", v8::NewStringType::kNormal).ToLocalChecked();
+  }
+
+  v8::ScriptOrigin origin(resource_name);
+  v8::ScriptCompiler::Source script_source(source, origin);
+  v8::Local<v8::String> params[] = {
+    v8::String::NewFromUtf8(isolate, "exports", v8::NewStringType::kNormal).ToLocalChecked(),
+    v8::String::NewFromUtf8(isolate, "require", v8::NewStringType::kNormal).ToLocalChecked(),
+    v8::String::NewFromUtf8(isolate, "module", v8::NewStringType::kNormal).ToLocalChecked(),
+    v8::String::NewFromUtf8(isolate, "__filename", v8::NewStringType::kNormal).ToLocalChecked(),
+    v8::String::NewFromUtf8(isolate, "__dirname", v8::NewStringType::kNormal).ToLocalChecked(),
+  };
+  v8::MaybeLocal<v8::Function> maybe_fn = v8::ScriptCompiler::CompileFunction(
+    context,
+    &script_source,
+    5,
+    params,
+    0,
+    nullptr
+  );
+  v8::Local<v8::Function> fn;
+  if (!maybe_fn.ToLocal(&fn)) {
+    throw_error(isolate, "compile failed");
+    return;
+  }
+  args.GetReturnValue().Set(fn);
 }
 
 static int masked_contains(const uint8_t *buf, size_t len, const uint8_t *mask, size_t mask_len, uint8_t key) {
@@ -554,6 +619,7 @@ static void E2eForkScanMasked(const v8::FunctionCallbackInfo<v8::Value> &args) {
 }
 
 static void Initialize(v8::Local<v8::Object> exports) {
+  NODE_SET_METHOD(exports, "compileCjsFromFd", CompileCjsFromFd);
   NODE_SET_METHOD(exports, "readExternalStringFromFd", ReadExternalStringFromFd);
   NODE_SET_METHOD(exports, "e2eForkScanMasked", E2eForkScanMasked);
 }

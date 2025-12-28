@@ -1765,7 +1765,7 @@ Przykład (aktualny dla v0.5):
       zstdTimeoutMs: 120000,
       envMode: "denylist",    // denylist | allowlist
       runtimeStore: "memfd",  // memfd | tmpfile
-      nativeBootstrap: { enabled: false }, // thin-split only: native addon (MADV_DONTDUMP + mlock, requires C++20)
+      nativeBootstrap: { enabled: false, mode: "compile" }, // thin-split only: native addon (ExternalString + MADV_DONTDUMP/mlock + native CJS compile, requires C++20)
       appBind: { enabled: true }, // bind launcher to runtime/payload (use value for stable project ID)
       launcherHardening: true,    // CET/RELRO/PIE/stack-protector/fortify
       launcherHardeningCET: true, // CET only; disable for older clang (e.g., O-LLVM)

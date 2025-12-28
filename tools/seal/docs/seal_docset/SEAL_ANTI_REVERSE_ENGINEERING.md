@@ -329,9 +329,11 @@ Uwagi:
 - Implementacja: esbuild `pure` dla wybranych `console.*`.
 
 #### 2.12.15 Native bootstrap (opcjonalne)
-- Jak działa: natywny addon czyta bundle z FD do `ExternalString` i stosuje `MADV_DONTDUMP`/`mlock`.
+- Jak działa: natywny addon czyta bundle z FD do `ExternalString`, stosuje `MADV_DONTDUMP`/`mlock` i kompiluje CJS **w native** (V8 `CompileFunction`), bez JS‑owego stringa źródła i wrappera w JS.
 - Chroni przed: dumpami pamięci i długim utrzymywaniem plaintextu w heapie.
 - Implementacja: `build.thin.nativeBootstrap.enabled=true` + `nb.node` w `r/`.
+  - `build.thin.nativeBootstrap.mode`: `compile` (domyślnie) lub `string` (legacy, używa `_compile`).
+  - W E2E bootstrap może wygenerować dodatkowy string tylko na potrzeby self‑scan.
 
 #### 2.12.16 Fail‑fast i brak cichych fallbacków
 - Jak działa: brak wymaganych narzędzi albo niewspierany packager → twardy błąd.

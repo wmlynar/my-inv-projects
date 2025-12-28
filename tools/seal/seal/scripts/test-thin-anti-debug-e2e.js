@@ -3104,8 +3104,13 @@ function checkProcMemBlocked(pid, helperPath) {
       return { skip: "mem helper unsupported" };
     }
     if (res.status === 0) {
-      if (isRoot && !strict) {
-        return { skip: "root can read /proc/<pid>/mem (set SEAL_E2E_STRICT_PROC_MEM=1 to enforce)" };
+      if (isRoot) {
+        if (process.env.SEAL_DOCKER_E2E === "1") {
+          return { skip: "root can read /proc/<pid>/mem in docker (kernel policy); enforce on host or adjust container hardening" };
+        }
+        if (!strict) {
+          return { skip: "root can read /proc/<pid>/mem (set SEAL_E2E_STRICT_PROC_MEM=1 to enforce)" };
+        }
       }
       throw new Error(`/proc/<pid>/mem read succeeded (addr=0x${addr})`);
     }
@@ -3138,8 +3143,13 @@ function checkProcMemWriteBlocked(pid, helperPath) {
       return { skip: "mem write helper unsupported" };
     }
     if (res.status === 0) {
-      if (isRoot && !strict) {
-        return { skip: "root can write /proc/<pid>/mem (set SEAL_E2E_STRICT_PROC_MEM=1 to enforce)" };
+      if (isRoot) {
+        if (process.env.SEAL_DOCKER_E2E === "1") {
+          return { skip: "root can write /proc/<pid>/mem in docker (kernel policy); enforce on host or adjust container hardening" };
+        }
+        if (!strict) {
+          return { skip: "root can write /proc/<pid>/mem (set SEAL_E2E_STRICT_PROC_MEM=1 to enforce)" };
+        }
       }
       throw new Error(`/proc/<pid>/mem write succeeded (addr=0x${addr})`);
     }
@@ -3498,7 +3508,7 @@ async function runReleaseOk({ releaseDir, runTimeoutMs, env }) {
   }
 }
 
-async function runReleaseExpectFail({ releaseDir, runTimeoutMs, env, expectStderr }) {
+async function runReleaseExpectFail({ releaseDir, runTimeoutMs, env, expectStderr, args }) {
   if (runReleaseOk.skipListen) {
     log("SKIP: listen not permitted; runtime check disabled");
     return;
@@ -3511,7 +3521,8 @@ async function runReleaseExpectFail({ releaseDir, runTimeoutMs, env, expectStder
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
 
   const childEnv = Object.assign({}, process.env, env || {});
-  const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe", env: childEnv });
+  const childArgs = Array.isArray(args) ? args : [];
+  const child = spawn(binPath, childArgs, { cwd: releaseDir, stdio: "pipe", env: childEnv });
   const outChunks = [];
   const errChunks = [];
   child.stdout.on("data", (c) => outChunks.push(c));
@@ -4617,6 +4628,34 @@ async function runReleaseBootstrapMemoryChecks({ releaseDir, outDir, runTimeoutM
     expect: "absent",
     mode: "fork",
     gcPressure: false,
+    markerHex,
+    bundleBytes,
+    vmflags: false,
+  });
+
+  log("Testing bootstrap fork-snapshot (code absent after wipe in child)...");
+  await runReleaseBootstrapSelfScan({
+    releaseDir,
+    runTimeoutMs,
+    stage: "post-wipe",
+    target: "code",
+    expect: "absent",
+    mode: "fork",
+    gcPressure: true,
+    markerHex,
+    bundleBytes,
+    vmflags: false,
+  });
+
+  log("Testing bootstrap fork-snapshot (marker absent after wipe in child)...");
+  await runReleaseBootstrapSelfScan({
+    releaseDir,
+    runTimeoutMs,
+    stage: "post-wipe",
+    target: "marker",
+    expect: "absent",
+    mode: "fork",
+    gcPressure: true,
     markerHex,
     bundleBytes,
     vmflags: false,
@@ -6181,7 +6220,7 @@ async function main() {
             });
           } catch (e) {
             const msg = e && e.message ? e.message : String(e);
-            if (!msg.includes("launcherObfuscation")) {
+            if (!/launcherObfuscation|cObfuscator/i.test(msg)) {
               throw e;
             }
             threw = true;
@@ -6656,6 +6695,32 @@ async function main() {
           env: { SEAL_CORE_CRASH_PROBE: "1" },
         })
       );
+
+      log("Testing argv deny (fail-closed)...");
+      const resArgv = await withTimeout("buildRelease(argv deny)", buildTimeoutMs, () =>
+        buildThinSplit({
+          outRoot,
+          antiDebug: { enabled: true, argvDeny: true },
+          launcherObfuscation: false,
+        })
+      );
+      await withTimeout("argv deny fail (--inspect)", testTimeoutMs, () =>
+        runReleaseExpectFail({
+          releaseDir: resArgv.releaseDir,
+          runTimeoutMs,
+          args: ["--inspect"],
+          expectStderr: "[thin] runtime invalid",
+        })
+      );
+      await withTimeout("argv deny fail (-r)", testTimeoutMs, () =>
+        runReleaseExpectFail({
+          releaseDir: resArgv.releaseDir,
+          runTimeoutMs,
+          args: ["-r", "/tmp/seal-e2e-preload.js"],
+          expectStderr: "[thin] runtime invalid",
+        })
+      );
+      log("OK: argv deny blocked diagnostic/inject flags");
     }
 
     if (suiteEnabled("tamper")) {

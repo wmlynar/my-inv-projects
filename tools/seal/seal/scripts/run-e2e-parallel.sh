@@ -107,6 +107,7 @@ run_group() {
   local group="$1"
   local tests="$2"
   local root="$3"
+  local summary_path="$root/.e2e-summary.tsv"
   local example_deps="0"
   if [ -z "$NODE_MODULES_ROOT" ]; then
     example_deps="${SEAL_E2E_INSTALL_EXAMPLE_DEPS:-1}"
@@ -121,6 +122,8 @@ run_group() {
     SEAL_E2E_INSTALL_PACKERS=0
     SEAL_E2E_INSTALL_OBFUSCATORS=0
     SEAL_E2E_SSH="$REMOTE_E2E"
+    SEAL_E2E_GROUP="$group"
+    SEAL_E2E_SUMMARY_PATH="$summary_path"
   )
   if [ -n "$NODE_MODULES_ROOT" ]; then
     env_args+=(SEAL_E2E_NODE_MODULES_ROOT="$NODE_MODULES_ROOT")
@@ -131,6 +134,8 @@ run_group() {
 
 declare -A GROUP_DURATIONS=()
 declare -A GROUP_STATUS=()
+declare -A GROUP_SUMMARY=()
+declare -a GROUP_ORDER=()
 failures=0
 
 print_group_summary() {
@@ -148,11 +153,50 @@ print_group_summary() {
   done
 }
 
+print_detailed_summary() {
+  if [ "${#GROUP_SUMMARY[@]}" -eq 0 ]; then
+    return
+  fi
+  log "Detailed summary:"
+  local group summary_file status wall_time test_sum has_tests
+  for group in "${GROUP_ORDER[@]}"; do
+    summary_file="${GROUP_SUMMARY[$group]:-}"
+    status="${GROUP_STATUS[$group]:-unknown}"
+    wall_time="${GROUP_DURATIONS[$group]:-0}"
+    test_sum=0
+    has_tests=0
+    if [ -f "$summary_file" ]; then
+      while IFS=$'\t' read -r _ test tstatus dur; do
+        if [ "$test" = "test" ] || [ -z "$test" ]; then
+          continue
+        fi
+        has_tests=1
+        test_sum=$((test_sum + dur))
+      done < "$summary_file"
+    fi
+    printf "[seal-e2e-parallel] Category %s  %s  (tests=%s, wall=%s)\n" \
+      "$group" "$status" "$(format_duration "$test_sum")" "$(format_duration "$wall_time")"
+    if [ -f "$summary_file" ]; then
+      while IFS=$'\t' read -r _ test tstatus dur; do
+        if [ "$test" = "test" ] || [ -z "$test" ]; then
+          continue
+        fi
+        printf "[seal-e2e-parallel]   - %s  %s  (%s)\n" "$test" "$tstatus" "$(format_duration "$dur")"
+      done < "$summary_file"
+    elif [ "$has_tests" -eq 0 ]; then
+      printf "[seal-e2e-parallel]   - no summary data\n"
+    fi
+  done
+}
+
 if [ "$JOBS" -le 1 ]; then
   for group in "${PARALLEL_GROUPS[@]}"; do
     name="${group%%:*}"
     tests="${group#*:}"
     root="$(mktemp -d "/tmp/seal-example-e2e-${name}-XXXXXX")"
+    summary_path="$root/.e2e-summary.tsv"
+    GROUP_SUMMARY["$name"]="$summary_path"
+    GROUP_ORDER+=("$name")
     start="$(date +%s)"
     if run_group "$name" "$tests" "$root"; then
       end="$(date +%s)"
@@ -169,16 +213,21 @@ else
   pids=()
   declare -A PID_GROUP=()
   declare -A PID_START=()
+  declare -A PID_SUMMARY=()
   for group in "${PARALLEL_GROUPS[@]}"; do
     name="${group%%:*}"
     tests="${group#*:}"
     root="$(mktemp -d "/tmp/seal-example-e2e-${name}-XXXXXX")"
+    summary_path="$root/.e2e-summary.tsv"
+    GROUP_SUMMARY["$name"]="$summary_path"
+    GROUP_ORDER+=("$name")
     start="$(date +%s)"
     (run_group "$name" "$tests" "$root") &
     pid="$!"
     pids+=("$pid")
     PID_GROUP["$pid"]="$name"
     PID_START["$pid"]="$start"
+    PID_SUMMARY["$pid"]="$summary_path"
   done
   for pid in "${pids[@]}"; do
     if wait "$pid"; then
@@ -201,11 +250,15 @@ fi
 if [ "$failures" -ne 0 ]; then
   log "Parallel groups failed: ${failures}"
   print_group_summary
+  print_detailed_summary
   exit 1
 fi
 
 for test in "${SERIAL_TESTS[@]}"; do
   root="$(mktemp -d "/tmp/seal-example-e2e-${test}-XXXXXX")"
+  summary_path="$root/.e2e-summary.tsv"
+  GROUP_SUMMARY["$test"]="$summary_path"
+  GROUP_ORDER+=("$test")
   start="$(date +%s)"
   if run_group "$test" "$test" "$root"; then
     end="$(date +%s)"
@@ -222,9 +275,11 @@ done
 if [ "$failures" -ne 0 ]; then
   log "Serial groups failed: ${failures}"
   print_group_summary
+  print_detailed_summary
   exit 1
 fi
 
 print_group_summary
+print_detailed_summary
 
 log "All E2E groups finished."

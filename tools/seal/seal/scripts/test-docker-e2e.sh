@@ -4,16 +4,21 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 E2E_DIR="$REPO_ROOT/tools/seal/seal/docker/e2e"
-CACHE_DIR="${SEAL_DOCKER_E2E_CACHE_DIR:-/tmp/seal-e2e-cache}"
+CACHE_DIR="${SEAL_DOCKER_E2E_CACHE_DIR:-/var/tmp/seal-e2e-cache}"
 NODE_MODULES_CACHE="$CACHE_DIR/node_modules"
 EXAMPLE_NODE_MODULES_CACHE="$CACHE_DIR/example-node_modules"
 NPM_CACHE_DIR="$CACHE_DIR/npm"
 SSH_DIR="${SEAL_DOCKER_E2E_SSH_DIR:-$CACHE_DIR/ssh}"
+IMAGE_CACHE_DIR="$CACHE_DIR/images"
+PLAYWRIGHT_CACHE_DIR="$CACHE_DIR/playwright"
 NETWORK_NAME="seal-e2e"
 SERVER_NAME="seal-e2e-server"
-BUILDER_IMAGE="e2e-seal-builder:latest"
+BUILDER_VARIANT="${SEAL_DOCKER_E2E_BUILDER:-full}"
+BUILDER_IMAGE_BASE="e2e-seal-builder:latest"
+BUILDER_IMAGE_FULL="e2e-seal-builder-full:latest"
 SERVER_IMAGE="e2e-seal-server:latest"
 REMOTE_E2E="${SEAL_DOCKER_E2E_REMOTE:-1}"
+TOOLSET="${SEAL_E2E_TOOLSET:-core}"
 
 log() {
   echo "[docker-e2e] $*"
@@ -22,6 +27,28 @@ log() {
 dir_has_files() {
   [ -d "$1" ] && [ -n "$(ls -A "$1" 2>/dev/null)" ]
 }
+
+load_e2e_config() {
+  local cfg="${SEAL_E2E_CONFIG:-}"
+  local default_cfg="$REPO_ROOT/.seal/e2e.env"
+  local sample_cfg="$REPO_ROOT/tools/seal/seal/scripts/e2e-config.env"
+  if [ -z "$cfg" ]; then
+    if [ -f "$default_cfg" ]; then
+      cfg="$default_cfg"
+    elif [ -f "$sample_cfg" ]; then
+      cfg="$sample_cfg"
+    fi
+  fi
+  if [ -n "$cfg" ] && [ -f "$cfg" ]; then
+    log "Loading E2E config: $cfg"
+    set -a
+    # shellcheck disable=SC1090
+    . "$cfg"
+    set +a
+  fi
+}
+
+load_e2e_config
 
 fail() {
   echo "[docker-e2e] ERROR: $*" >&2
@@ -118,6 +145,11 @@ if ! docker info >/dev/null 2>&1; then
   use_sudo_docker
 fi
 
+if dir_has_files "$REPO_ROOT/node_modules" && ! dir_has_files "$NODE_MODULES_CACHE"; then
+  NODE_MODULES_CACHE="$REPO_ROOT/node_modules"
+  log "Using repo node_modules cache."
+fi
+
 if ! command -v ssh-keygen >/dev/null 2>&1; then
   fail "ssh-keygen not found. Install openssh-client."
 fi
@@ -125,7 +157,8 @@ fi
 mkdir -p "$SSH_DIR"
 chmod 700 "$SSH_DIR"
 mkdir -p "$CACHE_DIR"
-mkdir -p "$NODE_MODULES_CACHE" "$EXAMPLE_NODE_MODULES_CACHE" "$NPM_CACHE_DIR"
+mkdir -p "$NODE_MODULES_CACHE" "$EXAMPLE_NODE_MODULES_CACHE" "$NPM_CACHE_DIR" "$PLAYWRIGHT_CACHE_DIR"
+mkdir -p "$IMAGE_CACHE_DIR"
 SSH_DIR="$(cd "$SSH_DIR" && pwd)"
 
 KEY_FILE="$SSH_DIR/id_ed25519"
@@ -151,9 +184,58 @@ if [ "${SEAL_DOCKER_E2E_PULL:-1}" = "1" ]; then
 fi
 
 log "Building docker images..."
-$DOCKER build "${PULL_ARG[@]}" --network=host -t "$BUILDER_IMAGE" -f "$E2E_DIR/Dockerfile.builder" "$REPO_ROOT"
+BUILDER_DOCKERFILE="$E2E_DIR/Dockerfile.builder"
+BUILDER_IMAGE="$BUILDER_IMAGE_BASE"
+LOCK_HASH=""
+BUILDER_TAR=""
+TOOLS_LOCK_FILE="$E2E_DIR/tools.lock"
+if [ "$TOOLSET" = "full" ] && [ -f "$E2E_DIR/tools.full.lock" ]; then
+  TOOLS_LOCK_FILE="$E2E_DIR/tools.full.lock"
+fi
+TOOLS_LOCK_ARG="${TOOLS_LOCK_FILE#$REPO_ROOT/}"
+if [ "$BUILDER_VARIANT" = "full" ]; then
+  BUILDER_DOCKERFILE="$E2E_DIR/Dockerfile.builder.full"
+  BUILDER_IMAGE="$BUILDER_IMAGE_FULL"
+  log "Using full builder image (preinstalls packers/obfuscators)."
+  if [ -f "$TOOLS_LOCK_FILE" ]; then
+    LOCK_HASH="$(sha256sum "$TOOLS_LOCK_FILE" | awk '{print $1}')"
+    BUILDER_TAR="$IMAGE_CACHE_DIR/${BUILDER_IMAGE//[:/]/_}-${LOCK_HASH}.tar"
+  fi
+else
+  log "Using base builder image."
+fi
+REBUILD_IMAGES="${SEAL_DOCKER_E2E_REBUILD:-0}"
+SKIP_BUILD="${SEAL_DOCKER_E2E_SKIP_BUILD:-0}"
+PROGRESS_MODE="${SEAL_DOCKER_E2E_PROGRESS:-plain}"
+if [ "$REBUILD_IMAGES" != "1" ] && $DOCKER image inspect "$BUILDER_IMAGE" >/dev/null 2>&1; then
+  log "Builder image exists; skipping build (set SEAL_DOCKER_E2E_REBUILD=1 to rebuild)."
+elif [ "$SKIP_BUILD" = "1" ]; then
+  fail "Builder image missing and SEAL_DOCKER_E2E_SKIP_BUILD=1."
+elif [ -n "$BUILDER_TAR" ] && [ -f "$BUILDER_TAR" ]; then
+  log "Loading cached builder image from $BUILDER_TAR"
+  $DOCKER load -i "$BUILDER_TAR" >/dev/null
+else
+  BUILD_LABELS=()
+  if [ -n "$LOCK_HASH" ]; then
+    BUILD_LABELS+=(--label "org.seal.tools.lock=$LOCK_HASH")
+  fi
+  DOCKER_BUILDKIT=1 $DOCKER build "${PULL_ARG[@]}" --progress="$PROGRESS_MODE" --network=host \
+    "${BUILD_LABELS[@]}" --build-arg "SEAL_TOOLS_LOCK=$TOOLS_LOCK_ARG" \
+    -t "$BUILDER_IMAGE" -f "$BUILDER_DOCKERFILE" "$REPO_ROOT"
+  if [ -n "$BUILDER_TAR" ] && [ "${SEAL_DOCKER_E2E_SAVE_IMAGE:-1}" = "1" ]; then
+    log "Saving builder image to $BUILDER_TAR"
+    $DOCKER save "$BUILDER_IMAGE" -o "$BUILDER_TAR"
+  fi
+fi
 if [ "$REMOTE_E2E" = "1" ]; then
-  $DOCKER build "${PULL_ARG[@]}" --network=host -t "$SERVER_IMAGE" -f "$E2E_DIR/Dockerfile.server" "$REPO_ROOT"
+  if [ "$REBUILD_IMAGES" != "1" ] && $DOCKER image inspect "$SERVER_IMAGE" >/dev/null 2>&1; then
+    log "Server image exists; skipping build (set SEAL_DOCKER_E2E_REBUILD=1 to rebuild)."
+  elif [ "$SKIP_BUILD" = "1" ]; then
+    fail "Server image missing and SEAL_DOCKER_E2E_SKIP_BUILD=1."
+  else
+    DOCKER_BUILDKIT=1 $DOCKER build "${PULL_ARG[@]}" --progress="$PROGRESS_MODE" --network=host \
+      -t "$SERVER_IMAGE" -f "$E2E_DIR/Dockerfile.server" "$REPO_ROOT"
+  fi
 else
   log "Remote SSH E2E disabled (single container mode)."
 fi
@@ -230,16 +312,6 @@ if [ "${SEAL_E2E_USE_SHARED_NODE_MODULES:-0}" = "1" ]; then
   NODE_MODULES_ENV+=(-e SEAL_E2E_NODE_MODULES_ROOT="/root/.cache/seal/example-node_modules")
   log "Using shared example node_modules cache (SEAL_E2E_USE_SHARED_NODE_MODULES=1)."
 fi
-E2E_INSTALL_DEPS="${SEAL_E2E_INSTALL_DEPS:-}"
-if [ -z "$E2E_INSTALL_DEPS" ]; then
-  if dir_has_files "$NODE_MODULES_CACHE"; then
-    E2E_INSTALL_DEPS=0
-    log "Using cached node_modules (skip npm install)."
-  else
-    E2E_INSTALL_DEPS=1
-    log "node_modules cache empty; npm install will run once."
-  fi
-fi
 $DOCKER run --rm \
   --init \
   --privileged \
@@ -249,21 +321,22 @@ $DOCKER run --rm \
   -v "$NPM_CACHE_DIR:/root/.npm" \
   -v "$SSH_DIR:/tmp/seal-ssh:ro" \
   -v "$CACHE_DIR:/root/.cache/seal" \
+  -v "$PLAYWRIGHT_CACHE_DIR:/root/.cache/ms-playwright" \
   -w /workspace \
   -e SEAL_DOCKER_E2E=1 \
   -e SEAL_E2E_SSH="${REMOTE_E2E}" \
+  -e SEAL_E2E_TOOLSET="${TOOLSET}" \
   -e SEAL_E2E_PARALLEL="${SEAL_E2E_PARALLEL:-0}" \
   -e SEAL_E2E_JOBS="${SEAL_E2E_JOBS:-}" \
   -e SEAL_E2E_TESTS="${SEAL_E2E_TESTS:-}" \
   -e SEAL_E2E_SKIP="${SEAL_E2E_SKIP:-}" \
-  -e SEAL_E2E_INSTALL_DEPS="$E2E_INSTALL_DEPS" \
-  -e SEAL_E2E_INSTALL_PACKERS="${SEAL_E2E_INSTALL_PACKERS:-1}" \
-  -e SEAL_E2E_INSTALL_OBFUSCATORS="${SEAL_E2E_INSTALL_OBFUSCATORS:-1}" \
+  -e SEAL_E2E_INSTALL_DEPS="${SEAL_E2E_INSTALL_DEPS:-}" \
+  -e SEAL_E2E_INSTALL_PACKERS="${SEAL_E2E_INSTALL_PACKERS:-}" \
+  -e SEAL_E2E_INSTALL_OBFUSCATORS="${SEAL_E2E_INSTALL_OBFUSCATORS:-}" \
   -e SEAL_E2E_STRICT_PROC_MEM="${SEAL_E2E_STRICT_PROC_MEM:-0}" \
   -e SEAL_E2E_STRICT_PTRACE="${SEAL_E2E_STRICT_PTRACE:-0}" \
   -e SEAL_E2E_STRICT_SNAPSHOT_GUARD="${SEAL_E2E_STRICT_SNAPSHOT_GUARD:-0}" \
   "${NODE_MODULES_ENV[@]}" \
-  -e SEAL_NPM_SKIP_IF_PRESENT=1 \
   "${SHIP_ENV_ARGS[@]}" \
   "$BUILDER_IMAGE" \
   bash -lc 'if [ "${SEAL_E2E_PARALLEL:-0}" = "1" ]; then tools/seal/seal/scripts/run-e2e-parallel.sh; else tools/seal/seal/scripts/run-e2e-suite.sh; fi'

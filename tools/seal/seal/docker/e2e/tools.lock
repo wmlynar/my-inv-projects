@@ -1,0 +1,12 @@
+# Tool lockfile for Docker E2E builder.
+# Only changes here should trigger rebuilds of heavy third-party tools.
+# Format:
+# [tool-name]
+# url=...
+# rev=...
+# bin=...
+
+[kiteshield]
+url=https://github.com/GunshipPenguin/kiteshield.git
+rev=master
+bin=kiteshield

@@ -218,7 +218,8 @@ async function buildThinRelease(buildTimeoutMs, opts = {}) {
     thinCfg.mode = "split";
   }
   if (opts.nativeBootstrap === true) {
-    thinCfg.nativeBootstrap = { enabled: true };
+    const mode = opts.nativeBootstrapMode;
+    thinCfg.nativeBootstrap = mode ? { enabled: true, mode } : { enabled: true };
   }
   projectCfg.build.thin = thinCfg;
   ensureLauncherObfuscation(projectCfg);
@@ -290,6 +291,16 @@ function assertNoReleaseArtifacts(releaseDir) {
   }
 }
 
+function resolveRunTimeoutMs(releaseDir, runTimeoutMs) {
+  const base = Number.isFinite(runTimeoutMs) && runTimeoutMs > 0 ? runTimeoutMs : 10_000;
+  const nativeOverrideRaw = process.env.SEAL_THIN_E2E_NATIVE_RUN_TIMEOUT_MS;
+  const nativeOverride = nativeOverrideRaw ? Number(nativeOverrideRaw) : 0;
+  if (!Number.isFinite(nativeOverride) || nativeOverride <= 0) return base;
+  const nbPath = path.join(releaseDir, "r", "nb.node");
+  if (!fs.existsSync(nbPath)) return base;
+  return Math.max(base, nativeOverride);
+}
+
 async function runRelease({ releaseDir, buildId, runTimeoutMs, env }) {
   if (runRelease.skipListen) {
     log("SKIP: listen not permitted; runtime check disabled");
@@ -324,7 +335,12 @@ async function runRelease({ releaseDir, buildId, runTimeoutMs, env }) {
       ].filter(Boolean).join("; ");
       throw new Error(`process exited early (${detail || "no output"})`);
     });
-    status = await withTimeout("waitForStatus", runTimeoutMs, () => Promise.race([waitForStatus(port), earlyExit]));
+    const statusTimeout = resolveRunTimeoutMs(releaseDir, runTimeoutMs);
+    status = await withTimeout(
+      "waitForStatus",
+      statusTimeout,
+      () => Promise.race([waitForStatus(port, statusTimeout), earlyExit])
+    );
   } finally {
     child.kill("SIGTERM");
     await new Promise((resolve) => {
@@ -434,30 +450,41 @@ async function testThinSplitNativeBootstrap(ctx) {
     return;
   }
 
-  log("Building thin SPLIT (bootstrap) with native bootstrap...");
-  const res = await buildThinRelease(ctx.buildTimeoutMs, { nativeBootstrap: true });
-  const { releaseDir, buildId, outRoot } = res;
+  const modes = ["compile", "string"];
+  for (const mode of modes) {
+    log(`Building thin SPLIT (bootstrap) with native bootstrap mode=${mode}...`);
+    const res = await buildThinRelease(ctx.buildTimeoutMs, { nativeBootstrap: true, nativeBootstrapMode: mode });
+    const { releaseDir, buildId, outRoot } = res;
 
-  const nb = path.join(releaseDir, "r", "nb.node");
-  assert.ok(fs.existsSync(nb), "BOOTSTRAP release missing r/nb.node");
+    try {
+      const nb = path.join(releaseDir, "r", "nb.node");
+      assert.ok(fs.existsSync(nb), "BOOTSTRAP release missing r/nb.node");
+      const nbSize = fs.statSync(nb).size;
+      const launcher = path.join(releaseDir, "b", "a");
+      const launcherSize = fs.existsSync(launcher) ? fs.statSync(launcher).size : 0;
+      log(`Native bootstrap mode=${mode} sizes: nb.node=${nbSize} bytes, launcher=${launcherSize} bytes`);
 
-  log("Running thin SPLIT with native bootstrap...");
-  await runRelease({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs });
+      log(`Running thin SPLIT with native bootstrap mode=${mode}...`);
+      await runRelease({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs });
 
-  log("Running thin SPLIT with native bootstrap (missing addon -> expect failure)...");
-  const nbBak = `${nb}.bak`;
-  fs.renameSync(nb, nbBak);
-  try {
-    await runReleaseExpectFailure({
-      releaseDir,
-      runTimeoutMs: ctx.runTimeoutMs,
-      expectExitCode: 82,
-    });
-  } finally {
-    if (fs.existsSync(nbBak)) fs.renameSync(nbBak, nb);
+      if (mode === "compile") {
+        log("Running thin SPLIT with native bootstrap (missing addon -> expect failure)...");
+        const nbBak = `${nb}.bak`;
+        fs.renameSync(nb, nbBak);
+        try {
+          await runReleaseExpectFailure({
+            releaseDir,
+            runTimeoutMs: ctx.runTimeoutMs,
+            expectExitCode: 82,
+          });
+        } finally {
+          if (fs.existsSync(nbBak)) fs.renameSync(nbBak, nb);
+        }
+      }
+    } finally {
+      fs.rmSync(outRoot, { recursive: true, force: true });
+    }
   }
-
-  fs.rmSync(outRoot, { recursive: true, force: true });
 }
 
 async function testThinSplitRandomization(ctx) {

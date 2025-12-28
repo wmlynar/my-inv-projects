@@ -90,13 +90,25 @@ function normalizeThinSnapshotGuard(raw) {
 }
 
 function normalizeThinNativeBootstrap(raw) {
-  if (raw === undefined || raw === null) return { enabled: false };
-  if (typeof raw === "boolean") return { enabled: raw };
+  if (raw === undefined || raw === null) return { enabled: false, mode: "compile" };
+  if (typeof raw === "boolean") return { enabled: raw, mode: "compile" };
   if (typeof raw !== "object" || Array.isArray(raw)) {
     throw new Error("Invalid thin.nativeBootstrap: expected boolean or object");
   }
+  const modeRaw = raw.mode !== undefined && raw.mode !== null ? String(raw.mode).trim().toLowerCase() : "";
+  let mode = "compile";
+  if (modeRaw) {
+    if (modeRaw === "compile" || modeRaw === "native-compile" || modeRaw === "native") {
+      mode = "compile";
+    } else if (modeRaw === "string" || modeRaw === "external-string" || modeRaw === "legacy") {
+      mode = "string";
+    } else {
+      throw new Error(`Invalid thin.nativeBootstrap.mode: ${raw.mode}`);
+    }
+  }
   return {
     enabled: raw.enabled !== undefined ? !!raw.enabled : true,
+    mode,
   };
 }
 
@@ -130,6 +142,7 @@ function normalizeThinAntiDebug(raw) {
       enabled: true,
       tracerPid: true,
       denyEnv: true,
+      argvDeny: false,
       mapsDenylist: [],
       ptraceGuard: { enabled: true, dumpable: true },
       seccompNoDebug: { enabled: true, mode: "errno", aggressive: false },
@@ -143,6 +156,11 @@ function normalizeThinAntiDebug(raw) {
   const enabled = raw.enabled !== undefined ? !!raw.enabled : true;
   const tracerPid = raw.tracerPid !== undefined ? !!raw.tracerPid : true;
   const denyEnv = raw.denyEnv !== undefined ? !!raw.denyEnv : true;
+  let argvDeny = raw.argvDeny;
+  if (argvDeny === undefined) argvDeny = false;
+  if (typeof argvDeny !== "boolean") {
+    throw new Error(`Invalid thin.antiDebug.argvDeny: ${raw.argvDeny} (expected boolean)`);
+  }
   let tracerPidIntervalMs = raw.tracerPidIntervalMs;
   if (tracerPidIntervalMs === undefined || tracerPidIntervalMs === null) {
     tracerPidIntervalMs = 10_000;
@@ -229,11 +247,13 @@ function normalizeThinAntiDebug(raw) {
     seccompNoDebug = { enabled: false, mode: seccompNoDebug.mode, aggressive: false };
     coreDump = false;
     loaderGuard = false;
+    argvDeny = false;
   }
   return {
     enabled,
     tracerPid,
     denyEnv,
+    argvDeny,
     mapsDenylist,
     tracerPidIntervalMs,
     tracerPidThreads: tracerPidThreadsFinal,

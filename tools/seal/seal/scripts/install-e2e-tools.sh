@@ -6,6 +6,8 @@ if [ "$(id -u)" -ne 0 ]; then
   SUDO="sudo"
 fi
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 export DEBIAN_FRONTEND=noninteractive
 export TZ=UTC
 
@@ -30,7 +32,6 @@ OPTIONAL_DEPS=(
   pstack
   lldb
   binwalk
-  criu
   trace-cmd
   sysdig
   auditd
@@ -58,6 +59,14 @@ for pkg in "${OPTIONAL_DEPS[@]}"; do
     echo "[install-e2e-tools] SKIP: $pkg not available in apt repositories."
   fi
 done
+
+if [ "${SEAL_E2E_INSTALL_CRIU:-1}" = "1" ]; then
+  if ! "$SCRIPT_DIR/install-criu.sh"; then
+    echo "[install-e2e-tools] WARN: criu not installed (optional)."
+  fi
+else
+  echo "[install-e2e-tools] SKIP: criu install disabled (SEAL_E2E_INSTALL_CRIU=0)."
+fi
 
 if ! command -v perf >/dev/null 2>&1; then
   if ! install_if_available linux-tools-common; then

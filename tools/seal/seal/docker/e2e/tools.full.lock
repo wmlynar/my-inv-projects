@@ -1,0 +1,22 @@
+# Full toolset for Docker E2E builder (heavy).
+# Use only when you need to validate all obfuscators/packers.
+
+[ollvm]
+url=https://github.com/obfuscator-llvm/obfuscator.git
+rev=llvm-4.0
+bin=ollvm-clang
+
+[kiteshield]
+url=https://github.com/GunshipPenguin/kiteshield.git
+rev=master
+bin=kiteshield
+
+[midgetpack]
+url=https://github.com/arisada/midgetpack
+rev=master
+bin=midgetpack
+
+[hikari]
+url=https://github.com/ChandHsu/Hikari-LLVM15.git
+rev=llvm-15.0.0rc3
+bin=hikari-clang
