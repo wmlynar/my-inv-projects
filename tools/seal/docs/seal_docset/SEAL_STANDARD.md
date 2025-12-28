@@ -78,6 +78,8 @@ Przykład:
 - STD-032 (SHOULD): preflight sprawdza OS/arch i wersje toolchaina; mismatch = fail-fast.
 - STD-032a (SHOULD): `esbuild` target nie moze byc wyzszy niz runtime Node na hoście; preflight loguje target + wykryta wersje Node i fail‑fast przy mismatch.
 - STD-032b (SHOULD): buildId musi zawierac komponent losowy lub monotoniczny, aby uniknac kolizji przy rownoleglych buildach.
+- STD-032c (SHOULD): native dodatki/addony sa kompilowane z naglowkami zgodnymi z wersja runtime Node na target (np. `--target` lub pobrane headers); mismatch = fail-fast w preflight/testach.
+- STD-032d (SHOULD): kod native korzysta z API V8 warunkowo (guardy wersji/feature-detect) i ma fallback dla starszych wersji Node.
 - STD-035 (SHOULD): build zapisuje wersje narzedzi/zaleznosci; build nie pobiera rzeczy z internetu.
 - STD-040 (SHOULD): preflight uzywa tych samych argumentow i srodowiska co runtime.
 - STD-040a (SHOULD): runtime/serwis uruchamia aplikacje z `NODE_ENV=production` (jesli nie ustawiono inaczej), a testy E2E sprawdzaja ten tryb.
@@ -110,7 +112,7 @@ Przykład:
 - STD-046 (SHOULD): idempotentne porownania/zapisy do plikow chronionych musza uzywac tych samych uprawnien co install (sudo lub dedykowana grupa); brak uprawnien = blad z instrukcja.
 - STD-046a (SHOULD): detekcja procesu (status) filtruje wyniki `pgrep`/`ps` tak, aby nie zliczac wlasnych narzedzi; dopasuj sciezke binarki lub PID, nie tylko nazwe procesu.
 - STD-046b (SHOULD): przy dopasowaniu procesu unikaj ucinania komendy (`ps`); preferuj `/proc/<pid>/cmdline` lub `ps -ww`.
-- STD-047 (SHOULD): osadzone skrypty shellowe w template stringach musza escapowac `${` (np. `\\${VAR}`) lub korzystac z bezpiecznego here‑doc helpera, aby uniknac niezamierzonej interpolacji JS.
+- STD-047 (SHOULD): osadzone skrypty shellowe w template stringach musza escapowac `${` (np. `\\${VAR}`) oraz znak backtick, lub korzystac z bezpiecznego here-doc helpera, aby uniknac niezamierzonej interpolacji JS.
 - STD-048 (SHOULD): tymczasowe pliki z danymi wrazliwymi tworz przez `mkdtemp` + pliki `0600`, z unikalna nazwa i sprzataniem w `finally` (unikaj przewidywalnych nazw w `/tmp`).
 - STD-049 (SHOULD): przy zapisie plikow krytycznych (zwl. jako root) ustaw `umask 077`, zapisuj do tmp + `fsync` + `rename`, a potem `fsync` katalogu.
 - STD-050 (SHOULD): nazwy plikow tymczasowych (szczegolnie na zdalnych hostach) musza miec losowy komponent; nie opieraj ich wylacznie na czasie (`Date.now()`).
@@ -121,6 +123,7 @@ Przykład:
 - STD-057 (SHOULD): kazda zmiana w generatorach kodu (C/JS) musi miec automatyczny compile/smoke test w CI (nie tylko lint).
 - STD-058 (SHOULD): generator kodu uzywa jednego helpera do escape/quoting; zakaz „recznego” doklejania stringow.
 - STD-061 (SHOULD): smoke test generatora C uruchamia kompilator z `-Werror`, aby warningi nie maskowaly realnych bledow.
+- STD-061a (SHOULD): compile-test C/C++ uruchamia `-Wshadow` (wraz z `-Werror`), aby shadowing nazw nie przechodzil do produkcji.
 - STD-064 (SHOULD): toolchain kompilatora ma jawnie pinowane standardy i flagi (np. `-std=c11`), zeby unikac roznic miedzy maszynami.
 - STD-067 (SHOULD): walidacja uprawnien nie moze zakladac dostepnosci `sudo`; jesli `serviceUser` == biezacy uzytkownik, uzyj bezposredniego `test -x`/`test -r`.
 - STD-068 (SHOULD): output narzedzi systemowych (np. `lsblk`, `/proc/mounts`) musi byc normalizowany (trim, filtruj puste, obsluguj array/null), zanim podejmiesz decyzje.
@@ -203,6 +206,7 @@ Przykład:
 - STD-027 (SHOULD): testy/subprocessy zawsze maja timeout per‑krok i drenaż stdout/stderr; brak postepu = kill + blad.
 - STD-027a (SHOULD): gdy narzedzie nie ma wbudowanego timeoutu, testy owijaja je `timeout` (np. GNU `timeout --foreground`) i loguja limit czasu.
 - STD-027b (SHOULD): testy zawsze sprawdzaja `exit code` i `signal` procesu; crash sygnalem = FAIL z logiem.
+- STD-027c (SHOULD): timeouty helperow/pollingu pochodza z jednego zrodla (run/step timeout) lub maja jawny per-tryb override; brak ukrytych limitow.
 - STD-056 (SHOULD): drenaż stdout/stderr dotyczy **wszystkich** scenariuszy testowych (takze gdy spodziewasz sie porazki procesu).
 - STD-059 (SHOULD): testy E2E musza obejmowac scenariusze negatywne (brak plikow, zle uprawnienia, symlink), bo tam najczesciej wychodza regresje.
 - STD-060 (SHOULD): testy musza deterministycznie sprzatac zasoby (tmp/porty/procesy), a brak sprzatania jest traktowany jako fail.

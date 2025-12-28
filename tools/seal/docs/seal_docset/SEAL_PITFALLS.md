@@ -187,6 +187,9 @@
   - Wymaganie: brak `postject` to **blad builda**.
 - Bundle fallback do pakowania JS jest dozwolony **tylko jawnie** (`build.packagerFallback=true` lub `--packager bundle`).
 
+- Blad: SEA uruchamiany na Node < 20 (brak wsparcia) powodowal build fail lub runtime mismatch.
+  - Wymaganie: `seal check`/`release` fail‑fast dla SEA, gdy `node -v` < 20, z jasna instrukcja podniesienia wersji albo uzycia `packager=bundle`.
+
 - Blad: obfuskacja/minifikacja frontendu byla wylaczona.
   - Wymaganie: `build.frontendObfuscation` i `build.frontendMinify` sa **domyslnie wlaczone** dla UI.
 
@@ -206,6 +209,17 @@
 - Blad: lista dozwolonych wartosci (packagery, `thin.level`) rozjechala sie miedzy kodem, dokumentacja i komunikatami CLI.
   - Wymaganie: lista dozwolonych wartosci pochodzi z jednego zrodla (konstanta) i jest uzywana w kodzie/CLI/completion.
   - Wymaganie: testy/CI sprawdzaja zgodnosc docs z kodem.
+  - Wymaganie: nieznana wartosc (literowka) = fail-fast z sugestia "did you mean".
+  - Wymaganie: aliasy/zmiany nazw sa jawne (deprecation warning) i mapowane do kanonicznej wartosci.
+
+- Blad: brak jawnej macierzy kompatybilnosci packager <-> opcje ochrony prowadzil do ad-hoc wylaczen lub cichego ignorowania opcji.
+  - Wymaganie: jedna macierz kompatybilnosci (packager/opcja/narzedzie) + normalizacja configu.
+  - Wymaganie: brak wsparcia dla pojedynczej opcji nie moze wylaczac calego `protection`; wylaczaj tylko niekompatybilny fragment i loguj ostrzezenie.
+  - Wymaganie: loguj "effective config" po normalizacji i uzywaj go w testach/dokumentacji.
+
+- Blad: `nativeBootstrap` byl dostepny dla `sea`/`thin-single`, mimo ze nie ma tam zastosowania.
+  - Wymaganie: `nativeBootstrap` jest dozwolony tylko dla `thin-split` (lub jawnie zdefiniowanych packagerow).
+  - Wymaganie: w innych trybach ustawienie jest ignorowane z ostrzezeniem albo fail-fast (spojne z macierza kompatybilnosci).
 
 - Blad: rozjazd wykrywania narzedzi i opcji miedzy `check` i `build` (postject/cc/packager).
   - Wymaganie: **jedno zrodlo prawdy** dla wykrywania narzedzi (resolver binarki).
@@ -261,6 +275,14 @@
   - Wymaganie: makra typu `_GNU_SOURCE` zawsze owijaj w `#ifndef`/`#define` (brak duplikatow).
   - Wymaganie: identyfikatory w kodzie generowanym maja unikalny prefix i nie koliduja miedzy galeziami warunkowymi.
   - Wymaganie: generator C przechodzi compile‑test z `-Werror`, aby ostrzezenia nie przechodzily do produkcji.
+
+- Blad: kod C/C++ generowany lub patchowany mial shadowing nazw (parametry/outer scope), co na niektorych toolchainach z `-Werror` powodowalo fail kompilacji.
+  - Wymaganie: zakaz shadowingu w generatorach C/C++; stosuj jednoznaczne nazwy i prefixy.
+  - Wymaganie: compile-test C/C++ uruchamiaj z `-Wshadow` (wraz z `-Werror`), aby wykrywac to w CI.
+
+- Blad: native addon byl kompilowany z naglowkami/ABI niezgodnymi z wersja runtime Node (lub uzywal API V8 z nowszej wersji), co dawalo bledy kompilacji lub crash w runtime.
+  - Wymaganie: build/test uzywa naglowkow odpowiadajacych wersji runtime Node na target (lub jawnego `--target`); mismatch = fail-fast.
+  - Wymaganie: kod native ma guardy wersji/feature-detect dla API V8 i fallback dla starszych wersji Node.
 
 - Blad: w generatorach skryptów (template string) pozostawiono `${...}` bez escapowania, co powodowało SyntaxError w Node (interpolacja JS).
   - Wymaganie: w template stringach zawsze escapuj `${` jako `\\${}` w treści skryptu (patrz STD‑047).
@@ -403,12 +425,22 @@
   - Wymaganie: po testach usuwaj katalogi tymczasowe (np. `/tmp/seal-*`) zeby nie zapychac dysku.
   - Wymaganie: gdy narzedzie nie ma wbudowanego timeoutu, owijaj je zewnetrznym `timeout` (lub wrapperem) i loguj czas.
 
+- Blad: pomocnicze timeouty (np. polling/healthcheck) byly krotsze niz globalny `runTimeoutMs`, co dawalo falszywe FAIL mimo trwajacego startu.
+  - Wymaganie: wszystkie timeouty w E2E pochodza z jednego zrodla (run/step timeout) albo maja jawny per-tryb override; brak ukrytych limitow.
+
 - Blad: testy uruchamiane jako root zostawialy root‑owned tmp przy bledzie builda (trudne sprzatanie bez sudo).
   - Wymaganie: E2E uruchamiane jako root tworza tmp na starcie i **zawsze** sprzataja w `finally` (nawet przy fail‑fast).
 
 - Blad: kopiowanie projektu testowego z `node_modules/` powodowalo ogromne kopie i flakey E2E.
   - Wymaganie: fixture/test‑workspace nie kopiuje `node_modules/`; zaleznosci instaluj osobno (`npm ci`/`npm install`).
   - Wymaganie: testy loguja, czy instalacja zaleznosci jest fresh czy reuse.
+
+- Blad: docker E2E instalowal zaleznosci za kazdym uruchomieniem, bo `node_modules` i cache npm nie byly mapowane do trwalego volume, a domyslne sciezki cache roznily sie miedzy skryptami.
+  - Wymaganie: docker E2E mapuje trwale volume-y dla `node_modules` i `~/.npm`, a domyslny katalog cache jest spojny we wszystkich entrypointach (skrypty + docker-compose).
+  - Wymaganie: cache jest kluczowany po lockfile/konfiguracji i loguje decyzje "fresh vs reuse".
+
+- Blad: rozne entrypointy E2E mialy inne defaulty (cache, parallel), co utrudnialo reprodukcje miedzy lokalnym i dockerowym uruchomieniem.
+  - Wymaganie: jeden publiczny entrypoint ustawia wspolne domyslne wartosci i jest jedynym rekomendowanym sposobem uruchomienia; pozostale skrypty sa wewnetrzne.
 
 - Blad: `npm install` w CI modyfikowal lockfile i wprowadzał drift wersji.
   - Wymaganie: w CI/E2E preferuj `npm ci` (deterministyczny), a `npm install` tylko lokalnie.
@@ -450,6 +482,7 @@
 
 - Blad: testy E2E auto‑modyfikowaly konfiguracje (np. wylaczenie ochron/packerow) bez jawnego logu, przez co maskowaly regresje.
   - Wymaganie: kazda automatyczna zmiana configu w testach musi byc logowana i uzasadniona.
+  - Wymaganie: wylaczenia musza byc granularne (tylko niekompatybilna opcja), bez globalnego `protection.enabled=false` jako obejscia.
 
 - Blad: testy/skrypty pomijaly kroki (np. instalacje narzedzi, runtime checki) bez jasnej informacji.
   - Wymaganie: kazdy SKIP musi wypisac powód i instrukcje jak wymusic pelny test.
@@ -546,6 +579,9 @@
   - Wymaganie: testy maja ustawione `GIT_TERMINAL_PROMPT=0` i nie wywolują interaktywnych narzedzi bez jawnego flag/sekretow.
   - Wymaganie: testy integracyjne/remote sa jawnie gated env‑flaga i bez niej zawsze SKIP.
 
+- Blad: UI E2E wymagaly recznego logowania (np. konto produkcyjne), przez co uruchomienia wisialy.
+  - Wymaganie: UI E2E uzywa testowych kont/fixture lub mocka auth; brak kredencjalow = SKIP z instrukcja; brak recznych promptow.
+
 - Blad: testy E2E polegaly na sieci/DNS (npm/git/HTTP) bez jawnego gate, co powodowalo flakey wyniki lub wiszenie przy braku internetu.
   - Wymaganie: testy nie wymagaja sieci domyslnie; operacje sieciowe sa gated env‑flaga i maja timeouty.
 
@@ -576,6 +612,45 @@
   - Wymaganie: formaty binarne maja wersjonowanie i twardy fail na nieznana wersje.
   - Wymaganie: testy nie zalezne od internetu; zewnetrzne call'e stubuj lokalnie.
   - Wymaganie: jesli srodowisko blokuje `listen` (EPERM), testy powinny sie jawnie oznaczyc jako SKIP **z instrukcja** (np. „uruchom z eskalacja/zezwoleniem”).
+
+### Anti-debug E2E (środowisko testowe)
+
+- Blad: testy anti-debug byly uruchamiane w kontenerze z restrykcyjnym seccomp/AppArmor/Yama, co blokowalo attach i dawalo falszywe “OK”.
+  - Wymaganie: uruchom przynajmniej jeden baseline test na procesie **niechronionym** (attach ma sie udac), albo uruchom pelny zestaw w srodowisku permissive (`seccomp=unconfined` / bez AppArmor). Loguj aktywne polityki.
+
+- Blad: brak `debugfs`/`tracefs`/`bpffs` powodowal SKIP dla bpftrace/perf/trace-cmd/lttng.
+  - Wymaganie: przy testach strict montuj `/sys/kernel/debug`, `/sys/kernel/tracing`, `/sys/fs/bpf` z hosta (w kontenerze tylko `--privileged`) i weryfikuj mounty przed startem.
+
+- Blad: `perf`/`trace-cmd`/`rr` nie dzialaly, bo narzedzia nie pasowaly do kernela hosta.
+  - Wymaganie: instaluj `linux-tools-$(uname -r)` na hoście testowym (a nie tylko w kontenerze) i loguj `uname -r` + `perf --version`.
+
+- Blad: `systemtap`/`lttng`/`sysdig` zwracaly “not supported / no debuginfo” (brak modulow/headers).
+  - Wymaganie: na hoście testowym musza byc kernel headers + debug packages + możliwość ładowania modułów; w kontenerach bez tego traktuj jako SKIP z jasnym powodem.
+
+- Blad: brak `/dev/disk/by-uuid` w kontenerze powodowal SKIP dla sentinel level=2 (RID).
+  - Wymaganie: bind‑mount `/dev/disk` z hosta lub uruchamiaj test na VM/bare‑metal; loguj źródło root device (overlay vs real disk).
+
+- Blad: kontener bez odpowiednich capabilities (np. CAP_SYS_ADMIN / CAP_SYS_PTRACE) blokowal narzedzia attach i zaciemnial wniosek.
+  - Wymaganie: dla testów strict uruchamiaj z `--privileged` lub jawnie dodaj potrzebne capy; loguj effective capabilities w starcie testu.
+
+- Blad: `journalctl`/`coredumpctl` nie dzialaly w obrazie bez systemd, przez co czesc testow anti-debug byla niema.
+  - Wymaganie: uruchamiaj te testy w obrazie z systemd (lub na hoście), a brak systemd oznaczaj jako SKIP z instrukcją.
+
+- Blad: narzedzia “manual-only” (np. Intel Pin / AVML) nie byly zainstalowane, przez co testy byly zawsze SKIP.
+  - Wymaganie: instaluj je ręcznie na maszynie testowej i dodaj do `PATH`; w CI oznacz jawnie, że te subtesty są opcjonalne.
+
+### Sentinel E2E (środowisko testowe)
+
+- Blad: brak `/etc/machine-id` w kontenerze powodowal SKIP lub flakey wyniki sentinela.
+  - Wymaganie: generuj `/etc/machine-id` na starcie testów (np. `systemd-machine-id-setup`) albo bind‑mount z hosta.
+
+- Blad: sentinel E2E uruchamiany jako non‑root nie mógł tworzyć root‑owned `baseDir`, przez co testy były zawsze SKIP.
+  - Wymaganie: uruchamiaj sentinel E2E jako root (albo w kontenerze, który ma root) i loguj ten fakt.
+
+### UI E2E (Playwright)
+
+- Blad: brak zainstalowanych przegladarek Playwright (offline) powodowal fail/skip UI E2E.
+  - Wymaganie: pre‑bake przegladarki w obrazie testowym albo jawnie wylacz UI E2E (`SEAL_UI_E2E=0`) w srodowiskach offline.
 
 ## Deploy / infrastruktura
 
@@ -668,6 +743,10 @@
 
 - Blad: `strip` na binarce SEA powodowal crash (SIGSEGV) mimo udanego builda.
   - Wymaganie: dla `sea`/`thin-single` `strip` jest ignorowany (auto-disabled) z jasnym ostrzeżeniem.
+
+- Blad: rozne implementacje `strip` (GNU vs llvm) dawaly rozne sekcje (np. `.comment`) i flaky asercje/testy.
+  - Wymaganie: tooling/testy wykrywaja wariant `strip` (`strip --version`) i dostosowuja oczekiwania albo wymuszaja konkretny `strip` w E2E.
+  - Wymaganie: jesli wymagane jest usuniecie `.comment`, weryfikuj flagi/wersje i loguj "effective config".
 
 - Blad: detekcja narzedzi (`postject`, packery) nie uwzgledniala monorepo/workspace i szukala tylko w `./node_modules/.bin`, przez co testy/CLI nie widzialy narzedzia mimo instalacji.
   - Wymaganie: przy wykrywaniu CLI sprawdzaj kilka poziomow `node_modules/.bin` lub uzywaj mechanizmu typu `npm bin -w`/`npm exec`.
