@@ -216,6 +216,7 @@ Przykład:
 - STD-132 (SHOULD): masowe operacje na plikach nie moga przekraczac `ARG_MAX`; uzywaj `find ... -exec ... +` lub `xargs -0`.
 - STD-133 (SHOULD): odrzucaj absolutne segmenty sciezek w danych z configu i normalizuj `..` przed `path.join`.
 - STD-134 (SHOULD): dla plikow runtime z danymi ustaw jawne permissje (np. 0640/0600) i waliduj je w preflight.
+- STD-134a (SHOULD): pliki konfiguracyjne kopiowane na hosta maja jawne perms (np. 0640/0600); nie polegaj na domyslnym `umask`.
 - STD-135 (SHOULD): pliki binarne czytaj/zapisuj jako `Buffer` (bez encoding), a tekst jako `utf8`.
 - STD-136 (SHOULD): diff konfiguracji opieraj na kanonicznej reprezentacji (parse+stable sort+stringify), nie na whitespace.
 - STD-137 (SHOULD): unikaj TOCTOU na plikach — używaj atomowych operacji (`O_EXCL`, lock, write+rename) i weryfikuj `fstat` po otwarciu.
