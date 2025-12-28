@@ -134,9 +134,8 @@ function formatObfFailures(obf) {
   return failed.length ? failed.join(", ") : "unknown";
 }
 
-async function waitForStatus(port) {
+async function waitForStatus(port, timeoutMs = 10000) {
   const started = Date.now();
-  const timeoutMs = 10000;
   while (Date.now() - started < timeoutMs) {
     try {
       const res = await httpJson({ port, path: "/api/status", timeoutMs: 1000 });
@@ -207,7 +206,7 @@ async function runReleaseAndCheck({ releaseDir, runTimeoutMs }) {
       return;
     }
 
-    const status = await withTimeout("waitForStatus", runTimeoutMs, () => waitForStatus(port));
+    const status = await withTimeout("waitForStatus", runTimeoutMs, () => waitForStatus(port, runTimeoutMs));
     if (exitErr) throw exitErr;
     assert.strictEqual(status.ok, true, "Expected /api/status ok=true");
     assert.ok(status.appName, "Expected appName in status");
