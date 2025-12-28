@@ -69,6 +69,9 @@
 - Blad: polecenia z `sudo` w trybie nieinteraktywnym wisialy na promptach hasla.
   - Wymaganie: uzywaj `sudo -n` (fail‑fast bez promptu) i wypisz instrukcje, gdy brak uprawnien.
 
+- Blad: długie testy/deploy wymagały sudo, ale timestamp wygasał w trakcie i proces wisiał.
+  - Wymaganie: przy długich runach odświeżaj `sudo -v` w tle albo wymagaj jednorazowej autoryzacji przed startem.
+
 - Blad: `curl`/`wget` bez timeoutow i `--fail` potrafil wisiec lub ignorowac HTTP error.
   - Wymaganie: pobieranie z sieci musi miec timeout (`--connect-timeout`, `--max-time`) i `--fail`/`--show-error`, plus ograniczone retry.
 
@@ -93,6 +96,9 @@
 - Blad: instalatory (apt/dpkg) w srodowiskach CI/Docker wisialy na promptach (np. tzdata/locales).
   - Wymaganie: ustaw `DEBIAN_FRONTEND=noninteractive` i `TZ=UTC`, a `apt-get` zawsze z `-y` (bez promptow).
   - Wymaganie: jesli instalacja i tak wymaga inputu, test/skrypt ma fail‑fast z jasnym komunikatem.
+
+- Blad: `apt-get` failowal przez blokady `apt-daily`/`unattended-upgrades`, co powodowało flakey CI.
+  - Wymaganie: przed instalacją sprawdź locki i poczekaj/wyłącz `apt-daily` w obrazie testowym.
 
 - Blad: `eval`/`bash -lc "$CMD"` z danymi z configu pozwalal na wstrzykniecia lub bledy quoting.
   - Wymaganie: unikaj `eval`; uzywaj args array lub whitelisty dopuszczalnych tokenow.
@@ -644,6 +650,9 @@
 
 - Blad: brak flag `SEAL_E2E_STRICT_*` powodowal, ze udany attach byl raportowany jako SKIP zamiast FAIL.
   - Wymaganie: dla certyfikacji bezpieczenstwa wlacz `SEAL_E2E_STRICT_PTRACE=1` oraz odpowiadajace flagi (perf/rr/bpftrace/...), aby sukces attach byl traktowany jako regresja.
+
+- Blad: domyślny profil seccomp Dockera blokował `perf_event_open`/`ptrace`, przez co testy dawały fałszywe SKIP/OK.
+  - Wymaganie: dla pełnych testów uruchamiaj kontener z `--security-opt seccomp=unconfined` i/lub `--privileged`.
 
 - Blad: brak `debugfs`/`tracefs`/`bpffs` powodowal SKIP dla bpftrace/perf/trace-cmd/lttng.
   - Wymaganie: przy testach strict montuj `/sys/kernel/debug`, `/sys/kernel/tracing`, `/sys/fs/bpf` z hosta (w kontenerze tylko `--privileged`) i weryfikuj mounty przed startem.
