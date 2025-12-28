@@ -154,6 +154,7 @@ Przykład:
 - STD-068 (SHOULD): output narzedzi systemowych (np. `lsblk`, `/proc/mounts`) musi byc normalizowany (trim, filtruj puste, obsluguj array/null), zanim podejmiesz decyzje.
 - STD-069 (SHOULD): probe/inspect nie moga hard-fail na braku `sudo`; zwracaj wynik + note i kontynuuj.
 - STD-102 (SHOULD): uruchamiaj komendy zewnetrzne przez `spawn`/`execFile` z args array i `shell: false`; gdy shell jest konieczny, stosuj `--` i bezpieczne quoting/sanitizacje.
+- STD-102a (SHOULD): quoting do shella jest centralny (jedna biblioteka/helper), bez lokalnych kopii; dodaj testy edge‑case (`'`, spacje, newline, backslash).
 - STD-103 (SHOULD): operacje destrukcyjne (rm/copy/rsync) musza weryfikowac `realpath` i czy sciezka miesci sie w dozwolonym root; nie podazaj za symlinkami.
 - STD-106 (SHOULD): ssh/scp/rsync w trybie nieinteraktywnym musza byc uruchamiane z `BatchMode=yes` i fail-fast, bez wiszenia na prompt.
 - STD-106a (SHOULD): dla git/ssh ustaw `GIT_TERMINAL_PROMPT=0`, `GIT_ASKPASS=/bin/false`, `SSH_ASKPASS=/bin/false` (brak promptów); brak danych = szybki fail z instrukcja.

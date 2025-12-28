@@ -155,6 +155,8 @@
 
 - Blad: `eval`/`bash -lc "$CMD"` z danymi z configu pozwalal na wstrzykniecia lub bledy quoting.
   - Wymaganie: unikaj `eval`; uzywaj args array lub whitelisty dopuszczalnych tokenow.
+- Blad: rozne moduly mialy wlasne implementacje `shQuote/shellQuote`, co prowadzilo do niespojnosci i edge‑case’ow.
+  - Wymaganie: jeden wspolny helper do quoting (z testami dla `'`, spacji, newline, backslash), bez lokalnych kopii.
 
 - Blad: `xargs` bez `-r` wykonywal polecenie bez argumentow (na pustym input), co psulo logike.
   - Wymaganie: `xargs -0 -r` albo jawna blokada, gdy input jest pusty.
