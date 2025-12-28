@@ -1419,6 +1419,11 @@
 - Blad: generator JS wklejal template literal (backtick + `${...}`) do stringa JS, co psulo skladnie builda.
   - Wymaganie: w kodzie generowanym przez template string unikaj backticków albo escapuj `${` i same backticki.
 
+- Blad: uruchomienie testow/skryptow przez `sudo` uzywalo innej wersji Node (np. v18) i innego `PATH`/`HOME`, co powodowalo brak modulow i tworzylo pliki root‑owned.
+  - Wymaganie: przed uruchomieniem przez `sudo` waliduj wersje Node i `PATH` (fail‑fast przy niezgodnosci).
+  - Wymaganie: uruchamiaj `sudo` z jawnie ustawionym `PATH`/`HOME`/`XDG_CACHE_HOME`/`SEAL_CACHE` (tak, by cache trafial do projektu, nie do `/root`).
+  - Wymaganie: loguj effective `node -v` i `which node` w trybie E2E.
+
 - Blad: tryb decoy nadpisywal pliki release „po cichu” lub w nieprzewidywalnym zakresie.
   - Wymaganie: domyślne zachowanie decoya musi być **jawne** (overwrite ON/OFF).
   - Wymaganie: jeśli `overwrite=false`, każda kolizja (np. `public/`, `src/`, `package.json`) kończy build błędem z listą konfliktów.
@@ -1638,6 +1643,8 @@
   - Wymaganie: albo czysc te zmienne, albo loguj je jawnie jako czesc configu.
 - Blad: brak oczekiwanego kompilatora powodowal cichy fallback na inny toolchain.
   - Wymaganie: fail‑fast, gdy wskazany kompilator nie jest dostepny.
+- Blad: automatyczny wybor artefaktu bral "ostatni po mtime", co przy wielu targetach/packerach prowadzilo do deployu niezgodnego builda.
+  - Wymaganie: wybieraj artefakt po metadanych (`target+packager+config`) albo wymagaj jawnego `--artifact`.
 
 - Blad: nazwy artefaktow kolidowaly miedzy targetami/packerami.
   - Wymaganie: nazwa artefaktu zawiera `target+packager+buildId`.

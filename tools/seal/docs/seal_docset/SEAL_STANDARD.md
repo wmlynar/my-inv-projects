@@ -92,6 +92,7 @@ Przykład:
 - STD-032m (SHOULD): `seal check` waliduje limity/liczby dla opcji `thin.*` (np. `chunkSizeBytes`, `zstdLevel`, `timeoutMs`) i fail‑fast.
 - STD-035 (SHOULD): build zapisuje wersje narzedzi/zaleznosci; build nie pobiera rzeczy z internetu.
 - STD-035a (SHOULD): manifest/hash artefaktow jest liczony po wszystkich krokach post-processingu (strip/packer/obfuscation), jako ostatni etap builda.
+- STD-035b (SHOULD): automatyczny wybor artefaktu bazuje na metadanych (`target+packager+config`), nie na samym `mtime`; inaczej wymagaj jawnego `--artifact`.
 - STD-040 (SHOULD): preflight uzywa tych samych argumentow i srodowiska co runtime.
 - STD-040a (SHOULD): runtime/serwis uruchamia aplikacje z `NODE_ENV=production` (jesli nie ustawiono inaczej), a testy E2E sprawdzaja ten tryb.
 - STD-040b (SHOULD): runtime sanitizuje ryzykowne ENV (`NODE_OPTIONS`, `NODE_PATH`, `NODE_EXTRA_CA_CERTS`, `NODE_V8_COVERAGE`, `NODE_DEBUG`) aby nie wstrzykiwac hookow/inspect z hosta; debug uruchamiaj jawnie przez flagi runtime.
@@ -228,6 +229,7 @@ Przykład:
 - STD-111c (SHOULD): jesli uzywasz `pipefail`, uruchamiaj skrypt przez `bash` albo sprawdz wsparcie i ustawiaj `pipefail` warunkowo (dash tego nie obsluguje).
 - STD-112 (SHOULD): dla synchronizacji katalogow przez rsync stosuj jawna semantyke trailing slash (sync zawartosci vs katalogu) i pokryj to testem.
 - STD-112a (SHOULD): uzywaj `rsync --protect-args` (lub `-s`) aby uniknac interpretacji sciezek przez zdalny shell; brak wsparcia opcji = fail‑fast lub wymagaj sciezek bez spacji/metachar.
+- STD-112b (SHOULD): przy uruchamianiu Node przez `sudo` waliduj wersje (`node -v`) i binarke (`which node`) po eskalacji; `PATH`/`HOME`/`XDG_CACHE_HOME`/`SEAL_CACHE` ustawiaj jawnie, aby uniknac root‑owned cache i rozjechanej wersji runtime.
 - STD-113 (SHOULD): parser JSON/JSON5 usuwa BOM i normalizuje CRLF (unikaj bledow na plikach z Windows).
 - STD-114 (SHOULD): tmp dla operacji atomowych jest tworzony w tym samym katalogu/FS co plik docelowy (unikaj `EXDEV`).
 - STD-115 (SHOULD): rozpakowywanie archiwow wymaga walidacji sciezek (brak `..`, brak absolutnych, brak symlink/hardlink) i twardego fail na naruszenia.
