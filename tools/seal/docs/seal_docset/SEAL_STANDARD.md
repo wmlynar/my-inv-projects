@@ -810,6 +810,7 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-348 (SHOULD): wykrywaj kolizje nazw na case‑insensitive FS i fail‑fast.
 - STD-349 (SHOULD): operacje destrukcyjne maja denylistę niebezpiecznych sciezek (`/`, `/home`, `C:\\`).
 - STD-350 (SHOULD): nazwy plikow są sanitizowane/escapowane w logach i przy budowie komend.
+- STD-350a (SHOULD): sciezki przekazywane do `scp/ssh` nie moga zawierac spacji/metachar bez escapingu; preferuj nazwy z bezpiecznego alfabetu i losowy sufiks dla tmp na hoście zdalnym.
 - STD-351 (SHOULD): waliduj dlugosc sciezek i dawaj jasny blad `ENAMETOOLONG`.
 - STD-352 (SHOULD): watchery (`fs.watch`) nie steruja krytyczną logika; uzywaj polling/explicit checks.
 - STD-353 (SHOULD): po rozpakowaniu usuwaj bity `setuid/setgid` i weryfikuj perms.

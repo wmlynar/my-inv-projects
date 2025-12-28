@@ -1025,6 +1025,8 @@
 
 - Blad: tymczasowy config byl zapisywany pod przewidywalna sciezka `/tmp/<service>-config.json5`, co powodowalo kolizje rownoleglych deployow i ryzyko symlink‑attack.
   - Wymaganie: uzywaj `mktemp`/losowej nazwy (0600) i waliduj typ/owner; sprzataj w `finally`.
+- Blad: tymczasowy artefakt na hoście zdalnym uzywal nazwy z `basename` (spacje/metachar), co psulo `scp` i kolidowalo przy rownoleglych deployach.
+  - Wymaganie: generuj zdalny tmp z losowym sufiksem (mktemp) i sanitizuj nazwy do bezpiecznego alfabetu; scp nie moze dostac sciezki ze spacjami bez escapingu.
 
 - Blad: brak wczesnej walidacji wolnego miejsca na serwerze powodowal `tar: Cannot mkdir: No space left on device`.
   - Wymaganie: preflight sprawdza wolne miejsce w `installDir` oraz `/tmp` i failuje z instrukcja, jesli za malo miejsca.
