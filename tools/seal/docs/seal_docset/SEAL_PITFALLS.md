@@ -24,6 +24,9 @@
   - Wymaganie: uzywaj `spawn`/`execFile` z args array i `shell: false`.
   - Wymaganie: gdy shell jest konieczny (ssh/rsync), stosuj `--` i bezpieczne quoting; sanitizuj wszystkie fragmenty pochodzace z configu.
 
+- Blad: `ssh` konkatenowal argumenty zdalnej komendy bez quoting (np. `ssh host bash -lc cmd arg`), co gubilo cudzyslowy i zmienialo znaczenie argumentow z spacjami.
+  - Wymaganie: zdalna komenda dla `ssh` jest przekazywana jako **jedna** string‑komenda, a argumenty sa jawnie quotingowane (shell‑escape) po stronie klienta.
+
 - Blad: `shQuote()` chronil przed metaznakami, ale wartosci z `\\n`/znakami kontrolnymi rozbijaly skrypt bash (multi‑line injection) przy wstawianiu do komend lub heredoc.
   - Wymaganie: przed `shQuote` waliduj brak znakow kontrolnych (`<0x20` i `DEL`), w tym `\\n/\\r/\\t`; invalid = fail‑fast.
 
@@ -1205,6 +1208,8 @@
   - Wymaganie: uzywaj `mktemp`/losowej nazwy (0600) i waliduj typ/owner; sprzataj w `finally`.
 - Blad: tymczasowy artefakt na hoście zdalnym uzywal nazwy z `basename` (spacje/metachar), co psulo `scp` i kolidowalo przy rownoleglych deployach.
   - Wymaganie: generuj zdalny tmp z losowym sufiksem (mktemp) i sanitizuj nazwy do bezpiecznego alfabetu; scp nie moze dostac sciezki ze spacjami bez escapingu.
+- Blad: payload/artefakt upload na SSH uzywal przewidywalnych nazw w `/tmp` (np. `${appName}-payload-${Date.now()}`), co powodowalo kolizje rownoleglych deployow i otwieralo wektor symlink‑attack.
+  - Wymaganie: zdalne tempy tworzy `mktemp` na hoście (po SSH), a `scp` uzywa wygenerowanej sciezki; brak losowosci = FAIL.
 - Blad: po `scp`/`cp` konfiguracji na hosta perms pozostawaly domyslne (np. 0644), co moglo ujawniac sekrety.
   - Wymaganie: dla configow z sekretami wymusz `umask 077` lub `chmod 0600/0640` po kopii.
 - Blad: tymczasowy plik konfigu z `scp` (np. do diffu) zostawal na dysku lokalnym, co kumulowalo smieci i moglo ujawniac dane.
@@ -1217,6 +1222,14 @@
 
 - Blad: brak wczesnej walidacji wolnego miejsca na serwerze powodowal `tar: Cannot mkdir: No space left on device`.
   - Wymaganie: preflight sprawdza wolne miejsce w `installDir` oraz `/tmp` i failuje z instrukcja, jesli za malo miejsca.
+
+- Blad: testy E2E i cache (node_modules/logi/artefakty/Docker volumes) rosly bez limitu i zapelnialy dysk.
+  - Wymaganie: E2E loguje zuzycie dysku przed/po runie i ma retention/limit (liczba/rozmiar/TTL) dla cache/logow/artefaktow.
+  - Wymaganie: cache E2E jest w dedykowanym katalogu poza repo (np. `/tmp/seal-e2e-cache`), latwym do wyczyszczenia; dokumentuj szybki cleanup.
+  - Wymaganie: gdy zabraknie miejsca (`ENOSPC`), testy podaja konkretne kroki cleanup (cache, volumes, obrazy) zamiast ogolnego bledu.
+- Blad: docker build cache/obrazy narastaly bez limitu i zapychaly dysk, mimo czyszczenia wolumenow.
+  - Wymaganie: testy raportuja rozmiar cache/obrazow (`docker system df`) i udostepniaja jawny tryb cleanup (`docker builder prune`/`docker image prune`).
+  - Wymaganie: dla E2E rekomenduj dedykowany `data-root` Dockera lub osobny disk/volume na cache obrazow.
 
 - Blad: uruchamianie aplikacji jako root (np. przez sudo) bez potrzeby.
   - Wymaganie: domyslnie uruchamiamy jako uzytkownik uslugi; `--sudo` tylko jawnie.

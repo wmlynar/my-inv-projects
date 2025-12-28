@@ -173,6 +173,7 @@ Przykład:
 - STD-048 (SHOULD): tymczasowe pliki z danymi wrazliwymi tworz przez `mkdtemp` + pliki `0600`, z unikalna nazwa i sprzataniem w `finally` (unikaj przewidywalnych nazw w `/tmp`).
 - STD-048a (SHOULD): tymczasowe pliki konfiguracyjne/transferowe nie moga miec przewidywalnych nazw (np. `/tmp/<service>-config.json5`); uzywaj `mktemp` i waliduj typ/owner przed uzyciem.
 - STD-048b (SHOULD): tymczasowe pliki z configiem (np. do diffu) sa usuwane po uzyciu; brak cleanup = FAIL w testach.
+- STD-048c (SHOULD): uploady SSH (artefakt/payload) uzywaja zdalnych tempow z `mktemp` (losowy sufiks) i jawnego cleanup; przewidywalne nazwy w `/tmp` sa zabronione.
 - STD-049 (SHOULD): przy zapisie plikow krytycznych (zwl. jako root) ustaw `umask 077`, zapisuj do tmp + `fsync` + `rename`, a potem `fsync` katalogu.
 - STD-050 (SHOULD): nazwy plikow tymczasowych (szczegolnie na zdalnych hostach) musza miec losowy komponent; nie opieraj ich wylacznie na czasie (`Date.now()`).
 - STD-050a (SHOULD): temp katalogi dla artefaktow/buildow sa unikalne per build (mkdtemp/buildId) i sprzatane w `finally`; brak wspolnych `artifact-tmp`.
@@ -222,6 +223,7 @@ Przykład:
 - STD-106v (SHOULD): timeouty SSH (`ConnectTimeout`, `ServerAlive*`) sa konfigurowalne per‑target i logowane jako effective config.
 - STD-106w (SHOULD): ustawiaj `ServerAliveCountMax`, aby ograniczyc maksymalny czas wiszenia polaczen SSH przy zerwaniu sieci.
 - STD-106x (SHOULD): komendy SSH nieinteraktywne uruchamiaj z `-n` lub `</dev/null`, aby nie czytaly stdin i nie wieszaly sie na braku inputu.
+- STD-106y (SHOULD): zdalna komenda dla `ssh` jest przekazywana jako pojedynczy string; argumenty musza byc jawnie quotingowane (shell‑escape), bo `ssh` konkatenowal args bez quoting.
 - STD-107 (SHOULD): parsowanie outputu narzedzi systemowych powinno wymuszac `LC_ALL=C` (lub `LANG=C`) albo uzywac trybu `--json`/`--output`, aby uniknac roznic locale.
 - STD-108 (SHOULD): unikaj `exec()` z domyslnym `maxBuffer`; uzywaj `spawn`/`execFile` lub ustaw `maxBuffer` i loguj przycinki outputu.
 - STD-109 (SHOULD): zawsze stosuj `--` przed listą sciezek w komendach zewnetrznych (rm/cp/rsync/scp), aby sciezki zaczynajace sie od `-` nie byly traktowane jako opcje.
@@ -432,6 +434,9 @@ Przykład:
 - STD-089t (SHOULD): E2E ma jeden kanoniczny wrapper (skrypt/komenda), ktory laduje config z pliku `.env` i loguje **effective config**; dokumentacja nie wymaga kopiowania dlugich, wielolinijkowych komend z dziesiatkami ENV.
 - STD-089t.a (SHOULD): duze konfiguracje przekazuj przez plik `.env`/config (nie przez jedna linie shell), aby uniknac limitu `ARG_MAX`.
 - STD-089u (SHOULD): instalatory narzedzi E2E obsluguja brak pakietu w APT (np. `criu` bez kandydata) przez build ze zrodel lub jawny SKIP z instrukcja; brak pakietu nie moze konczyc sie nieczytelnym `apt-get` error.
+- STD-089v (SHOULD): testy E2E loguja zuzycie dysku (np. `df -h` dla cache/log/tmp) na starcie i koncu, aby szybko wykryc leak/rozrost.
+- STD-089w (SHOULD): E2E ma retention/limit dla cache/logow/artefaktow (liczba/rozmiar/TTL) i czytelne instrukcje cleanup przy `ENOSPC`.
+- STD-089x (SHOULD): testy dockerowe raportuja rozmiar cache/obrazow (`docker system df`) i maja jawny tryb cleanup (`docker builder prune`/`docker image prune`); rekomenduj dedykowany `data-root` dla cache obrazow.
 - STD-090c (SHOULD): preflight sprawdza **narzedzia CLI** (np. `postject` w `node_modules/.bin`/PATH), nie tylko obecność modulu.
 - STD-091a (SHOULD): funkcje zalezne od architektury (np. CPUID) musza degradująco dzialac na platformach bez wsparcia (pusty/neutralny ID zamiast twardego bledu).
 - STD-092a (SHOULD): `--skip-check` jest wyraznie oznaczony jako ryzykowny i zawsze wypisuje ostrzezenie; krytyczne braki toolchaina nie powinny byc maskowane.
