@@ -589,6 +589,7 @@
 
 - Blad: `npm ci/install` wisial przy problemach sieciowych (brak timeoutow lub zbyt dlugie retry).
   - Wymaganie: ustaw `NPM_CONFIG_FETCH_RETRIES`, `NPM_CONFIG_FETCH_TIMEOUT`, `NPM_CONFIG_FETCH_RETRY_MINTIMEOUT` i `NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT` w testach/CI.
+  - Wymaganie: ustaw `NPM_CONFIG_LOGLEVEL=warn` (lub `error`) w CI, aby ograniczyc szum i przyspieszyc logi.
 
 - Blad: `NODE_ENV=production` podczas E2E powodowal pomijanie devDependencies i brak narzedzi testowych.
   - Wymaganie: dla instalacji testowych wymusz `NODE_ENV=development` lub `npm ci --include=dev`, a tryb instalacji loguj na starcie.
