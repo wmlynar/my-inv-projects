@@ -493,6 +493,9 @@
 - Blad: wspoldzielony cache E2E nie mial jawnego sposobu resetu i prowadzil do trudnych w debugowaniu falszywych "pass".
   - Wymaganie: skrypty maja flage/ENV do wymuszenia reinstall/flush cache i loguja aktywne ustawienia.
 
+- Blad: docker buildy korzystaly ze starych obrazow bazowych, bo `--pull` nie byl jawnie kontrolowany.
+  - Wymaganie: tryb pull jest jawny (`--pull`/`--no-pull`) i logowany, a bazowy obraz jest identyfikowany po tagu/digescie.
+
 - Blad: rozne entrypointy E2E mialy inne defaulty (cache, parallel), co utrudnialo reprodukcje miedzy lokalnym i dockerowym uruchomieniem.
   - Wymaganie: jeden publiczny entrypoint ustawia wspolne domyslne wartosci i jest jedynym rekomendowanym sposobem uruchomienia; pozostale skrypty sa wewnetrzne.
 
@@ -652,6 +655,7 @@
 
 - Blad: rownolegle uruchomienia E2E kolidowaly na wspolnych nazwach uslug/plikach (`current.buildId`, instalacje), co dawalo flakey wyniki.
   - Wymaganie: testy musza byc bezpieczne dla rownoleglego uruchomienia (unikalne nazwy uslug, unikalne installDir, izolowane temp rooty).
+  - Wymaganie: sharding testow jest deterministyczny (stala kolejnosc listy) i loguje, ktore testy trafily do danego sharda.
 
 - Blad: testy dzielily cache (np. `seal-out/cache`) i wyniki byly zalezne od poprzednich uruchomien.
   - Wymaganie: testy izolują cache (osobny temp project root lub `SEAL_THIN_CACHE_LIMIT=0`).
@@ -792,6 +796,12 @@
 
 - Blad: Playwright w Dockerze crashowal (małe `/dev/shm`), co dawalo losowe błędy przeglądarki.
   - Wymaganie: uruchamiaj kontener z wiekszym `/dev/shm` (np. `--shm-size=1g`) albo ustaw `--disable-dev-shm-usage` w uruchomieniu Chromium.
+
+- Blad: selektory UI oparte o tekst/DOM byly niestabilne (zmiany copy/i18n), co dawalo flakey testy.
+  - Wymaganie: uzywaj stabilnych selektorow (`data-testid`/role+name) i utrzymuj je jako kontrakt testowy.
+
+- Blad: przy failu UI E2E brakowalo artefaktow diagnostycznych.
+  - Wymaganie: na porazke zapisuj screenshot/trace/video i loguj sciezki (z limitem rozmiaru).
 
 ## Deploy / infrastruktura
 
