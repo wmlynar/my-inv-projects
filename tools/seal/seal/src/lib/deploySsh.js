@@ -119,6 +119,7 @@ const CODEC_BIN_MAGIC = "SLCB";
 const CODEC_BIN_VERSION = 1;
 const CODEC_BIN_HASH_LEN = 32;
 const CODEC_BIN_LEN = 4 + 1 + 1 + 2 + CODEC_BIN_HASH_LEN;
+const THIN_RUNTIME_VERSION_FILE = "nv";
 
 function readCodecHashFromBin(buf) {
   if (!Buffer.isBuffer(buf) || buf.length < CODEC_BIN_LEN) return null;
@@ -148,6 +149,24 @@ function readThinCodecHashLocal(releaseDir) {
   return null;
 }
 
+function readThinRuntimeVersionLocal(releaseDir) {
+  if (!releaseDir) return null;
+  const candidates = [
+    path.join(releaseDir, "r", THIN_RUNTIME_VERSION_FILE),
+    path.join(releaseDir, THIN_RUNTIME_VERSION_FILE),
+  ];
+  for (const p of candidates) {
+    if (!fileExists(p)) continue;
+    try {
+      const text = fs.readFileSync(p, "utf-8").trim();
+      if (text) return text;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 function readThinCodecHashRemote(targetCfg, { user, host, filePath }) {
   const res = sshExecTarget(targetCfg, {
     user,
@@ -164,6 +183,18 @@ function readThinCodecHashRemote(targetCfg, { user, host, filePath }) {
   } catch {
     return null;
   }
+}
+
+function readThinRuntimeVersionRemote(targetCfg, { user, host, filePath }) {
+  const res = sshExecTarget(targetCfg, {
+    user,
+    host,
+    args: ["bash", "-lc", `if [ -f ${shQuote(filePath)} ]; then cat ${shQuote(filePath)}; fi`],
+    stdio: "pipe",
+  });
+  if (!res.ok) return null;
+  const text = (res.stdout || "").trim();
+  return text || null;
 }
 
 function assertSafeInstallDir(installDir) {
@@ -517,6 +548,9 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
   const autoBootstrapAllowed = allowAutoBootstrap !== false;
   let effectiveBootstrap = !!bootstrap;
   let autoBootstrap = false;
+  const payloadOnlyRequested = !!payloadOnlyRequired;
+  let payloadOnlyFallbackReason = null;
+  let payloadOnlyFallbackLogged = false;
   const timeSync = timing && timing.timeSync ? timing.timeSync : (label, fn) => fn();
   const { res: preflight, layout, user, host } = timeSync(
     "deploy.ssh.preflight",
@@ -528,8 +562,8 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
   }
   let issues = collectPreflightIssues(out, layout);
   if (issues.length && !effectiveBootstrap && autoBootstrapAllowed) {
-    if (payloadOnlyRequired) {
-      throw new Error(`payload-only deploy requested but target needs bootstrap: ${issues.join("; ")}`);
+    if (payloadOnlyRequested) {
+      payloadOnlyFallbackReason = `target needs bootstrap (${issues.join("; ")})`;
     }
     warn(`Auto bootstrap: ${issues.join("; ")}. Running bootstrap.`);
     timeSync("deploy.ssh.bootstrap", () => bootstrapSsh(targetCfg));
@@ -571,6 +605,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       warn("Thin bootstrap: codec metadata missing in release; falling back to full upload.");
       payloadOnly = false;
       payloadOnlyReason = "codec metadata missing in release";
+      payloadOnlyFallbackLogged = true;
     }
   }
   if (payloadOnly) {
@@ -584,6 +619,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       warn("Thin bootstrap: runtime/launcher missing on target; falling back to full upload.");
       payloadOnly = false;
       payloadOnlyReason = "runtime/launcher missing on target";
+      payloadOnlyFallbackLogged = true;
     }
   }
   if (payloadOnly) {
@@ -596,14 +632,45 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       warn("Thin bootstrap: codec metadata missing on target; falling back to full upload.");
       payloadOnly = false;
       payloadOnlyReason = "codec metadata missing on target";
+      payloadOnlyFallbackLogged = true;
     } else if (remoteCodec !== payloadCodec) {
       warn("Thin bootstrap: codec mismatch on target; falling back to full upload.");
       payloadOnly = false;
       payloadOnlyReason = "codec mismatch on target";
+      payloadOnlyFallbackLogged = true;
     }
   }
-  if (payloadOnlyRequired && !payloadOnly) {
-    throw new Error(`payload-only deploy requested but not possible: ${payloadOnlyReason || "unknown reason"}`);
+  if (payloadOnly) {
+    const localRuntimeVersion = readThinRuntimeVersionLocal(releaseDir);
+    if (!localRuntimeVersion) {
+      warn("Thin bootstrap: runtime version metadata missing in release; falling back to full upload.");
+      payloadOnly = false;
+      payloadOnlyReason = "node version missing in release";
+      payloadOnlyFallbackLogged = true;
+    } else {
+      const remoteRuntimeVersion = timeSync("deploy.ssh.check_runtime_version", () => readThinRuntimeVersionRemote(targetCfg, {
+        user,
+        host,
+        filePath: `${layout.installDir}/r/${THIN_RUNTIME_VERSION_FILE}`,
+      }));
+      if (!remoteRuntimeVersion) {
+        warn("Thin bootstrap: runtime version metadata missing on target; falling back to full upload.");
+        payloadOnly = false;
+        payloadOnlyReason = "node version missing on target";
+        payloadOnlyFallbackLogged = true;
+      } else if (remoteRuntimeVersion !== localRuntimeVersion) {
+        warn(`Thin bootstrap: node version mismatch (target ${remoteRuntimeVersion}, release ${localRuntimeVersion}); falling back to full upload.`);
+        payloadOnly = false;
+        payloadOnlyReason = `node version mismatch (target ${remoteRuntimeVersion})`;
+        payloadOnlyFallbackLogged = true;
+      }
+    }
+  }
+  const logPayloadOnlySkip = payloadOnlyRequested || (thinMode === "bootstrap" && !!releaseDir);
+  if (!payloadOnly && logPayloadOnlySkip && !payloadOnlyFallbackLogged) {
+    const reason = payloadOnlyFallbackReason || payloadOnlyReason || "unknown reason";
+    const log = payloadOnlyRequested ? warn : info;
+    log(`Payload-only skipped (${reason}). Falling back to full upload.`);
   }
   if (reuseBootstrap) {
     if (!releaseDir) {
@@ -625,6 +692,26 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
           reuseBootstrap = false;
         } else if (remoteCodec !== releaseCodec) {
           warn("Thin bootstrap: codec mismatch on target; copying full bootstrap.");
+          reuseBootstrap = false;
+        }
+      }
+    }
+    if (reuseBootstrap) {
+      const releaseRuntimeVersion = readThinRuntimeVersionLocal(releaseDir);
+      if (!releaseRuntimeVersion) {
+        warn("Thin bootstrap: runtime version metadata missing in release; copying full bootstrap.");
+        reuseBootstrap = false;
+      } else {
+        const remoteRuntimeVersion = readThinRuntimeVersionRemote(targetCfg, {
+          user,
+          host,
+          filePath: `${layout.installDir}/r/${THIN_RUNTIME_VERSION_FILE}`,
+        });
+        if (!remoteRuntimeVersion) {
+          warn("Thin bootstrap: runtime version metadata missing on target; copying full bootstrap.");
+          reuseBootstrap = false;
+        } else if (remoteRuntimeVersion !== releaseRuntimeVersion) {
+          warn(`Thin bootstrap: node version mismatch (target ${remoteRuntimeVersion}, release ${releaseRuntimeVersion}); copying full bootstrap.`);
           reuseBootstrap = false;
         }
       }
@@ -702,10 +789,13 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
     const rDirQ = shQuote(rDir);
     const ihSrcQ = shQuote(`${rDir}/${thinIntegrityFile}`);
     const ihDstQ = shQuote(`${relDir}/r/${thinIntegrityFile}`);
+    const nvSrcQ = shQuote(`${rDir}/${THIN_RUNTIME_VERSION_FILE}`);
+    const nvDstQ = shQuote(`${relDir}/r/${THIN_RUNTIME_VERSION_FILE}`);
     cmdParts.push(`mkdir -p ${relDirQ}/b ${relDirQ}/r`);
     cmdParts.push(`cp ${bDirQ}/a ${relDirQ}/b/a`);
     cmdParts.push(`cp ${rDirQ}/rt ${relDirQ}/r/rt`);
     cmdParts.push(`if [ -f ${rDirQ}/c ]; then cp ${rDirQ}/c ${relDirQ}/r/c; fi`);
+    cmdParts.push(`if [ -f ${nvSrcQ} ]; then cp ${nvSrcQ} ${nvDstQ}; fi`);
     if (thinIntegritySidecar) {
       cmdParts.push(`if [ -f ${ihSrcQ} ]; then cp ${ihSrcQ} ${ihDstQ}; fi`);
     }
@@ -717,6 +807,9 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
     const fullCmd = ["bash", "-lc", cmdParts.join(" && ")];
     res = timeSync("deploy.ssh.apply_payload", () => sshExecTarget(targetCfg, { user, host, args: fullCmd, stdio: "pipe" }));
   } else {
+    if (!artifactPath) {
+      throw new Error("Full upload requires artifactPath (payload-only fallback unavailable). Provide --artifact or rerun without --payload-only.");
+    }
     // Upload artifact
     info(`Uploading artifact to ${host}:${remoteArtifactTmp}`);
     const up = timeSync("deploy.ssh.upload_artifact", () => scpToTarget(targetCfg, {
@@ -762,6 +855,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       const plSrc = `${relDir}/r/pl`;
       const codecSrc = `${relDir}/r/c`;
       const ihSrc = `${relDir}/r/${thinIntegrityFile}`;
+      const nvSrc = `${relDir}/r/${THIN_RUNTIME_VERSION_FILE}`;
       const bDirQ = shQuote(bDir);
       const rDirQ = shQuote(rDir);
       const launcherSrcQ = shQuote(launcherSrc);
@@ -770,6 +864,8 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       const codecSrcQ = shQuote(codecSrc);
       const ihSrcQ = shQuote(ihSrc);
       const ihDstQ = shQuote(`${rDir}/${thinIntegrityFile}`);
+      const nvSrcQ = shQuote(nvSrc);
+      const nvDstQ = shQuote(`${rDir}/${THIN_RUNTIME_VERSION_FILE}`);
       cmdParts.push(`test -f ${launcherSrcQ}`);
       cmdParts.push(`test -f ${rtSrcQ}`);
       cmdParts.push(`test -f ${plSrcQ}`);
@@ -782,6 +878,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       }
       cmdParts.push(`cp ${plSrcQ} ${rDirQ}/pl.tmp && mv ${rDirQ}/pl.tmp ${rDirQ}/pl && chmod 644 ${rDirQ}/pl`);
       cmdParts.push(`if [ -f ${codecSrcQ} ]; then cp ${codecSrcQ} ${rDirQ}/c.tmp && mv ${rDirQ}/c.tmp ${rDirQ}/c && chmod 644 ${rDirQ}/c; fi`);
+      cmdParts.push(`if [ -f ${nvSrcQ} ]; then cp ${nvSrcQ} ${nvDstQ}.tmp && mv ${nvDstQ}.tmp ${nvDstQ} && chmod 644 ${nvDstQ}; fi`);
       if (thinIntegritySidecar) {
         cmdParts.push(`if [ -f ${ihSrcQ} ]; then cp ${ihSrcQ} ${ihDstQ}.tmp && mv ${ihDstQ}.tmp ${ihDstQ} && chmod 644 ${ihDstQ}; fi`);
       }
@@ -791,7 +888,8 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       const plFileQ = shQuote(`${layout.installDir}/r/pl`);
       const codecFileQ = shQuote(`${layout.installDir}/r/c`);
       const ihFileQ = shQuote(`${layout.installDir}/r/${thinIntegrityFile}`);
-      cmdParts.push(`rm -f ${bFileQ} ${rtFileQ} ${plFileQ} ${codecFileQ} ${ihFileQ}`);
+      const nvFileQ = shQuote(`${layout.installDir}/r/${THIN_RUNTIME_VERSION_FILE}`);
+      cmdParts.push(`rm -f ${bFileQ} ${rtFileQ} ${plFileQ} ${codecFileQ} ${ihFileQ} ${nvFileQ}`);
     }
     cmdParts.push(`echo ${shQuote(folderName)} > ${currentFileQ}`);
     cmdParts.push(`rm -f ${remoteArtifactTmpQ}`);
@@ -833,11 +931,14 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       const launcherSrc = `${relDir}/b/a`;
       const rtSrc = `${relDir}/r/rt`;
       const plSrc = `${relDir}/r/pl`;
+      const nvSrc = `${relDir}/r/${THIN_RUNTIME_VERSION_FILE}`;
       const bDirQ = shQuote(bDir);
       const rDirQ = shQuote(rDir);
       const launcherSrcQ = shQuote(launcherSrc);
       const rtSrcQ = shQuote(rtSrc);
       const plSrcQ = shQuote(plSrc);
+      const nvSrcQ = shQuote(nvSrc);
+      const nvDstQ = shQuote(`${rDir}/${THIN_RUNTIME_VERSION_FILE}`);
       retryParts.push(`test -f ${launcherSrcQ}`);
       retryParts.push(`test -f ${rtSrcQ}`);
       retryParts.push(`test -f ${plSrcQ}`);
@@ -849,11 +950,13 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
         retryParts.push(`cp ${rtSrcQ} ${rDirQ}/rt.tmp && mv ${rDirQ}/rt.tmp ${rDirQ}/rt && chmod 644 ${rDirQ}/rt`);
       }
       retryParts.push(`cp ${plSrcQ} ${rDirQ}/pl.tmp && mv ${rDirQ}/pl.tmp ${rDirQ}/pl && chmod 644 ${rDirQ}/pl`);
+      retryParts.push(`if [ -f ${nvSrcQ} ]; then cp ${nvSrcQ} ${nvDstQ}.tmp && mv ${nvDstQ}.tmp ${nvDstQ} && chmod 644 ${nvDstQ}; fi`);
     } else {
       const bFileQ = shQuote(`${layout.installDir}/b/a`);
       const rtFileQ = shQuote(`${layout.installDir}/r/rt`);
       const plFileQ = shQuote(`${layout.installDir}/r/pl`);
-      retryParts.push(`rm -f ${bFileQ} ${rtFileQ} ${plFileQ}`);
+      const nvFileQ = shQuote(`${layout.installDir}/r/${THIN_RUNTIME_VERSION_FILE}`);
+      retryParts.push(`rm -f ${bFileQ} ${rtFileQ} ${plFileQ} ${nvFileQ}`);
     }
     retryParts.push(`echo ${shQuote(folderName)} > ${currentFileQ}`);
     retryParts.push(`rm -f ${remoteArtifactTmpQ}`);
@@ -994,7 +1097,7 @@ function deploySshFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, boot
   }
   const cleanupCmd = [
     "bash", "-lc",
-    `rm -f ${shQuote(`${layout.installDir}/b/a`)} ${shQuote(`${layout.installDir}/r/rt`)} ${shQuote(`${layout.installDir}/r/pl`)} ${shQuote(`${layout.installDir}/r/${thinIntegrityFile}`)}`
+    `rm -f ${shQuote(`${layout.installDir}/b/a`)} ${shQuote(`${layout.installDir}/r/rt`)} ${shQuote(`${layout.installDir}/r/pl`)} ${shQuote(`${layout.installDir}/r/${thinIntegrityFile}`)} ${shQuote(`${layout.installDir}/r/${THIN_RUNTIME_VERSION_FILE}`)}`
   ];
   const cleanupRes = timeSync("deploy.ssh.fast.cleanup", () => sshExecTarget(targetCfg, {
     user,
@@ -1377,13 +1480,18 @@ if [ -z "$prev" ]; then echo "No previous release"; exit 2; fi
     else
       rm -f "$ROOT/r/c"
     fi
+    if [ -f "$PREV_DIR/r/${THIN_RUNTIME_VERSION_FILE}" ]; then
+      cp "$PREV_DIR/r/${THIN_RUNTIME_VERSION_FILE}" "$ROOT/r/${THIN_RUNTIME_VERSION_FILE}.tmp" && mv "$ROOT/r/${THIN_RUNTIME_VERSION_FILE}.tmp" "$ROOT/r/${THIN_RUNTIME_VERSION_FILE}" && chmod 644 "$ROOT/r/${THIN_RUNTIME_VERSION_FILE}"
+    else
+      rm -f "$ROOT/r/${THIN_RUNTIME_VERSION_FILE}"
+    fi
     if [ -f "$PREV_DIR/r/${thinIntegrityFile}" ]; then
       cp "$PREV_DIR/r/${thinIntegrityFile}" "$ROOT/r/${thinIntegrityFile}.tmp" && mv "$ROOT/r/${thinIntegrityFile}.tmp" "$ROOT/r/${thinIntegrityFile}" && chmod 644 "$ROOT/r/${thinIntegrityFile}"
     else
       rm -f "$ROOT/r/${thinIntegrityFile}"
     fi
   else
-    rm -f "$ROOT/b/a" "$ROOT/r/rt" "$ROOT/r/pl" "$ROOT/r/${thinIntegrityFile}"
+    rm -f "$ROOT/b/a" "$ROOT/r/rt" "$ROOT/r/pl" "$ROOT/r/${thinIntegrityFile}" "$ROOT/r/${THIN_RUNTIME_VERSION_FILE}"
   fi
 echo "$prev" > ${shQuote(layout.currentFile)}
 sudo -n systemctl restart ${shQuote(`${targetCfg.serviceName}.service`)}

@@ -909,6 +909,12 @@ function writeVersion(releaseDir, versionObj) {
   writeJson(path.join(releaseDir, "version.json"), versionObj);
 }
 
+function writeRuntimeVersion(releaseDir) {
+  const rDir = path.join(releaseDir, "r");
+  if (!fileExists(rDir)) return;
+  fs.writeFileSync(path.join(rDir, "nv"), `${process.version}\n`, "utf-8");
+}
+
 function writeMeta(outDir, meta) {
   ensureDir(outDir);
   const metaPath = path.join(outDir, "meta.json");
@@ -1315,6 +1321,7 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   const createdAt = new Date().toISOString();
   const appVersion = readAppVersion(projectRoot) || "0.0.0";
   writeVersion(releaseDir, { version: appVersion, appName, buildId, createdAt });
+  writeRuntimeVersion(releaseDir);
 
   const meta = {
     appName,
