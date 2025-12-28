@@ -312,6 +312,8 @@
   - Wymaganie: **jedno zrodlo prawdy** dla wykrywania narzedzi (resolver binarki).
 - Blad: helper wykrywania narzedzi uruchamial `bash -lc "command -v ..."`, co failowalo na minimalnych systemach bez `bash`.
   - Wymaganie: wykrywaj narzedzia bez zaleznosci od `bash` (scan `PATH`/`command -v` przez `/bin/sh`); brak wymaganej powloki = fail‑fast z instrukcja.
+- Blad: nieznany `packager` byl odrzucany tylko przez `seal check`, ale `seal release/deploy` potrafily isc dalej i failowac pozniej lub dzialac nieprzewidywalnie.
+  - Wymaganie: waliduj `packager` w jednym miejscu (loader configu) i fail‑fast we **wszystkich** komendach, niezaleznie od `check`.
   - Wymaganie: `check` i `build` uzywaja tego samego PATH, targetu i packagera.
   - Wymaganie: release/ship przekazuja opcje preflight (`--check-verbose`, `--check-cc`).
 
