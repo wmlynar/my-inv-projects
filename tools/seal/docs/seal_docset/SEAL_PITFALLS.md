@@ -623,6 +623,12 @@
 - Blad: `NODE_ENV=production` podczas E2E powodowal pomijanie devDependencies i brak narzedzi testowych.
   - Wymaganie: dla instalacji testowych wymusz `NODE_ENV=development` lub `npm ci --include=dev`, a tryb instalacji loguj na starcie.
 
+- Blad: `NPM_CONFIG_IGNORE_SCRIPTS=1` w srodowisku CI wylaczal postinstall i psul build narzedzi natywnych.
+  - Wymaganie: w E2E jawnie ustaw `NPM_CONFIG_IGNORE_SCRIPTS=false` (lub wykryj i FAIL z instrukcja), a wartosc loguj.
+
+- Blad: `NPM_CONFIG_PRODUCTION=1`/`--omit=dev` byl aktywny w E2E, co pomijalo narzedzia testowe.
+  - Wymaganie: w E2E wymusz instalacje devDependencies i loguj efektywny tryb (`production`/`omit`).
+
 - Blad: `npm` uruchamiany jako root w containerze blokowal skrypty postinstall (brak `unsafe-perm`) lub wykonywal je z innymi uprawnieniami.
   - Wymaganie: w kontenerach uruchamiaj `npm` jako nie‑root lub ustaw `NPM_CONFIG_UNSAFE_PERM=true`.
 
@@ -1456,6 +1462,8 @@
   - Wymaganie: sekrety tylko w pliku lub ENV, nie w args.
 - Blad: globalne `.npmrc` z tokenami bylo uzywane przez instalatory.
   - Wymaganie: ustaw `NPM_CONFIG_USERCONFIG` na temp plik i sprzataj.
+- Blad: `npm` korzystal z innego registry niz oczekiwane (globalny `.npmrc`/ENV), co dawalo 404 lub zle paczki.
+  - Wymaganie: jawnie ustaw `NPM_CONFIG_REGISTRY` dla runow testowych i loguj aktywne registry.
 - Blad: pobieranie binarek bez weryfikacji checksum.
   - Wymaganie: wymagaj sha256/signature i weryfikuj.
 - Blad: `LD_LIBRARY_PATH/LD_PRELOAD` z ENV wplywal na uruchomienia.
