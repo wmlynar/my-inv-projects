@@ -97,8 +97,17 @@
 - Blad: zbyt liberalne uprawnienia na kluczach SSH powodowaly `unprotected private key file` i brak polaczenia.
   - Wymaganie: klucze prywatne `0600`, `authorized_keys`/`known_hosts` `0644`.
 
+- Blad: agent SSH mial wiele kluczy i serwer odrzucal polaczenie (`Too many authentication failures`).
+  - Wymaganie: wymusz `IdentitiesOnly=yes` i jawny `IdentityFile`; w razie potrzeby czysc `SSH_AUTH_SOCK`.
+
+- Blad: `~/.ssh/config` uzytkownika zmienial zachowanie (ProxyJump/ControlMaster/GSSAPI) i psul deterministycznosc deployu/testow.
+  - Wymaganie: uzywaj `ssh -F /dev/null` lub jawnie nadpisuj opcje w `-o ...`; loguj kluczowe opcje SSH.
+
 - Blad: nowe OpenSSH wylaczalo `ssh-rsa`, a serwer wspieral tylko stare algorytmy (polaczenie failowalo bez jasnego powodu).
   - Wymaganie: preferuj ED25519/ECDSA; dla legacy serwerow wymagaj jawnego opt-in (`HostKeyAlgorithms`/`PubkeyAcceptedAlgorithms`) z ostrzezeniem w logach.
+
+- Blad: DNS zwracal IPv6, a srodowisko nie mialo routingu IPv6, co dawalo dlugie time‑outy przy SSH.
+  - Wymaganie: wspieraj wymuszenie IPv4 (`-4`/`AddressFamily=inet`) i loguj wybrana rodzine adresu.
 
 - Blad: skrypty uzywaly niecytowanych zmiennych (`$VAR`), co powodowalo word‑splitting i globbing.
   - Wymaganie: kazda zmienna w shellu jest widocznie cytowana (`"$VAR"`), chyba ze jawnie potrzebny jest splitting.
@@ -288,6 +297,12 @@
 
 - Blad: instalatory narzedzi (np. z lockfile) probowaly budowac bez wymaganych narzedzi builda (`cmake`/`ninja`/`python3`), a blad byl nieczytelny.
   - Wymaganie: installer preflightuje wymagane build deps i podaje konkretne instrukcje instalacji (pakiety).
+
+- Blad: submodule update w installerach byl ignorowany (`|| true`), co zostawialo niekompletny repo i dawalo pozniejsze, nieczytelne bledy.
+  - Wymaganie: `git submodule update --init --recursive` musi fail‑fast (lub jawny SKIP z powodem, jesli submoduly sa opcjonalne).
+
+- Blad: klonowanie bardzo duzych repo (np. LLVM) bez `--depth` powodowalo timeouts i ogromne zuzycie dysku.
+  - Wymaganie: dla duzych repo stosuj shallow clone (`--depth`/`--filter=blob:none`) z fallback do pelnego fetch, gdy potrzebny konkretny commit.
 
 - Blad: thin build failowal dopiero w trakcie kompilacji launchera (brak `libzstd-dev`), bez jasnej instrukcji instalacji.
   - Wymaganie: `seal check` wykrywa brakujace pakiety (np. `libzstd-dev`) i podaje **konkretne** `apt-get install ...`.
@@ -641,6 +656,9 @@
 
 - Blad: tryb toolsetu (core/full) nie byl logowany, a testy probowaly uruchamiac niedostepne narzedzia mimo ustawionego ograniczenia.
   - Wymaganie: runner loguje aktywny toolset, a testy/instalatory respektuja go (brak narzedzi w toolsecie = SKIP lub jawny FAIL w trybie strict).
+
+- Blad: niepoprawna wartosc `SEAL_E2E_TOOLSET` byla akceptowana bez ostrzezenia, co konczylo sie nieoczekiwanym zakresem testow.
+  - Wymaganie: toolset jest walidowany przeciwko allowliscie (np. `core|full`); nieznana wartosc = FAIL lub wyrazny warning + fallback.
 
 - Blad: `NODE_OPTIONS`/`NODE_PATH` z srodowiska wstrzykiwaly `--require` lub inne hooki, psujac build/testy.
   - Wymaganie: testy i buildy czyszcza ryzykowne ENV (`NODE_OPTIONS`, `NODE_PATH`, `NODE_EXTRA_CA_CERTS`) albo jawnie ustawiają bezpieczne wartości.

@@ -114,6 +114,8 @@ Przykład:
 - STD-033e (SHOULD): loguj `rsync --version` po obu stronach i fail‑fast, gdy wymagane flagi nie sa wspierane (z instrukcja aktualizacji).
 - STD-033c (SHOULD): instalatory narzedzi zewnetrznych pinuja tag/commit, loguja wersje/commit i w miare mozliwosci weryfikuja checksumy; w razie braku zrodla wspieraja mirror/backup.
 - STD-033d (SHOULD): instalatory narzedzi buildowanych ze zrodel preflightuja wymagane zaleznosci (`cmake`/`ninja`/`python3`/`cc`) i podaja konkretne instrukcje instalacji.
+- STD-033f (SHOULD): instalatory korzystajace z git submodules uzywaja `git submodule update --init --recursive` i fail‑fast na bledach (chyba ze submoduly sa jawnie opcjonalne).
+- STD-033g (SHOULD): dla bardzo duzych repo stosuj shallow clone (`--depth`/`--filter=blob:none`) z fallback do pelnego fetch, gdy potrzebny konkretny commit.
 - STD-038 (SHOULD): operacje destrukcyjne oferuja `--dry-run`.
 - STD-039 (SHOULD): SIGINT/SIGTERM sprzataja procesy i pliki tymczasowe.
 - STD-043 (SHOULD): waliduj wymagania **warunkowo** od poziomu/trybu (np. level 0/1/2), nie wymuszaj danych dla wyzszych poziomow.
@@ -149,6 +151,9 @@ Przykład:
 - STD-106e (SHOULD): ustawiaj prawidlowe permissje kluczy SSH (private key `0600`, `authorized_keys`/`known_hosts` `0644`), inaczej ssh je zignoruje.
 - STD-106f (SHOULD): gdy `git` uzywa SSH, ustaw `GIT_SSH_COMMAND` z `BatchMode=yes`, `UserKnownHostsFile=...`, `StrictHostKeyChecking=...`; git nie dziedziczy opcji ssh z innych wywolan, więc brak tego moze blokowac CI.
 - STD-106g (SHOULD): preferuj ED25519/ECDSA; `ssh-rsa` jest dozwolone tylko jawnie (opcja `HostKeyAlgorithms`/`PubkeyAcceptedAlgorithms`) i musi byc logowane jako legacy.
+- STD-106h (SHOULD): ogranicz liczbe kluczy prezentowanych serwerowi (`IdentitiesOnly=yes` + `IdentityFile`), aby uniknac `Too many authentication failures`.
+- STD-106i (SHOULD): nie polegaj na `~/.ssh/config` uzytkownika w automacji; uzywaj `ssh -F /dev/null` lub jawnie nadpisuj opcje, i loguj kluczowe ustawienia.
+- STD-106j (SHOULD): wspieraj wymuszenie IPv4/IPv6 (`AddressFamily`/`-4`/`-6`) i loguj wybrana rodzine adresu.
 - STD-107 (SHOULD): parsowanie outputu narzedzi systemowych powinno wymuszac `LC_ALL=C` (lub `LANG=C`) albo uzywac trybu `--json`/`--output`, aby uniknac roznic locale.
 - STD-108 (SHOULD): unikaj `exec()` z domyslnym `maxBuffer`; uzywaj `spawn`/`execFile` lub ustaw `maxBuffer` i loguj przycinki outputu.
 - STD-109 (SHOULD): zawsze stosuj `--` przed listą sciezek w komendach zewnetrznych (rm/cp/rsync/scp), aby sciezki zaczynajace sie od `-` nie byly traktowane jako opcje.
@@ -232,6 +237,7 @@ Przykład:
 - STD-027l (SHOULD): lokalne patche do narzedzi sa jawnie logowane i sterowane ENV, a wersja patcha/flag wchodzi do stempla cache.
 - STD-027m (SHOULD): testy zalezne od funkcji kernela (cgroup/perf/ptrace) maja tryb strict (ENV), ktory zamienia SKIP na FAIL; w trybie domyslnym SKIP zawsze podaje instrukcje jak wymusic strict.
 - STD-027n (SHOULD): runner E2E loguje aktywny toolset (np. core/full), a testy/instalatory respektuja go (brak narzedzi w toolsecie = SKIP lub jawny FAIL w trybie strict).
+- STD-027s (SHOULD): wartosc `SEAL_E2E_TOOLSET` jest walidowana (allowlista), a nieznana wartosc daje FAIL lub wyrazny warning + fallback.
 - STD-027o (SHOULD): jesli `SEAL_E2E_CONFIG` jest ustawiony i plik nie istnieje lub nie jest czytelny, runner daje FAIL albo wyrazny warning + log fallback.
 - STD-027p (SHOULD): plik configu E2E jest parsowany jako `KEY=VALUE` (bez wykonywania kodu); jesli uzywasz `source`, sprawdz ownership/perms i blokuj world‑writable pliki.
 - STD-027q (SHOULD): cache narzedzi E2E ma bezpieczne perms/ownership (nie world‑writable); wykrycie niebezpiecznych perms = fail‑fast.
