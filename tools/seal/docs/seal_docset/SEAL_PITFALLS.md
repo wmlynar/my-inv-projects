@@ -121,6 +121,12 @@
 - Blad: `rsync` nie byl dostepny w PATH zdalnego, bo non‑interactive shell ladowal inne PATH niz interaktywny.
   - Wymaganie: preflight sprawdza `command -v rsync` na hoście zdalnym i/lub uzywa `--rsync-path=/usr/bin/rsync` (absolutna sciezka).
 
+- Blad: `rsync` byl uruchamiany przez `sudo` bez `-n`, co powodowalo wiszenie na promptach hasla.
+  - Wymaganie: dla `--rsync-path` uzywaj `sudo -n rsync` (albo NOPASSWD tylko dla rsync) i loguj ostrzezenie, gdy sudo nie jest dostepne.
+
+- Blad: serwer mial `ForceCommand internal-sftp` lub restricted shell, przez co `scp/rsync` failowaly mimo poprawnych kluczy.
+  - Wymaganie: wykrywaj tryb SFTP-only i oferuj fallback do `sftp` (lub jasny blad z instrukcja).
+
 - Blad: skrypty uzywaly niecytowanych zmiennych (`$VAR`), co powodowalo word‑splitting i globbing.
   - Wymaganie: kazda zmienna w shellu jest widocznie cytowana (`"$VAR"`), chyba ze jawnie potrzebny jest splitting.
 
@@ -556,6 +562,7 @@
   - Wymaganie: cache root musi byc zapisywalny i poza repo; brak zapisu = fail‑fast z instrukcja.
   - Wymaganie: weryfikuj, czy wspolny `node_modules`/symlink wskazuje na istniejący, zapisywalny katalog; inaczej rebuild lub fail‑fast z instrukcja.
   - Wymaganie: cache invaliduje sie po zmianie skryptow instalacyjnych lub wersji narzedzi; hash skryptow i wersji wchodzi do klucza cache.
+  - Wymaganie: wspoldzielony `node_modules` jest chroniony lockiem podczas `npm ci/install`, aby uniknac uszkodzen przy rownoleglych runach.
 
 - Blad: wspoldzielony cache E2E nie mial jawnego sposobu resetu i prowadzil do trudnych w debugowaniu falszywych "pass".
   - Wymaganie: skrypty maja flage/ENV do wymuszenia reinstall/flush cache i loguja aktywne ustawienia.
@@ -563,6 +570,9 @@
 - Blad: docker buildy korzystaly ze starych obrazow bazowych, bo `--pull` nie byl jawnie kontrolowany.
   - Wymaganie: tryb pull jest jawny (`--pull`/`--no-pull`) i logowany, a bazowy obraz jest identyfikowany po tagu/digescie.
   - Wymaganie: loguj tryb BuildKit (`DOCKER_BUILDKIT`) i `BUILDKIT_PROGRESS`, zeby uniknac roznic w cache i output.
+
+- Blad: `--network=host` nie jest wspierany na Docker Desktop/WSL, a skrypty zakladaly jego dostepnosc.
+  - Wymaganie: wykrywaj platforme/daemon i w razie braku wsparcia uzyj sieci domyslnej lub oznacz test jako SKIP z instrukcja.
 
 - Blad: skrypty zakladaly `docker compose` (plugin v2), a na hostach z `docker-compose` v1 testy nie startowaly.
   - Wymaganie: wykrywaj `docker compose` vs `docker-compose`, loguj wybrany binarny i wypisz instrukcje instalacji, gdy brak.
@@ -593,6 +603,9 @@
 - Blad: `npm ci/install` wisial przy problemach sieciowych (brak timeoutow lub zbyt dlugie retry).
   - Wymaganie: ustaw `NPM_CONFIG_FETCH_RETRIES`, `NPM_CONFIG_FETCH_TIMEOUT`, `NPM_CONFIG_FETCH_RETRY_MINTIMEOUT` i `NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT` w testach/CI.
   - Wymaganie: ustaw `NPM_CONFIG_LOGLEVEL=warn` (lub `error`) w CI, aby ograniczyc szum i przyspieszyc logi.
+
+- Blad: zmiany w domyslnym zachowaniu `npm` dla peer deps powodowaly losowe FAIL w zaleznosci od wersji.
+  - Wymaganie: jawnie ustaw `NPM_CONFIG_STRICT_PEER_DEPS` lub `NPM_CONFIG_LEGACY_PEER_DEPS` i loguj aktywna wartosc.
 
 - Blad: `NODE_ENV=production` podczas E2E powodowal pomijanie devDependencies i brak narzedzi testowych.
   - Wymaganie: dla instalacji testowych wymusz `NODE_ENV=development` lub `npm ci --include=dev`, a tryb instalacji loguj na starcie.
