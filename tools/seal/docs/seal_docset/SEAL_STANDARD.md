@@ -140,6 +140,7 @@ Przykład:
 - STD-047 (SHOULD): osadzone skrypty shellowe w template stringach musza escapowac `${` (np. `\\${VAR}`) oraz znak backtick, lub korzystac z bezpiecznego here-doc helpera, aby uniknac niezamierzonej interpolacji JS.
 - STD-048 (SHOULD): tymczasowe pliki z danymi wrazliwymi tworz przez `mkdtemp` + pliki `0600`, z unikalna nazwa i sprzataniem w `finally` (unikaj przewidywalnych nazw w `/tmp`).
 - STD-048a (SHOULD): tymczasowe pliki konfiguracyjne/transferowe nie moga miec przewidywalnych nazw (np. `/tmp/<service>-config.json5`); uzywaj `mktemp` i waliduj typ/owner przed uzyciem.
+- STD-048b (SHOULD): tymczasowe pliki z configiem (np. do diffu) sa usuwane po uzyciu; brak cleanup = FAIL w testach.
 - STD-049 (SHOULD): przy zapisie plikow krytycznych (zwl. jako root) ustaw `umask 077`, zapisuj do tmp + `fsync` + `rename`, a potem `fsync` katalogu.
 - STD-050 (SHOULD): nazwy plikow tymczasowych (szczegolnie na zdalnych hostach) musza miec losowy komponent; nie opieraj ich wylacznie na czasie (`Date.now()`).
 - STD-051 (SHOULD): kazda operacja, ktora tworzy tmp na hoście (lokalnym lub zdalnym), musi sprzatac je w `finally`/`trap` (usun takze `*.tmp` po nieudanym zapisie).
