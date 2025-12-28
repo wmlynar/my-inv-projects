@@ -110,6 +110,7 @@ Przykład:
 - STD-031 (SHOULD): brak sudo domyslnie; eskalacja tylko jawnie. Waliduj owner/perms/umask w punktach krytycznych.
 - STD-031a (SHOULD): komendy wymagajace `sudo` w trybie nieinteraktywnym uzywaja `sudo -n` i fail‑fast z instrukcja (brak wiszenia na promptach).
 - STD-031b (SHOULD): gdy `sudo` jest konieczne, przekazuj wymagane ENV jawnie (`sudo -E` lub `sudo VAR=...`) i loguj kluczowe zmienne, aby uniknac rozjazdow zachowania.
+- STD-031c (SHOULD): preferuj allowliste zmiennych przekazywanych do `sudo` (`sudo VAR=...`) zamiast pelnego `sudo -E`, aby ograniczyc niekontrolowany ENV.
 - STD-033 (SHOULD): operacje zewnetrzne (ssh/scp/rsync/http) maja timeout i komunikat "co dalej".
 - STD-033a (SHOULD): pobieranie przez `curl`/`wget` uzywa `--fail` + timeoutów (`--connect-timeout`, `--max-time`) i limitu retry; brak odpowiedzi = fail‑fast.
 - STD-033b (SHOULD): `rsync` uruchamiaj z `--timeout` (limit bez aktywnosci) oraz globalnym timeoutem procesu.
@@ -168,6 +169,7 @@ Przykład:
 - STD-106q (SHOULD): limituj rownoleglosc polaczen SSH lub stosuj retry/backoff, aby uniknac limitow `MaxStartups`/`MaxSessions`; w kontrolowanych srodowiskach zwieksz limity serwera.
 - STD-106r (SHOULD): preflight sprawdza dostepnosc SFTP (`ssh -s sftp`) i raportuje brak `Subsystem sftp`/`sftp-server` z instrukcja instalacji.
 - STD-106s (SHOULD): wykrywaj `requiretty` w `sudo` na hoście i podawaj instrukcje wylaczenia; `ssh -tt` tylko awaryjnie i jawnie logowane.
+- STD-106t (SHOULD): unikaj ukrytych promptow SSH: ustaw `PreferredAuthentications=publickey` oraz `KbdInteractiveAuthentication=no`/`PasswordAuthentication=no` w automacji.
 - STD-107 (SHOULD): parsowanie outputu narzedzi systemowych powinno wymuszac `LC_ALL=C` (lub `LANG=C`) albo uzywac trybu `--json`/`--output`, aby uniknac roznic locale.
 - STD-108 (SHOULD): unikaj `exec()` z domyslnym `maxBuffer`; uzywaj `spawn`/`execFile` lub ustaw `maxBuffer` i loguj przycinki outputu.
 - STD-109 (SHOULD): zawsze stosuj `--` przed listą sciezek w komendach zewnetrznych (rm/cp/rsync/scp), aby sciezki zaczynajace sie od `-` nie byly traktowane jako opcje.
@@ -741,6 +743,7 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-292 (SHOULD): komunikaty rozrozniaja DNS/timeout/TLS.
 - STD-293 (SHOULD): wylaczenie TLS verify to opt‑in z ostrzezeniem.
 - STD-294 (SHOULD): uzycie proxy z ENV tylko gdy jawnie dozwolone.
+- STD-294a (SHOULD): lokalne/loopback HTTP checki musza omijac proxy niezaleznie od ENV (ustaw `NO_PROXY` i `no_proxy`, a dla `curl` dodaj `--noproxy "*"` lub whitelist).
 - STD-295 (SHOULD): limituj redirecty i loguj finalny URL.
 - STD-296 (SHOULD): sockety HTTP maja timeout/cleanup (brak wyciekow).
 - STD-297 (SHOULD): polaczenia dlugie maja heartbeat/ping + timeout.

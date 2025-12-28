@@ -68,6 +68,7 @@
 - Blad: narzedzia zewnetrzne (git/ssh/rsync) prosily o haslo/hostkey i testy/deploy wisialy bez wyjscia.
   - Wymaganie: ustaw `GIT_TERMINAL_PROMPT=0`, `GIT_ASKPASS=/bin/false`, `SSH_ASKPASS=/bin/false`.
   - Wymaganie: `ssh/scp/rsync` uruchamiaj z `BatchMode=yes` i timeoutem (`ConnectTimeout`, `ServerAliveInterval`).
+  - Wymaganie: wylacz `KbdInteractiveAuthentication`/`PasswordAuthentication` lub wymus `PreferredAuthentications=publickey`, aby unikac ukrytych promptow.
 
 - Blad: polecenia z `sudo` w trybie nieinteraktywnym wisialy na promptach hasla.
   - Wymaganie: uzywaj `sudo -n` (fail‑fast bez promptu) i wypisz instrukcje, gdy brak uprawnien.
@@ -75,6 +76,7 @@
   - Wymaganie: przy długich runach odświeżaj `sudo -v` w tle albo wymagaj jednorazowej autoryzacji przed startem.
 - Blad: `sudo` uruchamiane bez zachowania ENV gubilo krytyczne zmienne (np. `SEAL_*`, `NPM_*`), co zmienialo zachowanie testow.
   - Wymaganie: przekazuj wymagane ENV jawnie (`sudo -E` lub `sudo VAR=...`) i loguj kluczowe zmienne na starcie.
+  - Wymaganie: preferuj allowliste zmiennych (`sudo VAR=...`) zamiast pelnego `sudo -E`, aby nie wprowadzac nieprzewidzianych wartosci.
 
 - Blad: `curl`/`wget` bez timeoutow i `--fail` potrafil wisiec lub ignorowac HTTP error.
   - Wymaganie: pobieranie z sieci musi miec timeout (`--connect-timeout`, `--max-time`) i `--fail`/`--show-error`, plus ograniczone retry.
@@ -1613,6 +1615,8 @@
 - Blad: proxy z ENV bylo uzywane mimo braku zgody.
   - Wymaganie: proxy tylko gdy jawnie wlaczone w configu.
   - Wymaganie: gdy proxy jest wlaczone, ustaw `NO_PROXY` dla `localhost,127.0.0.1,::1` i loguj efektywne wartosci proxy.
+- Blad: lokalne health‑checki (`curl`/`wget`) przechodzily przez proxy mimo `NO_PROXY`, bo brakowalo `no_proxy` lub `curl --noproxy`, co dawalo false‑negative.
+  - Wymaganie: dla checkow loopback ustawiaj `NO_PROXY` i `no_proxy`, a dla `curl` dodawaj `--noproxy "*"` (lub whitelist), aby ominac proxy niezaleznie od ENV.
 - Blad: redirecty bez limitu mogly zawiesic request.
   - Wymaganie: limituj redirecty i loguj finalny URL.
 - Blad: polaczenia HTTP nie byly domykane i wyciekaly.
