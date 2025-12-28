@@ -349,6 +349,7 @@ async function main() {
 
   const tests = [
     { profile: "none", passes: 1, run: false, frontendObfuscation: false },
+    { profile: "test-fast", passes: 4, run: false },
     { profile: "minimal", passes: 1, run: false },
     { profile: "balanced", passes: 2, run: false },
     { profile: "strict", passes: 3, run: true },

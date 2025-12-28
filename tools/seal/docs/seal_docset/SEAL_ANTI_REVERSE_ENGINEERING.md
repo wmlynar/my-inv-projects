@@ -122,7 +122,7 @@ Poniżej „gruby” opis zabezpieczeń w SEAL, warstwa po warstwie. To są **wa
 
 **G. Obfuskacja i minify kodu JS**
 - Backend: `build.backendMinify` (esbuild), następnie `build.backendTerser` (minify + inline), potem obfuskacja JS (`build.obfuscationProfile`).  
-  Profile `minimal/balanced/strict/max` sterują m.in. DCI, renameGlobals, poziomem inliningu; string‑obfuscation jest wyłączona, a CFF wyłączone (ryzyko regresji).
+  Profile `none/minimal/balanced/strict/max/test-fast` sterują m.in. DCI, renameGlobals, poziomem inliningu; string‑obfuscation jest wyłączona, a CFF wyłączone (ryzyko regresji).
 - Frontend: `build.frontendObfuscation` (JS w `public/`) + `build.frontendMinify` (HTML/CSS/JS).
 
 **H. Obfuskacja stringów w C/C++ (manualna)**
@@ -140,7 +140,7 @@ Podprofile obfuskacji:
 - `build.obfuscationProfile` (backend JS)
 - `build.frontendObfuscation.profile` (frontend JS)
 
-Jeśli `obfuscationProfile` nie jest ustawione, dziedziczy poziom z `securityProfile`.
+Jeśli `obfuscationProfile` nie jest ustawione, dziedziczy poziom z `securityProfile`. Dodatkowo możesz ustawić `none` (pomija obfuskację) lub `test-fast` (eksperymentalny).
 Frontend **nie** dziedziczy profilu z backendu — ma własny profil (domyślnie `balanced`).
 
 **Mapa profili (skrót):**
@@ -316,7 +316,7 @@ Uwagi:
 #### 2.12.12 Obfuskacja i minify backendu JS
 - Jak działa: `esbuild` (bundle + minify), opcjonalnie Terser (mangle/inline), potem `javascript-obfuscator`.
 - Chroni przed: łatwą analizą kodu JS i prostymi wzorcami (np. nazwami funkcji).
-- Implementacja: `build.backendMinify`, `build.backendTerser`, `build.obfuscationProfile` (`minimal/balanced/strict/max`); CFF jest wyłączone.
+- Implementacja: `build.backendMinify`, `build.backendTerser`, `build.obfuscationProfile` (`none/minimal/balanced/strict/max/test-fast`); CFF jest wyłączone.
 
 #### 2.12.13 Obfuskacja/minify frontendu
 - Jak działa: obfuskacja każdego pliku `public/*.js`, minify HTML/CSS/JS.
