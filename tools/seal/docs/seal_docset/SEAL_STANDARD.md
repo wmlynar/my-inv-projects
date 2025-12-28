@@ -128,6 +128,7 @@ Przykład:
 - STD-033g (SHOULD): dla bardzo duzych repo stosuj shallow clone (`--depth`/`--filter=blob:none`) z fallback do pelnego fetch, gdy potrzebny konkretny commit.
 - STD-033h (SHOULD): parser lockfile narzedzi normalizuje CRLF/BOM/whitespace i waliduje skladnie; duplikaty sekcji i nieznane klucze = fail‑fast z lista problemow.
 - STD-033i (SHOULD): nazwy narzedzi/binarek w lockfile sa walidowane jako bezpieczne basename (bez `/`, `..`, whitespace; tylko `[a-zA-Z0-9_.-]`).
+- STD-033j (SHOULD): preflight dla deployu SSH sprawdza obecność `tar`/`gzip` (wsparcie `-z`/`-tzf`) na hoście zdalnym; brak = fail‑fast z instrukcja.
 - STD-038 (SHOULD): operacje destrukcyjne oferuja `--dry-run`.
 - STD-039 (SHOULD): SIGINT/SIGTERM sprzataja procesy i pliki tymczasowe.
 - STD-043 (SHOULD): waliduj wymagania **warunkowo** od poziomu/trybu (np. level 0/1/2), nie wymuszaj danych dla wyzszych poziomow.
