@@ -223,6 +223,7 @@
   - Wymaganie: nieznana wartosc (literowka) = fail-fast z sugestia "did you mean".
   - Wymaganie: aliasy/zmiany nazw sa jawne (deprecation warning) i mapowane do kanonicznej wartosci.
   - Wymaganie: w logach/testach uzywaj tylko kanonicznych nazw; aliasy sa dozwolone tylko w parserze wejscia.
+  - Wymaganie: auto‑korekta tylko gdy dopasowanie jest jednoznaczne; w innych przypadkach fail‑fast z lista poprawnych wartosci.
 
 - Blad: brak jawnej macierzy kompatybilnosci packager <-> opcje ochrony prowadzil do ad-hoc wylaczen lub cichego ignorowania opcji.
   - Wymaganie: jedna macierz kompatybilnosci (packager/opcja/narzedzie) + normalizacja configu.
@@ -476,12 +477,16 @@
   - Wymaganie: cache root jest jawny (nie zalezy od `HOME` root/user) i logowany na starcie testu.
   - Wymaganie: cache kluczuj dodatkowo po `node` major, `npm` major i `os+arch`, zeby uniknac ABI mismatch w `node_modules`.
   - Wymaganie: cache root musi byc zapisywalny i poza repo; brak zapisu = fail‑fast z instrukcja.
+  - Wymaganie: weryfikuj, czy wspolny `node_modules`/symlink wskazuje na istniejący, zapisywalny katalog; inaczej rebuild lub fail‑fast z instrukcja.
 
 - Blad: wspoldzielony cache E2E nie mial jawnego sposobu resetu i prowadzil do trudnych w debugowaniu falszywych "pass".
   - Wymaganie: skrypty maja flage/ENV do wymuszenia reinstall/flush cache i loguja aktywne ustawienia.
 
 - Blad: rozne entrypointy E2E mialy inne defaulty (cache, parallel), co utrudnialo reprodukcje miedzy lokalnym i dockerowym uruchomieniem.
   - Wymaganie: jeden publiczny entrypoint ustawia wspolne domyslne wartosci i jest jedynym rekomendowanym sposobem uruchomienia; pozostale skrypty sa wewnetrzne.
+
+- Blad: rownolegle uruchomienia E2E probowaly instalowac globalne narzedzia (packery/obfuscatory) jednoczesnie, co powodowalo wyscigi i uszkodzenia.
+  - Wymaganie: instalatory narzedzi globalnych uzywaja locka (np. `flock` na cache) i czekaja/skipuja, gdy instalacja juz trwa.
 
 - Blad: `npm install` w CI modyfikowal lockfile i wprowadzał drift wersji.
   - Wymaganie: w CI/E2E preferuj `npm ci` (deterministyczny), a `npm install` tylko lokalnie.
@@ -632,6 +637,7 @@
 - Blad: testy dockerowe uruchamialy sie na innym Docker context/daemon, co dawalo inne obrazy i cache i mylilo wyniki.
   - Wymaganie: skrypty loguja `docker context show` i `docker info` (server), a uruchomienie moze wskazac jawny context (`DOCKER_CONTEXT=`).
   - Wymaganie: loguj identyfikatory obrazow (`docker image inspect --format '{{.Id}}'`) i wersje obrazu/testu, zeby nie uruchamiac "starych" buildow.
+  - Wymaganie: bind‑mounty z hosta nie moga tworzyc root‑owned artefaktow w repo; uzywaj cache poza repo lub uruchamiaj kontener z mapowanym UID/GID.
 
 - Blad: rownolegle uruchomienia E2E kolidowaly na wspolnych nazwach uslug/plikach (`current.buildId`, instalacje), co dawalo flakey wyniki.
   - Wymaganie: testy musza byc bezpieczne dla rownoleglego uruchomienia (unikalne nazwy uslug, unikalne installDir, izolowane temp rooty).
