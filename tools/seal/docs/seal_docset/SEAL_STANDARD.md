@@ -192,6 +192,7 @@ Przykład:
 - STD-119 (SHOULD): retry maja limit prób i limit czasu całkowitego (brak nieskończonych pętli), z logowaniem liczby prób.
 - STD-120 (SHOULD): lockfile zawiera PID+timestamp; stale locki sa wykrywane i bezpiecznie czyszczone.
 - STD-121 (SHOULD): skrypty zawierajace bash‑isms musza byc uruchamiane przez `bash` jawnie (nie domyslny `sh`).
+- STD-121a (SHOULD): zdalne skrypty uruchamiane przez SSH nie zakladaja obecnosci `bash`; preferuj `/bin/sh -lc` albo preflightuj `bash` i fail‑fast z instrukcja.
 - STD-122 (SHOULD): destrukcyjne kasowanie katalogow odbywa sie przez helper z walidacja niepustej sciezki i `realpath` w dozwolonym root.
 - STD-123 (SHOULD): w skryptach z `set -e` operacje typu `grep`/`diff` musza miec jawne sprawdzenie exit code (1 = brak dopasowania) zamiast przerywac skrypt.
 - STD-124 (SHOULD): nie parsuj `ls`; do list plikow uzywaj `find -print0`/`xargs -0` lub globbing z `nullglob`, aby uniknac bledow na spacjach/pustych katalogach.

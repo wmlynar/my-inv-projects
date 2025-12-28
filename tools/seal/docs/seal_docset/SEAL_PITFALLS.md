@@ -111,6 +111,8 @@
 
 - Blad: server wypisywal banner/MOTD lub `.bashrc` emitowal output w trybie non‑interactive, przez co `scp/rsync` failowaly.
   - Wymaganie: dla transferow uzywaj `ssh -T` (bez TTY) i wymagaj ciszy w non‑interactive shellu (guard `if [ -z "$PS1" ]` w `.bashrc`).
+- Blad: zdalne skrypty byly uruchamiane przez `bash -lc`, a target nie mial `bash` (tylko `/bin/sh`), co blokowalo deploy.
+  - Wymaganie: preferuj `/bin/sh -lc` dla zdalnych skryptow; jesli wymagany jest `bash`, preflight sprawdza jego obecność i daje jasny blad z instrukcja.
 
 - Blad: fallback do `sftp` nie dzialal, bo brakowalo `Subsystem sftp`/`sftp-server` na serwerze.
   - Wymaganie: preflight sprawdza dostepnosc SFTP (np. `ssh -s sftp`) i podaje instrukcje instalacji/konfiguracji.
