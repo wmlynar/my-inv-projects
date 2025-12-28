@@ -103,11 +103,23 @@
 - Blad: `~/.ssh/config` uzytkownika zmienial zachowanie (ProxyJump/ControlMaster/GSSAPI) i psul deterministycznosc deployu/testow.
   - Wymaganie: uzywaj `ssh -F /dev/null` lub jawnie nadpisuj opcje w `-o ...`; loguj kluczowe opcje SSH.
 
+- Blad: server wypisywal banner/MOTD lub `.bashrc` emitowal output w trybie non‑interactive, przez co `scp/rsync` failowaly.
+  - Wymaganie: dla transferow uzywaj `ssh -T` (bez TTY) i wymagaj ciszy w non‑interactive shellu (guard `if [ -z "$PS1" ]` w `.bashrc`).
+
+- Blad: `ControlMaster`/`ControlPath` uzywal zbyt dlugiej sciezki lub zostawial stale sockety, co psulo kolejne polaczenia.
+  - Wymaganie: jesli uzywasz multiplexingu, ustaw krotki `ControlPath` w temp i sprzataj stale sockety; w razie problemow wylacz `ControlMaster`.
+
 - Blad: nowe OpenSSH wylaczalo `ssh-rsa`, a serwer wspieral tylko stare algorytmy (polaczenie failowalo bez jasnego powodu).
   - Wymaganie: preferuj ED25519/ECDSA; dla legacy serwerow wymagaj jawnego opt-in (`HostKeyAlgorithms`/`PubkeyAcceptedAlgorithms`) z ostrzezeniem w logach.
 
+- Blad: `StrictHostKeyChecking=accept-new` nie bylo wspierane w starszym OpenSSH i powodowalo fail.
+  - Wymaganie: wykryj wersje OpenSSH i fallbackuj do `yes`/preseed `known_hosts`, zamiast uzywac nieobslugiwanej opcji.
+
 - Blad: DNS zwracal IPv6, a srodowisko nie mialo routingu IPv6, co dawalo dlugie time‑outy przy SSH.
   - Wymaganie: wspieraj wymuszenie IPv4 (`-4`/`AddressFamily=inet`) i loguj wybrana rodzine adresu.
+
+- Blad: `rsync` nie byl dostepny w PATH zdalnego, bo non‑interactive shell ladowal inne PATH niz interaktywny.
+  - Wymaganie: preflight sprawdza `command -v rsync` na hoście zdalnym i/lub uzywa `--rsync-path=/usr/bin/rsync` (absolutna sciezka).
 
 - Blad: skrypty uzywaly niecytowanych zmiennych (`$VAR`), co powodowalo word‑splitting i globbing.
   - Wymaganie: kazda zmienna w shellu jest widocznie cytowana (`"$VAR"`), chyba ze jawnie potrzebny jest splitting.
@@ -297,6 +309,12 @@
 
 - Blad: instalatory narzedzi (np. z lockfile) probowaly budowac bez wymaganych narzedzi builda (`cmake`/`ninja`/`python3`), a blad byl nieczytelny.
   - Wymaganie: installer preflightuje wymagane build deps i podaje konkretne instrukcje instalacji (pakiety).
+
+- Blad: parser lockfile narzedzi byl wrazliwy na CRLF/BOM lub niestandardowe biale znaki, co psulo odczyt sekcji i powodowalo "brakujace" narzedzia.
+  - Wymaganie: parser lockfile normalizuje CRLF/BOM, trimuje whitespace i jasno raportuje bledy skladni.
+
+- Blad: lockfile zawieral duplikaty sekcji narzedzi lub nieznane klucze, a parser je cicho ignorowal (last‑wins), co dawalo niedeterministyczne buildy.
+  - Wymaganie: wykrywaj duplikaty i nieznane klucze w lockfile; fail‑fast z lista problemow.
 
 - Blad: submodule update w installerach byl ignorowany (`|| true`), co zostawialo niekompletny repo i dawalo pozniejsze, nieczytelne bledy.
   - Wymaganie: `git submodule update --init --recursive` musi fail‑fast (lub jawny SKIP z powodem, jesli submoduly sa opcjonalne).

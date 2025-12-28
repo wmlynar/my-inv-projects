@@ -116,6 +116,7 @@ Przykład:
 - STD-033d (SHOULD): instalatory narzedzi buildowanych ze zrodel preflightuja wymagane zaleznosci (`cmake`/`ninja`/`python3`/`cc`) i podaja konkretne instrukcje instalacji.
 - STD-033f (SHOULD): instalatory korzystajace z git submodules uzywaja `git submodule update --init --recursive` i fail‑fast na bledach (chyba ze submoduly sa jawnie opcjonalne).
 - STD-033g (SHOULD): dla bardzo duzych repo stosuj shallow clone (`--depth`/`--filter=blob:none`) z fallback do pelnego fetch, gdy potrzebny konkretny commit.
+- STD-033h (SHOULD): parser lockfile narzedzi normalizuje CRLF/BOM/whitespace i waliduje skladnie; duplikaty sekcji i nieznane klucze = fail‑fast z lista problemow.
 - STD-038 (SHOULD): operacje destrukcyjne oferuja `--dry-run`.
 - STD-039 (SHOULD): SIGINT/SIGTERM sprzataja procesy i pliki tymczasowe.
 - STD-043 (SHOULD): waliduj wymagania **warunkowo** od poziomu/trybu (np. level 0/1/2), nie wymuszaj danych dla wyzszych poziomow.
@@ -154,6 +155,10 @@ Przykład:
 - STD-106h (SHOULD): ogranicz liczbe kluczy prezentowanych serwerowi (`IdentitiesOnly=yes` + `IdentityFile`), aby uniknac `Too many authentication failures`.
 - STD-106i (SHOULD): nie polegaj na `~/.ssh/config` uzytkownika w automacji; uzywaj `ssh -F /dev/null` lub jawnie nadpisuj opcje, i loguj kluczowe ustawienia.
 - STD-106j (SHOULD): wspieraj wymuszenie IPv4/IPv6 (`AddressFamily`/`-4`/`-6`) i loguj wybrana rodzine adresu.
+- STD-106k (SHOULD): transfery `scp/rsync` wymagaja „czystego” non‑interactive SSH; uzywaj `-T` i zapewnij brak bannerow/MOTD w shellu non‑interactive.
+- STD-106l (SHOULD): jesli uzywasz `ControlMaster`, ustaw krotki `ControlPath` w temp i sprzataj stale sockety; w razie problemow wylacz multiplexing.
+- STD-106m (SHOULD): wykrywaj wersje OpenSSH i nie uzywaj `StrictHostKeyChecking=accept-new` tam, gdzie opcja nie jest wspierana; fallback do `yes` + preseed `known_hosts`.
+- STD-106n (SHOULD): preflight sprawdza dostepnosc `rsync` na hoście zdalnym (`command -v`); w razie potrzeby uzyj `--rsync-path` z absolutna sciezka.
 - STD-107 (SHOULD): parsowanie outputu narzedzi systemowych powinno wymuszac `LC_ALL=C` (lub `LANG=C`) albo uzywac trybu `--json`/`--output`, aby uniknac roznic locale.
 - STD-108 (SHOULD): unikaj `exec()` z domyslnym `maxBuffer`; uzywaj `spawn`/`execFile` lub ustaw `maxBuffer` i loguj przycinki outputu.
 - STD-109 (SHOULD): zawsze stosuj `--` przed listą sciezek w komendach zewnetrznych (rm/cp/rsync/scp), aby sciezki zaczynajace sie od `-` nie byly traktowane jako opcje.
