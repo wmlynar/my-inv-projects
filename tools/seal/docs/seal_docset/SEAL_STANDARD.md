@@ -111,6 +111,7 @@ Przykład:
 - STD-033 (SHOULD): operacje zewnetrzne (ssh/scp/rsync/http) maja timeout i komunikat "co dalej".
 - STD-033a (SHOULD): pobieranie przez `curl`/`wget` uzywa `--fail` + timeoutów (`--connect-timeout`, `--max-time`) i limitu retry; brak odpowiedzi = fail‑fast.
 - STD-033b (SHOULD): `rsync` uruchamiaj z `--timeout` (limit bez aktywnosci) oraz globalnym timeoutem procesu.
+- STD-033e (SHOULD): loguj `rsync --version` po obu stronach i fail‑fast, gdy wymagane flagi nie sa wspierane (z instrukcja aktualizacji).
 - STD-033c (SHOULD): instalatory narzedzi zewnetrznych pinuja tag/commit, loguja wersje/commit i w miare mozliwosci weryfikuja checksumy; w razie braku zrodla wspieraja mirror/backup.
 - STD-033d (SHOULD): instalatory narzedzi buildowanych ze zrodel preflightuja wymagane zaleznosci (`cmake`/`ninja`/`python3`/`cc`) i podaja konkretne instrukcje instalacji.
 - STD-038 (SHOULD): operacje destrukcyjne oferuja `--dry-run`.
@@ -147,6 +148,7 @@ Przykład:
 - STD-106d (SHOULD): w testach/CI uzywaj tymczasowego `UserKnownHostsFile`, aby uniknac konfliktow hostkey miedzy uruchomieniami.
 - STD-106e (SHOULD): ustawiaj prawidlowe permissje kluczy SSH (private key `0600`, `authorized_keys`/`known_hosts` `0644`), inaczej ssh je zignoruje.
 - STD-106f (SHOULD): gdy `git` uzywa SSH, ustaw `GIT_SSH_COMMAND` z `BatchMode=yes`, `UserKnownHostsFile=...`, `StrictHostKeyChecking=...`; git nie dziedziczy opcji ssh z innych wywolan, więc brak tego moze blokowac CI.
+- STD-106g (SHOULD): preferuj ED25519/ECDSA; `ssh-rsa` jest dozwolone tylko jawnie (opcja `HostKeyAlgorithms`/`PubkeyAcceptedAlgorithms`) i musi byc logowane jako legacy.
 - STD-107 (SHOULD): parsowanie outputu narzedzi systemowych powinno wymuszac `LC_ALL=C` (lub `LANG=C`) albo uzywac trybu `--json`/`--output`, aby uniknac roznic locale.
 - STD-108 (SHOULD): unikaj `exec()` z domyslnym `maxBuffer`; uzywaj `spawn`/`execFile` lub ustaw `maxBuffer` i loguj przycinki outputu.
 - STD-109 (SHOULD): zawsze stosuj `--` przed listą sciezek w komendach zewnetrznych (rm/cp/rsync/scp), aby sciezki zaczynajace sie od `-` nie byly traktowane jako opcje.
@@ -154,6 +156,7 @@ Przykład:
 - STD-111 (SHOULD): skrypty shellowe uruchamiane zdalnie zaczynaja sie od `set -euo pipefail`, aby bledy w pipeline nie byly ukryte.
 - STD-111a (SHOULD): instalatory systemowe (apt/dpkg) uruchamiaj w trybie nieinteraktywnym (`DEBIAN_FRONTEND=noninteractive`, `TZ=UTC`, `apt-get -y`); brak trybu non‑interactive = fail‑fast.
 - STD-111b (SHOULD): gdy uzywasz `tee`/pipeline z `pipefail`, obsłuż SIGPIPE (np. kontrola `PIPESTATUS` lub lokalne wyłączenie `pipefail`), aby nie failować na zamkniętym odbiorcy.
+- STD-111c (SHOULD): jesli uzywasz `pipefail`, uruchamiaj skrypt przez `bash` albo sprawdz wsparcie i ustawiaj `pipefail` warunkowo (dash tego nie obsluguje).
 - STD-112 (SHOULD): dla synchronizacji katalogow przez rsync stosuj jawna semantyke trailing slash (sync zawartosci vs katalogu) i pokryj to testem.
 - STD-113 (SHOULD): parser JSON/JSON5 usuwa BOM i normalizuje CRLF (unikaj bledow na plikach z Windows).
 - STD-114 (SHOULD): tmp dla operacji atomowych jest tworzony w tym samym katalogu/FS co plik docelowy (unikaj `EXDEV`).

@@ -49,6 +49,9 @@
 - Blad: skrypty shellowe nie mialy `set -euo pipefail`, przez co ukrywaly bledy w pipeline.
   - Wymaganie: kazdy skrypt zdalny/produkcyjny zaczyna sie od `set -euo pipefail`.
 
+- Blad: `pipefail` bylo uzywane pod `/bin/sh` (dash) i skrypt nie startowal (`set: Illegal option -o pipefail`).
+  - Wymaganie: jesli uzywasz `pipefail`, uruchamiaj skrypt przez `bash` albo sprawdz wsparcie i ustawiaj `pipefail` warunkowo.
+
 - Blad: pipeline z `tee` przerywal testy (SIGPIPE) gdy odbiorca zamknal stdout, a `pipefail` traktowal to jako błąd.
   - Wymaganie: przy `tee` obsłuż SIGPIPE (np. `set +o pipefail` dla tej linii lub kontrola `PIPESTATUS`), aby unikac fałszywych porażek.
 
@@ -79,6 +82,9 @@
 - Blad: `rsync` bez timeoutu potrafil wisiec na zerwanym polaczeniu.
   - Wymaganie: uzywaj `--timeout` w `rsync` (sekundy bez aktywnosci) oraz jawny limit czasu calkowitego.
 
+- Blad: lokalny i zdalny `rsync` mialy rozne wersje, przez co wybrane flagi nie byly wspierane i deploy failowal.
+  - Wymaganie: loguj `rsync --version` po obu stronach i fail-fast, gdy wymagane flagi nie sa wspierane (z instrukcja aktualizacji).
+
 - Blad: `git` korzystajacy z SSH nie dziedziczyl opcji nieinteraktywnych (BatchMode/known_hosts), co blokowalo CI.
   - Wymaganie: ustaw `GIT_SSH_COMMAND="ssh -o BatchMode=yes -o UserKnownHostsFile=... -o StrictHostKeyChecking=accept-new"` w testach/CI.
 
@@ -90,6 +96,9 @@
 
 - Blad: zbyt liberalne uprawnienia na kluczach SSH powodowaly `unprotected private key file` i brak polaczenia.
   - Wymaganie: klucze prywatne `0600`, `authorized_keys`/`known_hosts` `0644`.
+
+- Blad: nowe OpenSSH wylaczalo `ssh-rsa`, a serwer wspieral tylko stare algorytmy (polaczenie failowalo bez jasnego powodu).
+  - Wymaganie: preferuj ED25519/ECDSA; dla legacy serwerow wymagaj jawnego opt-in (`HostKeyAlgorithms`/`PubkeyAcceptedAlgorithms`) z ostrzezeniem w logach.
 
 - Blad: skrypty uzywaly niecytowanych zmiennych (`$VAR`), co powodowalo word‑splitting i globbing.
   - Wymaganie: kazda zmienna w shellu jest widocznie cytowana (`"$VAR"`), chyba ze jawnie potrzebny jest splitting.
