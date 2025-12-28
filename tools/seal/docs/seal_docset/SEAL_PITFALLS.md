@@ -474,6 +474,8 @@
   - Wymaganie: docker E2E mapuje trwale volume-y dla `node_modules` i `~/.npm`, a domyslny katalog cache jest spojny we wszystkich entrypointach (skrypty + docker-compose).
   - Wymaganie: cache jest kluczowany po lockfile/konfiguracji i loguje decyzje "fresh vs reuse".
   - Wymaganie: cache root jest jawny (nie zalezy od `HOME` root/user) i logowany na starcie testu.
+  - Wymaganie: cache kluczuj dodatkowo po `node` major, `npm` major i `os+arch`, zeby uniknac ABI mismatch w `node_modules`.
+  - Wymaganie: cache root musi byc zapisywalny i poza repo; brak zapisu = fail‑fast z instrukcja.
 
 - Blad: wspoldzielony cache E2E nie mial jawnego sposobu resetu i prowadzil do trudnych w debugowaniu falszywych "pass".
   - Wymaganie: skrypty maja flage/ENV do wymuszenia reinstall/flush cache i loguja aktywne ustawienia.
@@ -502,6 +504,9 @@
 - Blad: uruchomienie testow przez `sudo` uzywalo innej wersji Node (np. systemowej) niz wymaganej, co konczylo sie `MODULE_NOT_FOUND` lub regresjami.
   - Wymaganie: testy loguja `node -v` + `which node` na starcie i fail‑fast, gdy wersja < wymaganej.
   - Wymaganie: przy `sudo` uzywaj `sudo -E` lub absolutnej sciezki do `node`, aby nie tracic wersji z nvm/asdf.
+
+- Blad: brak informacji o wersji kodu uruchomionego w E2E (commit/dirty) utrudnial odtwarzanie bledow.
+  - Wymaganie: testy loguja `git rev-parse HEAD` i `git status --porcelain` (lub "no git"), razem z OS/arch.
 
 - Blad: test uruchomiony z innego CWD nie znajdowal skryptow (relative path), co dawalo `MODULE_NOT_FOUND`.
   - Wymaganie: skrypty E2E wyznaczaja repo root wzgledem `__dirname` i dzialaja niezaleznie od CWD.
@@ -616,6 +621,7 @@
 
 - Blad: testy dockerowe uruchamialy sie na innym Docker context/daemon, co dawalo inne obrazy i cache i mylilo wyniki.
   - Wymaganie: skrypty loguja `docker context show` i `docker info` (server), a uruchomienie moze wskazac jawny context (`DOCKER_CONTEXT=`).
+  - Wymaganie: loguj identyfikatory obrazow (`docker image inspect --format '{{.Id}}'`) i wersje obrazu/testu, zeby nie uruchamiac "starych" buildow.
 
 - Blad: rownolegle uruchomienia E2E kolidowaly na wspolnych nazwach uslug/plikach (`current.buildId`, instalacje), co dawalo flakey wyniki.
   - Wymaganie: testy musza byc bezpieczne dla rownoleglego uruchomienia (unikalne nazwy uslug, unikalne installDir, izolowane temp rooty).
@@ -690,6 +696,12 @@
 - Blad: `systemtap`/`lttng`/`sysdig` zwracaly “not supported / no debuginfo” (brak modulow/headers).
   - Wymaganie: na hoście testowym musza byc kernel headers + debug packages + możliwość ładowania modułów; w kontenerach bez tego traktuj jako SKIP z jasnym powodem.
 
+- Blad: SELinux/lockdown blokowaly `ptrace`/`perf` mimo poprawnej konfiguracji narzędzi.
+  - Wymaganie: loguj stan SELinux (`getenforce`) i tryb lockdown; w srodowiskach certyfikacyjnych ustaw permissive lub jawnie akceptuj SKIP.
+
+- Blad: `mlock`/memlock nie dzialal przez niski limit `ulimit -l`, co psulo testy ochron pamięci.
+  - Wymaganie: na maszynie testowej ustaw odpowiednio wysoki limit `memlock` (ulimit lub systemd unit).
+
 - Blad: `auditctl`/`auditd` nie byly dostępne lub brakowalo CAP_AUDIT_CONTROL, przez co testy mogly byc puste.
   - Wymaganie: na maszynie testowej zainstaluj i uruchom `auditd` oraz loguj, czy `auditctl` dziala; w kontenerze bez capów oznacz SKIP.
 
@@ -698,6 +710,9 @@
 
 - Blad: `bpftrace` nie dzialal (brak BTF / eBPF) i testy zwracaly “unsupported”.
   - Wymaganie: kernel musi miec BTF (`/sys/kernel/btf/vmlinux`) i eBPF; loguj `kernel.unprivileged_bpf_disabled` i wersje kernela.
+
+- Blad: brak wsparcia kernelowego dla memfd seals/MADV_* powodował nieoczekiwane SKIP.
+  - Wymaganie: w środowisku certyfikacyjnym używaj kernela z wymaganymi funkcjami i loguj wersję (minimum 5.x).
 
 - Blad: `rr` nie dzialal przez restrykcyjny `perf_event_paranoid` i brak uprawnień.
   - Wymaganie: na maszynie testowej ustaw `kernel.perf_event_paranoid` odpowiednio nisko lub uruchamiaj testy jako root i loguj wartość sysctl.
@@ -733,6 +748,9 @@
 
 - Blad: brak `/etc/machine-id` w kontenerze powodowal SKIP lub flakey wyniki sentinela.
   - Wymaganie: generuj `/etc/machine-id` na starcie testów (np. `systemd-machine-id-setup`) albo bind‑mount z hosta.
+
+- Blad: klonowane VM-y miały identyczny `machine-id`, więc sentinel nie rozróżniał hostów.
+  - Wymaganie: po klonowaniu obrazu regeneruj `machine-id` (np. `systemd-machine-id-setup`) i traktuj to jako wymóg dla produkcji.
 
 - Blad: sentinel E2E uruchamiany jako non‑root nie mógł tworzyć root‑owned `baseDir`, przez co testy były zawsze SKIP.
   - Wymaganie: uruchamiaj sentinel E2E jako root (albo w kontenerze, który ma root) i loguj ten fakt.
