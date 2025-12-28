@@ -68,7 +68,6 @@
 
 - Blad: polecenia z `sudo` w trybie nieinteraktywnym wisialy na promptach hasla.
   - Wymaganie: uzywaj `sudo -n` (fail‑fast bez promptu) i wypisz instrukcje, gdy brak uprawnien.
-
 - Blad: długie testy/deploy wymagały sudo, ale timestamp wygasał w trakcie i proces wisiał.
   - Wymaganie: przy długich runach odświeżaj `sudo -v` w tle albo wymagaj jednorazowej autoryzacji przed startem.
 
@@ -223,6 +222,7 @@
   - Wymaganie: testy/CI sprawdzaja zgodnosc docs z kodem.
   - Wymaganie: nieznana wartosc (literowka) = fail-fast z sugestia "did you mean".
   - Wymaganie: aliasy/zmiany nazw sa jawne (deprecation warning) i mapowane do kanonicznej wartosci.
+  - Wymaganie: w logach/testach uzywaj tylko kanonicznych nazw; aliasy sa dozwolone tylko w parserze wejscia.
 
 - Blad: brak jawnej macierzy kompatybilnosci packager <-> opcje ochrony prowadzil do ad-hoc wylaczen lub cichego ignorowania opcji.
   - Wymaganie: jedna macierz kompatybilnosci (packager/opcja/narzedzie) + normalizacja configu.
@@ -298,6 +298,14 @@
 - Blad: native addon byl kompilowany z naglowkami/ABI niezgodnymi z wersja runtime Node (lub uzywal API V8 z nowszej wersji), co dawalo bledy kompilacji lub crash w runtime.
   - Wymaganie: build/test uzywa naglowkow odpowiadajacych wersji runtime Node na target (lub jawnego `--target`); mismatch = fail-fast.
   - Wymaganie: kod native ma guardy wersji/feature-detect dla API V8 i fallback dla starszych wersji Node.
+
+- Blad: native addon wymagajacy nowszego standardu C++ (np. C++20) byl budowany bez wczesnego probe, a blad kompilacji byl nieczytelny.
+  - Wymaganie: preflight sprawdza minimalny standard C++ (probe kompilatora) i fail-fast z jasnym komunikatem.
+  - Wymaganie: testy E2E dla funkcji opcjonalnych robia SKIP, gdy brak wsparcia C++ (z powodem).
+
+- Blad: narzedzia E2E byly instalowane w wersji "latest", co prowadzilo do driftu i flakey wynikow miedzy lokalnie/CI.
+  - Wymaganie: E2E ma lockfile z wersjami narzedzi i jednolity installer korzystajacy z locka (takze w Dockerze).
+  - Wymaganie: warianty "minimal/full" korzystaja z tego samego schematu locka, aby uniknac rozjazdow.
 
 - Blad: w generatorach skryptów (template string) pozostawiono `${...}` bez escapowania, co powodowało SyntaxError w Node (interpolacja JS).
   - Wymaganie: w template stringach zawsze escapuj `${` jako `\\${}` w treści skryptu (patrz STD‑047).
@@ -446,6 +454,15 @@
 - Blad: pomocnicze timeouty (np. polling/healthcheck) byly krotsze niz globalny `runTimeoutMs`, co dawalo falszywe FAIL mimo trwajacego startu.
   - Wymaganie: wszystkie timeouty w E2E pochodza z jednego zrodla (run/step timeout) albo maja jawny per-tryb override; brak ukrytych limitow.
 
+- Blad: testy z wieloma trybami/variantami (np. dwa sposoby bootstrapa) sprawdzaly tylko jeden, zostawiajac niepokryte sciezki.
+  - Wymaganie: E2E ma macierz trybow dla kazdej funkcji wielomodalnej i loguje aktywny tryb w output.
+
+- Blad: brak prereq check per‑tryb powodowal globalny SKIP lub FAIL calej suite, mimo ze inne testy mogly sie wykonac.
+  - Wymaganie: prereq (toolchain/feature) weryfikuj per‑test/per‑tryb; brak = SKIP z powodem, reszta suite dalej dziala.
+
+- Blad: override timeoutow dla jednej funkcji wydluzal cale E2E, nawet gdy funkcja nie byla aktywna.
+  - Wymaganie: override timeoutow jest warunkowy i aktywny tylko, gdy dany artefakt/funkcja jest obecna.
+
 - Blad: testy uruchamiane jako root zostawialy root‑owned tmp przy bledzie builda (trudne sprzatanie bez sudo).
   - Wymaganie: E2E uruchamiane jako root tworza tmp na starcie i **zawsze** sprzataja w `finally` (nawet przy fail‑fast).
 
@@ -456,6 +473,10 @@
 - Blad: docker E2E instalowal zaleznosci za kazdym uruchomieniem, bo `node_modules` i cache npm nie byly mapowane do trwalego volume, a domyslne sciezki cache roznily sie miedzy skryptami.
   - Wymaganie: docker E2E mapuje trwale volume-y dla `node_modules` i `~/.npm`, a domyslny katalog cache jest spojny we wszystkich entrypointach (skrypty + docker-compose).
   - Wymaganie: cache jest kluczowany po lockfile/konfiguracji i loguje decyzje "fresh vs reuse".
+  - Wymaganie: cache root jest jawny (nie zalezy od `HOME` root/user) i logowany na starcie testu.
+
+- Blad: wspoldzielony cache E2E nie mial jawnego sposobu resetu i prowadzil do trudnych w debugowaniu falszywych "pass".
+  - Wymaganie: skrypty maja flage/ENV do wymuszenia reinstall/flush cache i loguja aktywne ustawienia.
 
 - Blad: rozne entrypointy E2E mialy inne defaulty (cache, parallel), co utrudnialo reprodukcje miedzy lokalnym i dockerowym uruchomieniem.
   - Wymaganie: jeden publiczny entrypoint ustawia wspolne domyslne wartosci i jest jedynym rekomendowanym sposobem uruchomienia; pozostale skrypty sa wewnetrzne.
@@ -592,6 +613,9 @@
 
 - Blad: po dodaniu uzytkownika do grupy `docker` testy nadal failowaly (brak re‑loginu), co dawalo mylące błędy „permission denied”.
   - Wymaganie: po `usermod -aG docker $USER` wymagany jest nowy login/shell; do czasu odswiezenia uzywaj `sudo docker`.
+
+- Blad: testy dockerowe uruchamialy sie na innym Docker context/daemon, co dawalo inne obrazy i cache i mylilo wyniki.
+  - Wymaganie: skrypty loguja `docker context show` i `docker info` (server), a uruchomienie moze wskazac jawny context (`DOCKER_CONTEXT=`).
 
 - Blad: rownolegle uruchomienia E2E kolidowaly na wspolnych nazwach uslug/plikach (`current.buildId`, instalacje), co dawalo flakey wyniki.
   - Wymaganie: testy musza byc bezpieczne dla rownoleglego uruchomienia (unikalne nazwy uslug, unikalne installDir, izolowane temp rooty).
