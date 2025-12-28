@@ -398,6 +398,8 @@
 
 - Blad: `nativeBootstrap` failowal na starszych kompilatorach (brak C++20) albo bez naglowkow Node, dajac nieczytelne błędy.
   - Wymaganie: preflight sprawdza wsparcie C++20 i obecność naglowkow Node (np. `SEAL_NODE_INCLUDE_DIR`) i fail‑fast z instrukcją instalacji.
+- Blad: parametry `thin.*` (np. `chunkSizeBytes`, `zstdLevel`, `timeoutMs`) byly walidowane dopiero w buildzie, a `seal check` przepuszczal bledna konfiguracje.
+  - Wymaganie: waliduj limity/liczby w `seal check` i fail‑fast z jasnym bledem, nie dopiero podczas builda.
 
 - Blad: build byl niedeterministyczny lub wykonany na innej architekturze/OS niz target (AIO zawiera runtime z build machine).
   - Wymaganie: preflight waliduje OS/arch i wersje narzedzi; mismatch = fail-fast.
