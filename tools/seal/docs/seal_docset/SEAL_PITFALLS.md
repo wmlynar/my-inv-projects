@@ -548,6 +548,7 @@
 
 - Blad: rozne wersje `npm` przepisywaly lockfile (lockfileVersion) i psuly deterministycznosc.
   - Wymaganie: pinuj wersje `npm` (lub loguj `npm -v` i egzekwuj oczekiwany major); mismatch = WARN/FAIL.
+  - Wymaganie: loguj uzywany package manager i jego wersje; gdy repo wymaga `npm`, blokuj `yarn/pnpm` bez jawnego opt‑in.
 
 - Blad: `npm ci/install` wisial przy problemach sieciowych (brak timeoutow lub zbyt dlugie retry).
   - Wymaganie: ustaw `NPM_CONFIG_FETCH_RETRIES`, `NPM_CONFIG_FETCH_TIMEOUT`, `NPM_CONFIG_FETCH_RETRY_MINTIMEOUT` i `NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT` w testach/CI.
