@@ -152,7 +152,9 @@ async function cmdDeploy(cwd, targetArg, opts) {
   }
 
   let autoBootstrap = false;
-  if ((targetCfg.kind || "local").toLowerCase() === "ssh") {
+  const isSsh = (targetCfg.kind || "local").toLowerCase() === "ssh";
+  if (isSsh) {
+    info(`Auto bootstrap: ${autoBootstrapEnabled ? "enabled" : "disabled"} (deploy.autoBootstrap)`);
     let deployRes;
     if (isFast) {
       deployRes = deploySshFast({

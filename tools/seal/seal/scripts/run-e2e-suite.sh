@@ -530,17 +530,25 @@ if [ -d "$EXAMPLE_DIR" ]; then
   fi
   if [ -n "${SEAL_E2E_NODE_MODULES_ROOT:-}" ]; then
     mkdir -p "$SEAL_E2E_NODE_MODULES_ROOT"
-    if [ ! -d "$EXAMPLE_DIR/node_modules" ]; then
-      log "Linking shared node_modules..."
-      ln -s "$SEAL_E2E_NODE_MODULES_ROOT" "$EXAMPLE_DIR/node_modules"
-    fi
     if [ "$NEED_EXAMPLE_DEPS" = "1" ]; then
       if command -v flock >/dev/null 2>&1; then
         exec {lockfd}>"$EXAMPLE_LOCK"
         flock "$lockfd"
         if sig_changed "$EXAMPLE_STAMP" "$EXAMPLE_SIG" || ! dir_has_files "$EXAMPLE_NODE_MODULES_DIR"; then
           log "Installing example dependencies (shared cache)..."
+          if [ -L "$EXAMPLE_DIR/node_modules" ]; then
+            rm -f "$EXAMPLE_DIR/node_modules"
+          fi
           (cd "$EXAMPLE_DIR" && npm install)
+          if command -v rsync >/dev/null 2>&1; then
+            rsync -a --delete "$EXAMPLE_DIR/node_modules/" "$SEAL_E2E_NODE_MODULES_ROOT/"
+          else
+            rm -rf "$SEAL_E2E_NODE_MODULES_ROOT"
+            mkdir -p "$SEAL_E2E_NODE_MODULES_ROOT"
+            cp -a "$EXAMPLE_DIR/node_modules/." "$SEAL_E2E_NODE_MODULES_ROOT/"
+          fi
+          rm -rf "$EXAMPLE_DIR/node_modules"
+          ln -s "$SEAL_E2E_NODE_MODULES_ROOT" "$EXAMPLE_DIR/node_modules"
           echo "$EXAMPLE_SIG" > "$EXAMPLE_STAMP"
         else
           log "Example dependencies already installed (shared cache)."
@@ -548,9 +556,24 @@ if [ -d "$EXAMPLE_DIR" ]; then
         flock -u "$lockfd"
       else
         log "Installing example dependencies (shared cache)..."
+        if [ -L "$EXAMPLE_DIR/node_modules" ]; then
+          rm -f "$EXAMPLE_DIR/node_modules"
+        fi
         (cd "$EXAMPLE_DIR" && npm install)
+        if command -v rsync >/dev/null 2>&1; then
+          rsync -a --delete "$EXAMPLE_DIR/node_modules/" "$SEAL_E2E_NODE_MODULES_ROOT/"
+        else
+          rm -rf "$SEAL_E2E_NODE_MODULES_ROOT"
+          mkdir -p "$SEAL_E2E_NODE_MODULES_ROOT"
+          cp -a "$EXAMPLE_DIR/node_modules/." "$SEAL_E2E_NODE_MODULES_ROOT/"
+        fi
+        rm -rf "$EXAMPLE_DIR/node_modules"
+        ln -s "$SEAL_E2E_NODE_MODULES_ROOT" "$EXAMPLE_DIR/node_modules"
         echo "$EXAMPLE_SIG" > "$EXAMPLE_STAMP"
       fi
+    elif [ ! -d "$EXAMPLE_DIR/node_modules" ]; then
+      log "Linking shared node_modules..."
+      ln -s "$SEAL_E2E_NODE_MODULES_ROOT" "$EXAMPLE_DIR/node_modules"
     fi
   else
     if [ "$NEED_EXAMPLE_DEPS" = "1" ]; then

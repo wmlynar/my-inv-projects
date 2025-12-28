@@ -340,6 +340,16 @@ function loadProjectConfig(projectRoot) {
     };
   }
 
+  if (hasPath(rawCfg, ["deploy"])) {
+    const rawDeploy = rawCfg.deploy;
+    if (!isPlainObject(rawDeploy)) {
+      throw new Error("Invalid deploy config in seal.json5 (expected object)");
+    }
+    if (hasPath(rawCfg, ["deploy", "autoBootstrap"]) && typeof rawDeploy.autoBootstrap !== "boolean") {
+      throw new Error("Invalid deploy.autoBootstrap in seal.json5 (expected boolean)");
+    }
+  }
+
   if (!cfg.deploy || typeof cfg.deploy !== "object" || Array.isArray(cfg.deploy)) {
     cfg.deploy = {};
   }

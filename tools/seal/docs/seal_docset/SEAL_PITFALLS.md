@@ -242,6 +242,24 @@
 - Blad: parsowanie danych z narzedzi systemowych (np. `lsblk`) nie normalizowalo `mountpoints` (null/array/string), co dawalo puste wpisy i bledne wnioski o mountach.
   - Wymaganie: zawsze normalizuj output narzedzi (trim, filtruj puste, obsluguj array) przed decyzjami.
 
+## Deploy / bootstrap (auto-bootstrap)
+
+- Blad: auto‑bootstrap uruchamial operacje z `sudo` bez jawnego, projektowego przelacznika, co dawalo niespodziewane skutki w CI i na targetach.
+  - Wymaganie: auto‑bootstrap ma jawne pole w `seal.json5` (`deploy.autoBootstrap`) i musi logowac aktywny tryb (ON/OFF) oraz powod uruchomienia.
+
+- Blad: brak walidacji typu `deploy.autoBootstrap` (np. string/liczba) prowadzil do niezamierzonego wlaczenia auto‑bootstrap.
+  - Wymaganie: waliduj, ze `deploy.autoBootstrap` jest boolean; niepoprawny typ = fail‑fast z jasnym komunikatem.
+
+- Blad: scenariusze E2E dla deployu (lokalny vs SSH, auto‑bootstrap vs manual) byly sprzezone i blad jednego trybu blokowal test drugiego.
+  - Wymaganie: niezalezne tryby uruchamiaj niezaleznie (osobne testy lub `continue-on-error`), aby awaria lokalna nie blokowala weryfikacji SSH.
+  - Wymaganie: E2E zawsze pokrywa oba tryby: auto‑bootstrap ON i OFF.
+
+### Wnioski ogolne (deploy/automation)
+
+- Domyslne automaty uruchamiajace `sudo` musza byc konfigurowalne i jawnie logowane.
+- Kazda funkcja z trybami (auto/manual) musi miec testy E2E dla obu sciezek.
+- Zmiany w zachowaniu deployu musza miec opis w dokumentacji + komunikat w CLI (co sie wydarzylo i dlaczego).
+
 ## Build / packaging
 
 - Blad: SEA bundle fallback uruchomil build bez postject (cichy spadek poziomu zabezpieczen).

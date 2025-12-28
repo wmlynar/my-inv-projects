@@ -20,7 +20,7 @@ function log(msg) {
 }
 
 function fail(msg) {
-  process.stderr.write(`[ship-e2e] ERROR: ${msg}\n`);
+  throw new Error(msg);
 }
 
 function systemctlUserReady() {
@@ -325,17 +325,30 @@ async function main() {
     process.exit(77);
   }
   const sentinelBackup = disableSentinelOnDisk();
+  const failures = [];
   try {
     if (systemctlUserReady()) {
-      await testShipThinBootstrapReuse();
-      log("OK: testShipThinBootstrapReuse");
+      try {
+        await testShipThinBootstrapReuse();
+        log("OK: testShipThinBootstrapReuse");
+      } catch (e) {
+        failures.push({ name: "local", error: e && e.stack ? e.stack : e && e.message ? e.message : String(e) });
+      }
     }
-    await testShipThinBootstrapSsh();
-  } catch (e) {
-    fail(e.stack || e.message || String(e));
-    process.exit(1);
+    try {
+      await testShipThinBootstrapSsh();
+    } catch (e) {
+      failures.push({ name: "ssh", error: e && e.stack ? e.stack : e && e.message ? e.message : String(e) });
+    }
   } finally {
     restoreSentinelOnDisk(sentinelBackup);
+  }
+
+  if (failures.length) {
+    for (const failure of failures) {
+      process.stderr.write(`[ship-e2e] ERROR (${failure.name}): ${failure.error}\n`);
+    }
+    process.exit(1);
   }
 }
 

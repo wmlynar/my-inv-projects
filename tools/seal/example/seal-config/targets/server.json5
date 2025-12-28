@@ -6,6 +6,6 @@
   serviceScope: "system",
   installDir: "/home/admin/apps/seal-example",
   serviceName: "seal-example",
-  packager: "sea",
+  packager: "thin-split",
   config: "server",
 }
