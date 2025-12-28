@@ -535,6 +535,8 @@
 - Blad: runtime dziedziczyl `NODE_OPTIONS`/`NODE_PATH` z hosta (np. `--inspect`, `--require`), co otwieralo debug lub wstrzykiwalo hooki.
   - Wymaganie: `run-current.sh`/launcher sanitizuje ryzykowne ENV (co najmniej `NODE_OPTIONS`, `NODE_PATH`, `NODE_EXTRA_CA_CERTS`).
   - Wymaganie: debug/testowe hooki uruchamiaj tylko jawnie przez dedykowane flagi runtime.
+- Blad: runtime/testy dziedziczyly `NODE_V8_COVERAGE` lub `NODE_DEBUG`, co generowalo pliki coverage albo nadmierne logi (i wyciek sciezek), spowalniajac uruchomienia.
+  - Wymaganie: launcher/testy czyszcza `NODE_V8_COVERAGE` i `NODE_DEBUG` (lub pozwalaja tylko na jawny opt‑in z logiem).
 
 - Blad: bundler nie dostal jawnego `NODE_ENV`, przez co kod dev zostal w bundle i nie zadzialalo dead-code elimination.
   - Wymaganie: ustawiaj `define`/`env` w bundlerze (`process.env.NODE_ENV="production"`) i loguj effective config.
@@ -1673,7 +1675,7 @@
   - Wymaganie: limituj rownoleglosc takze wzgledem dostepnej pamieci.
 - Blad: limity CPU w cgroup nie byly uwzgledniane, co powodowalo oversubscription i timeouty.
   - Wymaganie: przy wyliczaniu `jobs` uwzgledniaj limity cgroup (quota/period) i loguj wykryta liczbe CPU.
- - Blad: procesy Node.js w CI/containers dostawaly OOM przez zbyt niski limit pamieci.
+- Blad: procesy Node.js w CI/containers dostawaly OOM przez zbyt niski limit pamieci.
   - Wymaganie: wykrywaj limit pamieci (cgroup) i ustaw `NODE_OPTIONS=--max-old-space-size`, albo zmniejsz równoległość; loguj limit pamieci.
 - Blad: komendy `git` wisialy na pagerze (`less`) w trybie nieinteraktywnym.
   - Wymaganie: ustaw `GIT_PAGER=cat` i `PAGER=cat` dla nieinteraktywnych wywolan.
