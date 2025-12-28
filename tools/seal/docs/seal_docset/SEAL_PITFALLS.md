@@ -310,6 +310,11 @@
   - Wymaganie: `nativeBootstrap` jest dozwolony tylko dla `thin-split` (lub jawnie zdefiniowanych packagerow).
   - Wymaganie: w innych trybach ustawienie jest ignorowane z ostrzezeniem albo fail-fast (spojne z macierza kompatybilnosci).
 
+- Blad: `sentinel` byl wlaczony dla packagerow bez wsparcia (np. `sea`, `thin-single`), co konczylo sie bledem builda lub niejasnym zachowaniem.
+  - Wymaganie: `sentinel` wspierany tylko dla `thin-split`; w innych packagerach jest auto‑disabled z ostrzezeniem.
+  - Wymaganie: `seal config explain` pokazuje `sentinel: false (auto)` i podaje jasna notke kompatybilnosci.
+  - Wymaganie: E2E pokrywa oba przypadki: `thin-split` (enabled) oraz packagery niekompatybilne (disabled + note).
+
 - Blad: rozjazd wykrywania narzedzi i opcji miedzy `check` i `build` (postject/cc/packager).
   - Wymaganie: **jedno zrodlo prawdy** dla wykrywania narzedzi (resolver binarki).
 - Blad: helper wykrywania narzedzi uruchamial `bash -lc "command -v ..."`, co failowalo na minimalnych systemach bez `bash`.
@@ -568,6 +573,8 @@
   - Wymaganie: testy E2E uzywaja losowych portow (bez hardcode `3000`), aby uniknac `EADDRINUSE`.
   - Wymaganie: po testach usuwaj katalogi tymczasowe (np. `/tmp/seal-*`) zeby nie zapychac dysku.
   - Wymaganie: gdy narzedzie nie ma wbudowanego timeoutu, owijaj je zewnetrznym `timeout` (lub wrapperem) i loguj czas.
+  - Wymaganie: testy CLI uruchamiaj przez `bin/seal.js`/`seal`, nie przez `src/cli.js` (tam `main` nie jest auto‑run); ustaw `SEAL_BATCH_SKIP=1` w testach.
+  - Wymaganie: dla narzedzi typu `strings` ustawiaj timeout i `maxBuffer` (albo streamuj output), bo duze binarki potrafia przeladowac bufor `spawnSync`.
 
 - Blad: pomocnicze timeouty (np. polling/healthcheck) byly krotsze niz globalny `runTimeoutMs`, co dawalo falszywe FAIL mimo trwajacego startu.
   - Wymaganie: wszystkie timeouty w E2E pochodza z jednego zrodla (run/step timeout) albo maja jawny per-tryb override; brak ukrytych limitow.
@@ -1100,6 +1107,8 @@
 
 - Blad: rozpakowanie archiwum bez walidacji sciezek pozwalalo na path traversal lub nadpisywanie symlinkow.
   - Wymaganie: waliduj archiwa (brak `..`, brak absolutnych, brak linkow) i fail‑fast przy naruszeniach.
+- Blad: archiwum zawieralo nazwy plikow z znakami kontrolnymi / nowymi liniami, co psulo parsowanie i logi.
+  - Wymaganie: odrzucaj wpisy z `\\n/\\r/\\t` lub innymi znakami kontrolnymi w nazwach.
 - Blad: rozpakowanie tar bez `--no-same-owner/--no-same-permissions` zachowywalo owner/perms z archiwum (ryzyko setuid lub zlych praw).
   - Wymaganie: przy ekstrakcji zawsze uzywaj `--no-same-owner --no-same-permissions` i po rozpakowaniu ustaw jawne perms.
 - Blad: `tar`/`gzip` na hoście zdalnym byl brakujacy lub nie wspieral `-z`, co psulo deploy z nieczytelnym bledem.
