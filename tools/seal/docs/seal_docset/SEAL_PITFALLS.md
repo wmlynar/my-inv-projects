@@ -599,6 +599,12 @@
 - Blad: lokalne patche do narzedzi z lockfile byly stosowane cicho, a cache nie uwzglednial wersji patcha, co prowadzilo do uzycia starej binarki.
   - Wymaganie: kazdy patch jest jawnie logowany i sterowany ENV (on/off), a stamp cache uwzglednia wersje patcha/flag.
 
+- Blad: cache narzedzi E2E byl world‑writable lub mial nieoczekiwanego ownera, co pozwalalo na podmiane binarek.
+  - Wymaganie: katalog cache i binarki musza byc wlasnoscia biezacego uzytkownika/roota i miec bezpieczne perms (np. 0700/0755); inaczej fail‑fast.
+
+- Blad: stamp cache nie uwzglednial wersji kompilatora/toolchaina, przez co uzywano binarek zbudowanych na innym toolchainie (ABI mismatch).
+  - Wymaganie: stempel cache zawiera wersje kompilatora (`gcc`/`clang`), system i kluczowe flagi/patch version, aby wymusic rebuild przy zmianie.
+
 - Blad: brak metryk czasu ukrywal najwolniejsze testy i utrudnial planowanie rownoległości.
   - Wymaganie: testy E2E logują czas per‑test/per‑grupa oraz sumaryczny czas, zeby mozna było priorytetyzowac optymalizacje.
 
