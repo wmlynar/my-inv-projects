@@ -1962,3 +1962,16 @@
   - Wymaganie: w non-interactive zawsze dodawaj `-T` i loguj tryb TTY.
 - Blad: procesy ubijane przez OOM/SIGTERM (exit 137/143) byly raportowane jako ogolny FAIL bez diagnozy.
   - Wymaganie: mapuj exit code 137/143 na OOM/SIGKILL/SIGTERM i loguj hint (limit pamieci, rownoleglosc).
+
+## Dodatkowe wnioski (batch 226-230)
+
+- Blad: globalne `git config` (`core.autocrlf`/`core.filemode`) zmienialy CRLF lub gubily bit +x, co psulo skrypty i testy.
+  - Wymaganie: wymusz LF i exec bity przez `.gitattributes`/preflight oraz dokumentuj zalecane ustawienia `git config`.
+- Blad: Dockerfile kopiowal cale repo przed `npm ci`, przez co kazda zmiana uniewazniala cache i instalowala zaleznosci od nowa.
+  - Wymaganie: kopiuj najpierw `package*.json`, uruchamiaj `npm ci`, a dopiero potem `COPY .`; opcjonalnie uzywaj BuildKit cache dla npm.
+- Blad: docker-compose zostawial wolumeny po testach, co z czasem zapychalo dysk i wprowadzalo flakey stany.
+  - Wymaganie: cleanup obejmuje `docker compose down -v` lub usuwanie wolumenow per-run; loguj nazwy wolumenow.
+- Blad: unit systemd zostawal w stanie `failed` i kolejne starty byly blokowane mimo naprawy.
+  - Wymaganie: po naprawie/deploy wykonuj `systemctl reset-failed <svc>` (lub `--user`) i loguj wynik.
+- Blad: obrazy Node bez full-ICU dawaly inne wyniki `Intl` (daty/liczby), co psulo testy/UI.
+  - Wymaganie: uzywaj obrazu z full-ICU lub ustaw `NODE_ICU_DATA` i jawny locale w testach.
