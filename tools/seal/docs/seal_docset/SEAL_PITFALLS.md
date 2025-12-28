@@ -1523,6 +1523,8 @@
   - Wymaganie: trim i waliduj input z ENV.
 - Blad: liczby w configu byly parsowane jako stringi.
   - Wymaganie: parse + walidacja zakresu.
+- Blad: nieprawidlowe wartosci w configu (np. `sshPort`, `sshStrictHostKeyChecking`) byly cicho normalizowane do defaultow, co ukrywalo bledy konfiguracji.
+  - Wymaganie: jesli wartosc jest podana i nieprawidlowa, fail‑fast z jasnym bledem; fallback tylko jawnie i z logiem „effective config”.
 - Blad: sciezki w configu nie byly normalizowane.
   - Wymaganie: `path.resolve` + walidacja w dozwolonym root.
 - Blad: merge configu byl plytki i gubil nested klucze.
