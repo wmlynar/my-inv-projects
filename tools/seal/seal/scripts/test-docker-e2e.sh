@@ -19,6 +19,8 @@ BUILDER_IMAGE_FULL="e2e-seal-builder-full:latest"
 SERVER_IMAGE="e2e-seal-server:latest"
 REMOTE_E2E="${SEAL_DOCKER_E2E_REMOTE:-1}"
 TOOLSET="${SEAL_E2E_TOOLSET:-core}"
+SERVER_DOCKERFILE="$E2E_DIR/Dockerfile.server"
+SERVER_ENTRYPOINT="$E2E_DIR/server-entrypoint.sh"
 
 log() {
   echo "[docker-e2e] $*"
@@ -228,13 +230,38 @@ else
   fi
 fi
 if [ "$REMOTE_E2E" = "1" ]; then
-  if [ "$REBUILD_IMAGES" != "1" ] && $DOCKER image inspect "$SERVER_IMAGE" >/dev/null 2>&1; then
+  SERVER_HASH=""
+  if [ -f "$SERVER_DOCKERFILE" ]; then
+    if [ -f "$SERVER_ENTRYPOINT" ]; then
+      SERVER_HASH="$(sha256sum "$SERVER_DOCKERFILE" "$SERVER_ENTRYPOINT" | sha256sum | awk '{print $1}')"
+    else
+      SERVER_HASH="$(sha256sum "$SERVER_DOCKERFILE" | awk '{print $1}')"
+    fi
+  fi
+  SERVER_LABEL=""
+  if $DOCKER image inspect "$SERVER_IMAGE" >/dev/null 2>&1; then
+    SERVER_LABEL="$($DOCKER image inspect --format '{{ index .Config.Labels \"org.seal.server.hash\" }}' "$SERVER_IMAGE" 2>/dev/null || true)"
+  fi
+  SERVER_LABELS=()
+  if [ -n "$SERVER_HASH" ]; then
+    SERVER_LABELS+=(--label "org.seal.server.hash=$SERVER_HASH")
+  fi
+
+  if [ "$REBUILD_IMAGES" != "1" ] && [ -n "$SERVER_HASH" ] && [ "$SERVER_LABEL" != "$SERVER_HASH" ]; then
+    log "Server image hash changed; rebuilding..."
+    REBUILD_SERVER=1
+  else
+    REBUILD_SERVER=0
+  fi
+
+  if [ "$REBUILD_IMAGES" != "1" ] && [ "$REBUILD_SERVER" != "1" ] && $DOCKER image inspect "$SERVER_IMAGE" >/dev/null 2>&1; then
     log "Server image exists; skipping build (set SEAL_DOCKER_E2E_REBUILD=1 to rebuild)."
   elif [ "$SKIP_BUILD" = "1" ]; then
     fail "Server image missing and SEAL_DOCKER_E2E_SKIP_BUILD=1."
   else
     DOCKER_BUILDKIT=1 $DOCKER build "${PULL_ARG[@]}" --progress="$PROGRESS_MODE" --network=host \
-      -t "$SERVER_IMAGE" -f "$E2E_DIR/Dockerfile.server" "$REPO_ROOT"
+      "${SERVER_LABELS[@]}" \
+      -t "$SERVER_IMAGE" -f "$SERVER_DOCKERFILE" "$REPO_ROOT"
   fi
 else
   log "Remote SSH E2E disabled (single container mode)."

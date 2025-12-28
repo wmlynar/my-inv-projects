@@ -83,6 +83,9 @@ Przykład:
 - STD-032e (SHOULD): jezeli addon wymaga konkretnego standardu C++ (np. C++20), preflight wykonuje probe kompilatora i fail‑fast z jasnym komunikatem.
 - STD-032f (SHOULD): release nie zawiera sourcemap (`.map`) ani komentarzy `sourceMappingURL`; testy E2E weryfikuja brak map oraz brak `sourceMappingURL` w bundle.
 - STD-032g (SHOULD): obfuskacja/mangle nie dotyka publicznych kontraktow API/JSON; utrzymuj liste `reserved/keep` dla nazw pol i pokryj to E2E (a gdy brak pewnosci, wylacz renameProperties).
+- STD-032h (SHOULD): tree-shaking respektuje `sideEffects`, a moduly z efektami ubocznymi sa jawnie deklarowane/importowane; E2E potwierdza obecnosc efektow po sealingu.
+- STD-032i (SHOULD): opcje minifikacji typu `unsafe`/`pure_getters` sa domyslnie OFF; wlaczaj je tylko z dedykowanym E2E i logiem "effective config".
+- STD-032j (SHOULD): dynamiczne `require()` i native addon-y (`.node`) sa oznaczone jako `external`, a pliki `.node` kopiowane do release; E2E weryfikuje ladowanie po sealingu.
 - STD-035 (SHOULD): build zapisuje wersje narzedzi/zaleznosci; build nie pobiera rzeczy z internetu.
 - STD-040 (SHOULD): preflight uzywa tych samych argumentow i srodowiska co runtime.
 - STD-040a (SHOULD): runtime/serwis uruchamia aplikacje z `NODE_ENV=production` (jesli nie ustawiono inaczej), a testy E2E sprawdzaja ten tryb.
@@ -219,6 +222,9 @@ Przykład:
 - STD-027g (SHOULD): runner E2E auto‑discoveruje testy lub uzywa manifestu z CI checkiem, aby zadny test nie byl „zapomniany”.
 - STD-027h (SHOULD): gdy ustawiony jest filtr testow, runner loguje liste dopasowanych testow; brak dopasowan = FAIL lub jawny SKIP z instrukcja.
 - STD-027i (SHOULD): defaulty E2E sa w pliku wzorcowym w repo, a lokalne override w `.seal/e2e.env` (lub `SEAL_E2E_CONFIG`); runner loguje zrodlo configu, a override jest gitignored.
+- STD-027j (SHOULD): instalatory narzedzi E2E uzywaja locka per‑tool/cache i atomowego swapu (tmp + rename), a stamp jest zapisywany po sukcesie.
+- STD-027k (SHOULD): lockfile narzedzi E2E jest walidowany schematem; brakujace pola (url/rev/bin) = fail‑fast z lista brakow.
+- STD-027l (SHOULD): lokalne patche do narzedzi sa jawnie logowane i sterowane ENV, a wersja patcha/flag wchodzi do stempla cache.
 - STD-056 (SHOULD): drenaż stdout/stderr dotyczy **wszystkich** scenariuszy testowych (takze gdy spodziewasz sie porazki procesu).
 - STD-059 (SHOULD): testy E2E musza obejmowac scenariusze negatywne (brak plikow, zle uprawnienia, symlink), bo tam najczesciej wychodza regresje.
 - STD-060 (SHOULD): testy musza deterministycznie sprzatac zasoby (tmp/porty/procesy), a brak sprzatania jest traktowany jako fail.
@@ -303,6 +309,7 @@ Przykład:
 - STD-089o (SHOULD): w testach/CI ustaw `CI=1`, aby wymusic nieinteraktywny tryb narzedzi (brak promptow/spinnerow).
 - STD-089p (SHOULD): w CI/E2E ustaw `NPM_CONFIG_UPDATE_NOTIFIER=false`, aby uniknac sieciowych promptow npm.
 - STD-089q (SHOULD): narzedzia E2E maja pinowane wersje w repo (lockfile) i wspolny installer korzystajacy z locka; ten sam lock obowiazuje lokalnie i w CI/Dockerze.
+- STD-089r (SHOULD): obrazy E2E budowane z Dockerfile maja label z hashem wejsc (Dockerfile/entrypoint); mismatch wymusza rebuild.
 - STD-090c (SHOULD): preflight sprawdza **narzedzia CLI** (np. `postject` w `node_modules/.bin`/PATH), nie tylko obecność modulu.
 - STD-091a (SHOULD): funkcje zalezne od architektury (np. CPUID) musza degradująco dzialac na platformach bez wsparcia (pusty/neutralny ID zamiast twardego bledu).
 - STD-092a (SHOULD): `--skip-check` jest wyraznie oznaczony jako ryzykowny i zawsze wypisuje ostrzezenie; krytyczne braki toolchaina nie powinny byc maskowane.
@@ -311,6 +318,7 @@ Przykład:
 - STD-095 (SHOULD): szanuj `TMPDIR` oraz sytuacje `noexec` na `/tmp`; tymczasowe binarki uruchamiaj w bezpiecznym katalogu.
 - STD-096 (SHOULD): przed startem procesu sprawdzaj zajety port; wypisz PID/komende procesu lub jasny hint naprawczy (zeby uniknac niejasnego `EADDRINUSE`).
 - STD-097 (SHOULD): preflight/deploy sprawdza wolne miejsce na serwerze (`installDir` i `/tmp`) i failuje z instrukcja, jesli brak miejsca.
+- STD-097a (SHOULD): preflight/deploy sprawdza mount options `installDir` i failuje, gdy wykryje `noexec` (z instrukcja wyboru innej sciezki).
 - STD-098 (SHOULD): testy E2E uzywaja sandbox `installDir` i unikalnych nazw uslug; operacje systemowe sa gated env‑flaga i domyslnie SKIP.
 - STD-099 (SHOULD): testy E2E izolują cache (osobny temp project root lub `SEAL_THIN_CACHE_LIMIT=0`), aby uniknac cross‑test contamination.
 - STD-100 (SHOULD): testy E2E zawsze binduja do `127.0.0.1` (nie `localhost`), aby uniknac problemow IPv6/DNS.

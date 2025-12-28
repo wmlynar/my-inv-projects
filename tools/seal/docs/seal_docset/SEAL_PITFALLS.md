@@ -211,16 +211,16 @@
   - Wymaganie: renameProperties tylko dla prywatnych struktur; publiczne pola i dynamiczne klucze musza byc na liscie `reserved/keep`.
   - Wymaganie: gdy brak pewnosci, renameProperties wylaczone z jasnym logiem; E2E weryfikuje kontrakty API.
 
-- Blad: tree‑shaking/bundling usunął moduły z efektami ubocznymi (rejestracje, polyfille), bo `sideEffects` było błędne lub brakowało jawnych importów.
-  - Wymaganie: moduły z efektami ubocznymi są oznaczone w `sideEffects` lub importowane jawnie; E2E weryfikuje obecność efektów po sealingu.
-  - Wymaganie: w krytycznych ścieżkach wyłącz agresywne tree‑shaking albo użyj whitelisty modułów do zachowania.
+- Blad: tree-shaking/bundling usunal moduly z efektami ubocznymi (rejestracje, polyfille), bo `sideEffects` bylo bledne lub brakowalo jawnych importow.
+  - Wymaganie: moduly z efektami ubocznymi sa oznaczone w `sideEffects` lub importowane jawnie; E2E weryfikuje obecnosc efektow po sealingu.
+  - Wymaganie: w krytycznych sciezkach wylacz agresywne tree-shaking albo uzyj whitelisty modulow do zachowania.
 
-- Blad: agresywne opcje minifikacji (`unsafe`, `pure_getters`, `reduce_funcs`) zmieniały semantykę (gettery z efektami ubocznymi, `this`‑binding).
-  - Wymaganie: opcje „unsafe” są domyślnie OFF; włączaj je tylko z dedykowanymi testami E2E i logiem „effective config”.
+- Blad: agresywne opcje minifikacji (`unsafe`, `pure_getters`, `reduce_funcs`) zmienialy semantyke (gettery z efektami ubocznymi, `this`-binding).
+  - Wymaganie: opcje "unsafe" sa domyslnie OFF; wlaczaj je tylko z dedykowanymi testami E2E i logiem "effective config".
 
-- Blad: bundler wchłaniał `require()` dynamiczne lub native addon, przez co `.node` nie trafiał do release (runtime `MODULE_NOT_FOUND`).
-  - Wymaganie: dynamiczne `require()` i native addon-y są oznaczone jako `external`, a pliki `.node` są kopiowane do release.
-  - Wymaganie: E2E testuje ładowanie native addon po sealingu.
+- Blad: bundler wchlanial `require()` dynamiczne lub native addon, przez co `.node` nie trafial do release (runtime `MODULE_NOT_FOUND`).
+  - Wymaganie: dynamiczne `require()` i native addon-y sa oznaczone jako `external`, a pliki `.node` sa kopiowane do release.
+  - Wymaganie: E2E testuje ladowanie native addon po sealingu.
 
 - Blad: `elfPacker.tool="upx"` byl wlaczony, ale jego blad byl ignorowany (build przechodzil mimo `CantUnpackException` itp.).
   - Wymaganie: jezeli `elfPacker.tool="upx"` jest wlaczony i sie nie powiedzie, build **musi** sie przerwac z bledem.
@@ -510,11 +510,16 @@
   - Wymaganie: tryb pull jest jawny (`--pull`/`--no-pull`) i logowany, a bazowy obraz jest identyfikowany po tagu/digescie.
   - Wymaganie: loguj tryb BuildKit (`DOCKER_BUILDKIT`) i `BUILDKIT_PROGRESS`, zeby uniknac roznic w cache i output.
 
+- Blad: obraz testowego serwera byl reuse’owany mimo zmian w Dockerfile/entrypoincie (tag bez zmiany), co uruchamialo stary build.
+  - Wymaganie: obraz ma label z hashem wejsc (Dockerfile/entrypoint); mismatch = wymuszenie rebuild.
+
 - Blad: rozne entrypointy E2E mialy inne defaulty (cache, parallel), co utrudnialo reprodukcje miedzy lokalnym i dockerowym uruchomieniem.
   - Wymaganie: jeden publiczny entrypoint ustawia wspolne domyslne wartosci i jest jedynym rekomendowanym sposobem uruchomienia; pozostale skrypty sa wewnetrzne.
 
 - Blad: rownolegle uruchomienia E2E probowaly instalowac globalne narzedzia (packery/obfuscatory) jednoczesnie, co powodowalo wyscigi i uszkodzenia.
   - Wymaganie: instalatory narzedzi globalnych uzywaja locka (np. `flock` na cache) i czekaja/skipuja, gdy instalacja juz trwa.
+  - Wymaganie: instalacja jest atomowa (tmp + rename), a stamp zapisywany **po** sukcesie.
+  - Wymaganie: lock ma timeout i loguje czas oczekiwania, aby uniknac wiszenia w CI.
 
 - Blad: `npm install` w CI modyfikowal lockfile i wprowadzał drift wersji.
   - Wymaganie: w CI/E2E preferuj `npm ci` (deterministyczny), a `npm install` tylko lokalnie.
@@ -559,10 +564,6 @@
 
 - Blad: testy `strip`/packer mialy tylko czesciowa weryfikacje, bo brakowalo narzedzi weryfikacyjnych (np. `readelf`, `eu-readelf`, `objdump`, `dwarfdump`, `binwalk`, `file`, `strings`, `zstd`).
   - Wymaganie: na maszynie testowej zainstaluj `binutils` + `elfutils` + `binwalk` + `zstd` + `dwarfdump`; w trybie strict brak narzedzi = FAIL.
-
-- Blad: rownolegla instalacja narzedzi E2E nadpisywala cache lub zostawiala czesciowe buildy, co dawalo flakey wyniki.
-  - Wymaganie: instalatory narzedzi uzywaja locka per‑tool/cache i atomowego swapu (tmp + rename), a stamp jest zapisywany **po** sukcesie.
-  - Wymaganie: lock ma timeout i loguje czas oczekiwania, aby uniknac wiszenia w CI.
 
 - Blad: lockfile narzedzi mial brakujace pola (url/rev/bin) lub literowki, a instalator nie failowal jasno.
   - Wymaganie: waliduj schema lockfile i fail‑fast z lista narzedzi/kluczy, ktorych brakuje.
