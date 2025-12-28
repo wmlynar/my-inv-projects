@@ -608,6 +608,7 @@
 - Blad: rozne wersje `npm` przepisywaly lockfile (lockfileVersion) i psuly deterministycznosc.
   - Wymaganie: pinuj wersje `npm` (lub loguj `npm -v` i egzekwuj oczekiwany major); mismatch = WARN/FAIL.
   - Wymaganie: loguj uzywany package manager i jego wersje; gdy repo wymaga `npm`, blokuj `yarn/pnpm` bez jawnego opt‑in.
+  - Wymaganie: jesli `corepack` jest aktywny, loguj jego wersje i wymusz `packageManager` z `package.json` (albo jawnie go wylacz).
 
 - Blad: `npm ci/install` wisial przy problemach sieciowych (brak timeoutow lub zbyt dlugie retry).
   - Wymaganie: ustaw `NPM_CONFIG_FETCH_RETRIES`, `NPM_CONFIG_FETCH_TIMEOUT`, `NPM_CONFIG_FETCH_RETRY_MINTIMEOUT` i `NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT` w testach/CI.
@@ -1578,6 +1579,7 @@
   - Wymaganie: `TLS verify off` tylko opt‑in z ostrzezeniem.
 - Blad: proxy z ENV bylo uzywane mimo braku zgody.
   - Wymaganie: proxy tylko gdy jawnie wlaczone w configu.
+  - Wymaganie: gdy proxy jest wlaczone, ustaw `NO_PROXY` dla `localhost,127.0.0.1,::1` i loguj efektywne wartosci proxy.
 - Blad: redirecty bez limitu mogly zawiesic request.
   - Wymaganie: limituj redirecty i loguj finalny URL.
 - Blad: polaczenia HTTP nie byly domykane i wyciekaly.
