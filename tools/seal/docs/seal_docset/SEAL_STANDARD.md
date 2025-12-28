@@ -182,6 +182,7 @@ Przykład:
 - STD-113 (SHOULD): parser JSON/JSON5 usuwa BOM i normalizuje CRLF (unikaj bledow na plikach z Windows).
 - STD-114 (SHOULD): tmp dla operacji atomowych jest tworzony w tym samym katalogu/FS co plik docelowy (unikaj `EXDEV`).
 - STD-115 (SHOULD): rozpakowywanie archiwow wymaga walidacji sciezek (brak `..`, brak absolutnych, brak symlink/hardlink) i twardego fail na naruszenia.
+- STD-115a (SHOULD): przy tworzeniu/rozpakowaniu archiwow wylacz ACL/xattr (`--no-acls --no-xattrs`) lub jawnie je czysc po ekstrakcji.
 - STD-116 (SHOULD): `rsync --delete` wymaga walidacji dst (w dozwolonym root) i jawnego trybu/zgody dla operacji ryzykownych.
 - STD-117 (SHOULD): generowane skrypty maja LF (bez CRLF); w pipeline użyj `dos2unix`/normalizacji newline.
 - STD-118 (SHOULD): timeouty i pomiary czasu opieraj na zegarze monotonicznym (`process.hrtime`/`performance.now`), nie na `Date.now()`.
@@ -749,6 +750,7 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-297 (SHOULD): polaczenia dlugie maja heartbeat/ping + timeout.
 - STD-298 (SHOULD): skrypty używają portable `sed_inplace` (GNU/BSD) lub `perl -pi`/`python -i`; brak `sed -i` na ślepo.
 - STD-299 (SHOULD): archiwa są deterministyczne (`gzip -n`, `tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner`).
+- STD-299a (SHOULD): dla dlugich sciezek uzywaj `tar --format=gnu` lub `--format=pax` i fail‑fast na ostrzezeniach truncation.
 - STD-300 (SHOULD): przed ciężkimi operacjami sprawdzaj lokalne wolne miejsce (preflight).
 - STD-301 (SHOULD): tmp w world‑writable używa `mkstemp`/`O_EXCL` + `lstat` (blokada symlink/hardlink).
 - STD-302 (SHOULD): czytanie linii z plików przez `IFS= read -r` (bez utraty spacji/backslash).

@@ -361,6 +361,7 @@
 
 - Blad: artefakty byly budowane z "dirty" worktree i bez zapisu stanu repo, co utrudnialo reprodukcje.
   - Wymaganie: build/release loguje `git rev-parse HEAD` + status worktree; w CI domyslnie FAIL, chyba ze `--allow-dirty`.
+  - Wymaganie: jesli uzywasz `git describe`, zapewnij dostep do tagow (shallow clone z `--tags`) albo fallback do `rev-parse`.
 
 - Blad: `esbuild` target byl nowszy niz runtime Node na hoście, co powodowalo błędy składniowe po deployu.
   - Wymaganie: `esbuild` target musi byc <= wersji runtime (lub jawnie wymuszony w configu).
@@ -822,6 +823,9 @@
   - Wymaganie: bind‑mounty z hosta nie moga tworzyc root‑owned artefaktow w repo; uzywaj cache poza repo lub uruchamiaj kontener z mapowanym UID/GID.
   - Wymaganie: loguj architekture hosta i obrazu (`docker info`/`docker inspect`) oraz tryb emulacji; mismatch arch/`--platform` = WARN lub FAIL.
   - Wymaganie: dla cross‑arch uruchomien ustaw `--platform` lub `DOCKER_DEFAULT_PLATFORM`, a w trybie emulacji wydluz timeouty lub ustaw jawny SKIP.
+
+- Blad: docker‑compose uzywal domyslnego `project name` i kolidowal z innymi runami (sieci/volumes/containers).
+  - Wymaganie: ustaw `COMPOSE_PROJECT_NAME`/`--project-name` na unikalna wartosc per run.
 
 - Blad: rownolegle uruchomienia E2E kolidowaly na wspolnych nazwach uslug/plikach (`current.buildId`, instalacje), co dawalo flakey wyniki.
   - Wymaganie: testy musza byc bezpieczne dla rownoleglego uruchomienia (unikalne nazwy uslug, unikalne installDir, izolowane temp rooty).
@@ -1452,6 +1456,10 @@
   - Wymaganie: blokuj symlinki albo jawnie je waliduj.
 - Blad: archiwum zawieralo sciezki absolutne.
   - Wymaganie: kazda sciezka w artefakcie musi byc relatywna.
+- Blad: `tar` uzywal domyslnego formatu USTAR i ucinal dlugie sciezki (limit 100 znakow), przez co release byl niekompletny.
+  - Wymaganie: uzywaj `--format=gnu` lub `--format=pax` oraz fail‑fast na ostrzezeniach `tar` o truncation.
+- Blad: archiwa przenosily ACL/xattr (np. SELinux context), co zmienialo uprawnienia na serwerze.
+  - Wymaganie: przy tworzeniu/rozpakowaniu wylacz ACL/xattr (`--no-acls --no-xattrs`) lub jawnie je czysc po ekstrakcji.
 
 - Blad: skrypty zdalne nie uzywaly `set -euo pipefail`, co ukrywalo bledy.
   - Wymaganie: wymusz `set -euo pipefail` dla skryptow deploy.
@@ -1665,6 +1673,8 @@
   - Wymaganie: limituj rownoleglosc takze wzgledem dostepnej pamieci.
 - Blad: limity CPU w cgroup nie byly uwzgledniane, co powodowalo oversubscription i timeouty.
   - Wymaganie: przy wyliczaniu `jobs` uwzgledniaj limity cgroup (quota/period) i loguj wykryta liczbe CPU.
+ - Blad: procesy Node.js w CI/containers dostawaly OOM przez zbyt niski limit pamieci.
+  - Wymaganie: wykrywaj limit pamieci (cgroup) i ustaw `NODE_OPTIONS=--max-old-space-size`, albo zmniejsz równoległość; loguj limit pamieci.
 - Blad: komendy `git` wisialy na pagerze (`less`) w trybie nieinteraktywnym.
   - Wymaganie: ustaw `GIT_PAGER=cat` i `PAGER=cat` dla nieinteraktywnych wywolan.
 - Blad: narzedzia wykrywaly TTY i wlaczaly tryb interaktywny mimo CI.
