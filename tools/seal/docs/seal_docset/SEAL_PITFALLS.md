@@ -1096,6 +1096,8 @@
 
 - Blad: rozpakowanie archiwum bez walidacji sciezek pozwalalo na path traversal lub nadpisywanie symlinkow.
   - Wymaganie: waliduj archiwa (brak `..`, brak absolutnych, brak linkow) i fail‑fast przy naruszeniach.
+- Blad: rozpakowanie tar bez `--no-same-owner/--no-same-permissions` zachowywalo owner/perms z archiwum (ryzyko setuid lub zlych praw).
+  - Wymaganie: przy ekstrakcji zawsze uzywaj `--no-same-owner --no-same-permissions` i po rozpakowaniu ustaw jawne perms.
 
 - Blad: rozpakowanie artefaktu bez stagingu zostawialo polowiczny release po bledzie.
   - Wymaganie: rozpakowuj do katalogu tymczasowego i dopiero po walidacji przenos do `releases/<buildId>`.

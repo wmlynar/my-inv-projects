@@ -215,6 +215,7 @@ Przykład:
 - STD-130b (SHOULD): dla krytycznych binarek nie polegaj na niekontrolowanym `PATH`; uzywaj `command -v` + whitelisty lub absolutnych sciezek, szczegolnie przy `sudo`.
 - STD-130a (SHOULD): wykrywanie narzedzi z `node_modules/.bin` musi uwzgledniac monorepo/workspaces (sprawdzaj kilka poziomow lub uzyj `npm bin -w`/`npm exec`), inaczej CLI/testy beda false‑negative.
 - STD-131 (SHOULD): przy ekstrakcji archiwow w deploy ustaw `--no-same-owner` i `--no-same-permissions` oraz ustaw jawne perm po rozpakowaniu.
+- STD-131a (SHOULD): zdalne rozpakowanie (ssh) stosuje te same flagi `tar` co lokalne deploye; brak = fail‑fast z instrukcja.
 - STD-132 (SHOULD): masowe operacje na plikach nie moga przekraczac `ARG_MAX`; uzywaj `find ... -exec ... +` lub `xargs -0`.
 - STD-133 (SHOULD): odrzucaj absolutne segmenty sciezek w danych z configu i normalizuj `..` przed `path.join`.
 - STD-134 (SHOULD): dla plikow runtime z danymi ustaw jawne permissje (np. 0640/0600) i waliduj je w preflight.
