@@ -782,6 +782,9 @@
 - Blad: snapshot‑guard oparty o cgroup v2 byl zawsze SKIP, bo cgroup v2 nie byl dostepny lub niewritable w kontenerze.
   - Wymaganie: uruchamiaj testy na hoście z cgroup v2 i montuj `/sys/fs/cgroup` jako RW; loguj, czy `cgroup.freeze` jest dostępny.
 
+- Blad: snapshot‑guard (cgroup freeze) w Dockerze failowal, bo proces konczyl sie zanim test zdazyl wejsc w faze “ready”.
+  - Wymaganie: w Dockerze traktuj ten przypadek jako SKIP **tylko** w trybie nie‑strict; loguj instrukcje ustawienia `SEAL_E2E_STRICT_SNAPSHOT_GUARD=1`.
+
 - Blad: narzedzia DynamoRIO/Pin byly zainstalowane, ale brakowalo konfiguracji klienta.
   - Wymaganie: ustaw `SEAL_E2E_DRRUN_TOOL` (dla `drrun`) oraz `SEAL_E2E_PIN_TOOL`/`SEAL_E2E_PIN_CMD` (dla Pin); bez tego testy sa SKIP.
 
