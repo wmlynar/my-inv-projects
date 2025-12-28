@@ -68,9 +68,9 @@ function normalizeObfuscationProfile(raw) {
     ["disabled", "none"],
   ]);
   const normalized = aliases.get(profile) || profile;
-  const known = new Set(["none", "minimal", "balanced", "strict", "max", "test-fast"]);
+  const known = new Set(["none", "minimal", "balanced", "strict", "max"]);
   if (!known.has(normalized)) {
-    throw new Error(`Invalid build.obfuscationProfile: ${raw} (expected: none|minimal|balanced|strict|max|test-fast)`);
+    throw new Error(`Invalid build.obfuscationProfile: ${raw} (expected: none|minimal|balanced|strict|max)`);
   }
   return { profile: normalized, warning: null };
 }
@@ -116,8 +116,6 @@ function obfuscationOptions(profile) {
   if (normalized === "none") {
     throw new Error("Obfuscation profile 'none' has no options (obfuscation disabled).");
   }
-
-  if (normalized === "test-fast") return base;
 
   if (normalized === "strict") {
     return {
@@ -167,13 +165,12 @@ function obfuscationOptions(profile) {
 
 function resolveBackendTerser(raw, profile) {
   const isStrong = profile === "strict" || profile === "max";
-  const isTestFast = profile === "test-fast";
-  const defaultPasses = isTestFast ? 4 : (profile === "max" ? 4 : (isStrong ? 3 : 2));
-  const defaultToplevel = isStrong || isTestFast;
-  const defaultCompress = (isStrong || isTestFast)
+  const defaultPasses = profile === "max" ? 4 : (isStrong ? 3 : 2);
+  const defaultToplevel = isStrong;
+  const defaultCompress = isStrong
     ? { passes: defaultPasses, inline: 3 }
     : { passes: defaultPasses, inline: 1 };
-  const defaultMangle = (isStrong || isTestFast) ? { toplevel: true } : false;
+  const defaultMangle = isStrong ? { toplevel: true } : false;
   const defaults = {
     passes: defaultPasses,
     toplevel: defaultToplevel,

@@ -34,9 +34,10 @@ function sumTiming(entries, label) {
   return (entries || []).reduce((acc, entry) => acc + (entry.label === label ? entry.ms : 0), 0);
 }
 
-function summarizeTiming(timing) {
+function summarizeTiming(timing, totalMs) {
   const entries = timing && Array.isArray(timing.entries) ? timing.entries : [];
   return {
+    totalMs,
     bundleMs: sumTiming(entries, "build.bundle"),
     terserMs: sumTiming(entries, "build.terser"),
     backendObfMs: sumTiming(entries, "build.obfuscate"),
@@ -274,6 +275,7 @@ async function buildProfile({ profile, passes, outRoot, ctx, backendTerser, fron
   const outDir = path.join(outRoot, "seal-out");
   const timing = createTiming(true);
 
+  const started = Date.now();
   const res = await withTimeout(`buildRelease(${profile})`, ctx.buildTimeoutMs, () =>
     buildRelease({
       projectRoot: EXAMPLE_ROOT,
@@ -286,8 +288,9 @@ async function buildProfile({ profile, passes, outRoot, ctx, backendTerser, fron
       timing,
     })
   );
+  const totalMs = Date.now() - started;
   assert.strictEqual(res.meta?.obfuscationProfile, profile, `Expected obfuscationProfile=${profile}`);
-  return { res, timing: summarizeTiming(timing) };
+  return { res, timing: summarizeTiming(timing, totalMs) };
 }
 
 async function testProfile(test, ctx) {
@@ -348,7 +351,6 @@ async function main() {
 
   const tests = [
     { profile: "none", passes: 1, run: false, frontendObfuscation: false },
-    { profile: "test-fast", passes: 4, run: false },
     { profile: "minimal", passes: 1, run: false },
     { profile: "balanced", passes: 2, run: false },
     { profile: "strict", passes: 3, run: true },
@@ -373,7 +375,7 @@ async function main() {
     for (const row of timingRows) {
       const timing = row.timing || {};
       const label = row.label || row.profile;
-      log(`  profile=${label} passes=${row.passes} backend=${formatMs(timing.backendObfMs)} frontend=${formatMs(timing.frontendObfMs)} terser=${formatMs(timing.terserMs)} bundle=${formatMs(timing.bundleMs)}`);
+      log(`  profile=${label} passes=${row.passes} total=${formatMs(timing.totalMs)} backend=${formatMs(timing.backendObfMs)} frontend=${formatMs(timing.frontendObfMs)} terser=${formatMs(timing.terserMs)} bundle=${formatMs(timing.bundleMs)}`);
     }
   }
 

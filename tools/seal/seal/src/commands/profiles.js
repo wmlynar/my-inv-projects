@@ -10,7 +10,6 @@ function cmdProfiles() {
   console.log("");
   console.log("Obfuscation profiles (backend JS):");
   console.log("  - none    : skip backend obfuscation (fastest)");
-  console.log("  - test-fast: minimal obfuscation + terser passes=4 (experimental speed probe)");
   console.log("  - minimal : most compatible, minimal transforms");
   console.log("  - balanced: default, safe for most apps");
   console.log("  - strict  : stronger DCI + renameGlobals + terser (toplevel)");
