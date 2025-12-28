@@ -552,6 +552,7 @@
   - Wymaganie: cache kluczuj dodatkowo po `node` major, `npm` major i `os+arch`, zeby uniknac ABI mismatch w `node_modules`.
   - Wymaganie: cache root musi byc zapisywalny i poza repo; brak zapisu = fail‑fast z instrukcja.
   - Wymaganie: weryfikuj, czy wspolny `node_modules`/symlink wskazuje na istniejący, zapisywalny katalog; inaczej rebuild lub fail‑fast z instrukcja.
+  - Wymaganie: cache invaliduje sie po zmianie skryptow instalacyjnych lub wersji narzedzi; hash skryptow i wersji wchodzi do klucza cache.
 
 - Blad: wspoldzielony cache E2E nie mial jawnego sposobu resetu i prowadzil do trudnych w debugowaniu falszywych "pass".
   - Wymaganie: skrypty maja flage/ENV do wymuszenia reinstall/flush cache i loguja aktywne ustawienia.
@@ -762,6 +763,7 @@
   - Wymaganie: loguj identyfikatory obrazow (`docker image inspect --format '{{.Id}}'`) i wersje obrazu/testu, zeby nie uruchamiac "starych" buildow.
   - Wymaganie: bind‑mounty z hosta nie moga tworzyc root‑owned artefaktow w repo; uzywaj cache poza repo lub uruchamiaj kontener z mapowanym UID/GID.
   - Wymaganie: loguj architekture hosta i obrazu (`docker info`/`docker inspect`) oraz tryb emulacji; mismatch arch/`--platform` = WARN lub FAIL.
+  - Wymaganie: dla cross‑arch uruchomien ustaw `--platform` lub `DOCKER_DEFAULT_PLATFORM`, a w trybie emulacji wydluz timeouty lub ustaw jawny SKIP.
 
 - Blad: rownolegle uruchomienia E2E kolidowaly na wspolnych nazwach uslug/plikach (`current.buildId`, instalacje), co dawalo flakey wyniki.
   - Wymaganie: testy musza byc bezpieczne dla rownoleglego uruchomienia (unikalne nazwy uslug, unikalne installDir, izolowane temp rooty).
@@ -925,6 +927,10 @@
 
 - Blad: Playwright pobieral przegladarki przy kazdym uruchomieniu (brak cache), co wydluzalo E2E i zwiekszalo flakey.
   - Wymaganie: ustaw `PLAYWRIGHT_BROWSERS_PATH` na trwały cache (poza repo) i loguj jego lokalizacje.
+  - Wymaganie: cache przegladarek jest kluczowany po wersji Playwright; mismatch = reinstall.
+
+- Blad: UI E2E nie failowal na `console.error`/unhandled rejection, co maskowalo regresje w runtime.
+  - Wymaganie: testy UI zbieraja `console` i `pageerror`, a bledy failuja test (z whitelist dla znanych, niekrytycznych warningow).
 
 ## Deploy / infrastruktura
 
