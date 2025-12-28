@@ -164,6 +164,8 @@ async function main(argv) {
     .option("--check-verbose", "Show tool output during preflight checks", false)
     .option("--check-cc <compiler>", "C compiler for preflight checks (e.g. gcc/clang)", null)
     .option("--packager <packager>", "Override packager: thin-split|sea|bundle|none|auto(=thin-split)", null)
+    .option("--payload-only", "Build thin payload only (skip launcher/runtime; requires thin-split bootstrap)", false)
+    .option("--timing", "Print timing summary for the build", false)
     .action(async (target, opts) => cmdRelease(process.cwd(), target, opts));
 
   program
@@ -208,6 +210,7 @@ async function main(argv) {
     .option("--artifact <path>", "Deploy a specific artifact (.tgz) instead of building", null)
     .option("--fast", "Fast deploy from sources (unsafe)", false)
     .option("--fast-no-node-modules", "Exclude node_modules in fast mode", false)
+    .option("--timing", "Print timing summary for deploy steps", false)
     .action(async (target, opts) => cmdDeploy(process.cwd(), target, opts));
 
   program
@@ -228,8 +231,10 @@ async function main(argv) {
     .option("--check-verbose", "Show tool output during preflight checks", false)
     .option("--check-cc <compiler>", "C compiler for preflight checks (e.g. gcc/clang)", null)
     .option("--packager <packager>", "Override packager: thin-split|sea|bundle|none|auto(=thin-split)", null)
+    .option("--payload-only", "Build thin payload only (skip launcher/runtime; requires thin-split bootstrap)", false)
     .option("--fast", "Fast ship from sources (unsafe)", false)
     .option("--fast-no-node-modules", "Exclude node_modules in fast mode", false)
+    .option("--timing", "Print timing summary for ship steps", false)
     .action(async (target, opts) => cmdShip(process.cwd(), target, opts));
 
   program

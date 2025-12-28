@@ -903,9 +903,12 @@ function writeMeta(outDir, meta) {
   writeJson(metaPath, meta);
 }
 
-async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, packagerOverride, outDirOverride, skipArtifact }) {
+async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, packagerOverride, outDirOverride, skipArtifact, payloadOnly, timing }) {
   const appName = projectCfg.appName;
   const buildId = makeBuildId();
+  const payloadOnlyEnabled = !!payloadOnly;
+  const timeSync = timing && timing.timeSync ? timing.timeSync : (label, fn) => fn();
+  const timeAsync = timing && timing.timeAsync ? timing.timeAsync : async (label, fn) => await fn();
 
   const canonicalOutDir = getSealPaths(projectRoot).outDir;
   const baseOutDir = outDirOverride || canonicalOutDir;
@@ -963,7 +966,7 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   const stripConsole = consoleMode === "errors-only";
   const backendTerserCfg = resolveBackendTerser(projectCfg.build.backendTerser, obfProfile);
   info("Bundling (esbuild)...");
-  let bundlePath = await buildBundle({
+  let bundlePath = await timeAsync("build.bundle", async () => buildBundle({
     projectRoot,
     entryRel: projectCfg.entry,
     stageDir,
@@ -971,18 +974,18 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
     appName,
     minify: backendMinify,
     stripConsole,
-  });
+  }));
   ok(`Bundle OK (esbuild${backendMinify ? ", minify" : ""})`);
   let backendTerser = { enabled: !!backendTerserCfg.enabled, ok: false, skipped: true, reason: "disabled" };
   if (backendTerserCfg.enabled) {
     info("Backend terser...");
-    const terserResult = await applyTerser(bundlePath, stageDir, backendTerserCfg);
+    const terserResult = await timeAsync("build.terser", async () => applyTerser(bundlePath, stageDir, backendTerserCfg));
     backendTerser = { ...terserResult, skipped: false };
     bundlePath = terserResult.outPath;
     ok(`Backend terser OK (passes:${backendTerserCfg.passes}, saved:${terserResult.bytesIn - terserResult.bytesOut} bytes)`);
   }
   info("Obfuscating bundle...");
-  const obfPath = obfuscateBundle(bundlePath, stageDir, obfProfile);
+  const obfPath = timeSync("build.obfuscate", () => obfuscateBundle(bundlePath, stageDir, obfProfile));
   ok(`Obfuscation OK (${obfProfile})`);
 
   const packagerRequested = packagerSpec.kind;
@@ -992,6 +995,9 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   const thinChunkSize = thinCfg.chunkSizeBytes;
   const thinZstdLevel = thinCfg.zstdLevel;
   const thinZstdTimeoutMs = thinCfg.zstdTimeoutMs;
+  if (payloadOnlyEnabled && !(packagerRequested === "thin" && thinMode === "bootstrap")) {
+    throw new Error("payload-only build requires thin-split (bootstrap) packager");
+  }
   // Normalize protection config early (used for SEA main packing)
   let protectionCfg = resolveProtectionConfig(projectCfg);
   const hardEnabled = protectionCfg.enabled !== false;
@@ -1039,7 +1045,7 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
     }
     const launcherHardening = thinCfg.launcherHardening !== false;
     const launcherHardeningCET = thinCfg.launcherHardeningCET !== false;
-    const res = await packThin({
+    const res = await timeAsync(`build.packager.${packagerSpec.label}`, async () => packThin({
       stageDir,
       releaseDir,
       appName,
@@ -1063,12 +1069,14 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
       projectRoot,
       targetName: targetCfg.target || targetCfg.config || "default",
       sentinel: sentinelCfg,
+      payloadOnly: payloadOnlyEnabled,
+      timing,
       cObfuscator: launcherObfuscation && protectionCfg.cObfuscator ? {
         kind: protectionCfg.cObfuscator,
         cmd: protectionCfg.cObfuscatorCmd,
         args: protectionCfg.cObfuscatorArgs,
       } : null,
-    });
+    }));
     if (!res.ok) {
       throw new Error(`Thin packager failed: ${res.errorShort}`);
     }
@@ -1077,21 +1085,21 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
     ok(`Packager ${packagerSpec.label} OK`);
   } else if (packagerRequested === "bundle") {
     info("Packaging (bundle)...");
-    const res = packFallback({ stageDir, releaseDir, appName, obfPath });
+    const res = timeSync("build.packager.bundle", () => packFallback({ stageDir, releaseDir, appName, obfPath }));
     if (!res.ok) throw new Error(`Bundle packager failed: ${res.errorShort}`);
     packOk = true;
     packagerUsed = "bundle";
     ok("Packager bundle OK (node + obfuscated bundle)");
   } else if (packagerRequested === "none") {
     info("Packaging (none: raw bundle + wrapper, no protection)...");
-    const res = packFallback({ stageDir, releaseDir, appName, obfPath });
+    const res = timeSync("build.packager.none", () => packFallback({ stageDir, releaseDir, appName, obfPath }));
     if (!res.ok) throw new Error(`None packager failed: ${res.errorShort}`);
     packOk = true;
     packagerUsed = "none";
     ok("Packager none OK (raw bundle + wrapper; protection disabled)");
   } else if (packagerRequested === "sea") {
     info("Packaging (SEA)...");
-    const res = packSea({ stageDir, releaseDir, appName, mainRel: seaMainRel });
+    const res = timeSync("build.packager.sea", () => packSea({ stageDir, releaseDir, appName, mainRel: seaMainRel }));
     if (res.ok) {
       packOk = true;
       packagerUsed = "sea";
@@ -1110,7 +1118,7 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
       const reason = packErrorShort ? `Reason: ${packErrorShort}.` : "Reason: SEA packager failed.";
       throw new Error(`SEA packager failed and bundle fallback is disabled. ${reason} ${hint}`);
     }
-    const res = packFallback({ stageDir, releaseDir, appName, obfPath });
+    const res = timeSync("build.packager.fallback", () => packFallback({ stageDir, releaseDir, appName, obfPath }));
     if (!res.ok) {
       throw new Error(`Bundle packager failed: ${res.errorShort}`);
     }
@@ -1135,22 +1143,28 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   const thinIntegrityEnabled = !!thinIntegrityCfg.enabled;
   const thinIntegrityMode = thinIntegrityCfg.mode || "inline";
   const thinIntegrityFile = thinIntegrityCfg.file || "ih";
-  if (thinIntegrityEnabled && packagerUsed === "thin-split" && protectionCfg.elfPacker && thinIntegrityMode === "inline") {
+  if (!payloadOnlyEnabled && thinIntegrityEnabled && packagerUsed === "thin-split" && protectionCfg.elfPacker && thinIntegrityMode === "inline") {
     throw new Error("thin.integrity (inline) is not compatible with protection.elfPacker; set thin.integrity.mode=sidecar or disable the packer");
   }
 
   // Protection (post-pack): make it harder to recover code by casually viewing files.
   // Default: enabled (can be disabled in seal.json5 -> build.protection.enabled=false)
-  const hardPost = applyHardeningPost(releaseDir, appName, packagerUsed, protectionCfg);
+  const skipProtectionPost = payloadOnlyEnabled && packagerUsed === "thin-split";
+  const hardPost = skipProtectionPost
+    ? { enabled: false, reason: "payload_only", steps: [] }
+    : timeSync("build.protection", () => applyHardeningPost(releaseDir, appName, packagerUsed, protectionCfg));
+  const protectionEnabled = hardEnabled && !skipProtectionPost;
   const protection = {
-    enabled: hardEnabled,
+    enabled: protectionEnabled,
     seaMainPacking,
     post: hardPost,
     stringObfuscation: protectionCfg.stringObfuscation || null,
     cObfuscator: protectionCfg.cObfuscator || null,
   };
 
-  if (!hardEnabled) {
+  if (skipProtectionPost) {
+    warn("Protection skipped (payload-only build).");
+  } else if (!hardEnabled) {
     info('Protection disabled');
   } else {
     const stepsOk = (hardPost.steps || []).filter(s => s.ok).map(s => s.step);
@@ -1167,34 +1181,40 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   }
 
   let thinIntegrity = { enabled: false };
-  if (thinIntegrityEnabled && packagerUsed === "thin-split") {
+  if (thinIntegrityEnabled && packagerUsed === "thin-split" && !payloadOnlyEnabled) {
     const launcherPath = path.join(releaseDir, "b", "a");
     const sidecarPath = thinIntegrityMode === "sidecar"
       ? path.join(releaseDir, "r", thinIntegrityFile)
       : null;
-    const res = applyLauncherSelfHash(launcherPath, sidecarPath ? { mode: "sidecar", sidecarPath } : { mode: "inline" });
+    const res = timeSync("build.integrity", () => applyLauncherSelfHash(
+      launcherPath,
+      sidecarPath ? { mode: "sidecar", sidecarPath } : { mode: "inline" }
+    ));
     if (!res.ok) {
       throw new Error(`Thin integrity failed: ${res.errorShort}`);
     }
     thinIntegrity = { enabled: true, ok: true, target: "launcher", mode: thinIntegrityMode, file: thinIntegrityFile };
     ok(`Thin integrity OK (${thinIntegrityMode === "sidecar" ? "sidecar" : "inline"})`);
+  } else if (thinIntegrityEnabled && packagerUsed === "thin-split" && payloadOnlyEnabled) {
+    thinIntegrity = { enabled: false, skipped: true, reason: "payload_only" };
+    warn("Thin integrity skipped (payload-only build).");
   }
   protection.integrity = thinIntegrity;
 
   // Includes: public/, data/ etc
-  copyIncludes(projectRoot, releaseDir, projectCfg.build.includeDirs);
+  timeSync("build.includes", () => copyIncludes(projectRoot, releaseDir, projectCfg.build.includeDirs));
 
   // Optional decoy (joker) files to make the release look like a regular Node project.
   let decoyResult = { enabled: false, mode: "none" };
   if (projectCfg.build.decoy !== undefined) {
-    decoyResult = applyDecoy({
+    decoyResult = timeSync("build.decoy", () => applyDecoy({
       projectRoot,
       outDir: baseOutDir,
       releaseDir,
       appName,
       buildId,
       decoy: projectCfg.build.decoy,
-    });
+    }));
     if (decoyResult.enabled) {
       ok(`Decoy OK (${decoyResult.mode}, scope=${decoyResult.scope})`);
     }
@@ -1210,7 +1230,7 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   if (frontendNorm.warning && frontendProfileRaw !== obfProfile) warn(frontendNorm.warning);
   const frontendProfile = frontendNorm.profile;
 
-  const frontendResult = obfuscateFrontendAssets(releaseDir, frontendProfile, frontendEnabled);
+  const frontendResult = timeSync("build.frontend.obfuscate", () => obfuscateFrontendAssets(releaseDir, frontendProfile, frontendEnabled));
   if (!frontendResult.enabled) {
     info('Frontend obfuscation disabled');
   } else if (frontendResult.files > 0) {
@@ -1244,7 +1264,7 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   const anyMinifyEnabled = minifyEnabled && (htmlCfg.enabled || cssCfg.enabled);
 
   const minifyResult = anyMinifyEnabled
-    ? minifyFrontendAssets(releaseDir, { html: htmlCfg, css: cssCfg })
+    ? timeSync("build.frontend.minify", () => minifyFrontendAssets(releaseDir, { html: htmlCfg, css: cssCfg }))
     : { enabled: false, reason: "disabled" };
   if (minifyResult.enabled) minifyResult.level = minifyLevel;
 
@@ -1280,6 +1300,7 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
     target: targetCfg.target,
     config: configName,
     packager: packagerUsed,
+    payloadOnly: payloadOnlyEnabled,
     obfuscationProfile: obfProfile,
     backendMinify,
     backendTerser,
@@ -1291,15 +1312,16 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   };
   writeMeta(baseOutDir, meta);
 
+  const skipArtifactFinal = !!skipArtifact || payloadOnlyEnabled;
   let artifactPath = null;
-  if (!skipArtifact) {
-    artifactPath = await createArtifact({ projectRoot, appName, buildId, releaseDir, outDir: baseOutDir });
+  if (!skipArtifactFinal) {
+    artifactPath = await timeAsync("build.artifact", async () => createArtifact({ projectRoot, appName, buildId, releaseDir, outDir: baseOutDir }));
     ok(`Artifact: ${artifactPath}`);
   } else {
-    info("Artifact skipped (fast mode)");
+    info(`Artifact skipped (${payloadOnlyEnabled ? "payload-only build" : "fast mode"})`);
   }
 
-  return { appName, buildId, outDir: baseOutDir, releaseDir, artifactPath, meta, packagerUsed, packError };
+  return { appName, buildId, outDir: baseOutDir, releaseDir, artifactPath, meta, packagerUsed, packError, payloadOnly: payloadOnlyEnabled };
 }
 
 module.exports = {

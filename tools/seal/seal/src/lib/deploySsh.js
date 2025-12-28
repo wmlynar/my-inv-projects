@@ -509,7 +509,7 @@ function cleanupFastReleasesSsh({ targetCfg, current }) {
   ok(`Fast cleanup: removed ${toDelete.length} old fast release(s) on ${host}`);
 }
 
-function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootstrap, policy, fast, releaseDir, buildId, allowAutoBootstrap }) {
+function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootstrap, policy, fast, releaseDir, buildId, allowAutoBootstrap, payloadOnlyRequired, timing }) {
   const thinMode = resolveThinMode(targetCfg);
   const thinIntegrityMode = targetCfg && targetCfg._thinIntegrityMode ? targetCfg._thinIntegrityMode : null;
   const thinIntegrityFile = targetCfg && targetCfg._thinIntegrityFile ? targetCfg._thinIntegrityFile : "ih";
@@ -517,18 +517,28 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
   const autoBootstrapAllowed = allowAutoBootstrap !== false;
   let effectiveBootstrap = !!bootstrap;
   let autoBootstrap = false;
-  const { res: preflight, layout, user, host } = checkRemoteWritable(targetCfg, { requireService: !effectiveBootstrap });
+  const timeSync = timing && timing.timeSync ? timing.timeSync : (label, fn) => fn();
+  const { res: preflight, layout, user, host } = timeSync(
+    "deploy.ssh.preflight",
+    () => checkRemoteWritable(targetCfg, { requireService: !effectiveBootstrap })
+  );
   let out = `${preflight.stdout}\n${preflight.stderr}`.trim();
   if (!preflight.ok) {
     throw new Error(`ssh preflight failed${formatSshFailure(preflight) || (out || preflight.error ? `: ${out || preflight.error}` : "")}`);
   }
   let issues = collectPreflightIssues(out, layout);
   if (issues.length && !effectiveBootstrap && autoBootstrapAllowed) {
+    if (payloadOnlyRequired) {
+      throw new Error(`payload-only deploy requested but target needs bootstrap: ${issues.join("; ")}`);
+    }
     warn(`Auto bootstrap: ${issues.join("; ")}. Running bootstrap.`);
-    bootstrapSsh(targetCfg);
+    timeSync("deploy.ssh.bootstrap", () => bootstrapSsh(targetCfg));
     effectiveBootstrap = true;
     autoBootstrap = true;
-    const retry = checkRemoteWritable(targetCfg, { requireService: false });
+    const retry = timeSync(
+      "deploy.ssh.preflight_retry",
+      () => checkRemoteWritable(targetCfg, { requireService: false })
+    );
     out = `${retry.res.stdout}\n${retry.res.stderr}`.trim();
     if (!retry.res.ok) {
       throw new Error(`ssh preflight failed after bootstrap${formatSshFailure(retry.res) || (out || retry.res.error ? `: ${out || retry.res.error}` : "")}`);
@@ -542,39 +552,58 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
 
   const payloadLocal = releaseDir ? path.join(releaseDir, "r", "pl") : null;
   let payloadOnly = thinMode === "bootstrap" && !effectiveBootstrap && payloadLocal && fileExists(payloadLocal);
+  let payloadOnlyReason = null;
+  if (!payloadOnly) {
+    if (thinMode !== "bootstrap") {
+      payloadOnlyReason = "target not in thin-split (bootstrap) mode";
+    } else if (effectiveBootstrap) {
+      payloadOnlyReason = "bootstrap requested or auto bootstrap active";
+    } else if (!releaseDir) {
+      payloadOnlyReason = "releaseDir missing";
+    } else {
+      payloadOnlyReason = "payload file missing in release (r/pl)";
+    }
+  }
   let payloadCodec = null;
   if (payloadOnly) {
     payloadCodec = readThinCodecHashLocal(releaseDir);
     if (!payloadCodec) {
       warn("Thin bootstrap: codec metadata missing in release; falling back to full upload.");
       payloadOnly = false;
+      payloadOnlyReason = "codec metadata missing in release";
     }
   }
   if (payloadOnly) {
-    const checkRt = sshExecTarget(targetCfg, {
+    const checkRt = timeSync("deploy.ssh.check_runtime", () => sshExecTarget(targetCfg, {
       user,
       host,
       args: ["bash", "-lc", `if [ -x ${shQuote(`${layout.installDir}/b/a`)} ] && [ -f ${shQuote(`${layout.installDir}/r/rt`)} ]; then echo __SEAL_THIN_RT_OK__; else echo __SEAL_THIN_RT_MISSING__; fi`],
       stdio: "pipe",
-    });
+    }));
     if (!checkRt.ok || !(checkRt.stdout || "").includes("__SEAL_THIN_RT_OK__")) {
       warn("Thin bootstrap: runtime/launcher missing on target; falling back to full upload.");
       payloadOnly = false;
+      payloadOnlyReason = "runtime/launcher missing on target";
     }
   }
   if (payloadOnly) {
-    const remoteCodec = readThinCodecHashRemote(targetCfg, {
+    const remoteCodec = timeSync("deploy.ssh.check_codec", () => readThinCodecHashRemote(targetCfg, {
       user,
       host,
       filePath: `${layout.installDir}/r/c`,
-    });
+    }));
     if (!remoteCodec) {
       warn("Thin bootstrap: codec metadata missing on target; falling back to full upload.");
       payloadOnly = false;
+      payloadOnlyReason = "codec metadata missing on target";
     } else if (remoteCodec !== payloadCodec) {
       warn("Thin bootstrap: codec mismatch on target; falling back to full upload.");
       payloadOnly = false;
+      payloadOnlyReason = "codec mismatch on target";
     }
+  }
+  if (payloadOnlyRequired && !payloadOnly) {
+    throw new Error(`payload-only deploy requested but not possible: ${payloadOnlyReason || "unknown reason"}`);
   }
   if (reuseBootstrap) {
     if (!releaseDir) {
@@ -607,12 +636,12 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
   const remoteCfgQ = shQuote(remoteCfg);
 
   if (!shouldPushConfig) {
-    const cfgCheck = sshExecTarget(targetCfg, {
+    const cfgCheck = timeSync("deploy.ssh.check_config", () => sshExecTarget(targetCfg, {
       user,
       host,
       args: ["bash", "-lc", `if [ -f ${remoteCfgQ} ]; then echo __SEAL_CFG_OK__; else echo __SEAL_CFG_MISSING__; fi`],
       stdio: "pipe",
-    });
+    }));
     if (!cfgCheck.ok) {
       throw new Error(`ssh config check failed (status=${cfgCheck.status})${formatSshFailure(cfgCheck)}`);
     }
@@ -641,7 +670,12 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
     const remoteTmp = `/tmp/${appName}-payload-${buildId || Date.now()}.pl`;
     const remoteTmpQ = shQuote(remoteTmp);
     info(`Uploading payload to ${host}:${remoteTmp}`);
-    const upPl = scpToTarget(targetCfg, { user, host, localPath: payloadLocal, remotePath: remoteTmp });
+    const upPl = timeSync("deploy.ssh.upload_payload", () => scpToTarget(targetCfg, {
+      user,
+      host,
+      localPath: payloadLocal,
+      remotePath: remoteTmp,
+    }));
     if (!upPl.ok) throw new Error(`scp payload failed (status=${upPl.status})${formatSshFailure(upPl)}`);
 
     const cmdParts = [
@@ -651,7 +685,12 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       const tmpCfg = `/tmp/${targetCfg.serviceName}-config.json5`;
       const tmpCfgQ = shQuote(tmpCfg);
       info(`Uploading config to ${host}:${tmpCfg}`);
-      const upCfg = scpToTarget(targetCfg, { user, host, localPath: repoConfigPath, remotePath: tmpCfg });
+      const upCfg = timeSync("deploy.ssh.upload_config", () => scpToTarget(targetCfg, {
+        user,
+        host,
+        localPath: repoConfigPath,
+        remotePath: tmpCfg,
+      }));
       if (!upCfg.ok) throw new Error(`scp config failed (status=${upCfg.status})${formatSshFailure(upCfg)}`);
       cmdParts.push(`cp ${tmpCfgQ} ${remoteCfgQ}`);
       cmdParts.push(`rm -f ${tmpCfgQ}`);
@@ -676,11 +715,16 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
     cmdParts.push(`rm -f ${remoteTmpQ}`);
 
     const fullCmd = ["bash", "-lc", cmdParts.join(" && ")];
-    res = sshExecTarget(targetCfg, { user, host, args: fullCmd, stdio: "pipe" });
+    res = timeSync("deploy.ssh.apply_payload", () => sshExecTarget(targetCfg, { user, host, args: fullCmd, stdio: "pipe" }));
   } else {
     // Upload artifact
     info(`Uploading artifact to ${host}:${remoteArtifactTmp}`);
-    const up = scpToTarget(targetCfg, { user, host, localPath: artifactPath, remotePath: remoteArtifactTmp });
+    const up = timeSync("deploy.ssh.upload_artifact", () => scpToTarget(targetCfg, {
+      user,
+      host,
+      localPath: artifactPath,
+      remotePath: remoteArtifactTmp,
+    }));
     if (!up.ok) throw new Error(`scp failed (status=${up.status})${formatSshFailure(up)}`);
 
     // Extract and switch current
@@ -694,7 +738,12 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       const tmpCfg = `/tmp/${targetCfg.serviceName}-config.json5`;
       const tmpCfgQ = shQuote(tmpCfg);
       info(`Uploading config to ${host}:${tmpCfg}`);
-      const upCfg = scpToTarget(targetCfg, { user, host, localPath: repoConfigPath, remotePath: tmpCfg });
+      const upCfg = timeSync("deploy.ssh.upload_config", () => scpToTarget(targetCfg, {
+        user,
+        host,
+        localPath: repoConfigPath,
+        remotePath: tmpCfg,
+      }));
       if (!upCfg.ok) throw new Error(`scp config failed (status=${upCfg.status})${formatSshFailure(upCfg)}`);
       cmdParts.push(buildRemoteTarValidateCmd(remoteArtifactTmpQ, folderName));
       cmdParts.push(`tar -xzf ${remoteArtifactTmpQ} -C ${releasesDirQ}`);
@@ -748,7 +797,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
     cmdParts.push(`rm -f ${remoteArtifactTmpQ}`);
 
     const fullCmd = ["bash", "-lc", cmdParts.join(" && ")];
-    res = sshExecTarget(targetCfg, { user, host, args: fullCmd, stdio: "pipe" });
+    res = timeSync("deploy.ssh.apply_release", () => sshExecTarget(targetCfg, { user, host, args: fullCmd, stdio: "pipe" }));
   }
   if (!res.ok && res.status === 99 && !payloadOnly) {
     // Missing config (race) -> push config and retry without reuploading artifact
@@ -822,13 +871,17 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
   return { layout, folderName, relDir, autoBootstrap };
 }
 
-function deploySshFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, bootstrap, buildId, allowAutoBootstrap }) {
+function deploySshFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, bootstrap, buildId, allowAutoBootstrap, timing }) {
   const thinMode = resolveThinMode(targetCfg);
   const thinIntegrityFile = targetCfg && targetCfg._thinIntegrityFile ? targetCfg._thinIntegrityFile : "ih";
   const autoBootstrapAllowed = allowAutoBootstrap !== false;
   let effectiveBootstrap = !!bootstrap;
   let autoBootstrap = false;
-  const { res: preflight, layout, user, host } = checkRemoteWritable(targetCfg, { requireService: !effectiveBootstrap });
+  const timeSync = timing && timing.timeSync ? timing.timeSync : (label, fn) => fn();
+  const { res: preflight, layout, user, host } = timeSync(
+    "deploy.ssh.preflight",
+    () => checkRemoteWritable(targetCfg, { requireService: !effectiveBootstrap })
+  );
   let out = `${preflight.stdout}\n${preflight.stderr}`.trim();
   if (!preflight.ok) {
     throw new Error(`ssh preflight failed${formatSshFailure(preflight) || (out || preflight.error ? `: ${out || preflight.error}` : "")}`);
@@ -836,10 +889,13 @@ function deploySshFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, boot
   let issues = collectPreflightIssues(out, layout);
   if (issues.length && !effectiveBootstrap && autoBootstrapAllowed) {
     warn(`Auto bootstrap: ${issues.join("; ")}. Running bootstrap.`);
-    bootstrapSsh(targetCfg);
+    timeSync("deploy.ssh.bootstrap", () => bootstrapSsh(targetCfg));
     effectiveBootstrap = true;
     autoBootstrap = true;
-    const retry = checkRemoteWritable(targetCfg, { requireService: false });
+    const retry = timeSync(
+      "deploy.ssh.preflight_retry",
+      () => checkRemoteWritable(targetCfg, { requireService: false })
+    );
     out = `${retry.res.stdout}\n${retry.res.stderr}`.trim();
     if (!retry.res.ok) {
       throw new Error(`ssh preflight failed after bootstrap${formatSshFailure(retry.res) || (out || retry.res.error ? `: ${out || retry.res.error}` : "")}`);
@@ -855,12 +911,12 @@ function deploySshFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, boot
   const remoteCfgQ = shQuote(remoteCfg);
 
   if (!shouldPushConfig) {
-    const cfgCheck = sshExecTarget(targetCfg, {
+    const cfgCheck = timeSync("deploy.ssh.check_config", () => sshExecTarget(targetCfg, {
       user,
       host,
       args: ["bash", "-lc", `if [ -f ${remoteCfgQ} ]; then echo __SEAL_CFG_OK__; else echo __SEAL_CFG_MISSING__; fi`],
       stdio: "pipe",
-    });
+    }));
     if (!cfgCheck.ok) {
       throw new Error(`ssh config check failed (status=${cfgCheck.status})${formatSshFailure(cfgCheck)}`);
     }
@@ -870,19 +926,19 @@ function deploySshFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, boot
     }
   }
 
-  ensureRsyncAvailable(targetCfg, user, host);
+  timeSync("deploy.ssh.fast.rsync_check", () => ensureRsyncAvailable(targetCfg, user, host));
 
   const appName = targetCfg.appName || targetCfg.serviceName || "app";
   const suffix = buildId ? String(buildId) : "fast";
   const folderName = `${appName}-fast-${suffix}`;
   const relDir = `${layout.releasesDir}/${folderName}`;
 
-  const mkdirRes = sshExecTarget(targetCfg, {
+  const mkdirRes = timeSync("deploy.ssh.fast.mkdir", () => sshExecTarget(targetCfg, {
     user,
     host,
     args: ["bash", "-lc", `mkdir -p ${shQuote(relDir)} ${shQuote(layout.sharedDir)}`],
     stdio: "pipe",
-  });
+  }));
   if (!mkdirRes.ok) {
     throw new Error(`ssh mkdir failed (status=${mkdirRes.status})${formatSshFailure(mkdirRes)}`);
   }
@@ -902,7 +958,10 @@ function deploySshFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, boot
   info(`Fast sync (bundle) to ${host}:${relDir}`);
   const srcArg = releaseDir.endsWith(path.sep) ? releaseDir : `${releaseDir}${path.sep}`;
   const dstArg = `${user}@${host}:${relDir}/`;
-  const rsyncRes = spawnSyncSafe("rsync", baseArgs.concat([srcArg, dstArg]), { stdio: "inherit" });
+  const rsyncRes = timeSync(
+    "deploy.ssh.fast.rsync",
+    () => spawnSyncSafe("rsync", baseArgs.concat([srcArg, dstArg]), { stdio: "inherit" })
+  );
   if (!rsyncRes.ok) {
     throw new Error(`fast rsync failed (status=${rsyncRes.status})`);
   }
@@ -911,10 +970,20 @@ function deploySshFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, boot
     const tmpCfg = `/tmp/${targetCfg.serviceName}-config.json5`;
     const tmpCfgQ = shQuote(tmpCfg);
     info(`Uploading config to ${host}:${tmpCfg}`);
-    const upCfg = scpToTarget(targetCfg, { user, host, localPath: repoConfigPath, remotePath: tmpCfg });
+    const upCfg = timeSync("deploy.ssh.upload_config", () => scpToTarget(targetCfg, {
+      user,
+      host,
+      localPath: repoConfigPath,
+      remotePath: tmpCfg,
+    }));
     if (!upCfg.ok) throw new Error(`scp config failed (status=${upCfg.status})${formatSshFailure(upCfg)}`);
     const cfgCmd = ["bash", "-lc", `cp ${tmpCfgQ} ${remoteCfgQ} && rm -f ${tmpCfgQ}`];
-    const cfgRes = sshExecTarget(targetCfg, { user, host, args: cfgCmd, stdio: "pipe" });
+    const cfgRes = timeSync("deploy.ssh.fast.apply_config", () => sshExecTarget(targetCfg, {
+      user,
+      host,
+      args: cfgCmd,
+      stdio: "pipe",
+    }));
     if (!cfgRes.ok) {
       throw new Error(`config write failed (status=${cfgRes.status})${formatSshFailure(cfgRes)}`);
     }
@@ -927,7 +996,12 @@ function deploySshFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, boot
     "bash", "-lc",
     `rm -f ${shQuote(`${layout.installDir}/b/a`)} ${shQuote(`${layout.installDir}/r/rt`)} ${shQuote(`${layout.installDir}/r/pl`)} ${shQuote(`${layout.installDir}/r/${thinIntegrityFile}`)}`
   ];
-  const cleanupRes = sshExecTarget(targetCfg, { user, host, args: cleanupCmd, stdio: "pipe" });
+  const cleanupRes = timeSync("deploy.ssh.fast.cleanup", () => sshExecTarget(targetCfg, {
+    user,
+    host,
+    args: cleanupCmd,
+    stdio: "pipe",
+  }));
   if (!cleanupRes.ok) {
     const cleanupOut = `${cleanupRes.stdout}\n${cleanupRes.stderr}`.trim();
     throw new Error(`fast cleanup failed (status=${cleanupRes.status})${cleanupOut ? `: ${cleanupOut}` : ""}`);
@@ -935,7 +1009,12 @@ function deploySshFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, boot
 
   const currentFileQ = shQuote(layout.currentFile);
   const curCmd = ["bash", "-lc", `echo ${shQuote(folderName)} > ${currentFileQ}`];
-  const curRes = sshExecTarget(targetCfg, { user, host, args: curCmd, stdio: "pipe" });
+  const curRes = timeSync("deploy.ssh.fast.set_current", () => sshExecTarget(targetCfg, {
+    user,
+    host,
+    args: curCmd,
+    stdio: "pipe",
+  }));
   if (!curRes.ok) {
     const curOut = `${curRes.stdout}\n${curRes.stderr}`.trim();
     throw new Error(`update current.buildId failed (status=${curRes.status})${curOut ? `: ${curOut}` : ""}`);

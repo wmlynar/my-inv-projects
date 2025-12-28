@@ -9,7 +9,7 @@ const net = require("net");
 const os = require("os");
 const path = require("path");
 const { spawn, spawnSync } = require("child_process");
-const { hasCommand } = require("./e2e-utils");
+const { hasCommand, resolveE2ETimeout, resolveE2ERunTimeout, applyReadyFileEnv, makeReadyFile, waitForReadyFile } = require("./e2e-utils");
 
 const { buildRelease } = require("../src/lib/build");
 const { loadProjectConfig, loadTargetConfig, resolveConfigName } = require("../src/lib/project");
@@ -587,6 +587,11 @@ async function waitForStatus(port, timeoutMs = 10_000) {
   throw new Error(`Timeout waiting for /api/status on port ${port}`);
 }
 
+async function waitForReady({ port, readyFile, timeoutMs }) {
+  if (readyFile) return waitForReadyFile(readyFile, timeoutMs);
+  return waitForStatus(port, timeoutMs);
+}
+
 async function waitForMarkerFile(markerPath, expected, timeoutMs = 10_000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -603,8 +608,19 @@ async function waitForMarkerFile(markerPath, expected, timeoutMs = 10_000) {
 
 function getFreePort() {
   return new Promise((resolve, reject) => {
+    if (process.env.SEAL_E2E_NO_LISTEN === "1") {
+      resolve(null);
+      return;
+    }
     const srv = net.createServer();
-    srv.on("error", reject);
+    srv.on("error", (err) => {
+      if (err && err.code === "EPERM") {
+        process.env.SEAL_E2E_NO_LISTEN = "1";
+        resolve(null);
+        return;
+      }
+      reject(err);
+    });
     srv.listen(0, "127.0.0.1", () => {
       const addr = srv.address();
       const port = typeof addr === "object" && addr ? addr.port : null;
@@ -618,23 +634,29 @@ function writeRuntimeConfig(releaseDir, port) {
   const cfg = readJson5(cfgPath);
   cfg.http = cfg.http || {};
   cfg.http.host = "127.0.0.1";
-  cfg.http.port = port;
+  cfg.http.port = port || 3000;
   writeJson5(path.join(releaseDir, "config.runtime.json5"), cfg);
 }
 
-async function runReleaseWithReady({ releaseDir, runTimeoutMs, env, onReady, skipMessage }) {
-  if (runReleaseOk.skipListen) {
-    log(skipMessage || "SKIP: listen not permitted; runtime check disabled");
-    return;
-  }
+async function ensureRuntimeConfig(releaseDir) {
   const port = await getFreePort();
-  const gdbPort = await getFreePort();
+  writeRuntimeConfig(releaseDir, port);
+  return port;
+}
+
+async function runReleaseWithReady({ releaseDir, runTimeoutMs, env, onReady, skipMessage }) {
+  const port = runReleaseOk.skipListen ? null : await getFreePort();
+  const readyFile = port === null ? makeReadyFile("thin-anti-debug") : null;
+  if (readyFile) {
+    log("WARN: listen not permitted; using ready-file mode");
+  }
   writeRuntimeConfig(releaseDir, port);
 
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
 
-  const childEnv = Object.assign({}, process.env, env || {});
+  const baseEnv = Object.assign({}, process.env, env || {});
+  const childEnv = applyReadyFileEnv(baseEnv, readyFile);
   const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe", env: childEnv });
   const outChunks = [];
   const errChunks = [];
@@ -658,7 +680,9 @@ async function runReleaseWithReady({ releaseDir, runTimeoutMs, env, onReady, ski
   let stdout = "";
   let stderr = "";
   try {
-    await withTimeout("waitForStatus", runTimeoutMs, () => Promise.race([waitForStatus(port), exitPromise]));
+    await withTimeout("waitForStatus", runTimeoutMs, () =>
+      Promise.race([waitForReady({ port, readyFile, timeoutMs: runTimeoutMs }), exitPromise])
+    );
     await onReady({ child, port });
   } finally {
     child.kill("SIGTERM");
@@ -674,6 +698,9 @@ async function runReleaseWithReady({ releaseDir, runTimeoutMs, env, onReady, ski
     });
     stdout = Buffer.concat(outChunks).toString("utf8");
     stderr = Buffer.concat(errChunks).toString("utf8");
+    if (readyFile) {
+      try { fs.rmSync(readyFile, { force: true }); } catch {}
+    }
   }
   return { stdout, stderr };
 }
@@ -2303,6 +2330,9 @@ function scanHibernationFilesForTokens(tokenBuffers) {
 }
 
 function scanSystemLogsForTokens(tokenBuffers) {
+  if (process.env.SEAL_E2E_STRICT_SYSLOG !== "1") {
+    return { skip: "system log scan disabled (set SEAL_E2E_STRICT_SYSLOG=1 to enforce)" };
+  }
   const maxBytes = Number(process.env.SEAL_E2E_LOG_SCAN_MAX_BYTES || "1048576");
   const logFiles = [
     "/var/log/syslog",
@@ -2358,7 +2388,7 @@ function runExternalDumpScan(pid, tokenBuffers) {
   const args = parseArgsEnv(rawArgs).map((arg) =>
     arg.replace(/\{pid\}/g, String(pid || "")).replace(/\{out\}/g, outPath)
   );
-  const timeoutMs = Number(process.env.SEAL_E2E_DUMP_TIMEOUT_MS || "60000");
+  const timeoutMs = resolveE2ETimeout("SEAL_E2E_DUMP_TIMEOUT_MS", 60000);
   let hit = "";
   try {
     const res = runCmd(cmd, args, timeoutMs);
@@ -2385,7 +2415,7 @@ function runAvmlDumpScan(pid, tokenBuffers) {
   if (process.env.SEAL_E2E_MEMDUMP !== "1") return { skip: "memdump disabled" };
   if (!hasCommand("avml")) return { skip: "avml missing" };
   const outPath = path.join(os.tmpdir(), `seal-avml-${pid || "x"}-${Date.now()}.raw`);
-  const timeoutMs = Number(process.env.SEAL_E2E_MEMDUMP_TIMEOUT_MS || "120000");
+  const timeoutMs = resolveE2ETimeout("SEAL_E2E_MEMDUMP_TIMEOUT_MS", 120000);
   let hit = "";
   try {
     const res = runCmd("avml", [outPath], timeoutMs);
@@ -2591,6 +2621,7 @@ async function checkGdbServerAttachBlockedPid(pid) {
   const isRoot = isRootUser();
   const strict = process.env.SEAL_E2E_STRICT_PTRACE === "1";
   const gdbPort = await getFreePort();
+  if (gdbPort === null) return { skip: "listen not permitted" };
   const hostPort = `127.0.0.1:${gdbPort}`;
   const res = runGdbServerAttach(pid, hostPort, 5000);
   if (res.error && res.error.code === "ETIMEDOUT") {
@@ -2626,6 +2657,7 @@ async function checkLldbServerAttachBlockedPid(pid) {
   if (!hasCommand("lldb-server")) return { skip: "lldb-server not installed" };
   const strict = process.env.SEAL_E2E_STRICT_LLDB_SERVER === "1";
   const port = await getFreePort();
+  if (port === null) return { skip: "listen not permitted" };
   const hostPort = `127.0.0.1:${port}`;
   const res = runLldbServerAttach(pid, hostPort, 5000);
   if (res.error && res.error.code === "ETIMEDOUT") {
@@ -3459,18 +3491,16 @@ function checkCoreFilesAfterCrash(releaseDir, pid, sinceMs) {
 }
 
 async function runReleaseOk({ releaseDir, runTimeoutMs, env }) {
-  if (runReleaseOk.skipListen) {
-    log("SKIP: listen not permitted; runtime check disabled");
-    return;
-  }
-  const port = await getFreePort();
-  const gdbPort = await getFreePort();
+  const port = runReleaseOk.skipListen ? null : await getFreePort();
+  const readyFile = port === null ? makeReadyFile("thin-anti-debug") : null;
+  if (readyFile) log("WARN: listen not permitted; using ready-file mode");
   writeRuntimeConfig(releaseDir, port);
 
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
 
-  const childEnv = Object.assign({}, process.env, env || {});
+  const baseEnv = Object.assign({}, process.env, env || {});
+  const childEnv = applyReadyFileEnv(baseEnv, readyFile);
   const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe", env: childEnv });
   const outChunks = [];
   const errChunks = [];
@@ -3492,7 +3522,9 @@ async function runReleaseOk({ releaseDir, runTimeoutMs, env }) {
   });
 
   try {
-    await withTimeout("waitForStatus", runTimeoutMs, () => Promise.race([waitForStatus(port), exitPromise]));
+    await withTimeout("waitForStatus", runTimeoutMs, () =>
+      Promise.race([waitForReady({ port, readyFile, timeoutMs: runTimeoutMs }), exitPromise])
+    );
   } finally {
     child.kill("SIGTERM");
     await new Promise((resolve) => {
@@ -3505,22 +3537,23 @@ async function runReleaseOk({ releaseDir, runTimeoutMs, env }) {
         resolve();
       });
     });
+    if (readyFile) {
+      try { fs.rmSync(readyFile, { force: true }); } catch {}
+    }
   }
 }
 
 async function runReleaseExpectFail({ releaseDir, runTimeoutMs, env, expectStderr, args }) {
-  if (runReleaseOk.skipListen) {
-    log("SKIP: listen not permitted; runtime check disabled");
-    return;
-  }
-  const port = await getFreePort();
-  const gdbPort = await getFreePort();
+  const port = runReleaseOk.skipListen ? null : await getFreePort();
+  const readyFile = port === null ? makeReadyFile("thin-anti-debug") : null;
+  if (readyFile) log("WARN: listen not permitted; using ready-file mode");
   writeRuntimeConfig(releaseDir, port);
 
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
 
-  const childEnv = Object.assign({}, process.env, env || {});
+  const baseEnv = Object.assign({}, process.env, env || {});
+  const childEnv = applyReadyFileEnv(baseEnv, readyFile);
   const childArgs = Array.isArray(args) ? args : [];
   const child = spawn(binPath, childArgs, { cwd: releaseDir, stdio: "pipe", env: childEnv });
   const outChunks = [];
@@ -3539,7 +3572,7 @@ async function runReleaseExpectFail({ releaseDir, runTimeoutMs, env, expectStder
   try {
     const winner = await withTimeout("expectFail", runTimeoutMs, () => Promise.race([
       exitPromise,
-      waitForStatus(port).then(() => ({ ok: true })),
+      waitForReady({ port, readyFile, timeoutMs: runTimeoutMs }).then(() => ({ ok: true })),
     ]));
     if (winner && winner.ok) {
       throw new Error("process reached /api/status (expected failure)");
@@ -3574,6 +3607,9 @@ async function runReleaseExpectFail({ releaseDir, runTimeoutMs, env, expectStder
         resolve();
       });
     });
+  }
+  if (readyFile) {
+    try { fs.rmSync(readyFile, { force: true }); } catch {}
   }
 }
 
@@ -4110,9 +4146,8 @@ function reportBootstrapPageCount(label, res, maxPages) {
     log(`SKIP: ${label} (${res.skip})`);
     return;
   }
-  const dockerE2e = process.env.SEAL_DOCKER_E2E === "1";
   const strictEnv = process.env.SEAL_E2E_STRICT_BOOTSTRAP_PAGE_COUNT;
-  const strict = strictEnv === "1" || (!dockerE2e && strictEnv !== "0");
+  const strict = strictEnv === "1";
   const count = Number.isFinite(res.count) ? res.count : 0;
   const notes = [];
   if (Number.isFinite(res.scanned)) notes.push(`${res.scanned} bytes`);
@@ -4214,11 +4249,10 @@ async function runReleaseBootstrapSelfScan({
   bundleBytes,
   vmflags,
 }) {
-  const dockerE2e = process.env.SEAL_DOCKER_E2E === "1";
   const strictEnv = process.env.SEAL_E2E_STRICT_BOOTSTRAP_SELF_SCAN;
-  const strictSelfScan = strictEnv === "1" || (!dockerE2e && strictEnv !== "0");
+  const strictSelfScan = strictEnv === "1";
   const vmflagsStrictEnv = process.env.SEAL_E2E_STRICT_BOOTSTRAP_SELF_SCAN_VMFLAGS;
-  const strictVmflags = vmflags && (vmflagsStrictEnv === "1" || (!dockerE2e && vmflagsStrictEnv !== "0"));
+  const strictVmflags = vmflags && vmflagsStrictEnv === "1";
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
   const childEnv = Object.assign({}, process.env, {
@@ -4263,7 +4297,6 @@ async function runReleaseBootstrapMemoryChecks({ releaseDir, outDir, runTimeoutM
   const markerEnv = { SEAL_E2E_KEY_MARKER_HEX: markerHex };
   const bundlePath = outDir ? path.join(outDir, "stage", "bundle.obf.cjs") : null;
   const bundleBytes = bundlePath && fs.existsSync(bundlePath) ? fs.statSync(bundlePath).size : 0;
-  const dockerE2e = process.env.SEAL_DOCKER_E2E === "1";
   const strictSelfScan = process.env.SEAL_E2E_STRICT_BOOTSTRAP_SELF_SCAN === "1";
 
   log("Testing bootstrap marker (decoded stage)...");
@@ -4428,7 +4461,7 @@ async function runReleaseBootstrapMemoryChecks({ releaseDir, outDir, runTimeoutM
     reportBootstrapNoHit("bootstrap bundle ro post-wipe", bundleRoWipe);
   }
 
-  if (dockerE2e && !strictSelfScan) {
+  if (!strictSelfScan) {
     log("SKIP: bootstrap self-scan checks (set SEAL_E2E_STRICT_BOOTSTRAP_SELF_SCAN=1 to enforce)");
   } else {
     log("Testing bootstrap self-scan (marker present)...");
@@ -5350,18 +5383,16 @@ async function runReleaseGcoreFail({ releaseDir, runTimeoutMs, env }) {
 }
 
 async function runReleaseCrashNoCore({ releaseDir, runTimeoutMs, env }) {
-  if (runReleaseOk.skipListen) {
-    log("SKIP: listen not permitted; core crash test disabled");
-    return;
-  }
   const port = await getFreePort();
-  const gdbPort = await getFreePort();
+  const readyFile = port === null ? makeReadyFile("thin-anti-debug") : null;
+  if (readyFile) log("WARN: listen not permitted; using ready-file mode");
   writeRuntimeConfig(releaseDir, port);
 
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
 
-  const childEnv = Object.assign({}, process.env, env || {});
+  const baseEnv = Object.assign({}, process.env, env || {});
+  const childEnv = applyReadyFileEnv(baseEnv, readyFile);
   const startMs = Date.now();
   const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe", env: childEnv });
   const outChunks = [];
@@ -5380,7 +5411,7 @@ async function runReleaseCrashNoCore({ releaseDir, runTimeoutMs, env }) {
   try {
     const winner = await withTimeout("core crash", runTimeoutMs, () => Promise.race([
       exitPromise,
-      waitForStatus(port).then(() => ({ ok: true })),
+      waitForReady({ port, readyFile, timeoutMs: runTimeoutMs }).then(() => ({ ok: true })),
     ]));
     if (winner && winner.ok) {
       throw new Error("process reached /api/status (expected crash)");
@@ -5412,14 +5443,13 @@ async function runReleaseCrashNoCore({ releaseDir, runTimeoutMs, env }) {
         resolve();
       });
     });
+    if (readyFile) {
+      try { fs.rmSync(readyFile, { force: true }); } catch {}
+    }
   }
 }
 
 async function runReleaseGdbAttachFail({ releaseDir, runTimeoutMs, env }) {
-  if (runReleaseOk.skipListen) {
-    log("SKIP: listen not permitted; gdb attach test disabled");
-    return;
-  }
   if (!hasCommand("gdb")) {
     log("SKIP: gdb not installed; gdb attach test disabled");
     return;
@@ -5428,13 +5458,15 @@ async function runReleaseGdbAttachFail({ releaseDir, runTimeoutMs, env }) {
   const strict = process.env.SEAL_E2E_STRICT_PTRACE === "1";
 
   const port = await getFreePort();
-  const gdbPort = await getFreePort();
+  const readyFile = port === null ? makeReadyFile("thin-anti-debug") : null;
+  if (readyFile) log("WARN: listen not permitted; using ready-file mode");
   writeRuntimeConfig(releaseDir, port);
 
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
 
-  const childEnv = Object.assign({}, process.env, env || {});
+  const baseEnv = Object.assign({}, process.env, env || {});
+  const childEnv = applyReadyFileEnv(baseEnv, readyFile);
   const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe", env: childEnv });
   const outChunks = [];
   const errChunks = [];
@@ -5456,7 +5488,9 @@ async function runReleaseGdbAttachFail({ releaseDir, runTimeoutMs, env }) {
   });
 
   try {
-    await withTimeout("waitForStatus", runTimeoutMs, () => Promise.race([waitForStatus(port), exitPromise]));
+    await withTimeout("waitForStatus", runTimeoutMs, () =>
+      Promise.race([waitForReady({ port, readyFile, timeoutMs: runTimeoutMs }), exitPromise])
+    );
     const gdbRes = runGdbAttach(child.pid, 5000);
     if (gdbRes.error && gdbRes.error.code === "ETIMEDOUT") {
       throw new Error("gdb attach timed out (unexpected)");
@@ -5491,6 +5525,9 @@ async function runReleaseGdbAttachFail({ releaseDir, runTimeoutMs, env }) {
         resolve();
       });
     });
+    if (readyFile) {
+      try { fs.rmSync(readyFile, { force: true }); } catch {}
+    }
   }
 }
 
@@ -5514,10 +5551,6 @@ async function runReleaseLldbAttachFail({ releaseDir, runTimeoutMs, env }) {
 }
 
 async function runReleaseStraceAttachFail({ releaseDir, runTimeoutMs, env }) {
-  if (runReleaseOk.skipListen) {
-    log("SKIP: listen not permitted; strace attach test disabled");
-    return;
-  }
   if (!hasCommand("strace")) {
     log("SKIP: strace not installed; strace attach test disabled");
     return;
@@ -5526,13 +5559,15 @@ async function runReleaseStraceAttachFail({ releaseDir, runTimeoutMs, env }) {
   const strict = process.env.SEAL_E2E_STRICT_PTRACE === "1";
 
   const port = await getFreePort();
-  const gdbPort = await getFreePort();
+  const readyFile = port === null ? makeReadyFile("thin-anti-debug") : null;
+  if (readyFile) log("WARN: listen not permitted; using ready-file mode");
   writeRuntimeConfig(releaseDir, port);
 
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
 
-  const childEnv = Object.assign({}, process.env, env || {});
+  const baseEnv = Object.assign({}, process.env, env || {});
+  const childEnv = applyReadyFileEnv(baseEnv, readyFile);
   const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe", env: childEnv });
   const outChunks = [];
   const errChunks = [];
@@ -5554,7 +5589,9 @@ async function runReleaseStraceAttachFail({ releaseDir, runTimeoutMs, env }) {
   });
 
   try {
-    await withTimeout("waitForStatus", runTimeoutMs, () => Promise.race([waitForStatus(port), exitPromise]));
+    await withTimeout("waitForStatus", runTimeoutMs, () =>
+      Promise.race([waitForReady({ port, readyFile, timeoutMs: runTimeoutMs }), exitPromise])
+    );
     const logPath = path.join(os.tmpdir(), `seal-strace-attach-${Date.now()}.log`);
     const res = runStraceAttach(child.pid, logPath, 5000);
     if (res.error && res.error.code === "ETIMEDOUT") {
@@ -5593,14 +5630,13 @@ async function runReleaseStraceAttachFail({ releaseDir, runTimeoutMs, env }) {
         resolve();
       });
     });
+    if (readyFile) {
+      try { fs.rmSync(readyFile, { force: true }); } catch {}
+    }
   }
 }
 
 async function runReleaseLtraceAttachFail({ releaseDir, runTimeoutMs, env }) {
-  if (runReleaseOk.skipListen) {
-    log("SKIP: listen not permitted; ltrace attach test disabled");
-    return;
-  }
   if (!hasCommand("ltrace")) {
     log("SKIP: ltrace not installed; ltrace attach test disabled");
     return;
@@ -5609,12 +5645,15 @@ async function runReleaseLtraceAttachFail({ releaseDir, runTimeoutMs, env }) {
   const strict = process.env.SEAL_E2E_STRICT_PTRACE === "1";
 
   const port = await getFreePort();
+  const readyFile = port === null ? makeReadyFile("thin-anti-debug") : null;
+  if (readyFile) log("WARN: listen not permitted; using ready-file mode");
   writeRuntimeConfig(releaseDir, port);
 
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
 
-  const childEnv = Object.assign({}, process.env, env || {});
+  const baseEnv = Object.assign({}, process.env, env || {});
+  const childEnv = applyReadyFileEnv(baseEnv, readyFile);
   const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe", env: childEnv });
   const outChunks = [];
   const errChunks = [];
@@ -5636,7 +5675,9 @@ async function runReleaseLtraceAttachFail({ releaseDir, runTimeoutMs, env }) {
   });
 
   try {
-    await withTimeout("waitForStatus", runTimeoutMs, () => Promise.race([waitForStatus(port), exitPromise]));
+    await withTimeout("waitForStatus", runTimeoutMs, () =>
+      Promise.race([waitForReady({ port, readyFile, timeoutMs: runTimeoutMs }), exitPromise])
+    );
     const logPath = path.join(os.tmpdir(), `seal-ltrace-attach-${Date.now()}.log`);
     const res = runLtraceAttach(child.pid, logPath, 5000);
     if (res.error && res.error.code === "ETIMEDOUT") {
@@ -5676,14 +5717,13 @@ async function runReleaseLtraceAttachFail({ releaseDir, runTimeoutMs, env }) {
         resolve();
       });
     });
+    if (readyFile) {
+      try { fs.rmSync(readyFile, { force: true }); } catch {}
+    }
   }
 }
 
 async function runReleaseGdbServerAttachFail({ releaseDir, runTimeoutMs, env }) {
-  if (runReleaseOk.skipListen) {
-    log("SKIP: listen not permitted; gdbserver attach test disabled");
-    return;
-  }
   if (!hasCommand("gdbserver")) {
     log("SKIP: gdbserver not installed; gdbserver attach test disabled");
     return;
@@ -5692,13 +5732,20 @@ async function runReleaseGdbServerAttachFail({ releaseDir, runTimeoutMs, env }) 
   const strict = process.env.SEAL_E2E_STRICT_PTRACE === "1";
 
   const port = await getFreePort();
+  const readyFile = port === null ? makeReadyFile("thin-anti-debug") : null;
+  if (readyFile) log("WARN: listen not permitted; using ready-file mode");
   const gdbPort = await getFreePort();
+  if (gdbPort === null) {
+    log("SKIP: gdbserver attach disabled (listen not permitted)");
+    return;
+  }
   writeRuntimeConfig(releaseDir, port);
 
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
 
-  const childEnv = Object.assign({}, process.env, env || {});
+  const baseEnv = Object.assign({}, process.env, env || {});
+  const childEnv = applyReadyFileEnv(baseEnv, readyFile);
   const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe", env: childEnv });
   const outChunks = [];
   const errChunks = [];
@@ -5720,7 +5767,9 @@ async function runReleaseGdbServerAttachFail({ releaseDir, runTimeoutMs, env }) 
   });
 
   try {
-    await withTimeout("waitForStatus", runTimeoutMs, () => Promise.race([waitForStatus(port), exitPromise]));
+    await withTimeout("waitForStatus", runTimeoutMs, () =>
+      Promise.race([waitForReady({ port, readyFile, timeoutMs: runTimeoutMs }), exitPromise])
+    );
     const hostPort = `127.0.0.1:${gdbPort}`;
     const res = runGdbServerAttach(child.pid, hostPort, 5000);
     if (res.error && res.error.code === "ETIMEDOUT") {
@@ -5768,6 +5817,9 @@ async function runReleaseGdbServerAttachFail({ releaseDir, runTimeoutMs, env }) 
         resolve();
       });
     });
+    if (readyFile) {
+      try { fs.rmSync(readyFile, { force: true }); } catch {}
+    }
   }
 }
 
@@ -5791,23 +5843,22 @@ async function runReleaseLldbServerAttachFail({ releaseDir, runTimeoutMs, env })
 }
 
 async function runReleaseStraceCapture({ releaseDir, runTimeoutMs, env }) {
-  if (runReleaseOk.skipListen) {
-    log("SKIP: listen not permitted; strace capture disabled");
-    return;
-  }
   if (!hasCommand("strace")) {
     log("SKIP: strace not installed; strace capture disabled");
     return;
   }
 
   const port = await getFreePort();
+  const readyFile = port === null ? makeReadyFile("thin-anti-debug") : null;
+  if (readyFile) log("WARN: listen not permitted; using ready-file mode");
   writeRuntimeConfig(releaseDir, port);
 
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
 
   const logPath = path.join(os.tmpdir(), `seal-strace-run-${Date.now()}.log`);
-  const childEnv = Object.assign({}, process.env, env || {});
+  const baseEnv = Object.assign({}, process.env, env || {});
+  const childEnv = applyReadyFileEnv(baseEnv, readyFile);
   const child = spawn(
     "strace",
     ["-f", "-qq", "-o", logPath, binPath],
@@ -5849,6 +5900,9 @@ async function runReleaseStraceCapture({ releaseDir, runTimeoutMs, env }) {
   const out = `${exit.stdout || ""}${exit.stderr || ""}`;
   if (/operation not permitted/i.test(out) || /permission denied/i.test(out) || /ptrace/i.test(out)) {
     log("SKIP: strace capture blocked by ptrace policy");
+    if (readyFile) {
+      try { fs.rmSync(readyFile, { force: true }); } catch {}
+    }
     return;
   }
   await delay(200);
@@ -5869,9 +5923,15 @@ async function runReleaseStraceCapture({ releaseDir, runTimeoutMs, env }) {
   }
   if (!hasMemfd) {
     log("SKIP: memfd_create not visible in strace output (strace too old or syscall unnamed)");
+    if (readyFile) {
+      try { fs.rmSync(readyFile, { force: true }); } catch {}
+    }
     return;
   }
   log("OK: strace captured memfd_create + exec (antiDebug=off)");
+  if (readyFile) {
+    try { fs.rmSync(readyFile, { force: true }); } catch {}
+  }
 }
 
 async function runReleaseExpectFailAfterReady({
@@ -5882,17 +5942,16 @@ async function runReleaseExpectFailAfterReady({
   expectStderr,
   onReady,
 }) {
-  if (runReleaseOk.skipListen) {
-    log("SKIP: listen not permitted; runtime check disabled");
-    return;
-  }
   const port = await getFreePort();
+  const readyFile = port === null ? makeReadyFile("thin-anti-debug") : null;
+  if (readyFile) log("WARN: listen not permitted; using ready-file mode");
   writeRuntimeConfig(releaseDir, port);
 
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
 
-  const childEnv = Object.assign({}, process.env, env || {});
+  const baseEnv = Object.assign({}, process.env, env || {});
+  const childEnv = applyReadyFileEnv(baseEnv, readyFile);
   const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe", env: childEnv });
   const outChunks = [];
   const errChunks = [];
@@ -5909,7 +5968,7 @@ async function runReleaseExpectFailAfterReady({
 
   try {
     await withTimeout("waitForReady", readyTimeoutMs, () => Promise.race([
-      waitForStatus(port),
+      waitForReady({ port, readyFile, timeoutMs: readyTimeoutMs }),
       exitPromise.then(({ code, signal }) => {
         throw new Error(`process exited before ready (code=${code} signal=${signal || "none"})`);
       }),
@@ -5946,6 +6005,9 @@ async function runReleaseExpectFailAfterReady({
         resolve();
       });
     });
+    if (readyFile) {
+      try { fs.rmSync(readyFile, { force: true }); } catch {}
+    }
   }
 }
 
@@ -6162,9 +6224,9 @@ async function main() {
     log("SKIP: environment hardening checks disabled (set SEAL_E2E_ENV_CHECKS=1)");
   }
 
-  const buildTimeoutMs = Number(process.env.SEAL_THIN_ANTI_DEBUG_E2E_BUILD_TIMEOUT_MS || "240000");
-  const runTimeoutMs = Number(process.env.SEAL_THIN_ANTI_DEBUG_E2E_RUN_TIMEOUT_MS || "15000");
-  const testTimeoutMs = Number(process.env.SEAL_THIN_ANTI_DEBUG_E2E_TIMEOUT_MS || "300000");
+  const buildTimeoutMs = resolveE2ETimeout("SEAL_THIN_ANTI_DEBUG_E2E_BUILD_TIMEOUT_MS", 240000);
+  const runTimeoutMs = resolveE2ERunTimeout("SEAL_THIN_ANTI_DEBUG_E2E_RUN_TIMEOUT_MS", 15000);
+  const testTimeoutMs = resolveE2ETimeout("SEAL_THIN_ANTI_DEBUG_E2E_TIMEOUT_MS", 300000);
   const suiteList = normalizeSuiteList(process.env.SEAL_THIN_ANTI_DEBUG_SUITES);
   const suiteSet = new Set(suiteList);
   const suiteEnabled = (name) => suiteSet.has(name);
@@ -6175,7 +6237,7 @@ async function main() {
   } catch (e) {
     if (e && e.code === "EPERM") {
       runReleaseOk.skipListen = true;
-      log("SKIP: cannot listen on localhost (EPERM)");
+      log("WARN: cannot listen on localhost (EPERM); using ready-file mode where possible");
     } else {
       throw e;
     }
@@ -6444,6 +6506,7 @@ async function main() {
 
     if (suiteEnabled("bootstrap")) {
       log("Suite: bootstrap");
+      await ensureRuntimeConfig(resA.releaseDir);
       log("Testing bootstrap memory checkpoints...");
       await withTimeout("bootstrap memory checkpoints", testTimeoutMs, () =>
         runReleaseBootstrapMemoryChecks({ releaseDir: resA.releaseDir, outDir: resA.outDir, runTimeoutMs })

@@ -34,6 +34,23 @@ function main() {
   }
 
   const logger = createLogger(cfg.log);
+  const readyFile = process.env.SEAL_E2E_READY_FILE || "";
+  const noListen = process.env.SEAL_E2E_NO_LISTEN === "1";
+
+  const writeReadyFile = () => {
+    if (!readyFile) return;
+    try {
+      fs.mkdirSync(path.dirname(readyFile), { recursive: true });
+      fs.writeFileSync(readyFile, JSON.stringify({
+        ts: new Date().toISOString(),
+        pid: process.pid,
+        appName: APP_NAME,
+        buildId: BUILD_ID,
+      }));
+    } catch (e) {
+      logger.error("startup.ready_failed", { file: readyFile, error: { message: e.message } });
+    }
+  };
 
   // Read local file (runtime) – this demonstrates "extra local files"
   let features = { features: {}, notes: "missing features file" };
@@ -108,6 +125,21 @@ function main() {
     res.status(404).send("missing public/index.html");
   });
 
+  if (noListen) {
+    logger.info("startup.ready", {
+      appName: APP_NAME,
+      buildId: BUILD_ID,
+      host: cfg.http.host,
+      port: cfg.http.port,
+      logLevel: cfg.log.level,
+      featuresFile: cfg.featuresFile,
+      noListen: true,
+    });
+    writeReadyFile();
+    setInterval(() => {}, 1000);
+    return;
+  }
+
   app.listen(cfg.http.port, cfg.http.host, () => {
     logger.info("startup.listen", {
       appName: APP_NAME,
@@ -117,6 +149,7 @@ function main() {
       logLevel: cfg.log.level,
       featuresFile: cfg.featuresFile,
     });
+    writeReadyFile();
   });
 }
 

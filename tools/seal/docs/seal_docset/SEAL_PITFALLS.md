@@ -305,7 +305,7 @@
   - Wymaganie: template/init, przyklady i dokumentacja uzywaja tylko kanonicznych pol.
 
 - Blad: zmiana schematu `seal.json5` (np. `bundleFallback` -> `packagerFallback`, `stripSymbols/upxPack` -> `strip/elfPacker`) nie byla zaktualizowana we wszystkich projektach, docs i testach.
-  - Wymaganie: migracja schematu = aktualizacja **wszystkich** `seal.json5` w repo + init template + docs + testy.
+  - Wymaganie: migracja schematu = aktualizacja **wszystkich** `seal.json5` w repo (takze workspace `defaults`) + init template + docs + testy.
   - Wymaganie: parser musi fail‑fast na nieznanych/starych kluczach z jasnym hintem migracji.
   - Wymaganie: CI/skript sprawdza brak starych kluczy w repo (scan).
 
@@ -586,6 +586,7 @@
   - Wymaganie: procesy uruchamiane w testach musza miec drenaz stdout/stderr (albo `stdio: inherit`), zeby nie blokowac procesu.
   - Wymaganie: testy nie polegaja na **kruchej** analizie stdout child procesu (ANSI/kolory/pipe). Preferuj JSON output, kody wyjscia, lub wywolania in‑process; zawsze stripuj ANSI.
   - Wymaganie: w testach ustaw `NO_COLOR=1` i `FORCE_COLOR=0`, aby ograniczyc ANSI w outputach narzedzi.
+  - Wymaganie: helper `fail()` w testach musi **zatrzymac** test (throw/exit), a nie tylko logowac blad.
   - Wymaganie: testy UI musza zawsze zamykac browser (`finally`), nawet przy bledzie.
   - Wymaganie: subprocess musi zawsze obslugiwac zdarzenie `error` (i resolve/reject), aby nie zostawiac wiszacej obietnicy.
   - Wymaganie: testy E2E uzywaja losowych portow (bez hardcode `3000`), aby uniknac `EADDRINUSE`.

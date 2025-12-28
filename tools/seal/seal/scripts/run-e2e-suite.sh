@@ -509,8 +509,14 @@ fi
 
 EXAMPLE_DIR="${SEAL_E2E_EXAMPLE_ROOT:-$EXAMPLE_DST}"
 EXAMPLE_NODE_MODULES_DIR="$EXAMPLE_DIR/node_modules"
+SHARED_NODE_MODULES_DIR=""
 if [ -n "${SEAL_E2E_NODE_MODULES_ROOT:-}" ]; then
-  EXAMPLE_NODE_MODULES_DIR="$SEAL_E2E_NODE_MODULES_ROOT"
+  if [ "${SEAL_E2E_NODE_MODULES_ROOT##*/}" = "node_modules" ]; then
+    SHARED_NODE_MODULES_DIR="$SEAL_E2E_NODE_MODULES_ROOT"
+  else
+    SHARED_NODE_MODULES_DIR="$SEAL_E2E_NODE_MODULES_ROOT/node_modules"
+  fi
+  EXAMPLE_NODE_MODULES_DIR="$SHARED_NODE_MODULES_DIR"
 fi
 
 # Ensure summary headers survive example workspace resets.
@@ -528,8 +534,19 @@ if [ -d "$EXAMPLE_DIR" ]; then
       NEED_EXAMPLE_DEPS=1
     fi
   fi
-  if [ -n "${SEAL_E2E_NODE_MODULES_ROOT:-}" ]; then
-    mkdir -p "$SEAL_E2E_NODE_MODULES_ROOT"
+  if [ -n "$SHARED_NODE_MODULES_DIR" ]; then
+    mkdir -p "$SHARED_NODE_MODULES_DIR"
+    if ! dir_has_files "$SHARED_NODE_MODULES_DIR" && dir_has_files "$SEAL_E2E_NODE_MODULES_ROOT"; then
+      log "Migrating shared node_modules cache layout..."
+      (
+        shopt -s dotglob
+        for entry in "$SEAL_E2E_NODE_MODULES_ROOT"/*; do
+          if [ -e "$entry" ] && [ "$(basename "$entry")" != "node_modules" ]; then
+            mv "$entry" "$SHARED_NODE_MODULES_DIR"/
+          fi
+        done
+      )
+    fi
     if [ "$NEED_EXAMPLE_DEPS" = "1" ]; then
       if command -v flock >/dev/null 2>&1; then
         exec {lockfd}>"$EXAMPLE_LOCK"
@@ -541,14 +558,14 @@ if [ -d "$EXAMPLE_DIR" ]; then
           fi
           (cd "$EXAMPLE_DIR" && npm install)
           if command -v rsync >/dev/null 2>&1; then
-            rsync -a --delete "$EXAMPLE_DIR/node_modules/" "$SEAL_E2E_NODE_MODULES_ROOT/"
+            rsync -a --delete "$EXAMPLE_DIR/node_modules/" "$SHARED_NODE_MODULES_DIR/"
           else
-            rm -rf "$SEAL_E2E_NODE_MODULES_ROOT"
-            mkdir -p "$SEAL_E2E_NODE_MODULES_ROOT"
-            cp -a "$EXAMPLE_DIR/node_modules/." "$SEAL_E2E_NODE_MODULES_ROOT/"
+            rm -rf "$SHARED_NODE_MODULES_DIR"
+            mkdir -p "$SHARED_NODE_MODULES_DIR"
+            cp -a "$EXAMPLE_DIR/node_modules/." "$SHARED_NODE_MODULES_DIR/"
           fi
           rm -rf "$EXAMPLE_DIR/node_modules"
-          ln -s "$SEAL_E2E_NODE_MODULES_ROOT" "$EXAMPLE_DIR/node_modules"
+          ln -s "$SHARED_NODE_MODULES_DIR" "$EXAMPLE_DIR/node_modules"
           echo "$EXAMPLE_SIG" > "$EXAMPLE_STAMP"
         else
           log "Example dependencies already installed (shared cache)."
@@ -561,19 +578,19 @@ if [ -d "$EXAMPLE_DIR" ]; then
         fi
         (cd "$EXAMPLE_DIR" && npm install)
         if command -v rsync >/dev/null 2>&1; then
-          rsync -a --delete "$EXAMPLE_DIR/node_modules/" "$SEAL_E2E_NODE_MODULES_ROOT/"
+          rsync -a --delete "$EXAMPLE_DIR/node_modules/" "$SHARED_NODE_MODULES_DIR/"
         else
-          rm -rf "$SEAL_E2E_NODE_MODULES_ROOT"
-          mkdir -p "$SEAL_E2E_NODE_MODULES_ROOT"
-          cp -a "$EXAMPLE_DIR/node_modules/." "$SEAL_E2E_NODE_MODULES_ROOT/"
+          rm -rf "$SHARED_NODE_MODULES_DIR"
+          mkdir -p "$SHARED_NODE_MODULES_DIR"
+          cp -a "$EXAMPLE_DIR/node_modules/." "$SHARED_NODE_MODULES_DIR/"
         fi
         rm -rf "$EXAMPLE_DIR/node_modules"
-        ln -s "$SEAL_E2E_NODE_MODULES_ROOT" "$EXAMPLE_DIR/node_modules"
+        ln -s "$SHARED_NODE_MODULES_DIR" "$EXAMPLE_DIR/node_modules"
         echo "$EXAMPLE_SIG" > "$EXAMPLE_STAMP"
       fi
     elif [ ! -d "$EXAMPLE_DIR/node_modules" ]; then
       log "Linking shared node_modules..."
-      ln -s "$SEAL_E2E_NODE_MODULES_ROOT" "$EXAMPLE_DIR/node_modules"
+      ln -s "$SHARED_NODE_MODULES_DIR" "$EXAMPLE_DIR/node_modules"
     fi
   else
     if [ "$NEED_EXAMPLE_DEPS" = "1" ]; then
@@ -640,24 +657,36 @@ fi
 
 export SEAL_THIN_CHUNK_SIZE="${SEAL_THIN_CHUNK_SIZE:-8388608}"
 export SEAL_THIN_ZSTD_LEVEL="${SEAL_THIN_ZSTD_LEVEL:-1}"
-export SEAL_THIN_ZSTD_TIMEOUT_MS="${SEAL_THIN_ZSTD_TIMEOUT_MS:-120000}"
+if [ -z "${SEAL_E2E_TIMEOUT_SCALE:-}" ]; then
+  if [ "${SEAL_DOCKER_E2E:-0}" = "1" ]; then
+    export SEAL_E2E_TIMEOUT_SCALE=2
+  fi
+fi
 
 export SEAL_UI_E2E_HEADLESS="${SEAL_UI_E2E_HEADLESS:-1}"
 
 if [ "${SEAL_UI_E2E:-0}" = "1" ] && should_run "example-ui"; then
   PW_MARKER="${SEAL_E2E_PLAYWRIGHT_MARKER:-/root/.cache/seal/playwright-installed}"
+  PW_CACHE="/root/.cache/ms-playwright"
+  PW_HAS_BROWSER=0
+  if [ -d "$PW_CACHE" ]; then
+    if find "$PW_CACHE" -type f \( -name 'chrome-headless-shell' -o -name 'chrome' \) -print -quit 2>/dev/null | grep -q .; then
+      PW_HAS_BROWSER=1
+    fi
+  fi
   if ! has_cmd npx; then
     log "WARN: npx not found; skipping Playwright browser install"
   else
-    if [ ! -f "$PW_MARKER" ]; then
+    if [ ! -f "$PW_MARKER" ] || [ "$PW_HAS_BROWSER" = "0" ]; then
+      if [ -f "$PW_MARKER" ] && [ "$PW_HAS_BROWSER" = "0" ]; then
+        log "Playwright marker present but browsers missing; reinstalling."
+      fi
       if [ ! -x "$REPO_ROOT/tools/seal/seal/node_modules/.bin/playwright" ]; then
         log "Playwright CLI missing; installing tools/seal/seal npm deps..."
         (cd "$REPO_ROOT/tools/seal/seal" && npm install)
       fi
-      if [ ! -d "/root/.cache/ms-playwright" ] || [ -z "$(ls -A /root/.cache/ms-playwright 2>/dev/null)" ]; then
-        log "Installing Playwright browsers for UI E2E..."
-        (cd "$REPO_ROOT" && npx playwright install --with-deps chromium)
-      fi
+      log "Installing Playwright browsers for UI E2E..."
+      (cd "$REPO_ROOT" && npx playwright install --with-deps chromium)
       touch "$PW_MARKER"
     fi
   fi
@@ -747,6 +776,14 @@ if [ "$SETUP_ONLY" = "1" ]; then
   log "Setup only (SEAL_E2E_SETUP_ONLY=1). Skipping tests."
   exit 0
 fi
+THIN_NATIVE_RUN_TIMEOUT_MS="${SEAL_THIN_E2E_NATIVE_RUN_TIMEOUT_MS:-}"
+if [ -z "$THIN_NATIVE_RUN_TIMEOUT_MS" ]; then
+  if [ -n "${SEAL_E2E_TIMEOUT_SCALE:-}" ]; then
+    THIN_NATIVE_RUN_TIMEOUT_MS="$(awk -v base=240000 -v scale="$SEAL_E2E_TIMEOUT_SCALE" 'BEGIN { v=base*scale; if (v<1) v=1; printf "%d", v }')"
+  else
+    THIN_NATIVE_RUN_TIMEOUT_MS=240000
+  fi
+fi
 for name in "${MANIFEST_ORDER[@]}"; do
   script="${TEST_SCRIPT[$name]:-}"
   if [ -z "$script" ]; then
@@ -769,7 +806,7 @@ for name in "${MANIFEST_ORDER[@]}"; do
     continue
   fi
   if [ "$name" = "thin" ]; then
-    SEAL_THIN_E2E_NATIVE_RUN_TIMEOUT_MS="${SEAL_THIN_E2E_NATIVE_RUN_TIMEOUT_MS:-240000}" \
+    SEAL_THIN_E2E_NATIVE_RUN_TIMEOUT_MS="$THIN_NATIVE_RUN_TIMEOUT_MS" \
       run_test "$name" "$NODE_BIN" "$script"
   else
     run_test "$name" "$NODE_BIN" "$script"

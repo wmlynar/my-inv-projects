@@ -9,7 +9,7 @@ const os = require("os");
 const path = require("path");
 const { spawn, spawnSync } = require("child_process");
 
-const { hasCommand } = require("./e2e-utils");
+const { hasCommand, applyReadyFileEnv, makeReadyFile, waitForReadyFile } = require("./e2e-utils");
 const { readJson5, writeJson5 } = require("../src/lib/json5io");
 
 const EXAMPLE_ROOT = process.env.SEAL_E2E_EXAMPLE_ROOT || path.resolve(__dirname, "..", "..", "example");
@@ -134,8 +134,19 @@ function ensureNodeModules(srcRoot, dstRoot) {
 
 function getFreePort() {
   return new Promise((resolve, reject) => {
+    if (process.env.SEAL_E2E_NO_LISTEN === "1") {
+      resolve(null);
+      return;
+    }
     const srv = net.createServer();
-    srv.on("error", reject);
+    srv.on("error", (err) => {
+      if (err && err.code === "EPERM") {
+        process.env.SEAL_E2E_NO_LISTEN = "1";
+        resolve(null);
+        return;
+      }
+      reject(err);
+    });
     srv.listen(0, "127.0.0.1", () => {
       const addr = srv.address();
       const port = typeof addr === "object" && addr ? addr.port : null;
@@ -188,6 +199,20 @@ async function waitForStatus(port, timeoutMs = 12000) {
   throw new Error(`Timeout waiting for /api/status on port ${port}`);
 }
 
+async function waitForReady({ port, readyFile, timeoutMs }) {
+  if (readyFile) return waitForReadyFile(readyFile, timeoutMs);
+  return waitForStatus(port, timeoutMs);
+}
+
+function parseReadyPayload(raw) {
+  if (!raw) return null;
+  try {
+    return JSON.parse(String(raw));
+  } catch {
+    return null;
+  }
+}
+
 async function stopChild(child, timeoutMs = 5000) {
   if (!child || child.killed) return;
   child.kill("SIGTERM");
@@ -199,7 +224,7 @@ async function stopChild(child, timeoutMs = 5000) {
   child.kill("SIGKILL");
 }
 
-async function runSealed(releaseDir, appName, port) {
+async function runSealed(releaseDir, appName, port, readyFile) {
   const cfgPath = path.join(releaseDir, "config.runtime.json5");
   assert.ok(fs.existsSync(cfgPath), `Missing runtime config: ${cfgPath}`);
 
@@ -209,7 +234,8 @@ async function runSealed(releaseDir, appName, port) {
   assert.ok(fs.existsSync(bin), `Missing runtime entry: ${bin}`);
 
   const args = useAppctl ? ["run"] : [];
-  const child = spawn(bin, args, { cwd: releaseDir, stdio: ["ignore", "pipe", "pipe"] });
+  const childEnv = applyReadyFileEnv(process.env, readyFile);
+  const child = spawn(bin, args, { cwd: releaseDir, stdio: ["ignore", "pipe", "pipe"], env: childEnv });
   let exitErr = null;
   child.on("exit", (code, signal) => {
     if (code && code !== 0) {
@@ -218,17 +244,29 @@ async function runSealed(releaseDir, appName, port) {
   });
 
   try {
-    const status = await waitForStatus(port, 12000);
+    const status = await waitForReady({ port, readyFile, timeoutMs: 12000 });
     if (exitErr) throw exitErr;
-    if (status.buildId === "DEV") {
+    if (readyFile) {
+      const payload = parseReadyPayload(status);
+      if (payload && payload.buildId === "DEV") {
+        throw new Error("unexpected buildId=DEV in sealed run");
+      }
+    } else if (status.buildId === "DEV") {
       throw new Error("unexpected buildId=DEV in sealed run");
     }
   } finally {
     await stopChild(child, 5000);
+    if (readyFile) {
+      try { fs.rmSync(readyFile, { force: true }); } catch {}
+    }
   }
 }
 
 async function runRemoteFlow({ tmpRoot, appName }) {
+  if (process.env.SEAL_E2E_NO_LISTEN === "1") {
+    log("SKIP: remote user flow disabled (SEAL_E2E_NO_LISTEN=1)");
+    return;
+  }
   if (process.env.SEAL_USER_FLOW_SSH_E2E !== "1") {
     log("SKIP: remote user flow disabled (SEAL_USER_FLOW_SSH_E2E!=1)");
     return;
@@ -280,7 +318,7 @@ async function runRemoteFlow({ tmpRoot, appName }) {
 
   const waitUrl = `http://127.0.0.1:${httpPort}/healthz`;
   log(`Remote ship -> ${user}@${host} (${installDir})`);
-  runSeal(tmpRoot, ["ship", "remote", "--bootstrap", "--skip-check", "--wait-mode", "both", "--wait-url", waitUrl], {
+  runSeal(tmpRoot, ["ship", "remote", "--bootstrap", "--skip-check", "--push-config", "--wait-mode", "both", "--wait-url", waitUrl], {
     timeoutMs: 240000,
   });
   runSeal(tmpRoot, ["uninstall", "remote"]);
@@ -309,8 +347,18 @@ async function main() {
     }
 
     const profiles = runSeal(tmpRoot, ["profiles"]);
-    if (!profiles.out.includes("Security profiles:") || !profiles.out.includes("minimal")) {
-      throw new Error("profiles output missing expected sections");
+    const profileText = profiles.out.trim();
+    let profileOk = false;
+    const lower = profileText.toLowerCase();
+    if (lower.includes("security profiles") && lower.includes("minimal")) {
+      profileOk = true;
+    } else if (profileText.startsWith("{") || profileText.startsWith("[")) {
+      const parsed = parseReadyPayload(profileText);
+      const raw = parsed ? JSON.stringify(parsed).toLowerCase() : "";
+      if (raw.includes("minimal")) profileOk = true;
+    }
+    if (!profileOk) {
+      throw new Error(`profiles output missing expected sections\n${truncate(profileText)}`);
     }
 
     runSeal(tmpRoot, ["init"]);
@@ -370,10 +418,14 @@ async function main() {
     }
 
     const port = await getFreePort();
+    const readyFile = port === null ? makeReadyFile("user-flow") : null;
+    if (readyFile) {
+      log("WARN: listen not permitted; using ready-file mode");
+    }
     const cfg = readJson5(localConfig);
     cfg.http = cfg.http || {};
     cfg.http.host = "127.0.0.1";
-    cfg.http.port = port;
+    cfg.http.port = port || 3000;
     writeJson5(localConfig, cfg);
     fs.copyFileSync(localConfig, path.join(releaseDir, "config.runtime.json5"));
 
@@ -381,14 +433,17 @@ async function main() {
     const currentBuildId = path.join(localTargetCfg.installDir, "current.buildId");
     assert.ok(fs.existsSync(currentBuildId), "current.buildId missing after deploy");
 
-    if (systemctlUserReady()) {
+    if (readyFile) {
+      log("SKIP: systemd user ship disabled (ready-file mode)");
+    } else if (systemctlUserReady()) {
       runSeal(tmpRoot, ["ship", "local", "--bootstrap", "--skip-check", "--wait-mode", "systemd"], { timeoutMs: 240000 });
       const svcPath = path.join(os.homedir(), ".config", "systemd", "user", `${localTargetCfg.serviceName}.service`);
       assert.ok(fs.existsSync(svcPath), "systemd user service missing after ship --bootstrap");
       runSeal(tmpRoot, ["uninstall", "local"]);
     }
 
-    await runSealed(releaseDir, appName, port);
+    fs.copyFileSync(localConfig, path.join(releaseDir, "config.runtime.json5"));
+    await runSealed(releaseDir, appName, port, readyFile);
     await runRemoteFlow({ tmpRoot, appName });
 
     runSeal(tmpRoot, ["clean"]);

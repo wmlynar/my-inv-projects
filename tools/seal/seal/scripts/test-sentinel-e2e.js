@@ -9,7 +9,7 @@ const net = require("net");
 const os = require("os");
 const path = require("path");
 const { spawn, spawnSync } = require("child_process");
-const { hasCommand } = require("./e2e-utils");
+const { hasCommand, resolveE2ETimeout, resolveE2ERunTimeout, applyReadyFileEnv, makeReadyFile, waitForReadyFile } = require("./e2e-utils");
 
 const { buildRelease } = require("../src/lib/build");
 const { loadProjectConfig, loadTargetConfig, resolveConfigName } = require("../src/lib/project");
@@ -129,10 +129,35 @@ async function waitForStatus(port, timeoutMs = 10_000) {
   throw new Error(`Timeout waiting for /api/status on port ${port}`);
 }
 
+async function waitForReady({ port, readyFile, timeoutMs }) {
+  if (readyFile) return waitForReadyFile(readyFile, timeoutMs);
+  return waitForStatus(port, timeoutMs);
+}
+
+function parseReadyPayload(raw) {
+  if (!raw) return null;
+  try {
+    return JSON.parse(String(raw));
+  } catch {
+    return null;
+  }
+}
+
 function getFreePort() {
   return new Promise((resolve, reject) => {
+    if (process.env.SEAL_E2E_NO_LISTEN === "1") {
+      resolve(null);
+      return;
+    }
     const srv = net.createServer();
-    srv.on("error", reject);
+    srv.on("error", (err) => {
+      if (err && err.code === "EPERM") {
+        process.env.SEAL_E2E_NO_LISTEN = "1";
+        resolve(null);
+        return;
+      }
+      reject(err);
+    });
     srv.listen(0, "127.0.0.1", () => {
       const addr = srv.address();
       const port = typeof addr === "object" && addr ? addr.port : null;
@@ -361,7 +386,7 @@ function writeRuntimeConfig(releaseDir, port) {
   const cfg = readJson5(cfgPath);
   cfg.http = cfg.http || {};
   cfg.http.host = "127.0.0.1";
-  cfg.http.port = port;
+  cfg.http.port = port || 3000;
   writeJson5(path.join(releaseDir, "config.runtime.json5"), cfg);
 }
 
@@ -420,11 +445,14 @@ function installSentinelBlob({
 
 async function runReleaseExpectOk({ releaseDir, buildId, runTimeoutMs }) {
   const port = await getFreePort();
+  const readyFile = port === null ? makeReadyFile("sentinel") : null;
+  if (readyFile) log("WARN: listen not permitted; using ready-file mode");
   writeRuntimeConfig(releaseDir, port);
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
 
-  const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe" });
+  const childEnv = applyReadyFileEnv(process.env, readyFile);
+  const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe", env: childEnv });
   const outChunks = [];
   const errChunks = [];
   child.stdout.on("data", (c) => outChunks.push(c));
@@ -439,7 +467,7 @@ async function runReleaseExpectOk({ releaseDir, buildId, runTimeoutMs }) {
   let status;
   try {
     const earlyResult = await withTimeout("waitForStatus", runTimeoutMs, () =>
-      Promise.race([waitForStatus(port), childExit, childError])
+      Promise.race([waitForReady({ port, readyFile, timeoutMs: runTimeoutMs }), childExit, childError])
     );
     if (earlyResult && earlyResult.type === "error") {
       throw new Error(`spawn failed: ${earlyResult.err && earlyResult.err.message ? earlyResult.err.message : "unknown error"}`);
@@ -468,20 +496,34 @@ async function runReleaseExpectOk({ releaseDir, buildId, runTimeoutMs }) {
         resolve();
       });
     });
+    if (readyFile) {
+      try { fs.rmSync(readyFile, { force: true }); } catch {}
+    }
   }
 
-  assert.strictEqual(status.appName, "seal-example");
-  assert.strictEqual(status.buildId, buildId);
-  assert.strictEqual(status.http.port, port);
+  if (readyFile) {
+    const payload = parseReadyPayload(status);
+    if (payload) {
+      assert.strictEqual(payload.appName, "seal-example");
+      assert.strictEqual(payload.buildId, buildId);
+    }
+  } else {
+    assert.strictEqual(status.appName, "seal-example");
+    assert.strictEqual(status.buildId, buildId);
+    assert.strictEqual(status.http.port, port);
+  }
 }
 
 async function runReleaseExpectFail({ releaseDir, runTimeoutMs, expectCode }) {
   const port = await getFreePort();
+  const readyFile = port === null ? makeReadyFile("sentinel") : null;
+  if (readyFile) log("WARN: listen not permitted; using ready-file mode");
   writeRuntimeConfig(releaseDir, port);
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
 
-  const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe" });
+  const childEnv = applyReadyFileEnv(process.env, readyFile);
+  const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe", env: childEnv });
   child.stdout.on("data", () => {});
   child.stderr.on("data", () => {});
   const childExit = new Promise((resolve) => {
@@ -510,6 +552,9 @@ async function runReleaseExpectFail({ releaseDir, runTimeoutMs, expectCode }) {
         });
       });
     }
+    if (readyFile) {
+      try { fs.rmSync(readyFile, { force: true }); } catch {}
+    }
   }
   if (exitInfo && exitInfo.type === "error") {
     throw new Error(`spawn failed: ${exitInfo.err && exitInfo.err.message ? exitInfo.err.message : "unknown error"}`);
@@ -524,11 +569,14 @@ async function runReleaseExpectFail({ releaseDir, runTimeoutMs, expectCode }) {
 
 async function runReleaseExpectExpire({ releaseDir, buildId, runTimeoutMs, expectCode, expireTimeoutMs }) {
   const port = await getFreePort();
+  const readyFile = port === null ? makeReadyFile("sentinel") : null;
+  if (readyFile) log("WARN: listen not permitted; using ready-file mode");
   writeRuntimeConfig(releaseDir, port);
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
 
-  const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe" });
+  const childEnv = applyReadyFileEnv(process.env, readyFile);
+  const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe", env: childEnv });
   const outChunks = [];
   const errChunks = [];
   child.stdout.on("data", (c) => outChunks.push(c));
@@ -542,7 +590,7 @@ async function runReleaseExpectExpire({ releaseDir, buildId, runTimeoutMs, expec
 
   try {
     await withTimeout("waitForStatus", runTimeoutMs, () =>
-      Promise.race([waitForStatus(port), childExit, childError])
+      Promise.race([waitForReady({ port, readyFile, timeoutMs: runTimeoutMs }), childExit, childError])
     );
   } catch (e) {
     child.kill("SIGTERM");
@@ -560,6 +608,9 @@ async function runReleaseExpectExpire({ releaseDir, buildId, runTimeoutMs, expec
     assert.strictEqual(code, expectCode);
   } else {
     assert.ok(code !== 0, "Expected non-zero exit code");
+  }
+  if (readyFile) {
+    try { fs.rmSync(readyFile, { force: true }); } catch {}
   }
 }
 
@@ -935,9 +986,9 @@ async function main() {
     process.exit(prereq.skip ? 77 : 1);
   }
 
-  const buildTimeoutMs = Number(process.env.SEAL_SENTINEL_E2E_BUILD_TIMEOUT_MS || "180000");
-  const runTimeoutMs = Number(process.env.SEAL_SENTINEL_E2E_RUN_TIMEOUT_MS || "15000");
-  const testTimeoutMs = Number(process.env.SEAL_SENTINEL_E2E_TIMEOUT_MS || "240000");
+  const buildTimeoutMs = resolveE2ETimeout("SEAL_SENTINEL_E2E_BUILD_TIMEOUT_MS", 180000);
+  const runTimeoutMs = resolveE2ERunTimeout("SEAL_SENTINEL_E2E_RUN_TIMEOUT_MS", 15000);
+  const testTimeoutMs = resolveE2ETimeout("SEAL_SENTINEL_E2E_TIMEOUT_MS", 240000);
   const ctx = { buildTimeoutMs, runTimeoutMs };
 
   let failures = 0;

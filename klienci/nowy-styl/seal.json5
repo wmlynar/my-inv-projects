@@ -30,6 +30,9 @@
         }
       }
     },
+    "deploy": {
+      "autoBootstrap": true
+    },
     "policy": {
       "retention": {
         "keepReleases": 1,

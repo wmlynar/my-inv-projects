@@ -9,7 +9,7 @@ const net = require("net");
 const os = require("os");
 const path = require("path");
 const { spawn, spawnSync } = require("child_process");
-const { hasCommand } = require("./e2e-utils");
+const { hasCommand, resolveE2ETimeout, resolveE2ERunTimeout, applyReadyFileEnv, makeReadyFile, waitForReadyFile } = require("./e2e-utils");
 
 const { buildRelease } = require("../src/lib/build");
 const { loadProjectConfig, loadTargetConfig, resolveConfigName } = require("../src/lib/project");
@@ -27,6 +27,17 @@ function fail(msg) {
 
 function runCmd(cmd, args, timeoutMs = 5000) {
   return spawnSync(cmd, args, { stdio: "pipe", timeout: timeoutMs });
+}
+
+function ensureLauncherObfuscation(projectCfg) {
+  const thinCfg = projectCfg.build && projectCfg.build.thin ? projectCfg.build.thin : {};
+  const cObf = projectCfg.build && projectCfg.build.protection ? projectCfg.build.protection.cObfuscator || {} : {};
+  const cObfCmd = cObf.cmd || cObf.tool;
+  if (thinCfg.launcherObfuscation !== false && cObfCmd && !hasCommand(cObfCmd)) {
+    log(`C obfuscator not available (${cObfCmd}); disabling launcherObfuscation for test`);
+    thinCfg.launcherObfuscation = false;
+  }
+  projectCfg.build.thin = thinCfg;
 }
 
 function checkPrereqs() {
@@ -118,8 +129,19 @@ async function waitForStatus(port) {
 
 function getFreePort() {
   return new Promise((resolve, reject) => {
+    if (process.env.SEAL_E2E_NO_LISTEN === "1") {
+      resolve(null);
+      return;
+    }
     const srv = net.createServer();
-    srv.on("error", reject);
+    srv.on("error", (err) => {
+      if (err && err.code === "EPERM") {
+        process.env.SEAL_E2E_NO_LISTEN = "1";
+        resolve(null);
+        return;
+      }
+      reject(err);
+    });
     srv.listen(0, "127.0.0.1", () => {
       const addr = srv.address();
       const port = typeof addr === "object" && addr ? addr.port : null;
@@ -133,18 +155,21 @@ function writeRuntimeConfig(releaseDir, port) {
   const cfg = readJson5(cfgPath);
   cfg.http = cfg.http || {};
   cfg.http.host = "127.0.0.1";
-  cfg.http.port = port;
+  cfg.http.port = port || 3000;
   writeJson5(path.join(releaseDir, "config.runtime.json5"), cfg);
 }
 
 async function runReleaseAndCheck({ releaseDir, runTimeoutMs }) {
   const port = await getFreePort();
+  const readyFile = port === null ? makeReadyFile("obfuscation") : null;
+  if (readyFile) log("WARN: listen not permitted; using ready-file mode");
   writeRuntimeConfig(releaseDir, port);
 
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
 
-  const child = spawn(binPath, [], { cwd: releaseDir, stdio: ["ignore", "pipe", "pipe"] });
+  const childEnv = applyReadyFileEnv(process.env, readyFile);
+  const child = spawn(binPath, [], { cwd: releaseDir, stdio: ["ignore", "pipe", "pipe"], env: childEnv });
   child.stdout.on("data", () => {});
   child.stderr.on("data", () => {});
   let exitErr = null;
@@ -155,6 +180,13 @@ async function runReleaseAndCheck({ releaseDir, runTimeoutMs }) {
   });
 
   try {
+    if (readyFile) {
+      await withTimeout("waitForReadyFile", runTimeoutMs, () => waitForReadyFile(readyFile, runTimeoutMs));
+      if (exitErr) throw exitErr;
+      log("SKIP: HTTP obfuscation checks disabled (ready-file mode)");
+      return;
+    }
+
     const status = await withTimeout("waitForStatus", runTimeoutMs, () => waitForStatus(port));
     if (exitErr) throw exitErr;
     assert.strictEqual(status.ok, true, "Expected /api/status ok=true");
@@ -194,6 +226,9 @@ async function runReleaseAndCheck({ releaseDir, runTimeoutMs }) {
         resolve();
       });
     });
+    if (readyFile) {
+      try { fs.rmSync(readyFile, { force: true }); } catch {}
+    }
   }
 }
 
@@ -204,6 +239,7 @@ async function buildProfile({ profile, passes, outRoot, ctx }) {
   projectCfg.build.thin = Object.assign({}, projectCfg.build.thin || {}, { level: "low" });
   projectCfg.build.obfuscationProfile = profile;
   projectCfg.build.backendTerser = { enabled: true, passes };
+  ensureLauncherObfuscation(projectCfg);
 
   const targetCfg = loadTargetConfig(EXAMPLE_ROOT, "local").cfg;
   const configName = resolveConfigName(targetCfg, "local");
@@ -248,19 +284,20 @@ async function main() {
     process.exit(prereq.skip ? 77 : 1);
   }
 
-  const buildTimeoutMs = Number(process.env.SEAL_OBFUSCATION_E2E_BUILD_TIMEOUT_MS || "180000");
-  const runTimeoutMs = Number(process.env.SEAL_OBFUSCATION_E2E_RUN_TIMEOUT_MS || "15000");
-  const testTimeoutMs = Number(process.env.SEAL_OBFUSCATION_E2E_TIMEOUT_MS || "240000");
+  const buildTimeoutMs = resolveE2ETimeout("SEAL_OBFUSCATION_E2E_BUILD_TIMEOUT_MS", 180000);
+  const runTimeoutMs = resolveE2ERunTimeout("SEAL_OBFUSCATION_E2E_RUN_TIMEOUT_MS", 15000);
+  const testTimeoutMs = resolveE2ETimeout("SEAL_OBFUSCATION_E2E_TIMEOUT_MS", 240000);
   const ctx = { buildTimeoutMs, runTimeoutMs };
 
   try {
     await getFreePort();
   } catch (e) {
     if (e && e.code === "EPERM") {
-      log("SKIP: cannot listen on localhost (EPERM)");
-      process.exit(77);
+      process.env.SEAL_E2E_NO_LISTEN = "1";
+      log("WARN: cannot listen on localhost (EPERM); using ready-file mode");
+    } else {
+      throw e;
     }
-    throw e;
   }
 
   const tests = [

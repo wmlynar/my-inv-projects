@@ -1,6 +1,9 @@
 {
   "appName": "modbus-sync-worksites",
   "entry": "modbus-sync-worksites.js",
+  "deploy": {
+    "autoBootstrap": true
+  },
   "build": {
     "includeDirs": []
   }

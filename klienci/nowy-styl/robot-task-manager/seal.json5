@@ -1,6 +1,9 @@
 {
   "appName": "robot-task-manager",
   "entry": "robot-task-manager.js",
+  "deploy": {
+    "autoBootstrap": true
+  },
   "build": {
     "includeDirs": [
       "public"

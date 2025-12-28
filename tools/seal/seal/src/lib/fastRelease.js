@@ -6,7 +6,7 @@ const { buildRelease } = require("./build");
 const { getSealPaths } = require("./project");
 const { info, ok } = require("./ui");
 
-async function buildFastRelease({ projectRoot, projectCfg, targetCfg, configName }) {
+async function buildFastRelease({ projectRoot, projectCfg, targetCfg, configName, timing }) {
   const appName = projectCfg.appName;
   const { outDir } = getSealPaths(projectRoot);
   const fastOutDir = path.join(outDir, "fast");
@@ -19,6 +19,7 @@ async function buildFastRelease({ projectRoot, projectCfg, targetCfg, configName
     packagerOverride: "bundle",
     outDirOverride: fastOutDir,
     skipArtifact: true,
+    timing,
   });
 
   const folderName = `${appName}-fast-${res.buildId}`;

@@ -12,6 +12,7 @@ const { uninstallLocal } = require("../src/lib/deploy");
 const { uninstallSsh } = require("../src/lib/deploySsh");
 const { sshExec } = require("../src/lib/ssh");
 const { writeJson5, readJson5 } = require("../src/lib/json5io");
+const { hasCommand } = require("./e2e-utils");
 
 const EXAMPLE_ROOT = process.env.SEAL_E2E_EXAMPLE_ROOT || path.resolve(__dirname, "..", "..", "example");
 
@@ -63,11 +64,37 @@ function disableSentinelOnDisk() {
   cfg.build.sentinel = Object.assign({}, cfg.build.sentinel || {}, {
     enabled: false,
   });
+  const thinCfg = cfg.build.thin || {};
+  const cObf = cfg.build.protection ? cfg.build.protection.cObfuscator || {} : {};
+  const cObfCmd = cObf.cmd || cObf.tool;
+  if (thinCfg.launcherObfuscation !== false && cObfCmd && !hasCommand(cObfCmd)) {
+    log(`C obfuscator not available (${cObfCmd}); disabling launcherObfuscation for test`);
+    thinCfg.launcherObfuscation = false;
+  }
+  cfg.build.thin = thinCfg;
   writeJson5(sealPath, cfg);
   return backup;
 }
 
 function restoreSentinelOnDisk(backup) {
+  const sealPath = path.join(EXAMPLE_ROOT, "seal.json5");
+  if (backup !== null && backup !== undefined) {
+    fs.writeFileSync(sealPath, backup, "utf-8");
+  }
+}
+
+function setDeployAutoBootstrap(value) {
+  const sealPath = path.join(EXAMPLE_ROOT, "seal.json5");
+  if (!fs.existsSync(sealPath)) return null;
+  const backup = readFileMaybe(sealPath);
+  const cfg = readJson5(sealPath) || {};
+  cfg.deploy = (cfg.deploy && typeof cfg.deploy === "object" && !Array.isArray(cfg.deploy)) ? { ...cfg.deploy } : {};
+  cfg.deploy.autoBootstrap = value;
+  writeJson5(sealPath, cfg);
+  return backup;
+}
+
+function restoreDeployAutoBootstrap(backup) {
   const sealPath = path.join(EXAMPLE_ROOT, "seal.json5");
   if (backup !== null && backup !== undefined) {
     fs.writeFileSync(sealPath, backup, "utf-8");
@@ -275,6 +302,23 @@ async function testShipThinBootstrapSsh() {
       uninstallSsh(targetCfg);
     } catch (e) {
       log(`WARN: SSH pre-clean failed: ${e.message || e}`);
+    }
+
+    const autoBackup = setDeployAutoBootstrap(false);
+    try {
+      let failed = false;
+      try {
+        await shipOnce(targetCfg, { bootstrap: false, pushConfig: false, skipCheck: true, packager: "thin-split" });
+      } catch (e) {
+        failed = true;
+        const msg = e && e.message ? e.message : String(e);
+        assert.ok(msg.includes("Run: seal deploy"), "Auto bootstrap OFF should instruct manual bootstrap");
+      }
+      if (!failed) {
+        fail("Expected failure when deploy.autoBootstrap=false and target is unprepared");
+      }
+    } finally {
+      restoreDeployAutoBootstrap(autoBackup);
     }
 
     await shipOnce(targetCfg, { bootstrap: false, pushConfig: true, skipCheck: true, packager: "thin-split" });

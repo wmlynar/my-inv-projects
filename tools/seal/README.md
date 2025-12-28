@@ -262,6 +262,20 @@ Test odpala sealed binarkę i weryfikuje `/api/obf/checks` oraz `/api/md5`.
 SEAL_THIN_E2E=1 node tools/seal/seal/scripts/test-thin-e2e.js
 ```
 
+Timeouty E2E (skaluje domyślne wartości build/run/test):
+
+```bash
+SEAL_E2E_TIMEOUT_SCALE=2 SEAL_THIN_E2E=1 node tools/seal/seal/scripts/test-thin-e2e.js
+```
+
+Skrót:
+
+```bash
+SEAL_E2E_SLOW=1 SEAL_THIN_E2E=1 node tools/seal/seal/scripts/test-thin-e2e.js
+```
+
+W Docker E2E skala timeoutów jest ustawiana automatycznie (2x).
+
 Jeśli build używa native bootstrap (`r/nb.node`) i start jest wolny na danym hoście, ustaw:
 
 ```bash

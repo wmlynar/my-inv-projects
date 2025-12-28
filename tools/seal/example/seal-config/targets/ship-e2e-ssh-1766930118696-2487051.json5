@@ -1,0 +1,11 @@
+{
+  "target": "ship-e2e-ssh-1766930118696-2487051",
+  "kind": "ssh",
+  "host": "10.6.44.2",
+  "user": "admin",
+  "serviceScope": "system",
+  "installDir": "/home/admin/tmp/test",
+  "serviceName": "start-test-service",
+  "packager": "thin-split",
+  "config": "server"
+}

@@ -9,6 +9,7 @@ const { resolveSentinelConfig } = require("../lib/sentinelConfig");
 const { installSentinelSsh, uninstallSentinelSsh } = require("../lib/sentinelOps");
 const { fileExists } = require("../lib/fsextra");
 const { info, warn, ok, hr } = require("../lib/ui");
+const { resolveTiming } = require("../lib/timing");
 
 const { cmdRelease } = require("./release");
 const { buildFastRelease } = require("../lib/fastRelease");
@@ -96,7 +97,7 @@ function resolveTarget(projectRoot, targetArg) {
   return { proj, targetName, targetCfg: t.cfg, packagerSpec };
 }
 
-async function ensureArtifact(projectRoot, proj, opts, targetName, configName) {
+async function ensureArtifact(projectRoot, proj, opts, targetName, configName, timing) {
   if (opts.artifact) return { path: path.resolve(opts.artifact), built: false };
 
   // Prefer last artifact if exists and user didn't ask to rebuild.
@@ -104,55 +105,79 @@ async function ensureArtifact(projectRoot, proj, opts, targetName, configName) {
   if (last) return { path: last, built: false };
 
   // Build now
-  await cmdRelease(projectRoot, targetName, { config: configName, skipCheck: false, packager: null });
+  await cmdRelease(projectRoot, targetName, { config: configName, skipCheck: false, packager: null, timing });
   const built = findLastArtifact(projectRoot, proj.appName);
   if (!built) throw new Error("Build produced no artifact");
   return { path: built, built: true };
 }
 
-function ensureFastRelease(projectRoot, proj, targetCfg, configName, opts) {
+function ensureFastRelease(projectRoot, proj, targetCfg, configName, opts, timing) {
   if (opts.artifact) {
     throw new Error("Fast deploy ignores --artifact (bundle is built locally).");
   }
   if (opts && opts.fastNoNodeModules) {
     warn("FAST mode ignores --fast-no-node-modules (bundle has no node_modules).");
   }
-  return buildFastRelease({ projectRoot, projectCfg: proj, targetCfg, configName });
+  return buildFastRelease({ projectRoot, projectCfg: proj, targetCfg, configName, timing });
 }
 
 async function cmdDeploy(cwd, targetArg, opts) {
+  opts = opts || {};
+  const { timing, report } = resolveTiming(opts.timing);
   const projectRoot = findProjectRoot(cwd);
   const { proj, targetName, targetCfg, packagerSpec } = resolveTarget(projectRoot, targetArg);
   const policy = loadPolicy(projectRoot);
   const sentinelCfg = resolveSentinelConfig({ projectRoot, projectCfg: proj, targetCfg, targetName, packagerSpec });
   const autoBootstrapEnabled = !(proj && proj.deploy && proj.deploy.autoBootstrap === false);
+  const payloadOnly = !!opts.payloadOnly;
 
   const configName = resolveConfigName(targetCfg, null);
   const configFile = getConfigFile(projectRoot, configName);
   if (!fileExists(configFile)) throw new Error(`Missing repo config: ${configFile}`);
 
   const isFast = !!opts.fast;
-  const fastRelease = isFast ? await ensureFastRelease(projectRoot, proj, targetCfg, configName, opts) : null;
-  const artifactInfo = isFast
-    ? null
-    : await ensureArtifact(projectRoot, proj, opts, targetName, configName);
-  const artifactPath = isFast ? null : artifactInfo.path;
+  const isSsh = (targetCfg.kind || "local").toLowerCase() === "ssh";
+  if (payloadOnly && !isSsh) {
+    throw new Error("Payload-only deploy is supported only for SSH targets");
+  }
+  if (payloadOnly && isFast) {
+    throw new Error("Payload-only deploy is not supported with --fast");
+  }
+  if (payloadOnly && opts.bootstrap) {
+    throw new Error("Payload-only deploy cannot be combined with --bootstrap");
+  }
+  if (payloadOnly && !opts.releaseDir) {
+    throw new Error("Payload-only deploy requires a local releaseDir (use: seal ship <target> --payload-only)");
+  }
+
+  const fastRelease = isFast
+    ? await timing.timeAsync("deploy.fast_build", async () => ensureFastRelease(projectRoot, proj, targetCfg, configName, opts, timing))
+    : null;
+  const artifactInfo = (!isFast && !payloadOnly)
+    ? await timing.timeAsync("deploy.ensure_artifact", async () => ensureArtifact(projectRoot, proj, opts, targetName, configName, timing))
+    : null;
+  const artifactPath = artifactInfo ? artifactInfo.path : null;
 
   hr();
   info(`Deploy -> ${targetName} (${targetCfg.kind})`);
-  if (!isFast && !artifactInfo.built) info(`Artifact: ${artifactPath}`);
+  if (!isFast && !payloadOnly && artifactInfo && !artifactInfo.built) info(`Artifact: ${artifactPath}`);
   if (isFast) {
     warn("FAST mode: bundle synced via rsync (unsafe, no SEA).");
+  }
+  if (payloadOnly) {
+    info("Payload-only deploy: updating thin payload only.");
   }
   hr();
 
   if (opts.bootstrap) {
-    if ((targetCfg.kind || "local").toLowerCase() === "ssh") bootstrapSsh(targetCfg);
-    else bootstrapLocal(targetCfg);
+    if ((targetCfg.kind || "local").toLowerCase() === "ssh") {
+      timing.timeSync("deploy.bootstrap", () => bootstrapSsh(targetCfg));
+    } else {
+      timing.timeSync("deploy.bootstrap", () => bootstrapLocal(targetCfg));
+    }
   }
 
   let autoBootstrap = false;
-  const isSsh = (targetCfg.kind || "local").toLowerCase() === "ssh";
   if (isSsh) {
     info(`Auto bootstrap: ${autoBootstrapEnabled ? "enabled" : "disabled"} (deploy.autoBootstrap)`);
     let deployRes;
@@ -165,6 +190,7 @@ async function cmdDeploy(cwd, targetArg, opts) {
         bootstrap: !!opts.bootstrap,
         allowAutoBootstrap: autoBootstrapEnabled,
         buildId: fastRelease.buildId,
+        timing,
       });
     } else {
       deployRes = deploySsh({
@@ -177,47 +203,59 @@ async function cmdDeploy(cwd, targetArg, opts) {
         releaseDir: opts.releaseDir || null,
         buildId: opts.buildId || null,
         allowAutoBootstrap: autoBootstrapEnabled,
+        payloadOnlyRequired: payloadOnly,
+        timing,
       });
     }
     autoBootstrap = !!(deployRes && deployRes.autoBootstrap);
     const shouldInstall = !!opts.bootstrap || autoBootstrap;
     if (shouldInstall) {
-      installServiceSsh(targetCfg, sentinelCfg);
+      timing.timeSync("deploy.install_service", () => installServiceSsh(targetCfg, sentinelCfg));
       if (sentinelCfg.enabled) {
-        installSentinelSsh({
+        timing.timeSync("deploy.install_sentinel", () => installSentinelSsh({
           targetCfg,
           sentinelCfg,
           force: false,
           insecure: false,
           skipVerify: !!opts.skipSentinelVerify,
-        });
+        }));
       }
     }
   } else {
     if (isFast) {
-      deployLocalFast({
+      timing.timeSync("deploy.local.fast", () => deployLocalFast({
         targetCfg,
         releaseDir: fastRelease.releaseDir,
         repoConfigPath: configFile,
         pushConfig: !!opts.pushConfig,
         buildId: fastRelease.buildId,
-      });
+      }));
     } else {
-      deployLocal({ targetCfg, artifactPath, repoConfigPath: configFile, pushConfig: !!opts.pushConfig, policy, bootstrap: !!opts.bootstrap });
+      timing.timeSync("deploy.local", () => deployLocal({
+        targetCfg,
+        artifactPath,
+        repoConfigPath: configFile,
+        pushConfig: !!opts.pushConfig,
+        policy,
+        bootstrap: !!opts.bootstrap,
+      }));
     }
   }
 
   if (opts.restart) {
-    ensureConfigDriftOk({
+    timing.timeSync("deploy.config_drift", () => ensureConfigDriftOk({
       targetCfg,
       targetName,
       configFile,
       acceptDrift: !!opts.acceptDrift,
-    });
+    }));
     hr();
     info("Restart requested (--restart)");
-    if ((targetCfg.kind || "local").toLowerCase() === "ssh") restartSsh(targetCfg);
-    else restartLocal(targetCfg);
+    if ((targetCfg.kind || "local").toLowerCase() === "ssh") {
+      timing.timeSync("deploy.restart", () => restartSsh(targetCfg));
+    } else {
+      timing.timeSync("deploy.restart", () => restartLocal(targetCfg));
+    }
   }
 
   const waitEnabled = resolveWaitEnabled(opts, targetCfg, false);
@@ -230,9 +268,9 @@ async function cmdDeploy(cwd, targetArg, opts) {
     });
     hr();
     if ((targetCfg.kind || "local").toLowerCase() === "ssh") {
-      await waitForReadySsh(targetCfg, readiness);
+      await timing.timeAsync("deploy.wait", async () => waitForReadySsh(targetCfg, readiness));
     } else {
-      await waitForReadyLocal(targetCfg, readiness);
+      await timing.timeAsync("deploy.wait", async () => waitForReadyLocal(targetCfg, readiness));
     }
   }
 
@@ -245,9 +283,15 @@ async function cmdDeploy(cwd, targetArg, opts) {
   console.log(`  seal remote ${targetName} restart      # start/restart service (explicit)`);
   console.log(`  seal remote ${targetName} status`);
   console.log(`  seal remote ${targetName} logs`);
+  if (report) timing.report({ title: "Deploy timing" });
 }
 
 async function cmdShip(cwd, targetArg, opts) {
+  opts = opts || {};
+  const { timing, report } = resolveTiming(opts.timing);
+  if (opts.payloadOnly && opts.fast) {
+    throw new Error("Payload-only build is not supported with --fast");
+  }
   if (opts.fast) {
     if (opts.packager) warn("FAST mode ignores --packager.");
     if (opts.skipCheck) warn("FAST mode ignores --skip-check.");
@@ -266,8 +310,10 @@ async function cmdShip(cwd, targetArg, opts) {
       waitUrl: opts.waitUrl,
       waitMode: opts.waitMode,
       waitHttpTimeout: opts.waitHttpTimeout,
+      timing,
     };
-    await cmdDeploy(cwd, targetArg, deployOpts);
+    await timing.timeAsync("ship.deploy", async () => cmdDeploy(cwd, targetArg, deployOpts));
+    if (report) timing.report({ title: "Ship timing" });
     return;
   }
 
@@ -277,8 +323,11 @@ async function cmdShip(cwd, targetArg, opts) {
     checkVerbose: !!opts.checkVerbose,
     checkCc: opts.checkCc || null,
     packager: opts.packager || null,
+    payloadOnly: !!opts.payloadOnly,
+    timing,
   };
-  const releaseRes = await cmdRelease(cwd, targetArg, releaseOpts);
+  const releaseRes = await timing.timeAsync("ship.release", async () => cmdRelease(cwd, targetArg, releaseOpts));
+  const payloadOnly = !!(releaseRes && releaseRes.payloadOnly);
 
   const deployOpts = {
     bootstrap: !!opts.bootstrap,
@@ -288,14 +337,17 @@ async function cmdShip(cwd, targetArg, opts) {
     releaseDir: releaseRes && releaseRes.releaseDir ? releaseRes.releaseDir : null,
     buildId: releaseRes && releaseRes.buildId ? releaseRes.buildId : null,
     acceptDrift: !!opts.acceptDrift,
+    payloadOnly,
     wait: opts.wait !== false,
     waitTimeout: opts.waitTimeout,
     waitInterval: opts.waitInterval,
     waitUrl: opts.waitUrl,
     waitMode: opts.waitMode,
     waitHttpTimeout: opts.waitHttpTimeout,
+    timing,
   };
-  await cmdDeploy(cwd, targetArg, deployOpts);
+  await timing.timeAsync("ship.deploy", async () => cmdDeploy(cwd, targetArg, deployOpts));
+  if (report) timing.report({ title: "Ship timing" });
 }
 
 async function cmdStatus(cwd, targetArg) {

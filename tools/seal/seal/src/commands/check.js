@@ -92,6 +92,7 @@ async function cmdCheck(cwd, targetArg, opts) {
     targetArg = null;
   }
   opts = opts || {};
+  const payloadOnly = !!opts.payloadOnly;
   const projectRoot = findProjectRoot(cwd);
   const paths = getSealPaths(projectRoot);
 
@@ -309,86 +310,94 @@ async function cmdCheck(cwd, targetArg, opts) {
       ok("zstd: OK");
     }
 
-    const ccOverride = resolveCcOverride(opts);
-    let cc = null;
-    if (ccOverride) {
-      const hasPath = /[\\/]/.test(ccOverride);
-      if (hasPath ? fileExists(ccOverride) : hasCommand(ccOverride)) {
-        cc = ccOverride;
-        info(`Thin: using compiler override: ${cc}`);
+    if (payloadOnly) {
+      info("Thin: payload-only build; skipping compiler checks.");
+    } else {
+      const ccOverride = resolveCcOverride(opts);
+      let cc = null;
+      if (ccOverride) {
+        const hasPath = /[\\/]/.test(ccOverride);
+        if (hasPath ? fileExists(ccOverride) : hasCommand(ccOverride)) {
+          cc = ccOverride;
+          info(`Thin: using compiler override: ${cc}`);
+        } else {
+          errors.push(`C compiler not found: ${ccOverride}`);
+          thinToolchainIssue = true;
+        }
       } else {
-        errors.push(`C compiler not found: ${ccOverride}`);
+        cc = hasCommand("cc") ? "cc" : (hasCommand("gcc") ? "gcc" : null);
+      }
+      if (!cc) {
+        errors.push("C compiler not found (thin). Install: sudo apt-get install -y build-essential");
         thinToolchainIssue = true;
       }
-    } else {
-      cc = hasCommand("cc") ? "cc" : (hasCommand("gcc") ? "gcc" : null);
-    }
-    if (!cc) {
-      errors.push("C compiler not found (thin). Install: sudo apt-get install -y build-essential");
-      thinToolchainIssue = true;
-    }
 
-    let zstdFlags = [];
-    const hasPkgConfig = hasCommand("pkg-config");
-    if (!hasPkgConfig) {
-      warnings.push("pkg-config not found – cannot verify libzstd headers (thin launcher build may fail). Install: sudo apt-get install -y pkg-config");
-      thinToolchainIssue = true;
-    } else {
-      info("Thin: checking libzstd via pkg-config...");
-      const zstdPc = spawnSyncSafe(
-        "pkg-config",
-        ["--cflags", "--libs", "libzstd"],
-        { stdio: "pipe", timeoutMs: pkgConfigTimeoutMs }
-      );
-      if (zstdPc.timedOut) {
-        warnings.push("pkg-config timed out (libzstd flags). Check pkg-config/libzstd-dev or increase timeout.");
-        thinToolchainIssue = true;
-      } else if (!zstdPc.ok) {
-        warnings.push("libzstd not found by pkg-config. Install: sudo apt-get install -y libzstd-dev");
+      let zstdFlags = [];
+      const hasPkgConfig = hasCommand("pkg-config");
+      if (!hasPkgConfig) {
+        warnings.push("pkg-config not found – cannot verify libzstd headers (thin launcher build may fail). Install: sudo apt-get install -y pkg-config");
         thinToolchainIssue = true;
       } else {
-        const out = `${zstdPc.stdout} ${zstdPc.stderr}`.trim();
-        if (out) zstdFlags = out.split(/\s+/).filter(Boolean);
-        if (verbose && out) info(`Thin: pkg-config flags: ${out}`);
+        info("Thin: checking libzstd via pkg-config...");
+        const zstdPc = spawnSyncSafe(
+          "pkg-config",
+          ["--cflags", "--libs", "libzstd"],
+          { stdio: "pipe", timeoutMs: pkgConfigTimeoutMs }
+        );
+        if (zstdPc.timedOut) {
+          warnings.push("pkg-config timed out (libzstd flags). Check pkg-config/libzstd-dev or increase timeout.");
+          thinToolchainIssue = true;
+        } else if (!zstdPc.ok) {
+          warnings.push("libzstd not found by pkg-config. Install: sudo apt-get install -y libzstd-dev");
+          thinToolchainIssue = true;
+        } else {
+          const out = `${zstdPc.stdout} ${zstdPc.stderr}`.trim();
+          if (out) zstdFlags = out.split(/\s+/).filter(Boolean);
+          if (verbose && out) info(`Thin: pkg-config flags: ${out}`);
+        }
       }
-    }
 
-    if (cc) {
-      const testSrc = "#include <zstd.h>\nint main(void){return 0;}\n";
-      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-check-"));
-      const srcPath = path.join(tmpDir, "zstd-check.c");
-      fs.writeFileSync(srcPath, testSrc, "utf-8");
-      const args = ["-x", "c", srcPath, "-o", "/dev/null"];
-      const hasLzstd = zstdFlags.includes("-lzstd");
-      const compileArgs = hasLzstd ? [...args, ...zstdFlags] : [...args, ...zstdFlags, "-lzstd"];
-      info(`Thin: compiling libzstd test (${cc})...`);
-      if (verbose) info(`Thin: cc command: ${cc} ${compileArgs.join(" ")}`);
-      const compileStdio = verbose ? "inherit" : "pipe";
-      const compile = spawnSyncSafe(
-        cc,
-        compileArgs,
-        { stdio: compileStdio, timeoutMs: compileTimeoutMs }
-      );
-      try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
-      if (compile.timedOut) {
-        errors.push("libzstd-dev compile test timed out (cc). Check toolchain or increase timeout.");
-        thinToolchainIssue = true;
-      } else if (!compile.ok) {
-        const msg = `${compile.stderr}\n${compile.stdout}`.trim();
-        const short = msg.split(/\r?\n/)[0] || "zstd compile/link failed";
-        errors.push(`libzstd-dev not usable (compile test failed): ${short}. Install: sudo apt-get install -y libzstd-dev`);
-        thinToolchainIssue = true;
+      if (cc) {
+        const testSrc = "#include <zstd.h>\nint main(void){return 0;}\n";
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-check-"));
+        const srcPath = path.join(tmpDir, "zstd-check.c");
+        fs.writeFileSync(srcPath, testSrc, "utf-8");
+        const args = ["-x", "c", srcPath, "-o", "/dev/null"];
+        const hasLzstd = zstdFlags.includes("-lzstd");
+        const compileArgs = hasLzstd ? [...args, ...zstdFlags] : [...args, ...zstdFlags, "-lzstd"];
+        info(`Thin: compiling libzstd test (${cc})...`);
+        if (verbose) info(`Thin: cc command: ${cc} ${compileArgs.join(" ")}`);
+        const compileStdio = verbose ? "inherit" : "pipe";
+        const compile = spawnSyncSafe(
+          cc,
+          compileArgs,
+          { stdio: compileStdio, timeoutMs: compileTimeoutMs }
+        );
+        try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+        if (compile.timedOut) {
+          errors.push("libzstd-dev compile test timed out (cc). Check toolchain or increase timeout.");
+          thinToolchainIssue = true;
+        } else if (!compile.ok) {
+          const msg = `${compile.stderr}\n${compile.stdout}`.trim();
+          const short = msg.split(/\r?\n/)[0] || "zstd compile/link failed";
+          errors.push(`libzstd-dev not usable (compile test failed): ${short}. Install: sudo apt-get install -y libzstd-dev`);
+          thinToolchainIssue = true;
+        }
       }
     }
   }
 
   if (thinNeeded && thinToolchainIssue) {
-    const hint = "Install thin toolchain (Ubuntu): sudo apt-get install -y build-essential pkg-config zstd libzstd-dev";
+    const hint = payloadOnly
+      ? "Install zstd (Ubuntu): sudo apt-get install -y zstd"
+      : "Install thin toolchain (Ubuntu): sudo apt-get install -y build-essential pkg-config zstd libzstd-dev";
     if (!warnings.includes(hint)) warnings.push(hint);
   }
 
   // Protection tools (ELF packer is default for thin-split)
-  if (hardEnabled) {
+  if (hardEnabled && payloadOnly) {
+    info("Protection checks skipped (payload-only build).");
+  } else if (hardEnabled) {
     if (protectionCfg.stripSymbols) {
       if (hasCommand('strip')) ok('strip: OK (symbol stripping)');
       else warnings.push('strip not installed – binaries will be easier to inspect (install binutils)');

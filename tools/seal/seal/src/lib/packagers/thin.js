@@ -4856,6 +4856,8 @@ async function packThin({
   targetName,
   sentinel,
   cObfuscator,
+  payloadOnly,
+  timing,
 }) {
   try {
     if (!hasCommand("zstd")) {
@@ -4874,6 +4876,16 @@ async function packThin({
     const nativeBootstrapCfg = nativeBootstrap && typeof nativeBootstrap === "object" ? nativeBootstrap : {};
     const nativeBootstrapEnabled = nativeBootstrapCfg.enabled === true;
     const nativeBootstrapMode = nativeBootstrapCfg.mode === "string" ? "string" : "compile";
+    const payloadOnlyMode = !!payloadOnly;
+    const timeSync = timing && timing.timeSync ? timing.timeSync : (label, fn) => fn();
+    const timeAsync = timing && timing.timeAsync ? timing.timeAsync : async (label, fn) => await fn();
+    if (payloadOnlyMode && thinMode !== "bootstrap") {
+      return {
+        ok: false,
+        errorShort: "payload-only build requires thin-split (bootstrap)",
+        error: "payload_only_requires_bootstrap",
+      };
+    }
     if (integrityCfg.enabled && thinMode !== "bootstrap") {
       return { ok: false, errorShort: "thin.integrity requires thin-split", error: "integrity_requires_bootstrap" };
     }
@@ -4890,11 +4902,22 @@ async function packThin({
       if (codecState) {
         info("Thin: using cached codec_state (bootstrap)...");
       } else {
-        info("Thin: codec_state missing; generating new (bootstrap)...");
+        if (payloadOnlyMode) {
+          info("Thin: codec_state missing (payload-only build requires existing state)...");
+        } else {
+          info("Thin: codec_state missing; generating new (bootstrap)...");
+        }
       }
     }
 
     if (!codecState) {
+      if (payloadOnlyMode) {
+        return {
+          ok: false,
+          errorShort: "payload-only build requires existing codec_state (run full thin-split build once)",
+          error: "payload_only_missing_codec_state",
+        };
+      }
       codecState = {
         codecId: randomU32(),
         seed: randomU32(),
@@ -4908,29 +4931,45 @@ async function packThin({
 
     const timeoutLabel = zstdTimeout === 0 ? "none" : `${zstdTimeout}ms`;
     info(`Thin: level=${thinLevel} (chunk=${chunkSize}, zstd=${zstdLevel}, timeout=${timeoutLabel})`);
-    info(`Thin: encoding runtime (zstd + mask, chunk=${chunkSize})...`);
-    const nodeBin = fs.readFileSync(process.execPath);
     const payload = fs.readFileSync(obfPath);
     const appBindEnabled = !appBind || appBind.enabled !== false;
     const appBindValue = computeAppBind(appName, entryRel, appBind);
 
     zstdCompress.timeoutMs = zstdTimeout;
-    const runtimeContainer = await encodeContainer(nodeBin, codecState, chunkSize, zstdLevel, {
-      progress: (i, total) => info(`Thin: runtime ${i}/${total}`),
-      appBind: appBindValue,
-    });
+    let runtimeContainer = null;
+    if (!payloadOnlyMode) {
+      info(`Thin: encoding runtime (zstd + mask, chunk=${chunkSize})...`);
+      const nodeBin = fs.readFileSync(process.execPath);
+      runtimeContainer = await timeAsync("build.packager.thin.runtime", async () => encodeContainer(nodeBin, codecState, chunkSize, zstdLevel, {
+        progress: (i, total) => info(`Thin: runtime ${i}/${total}`),
+        appBind: appBindValue,
+      }));
+    } else {
+      info("Thin: payload-only build (skip runtime/launcher)...");
+    }
     info("Thin: encoding payload (zstd + mask)...");
-    const payloadContainer = await encodeContainer(payload, codecState, chunkSize, zstdLevel, {
+    const payloadContainer = await timeAsync("build.packager.thin.payload", async () => encodeContainer(payload, codecState, chunkSize, zstdLevel, {
       progress: (i, total) => info(`Thin: payload ${i}/${total}`),
       appBind: appBindValue,
-    });
+    }));
 
     ensureDir(stageDir);
     ensureDir(releaseDir);
 
+    if (payloadOnlyMode) {
+      return timeSync("build.packager.thin.payload_only", () => {
+        const rDir = path.join(releaseDir, "r");
+        ensureDir(rDir);
+        fs.writeFileSync(path.join(rDir, "pl"), payloadContainer);
+        writeCodecBin(rDir, codecState);
+        saveCodecState(projectRoot, targetName, codecState);
+        return { ok: true, codecId: codecState.codecId, payloadOnly: true };
+      });
+    }
+
     const allowBootstrap = thinMode === "bootstrap";
     info("Thin: building launcher (cc + libzstd)...");
-    const launcherRes = buildLauncher(
+    const launcherRes = timeSync("build.packager.thin.launcher", () => buildLauncher(
       stageDir,
       codecState,
       allowBootstrap,
@@ -4947,13 +4986,13 @@ async function packThin({
       launcherHardeningCET,
       nativeBootstrapEnabled,
       nativeBootstrapMode
-    );
+    ));
     if (!launcherRes.ok) return launcherRes;
 
     let nativeRes = null;
     if (nativeBootstrapEnabled) {
       info("Thin: building native bootstrap addon...");
-      nativeRes = buildNativeBootstrap(stageDir);
+      nativeRes = timeSync("build.packager.thin.native_bootstrap", () => buildNativeBootstrap(stageDir));
       if (!nativeRes.ok) return nativeRes;
     }
 
@@ -4961,58 +5000,62 @@ async function packThin({
 
     if (thinMode === "bootstrap") {
       info("Thin: assembling bootstrap layout...");
-      const bDir = path.join(releaseDir, "b");
-      ensureDir(bDir);
-      const launcherPath = path.join(bDir, "a");
-      fs.copyFileSync(launcherRes.path, launcherPath);
-      fs.chmodSync(launcherPath, 0o755);
+      return timeSync("build.packager.thin.assemble", () => {
+        const bDir = path.join(releaseDir, "b");
+        ensureDir(bDir);
+        const launcherPath = path.join(bDir, "a");
+        fs.copyFileSync(launcherRes.path, launcherPath);
+        fs.chmodSync(launcherPath, 0o755);
 
-      const rDir = path.join(releaseDir, "r");
-      ensureDir(rDir);
-      fs.writeFileSync(path.join(rDir, "rt"), runtimeContainer);
-      fs.writeFileSync(path.join(rDir, "pl"), payloadContainer);
-      if (nativeRes && nativeRes.path) {
-        const nativeOut = path.join(rDir, "nb.node");
-        fs.copyFileSync(nativeRes.path, nativeOut);
-        fs.chmodSync(nativeOut, 0o755);
-      }
-      writeCodecBin(rDir, codecState);
+        const rDir = path.join(releaseDir, "r");
+        ensureDir(rDir);
+        fs.writeFileSync(path.join(rDir, "rt"), runtimeContainer);
+        fs.writeFileSync(path.join(rDir, "pl"), payloadContainer);
+        if (nativeRes && nativeRes.path) {
+          const nativeOut = path.join(rDir, "nb.node");
+          fs.copyFileSync(nativeRes.path, nativeOut);
+          fs.chmodSync(nativeOut, 0o755);
+        }
+        writeCodecBin(rDir, codecState);
 
-      const wrapper = `#!/bin/bash
+        const wrapper = `#!/bin/bash
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 exec "$DIR/b/a" "$@"
 `;
-      fs.writeFileSync(outBin, wrapper, "utf-8");
-      fs.chmodSync(outBin, 0o755);
+        fs.writeFileSync(outBin, wrapper, "utf-8");
+        fs.chmodSync(outBin, 0o755);
 
-      saveCodecState(projectRoot, targetName, codecState);
-      return { ok: true, codecId: codecState.codecId };
+        saveCodecState(projectRoot, targetName, codecState);
+        return { ok: true, codecId: codecState.codecId };
+      });
     }
 
     info("Thin: assembling AIO binary...");
-    fs.copyFileSync(launcherRes.path, outBin);
-    fs.chmodSync(outBin, 0o755);
+    return timeSync("build.packager.thin.assemble", () => {
+      fs.copyFileSync(launcherRes.path, outBin);
+      fs.chmodSync(outBin, 0o755);
 
-    const launcherSize = fs.statSync(outBin).size;
-    const runtimeOff = launcherSize;
-    const payloadOff = runtimeOff + runtimeContainer.length;
+      const launcherSize = fs.statSync(outBin).size;
+      const runtimeOff = launcherSize;
+      const payloadOff = runtimeOff + runtimeContainer.length;
 
-    const aioFooter = buildAioFooter({
-      codecState,
-      runtimeOff,
-      runtimeLen: runtimeContainer.length,
-      payloadOff,
-      payloadLen: payloadContainer.length,
-      appBindValue,
+      const aioFooter = buildAioFooter({
+        codecState,
+        runtimeOff,
+        runtimeLen: runtimeContainer.length,
+        payloadOff,
+        payloadLen: payloadContainer.length,
+        appBindValue,
+      });
+
+      fs.appendFileSync(outBin, runtimeContainer);
+      fs.appendFileSync(outBin, payloadContainer);
+      fs.appendFileSync(outBin, aioFooter);
+      writeCodecBin(releaseDir, codecState);
+
+      return { ok: true, codecId: codecState.codecId };
     });
-
-    fs.appendFileSync(outBin, runtimeContainer);
-    fs.appendFileSync(outBin, payloadContainer);
-    fs.appendFileSync(outBin, aioFooter);
-    writeCodecBin(releaseDir, codecState);
-
-    return { ok: true, codecId: codecState.codecId };
   } catch (e) {
     return { ok: false, errorShort: e && e.message ? e.message : String(e), error: e && e.stack ? e.stack : String(e) };
   }

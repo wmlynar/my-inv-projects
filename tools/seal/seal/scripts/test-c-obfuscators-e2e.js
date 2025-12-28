@@ -8,7 +8,7 @@ const net = require("net");
 const os = require("os");
 const path = require("path");
 const { spawn, spawnSync } = require("child_process");
-const { hasCommand } = require("./e2e-utils");
+const { hasCommand, resolveE2ETimeout, resolveE2ERunTimeout, applyReadyFileEnv, makeReadyFile, waitForReadyFile } = require("./e2e-utils");
 
 const { buildRelease } = require("../src/lib/build");
 const { loadProjectConfig, loadTargetConfig, resolveConfigName } = require("../src/lib/project");
@@ -115,8 +115,19 @@ async function waitForStatus(port, timeoutMs = 10_000) {
 
 function getFreePort() {
   return new Promise((resolve, reject) => {
+    if (process.env.SEAL_E2E_NO_LISTEN === "1") {
+      resolve(null);
+      return;
+    }
     const srv = net.createServer();
-    srv.on("error", reject);
+    srv.on("error", (err) => {
+      if (err && err.code === "EPERM") {
+        process.env.SEAL_E2E_NO_LISTEN = "1";
+        resolve(null);
+        return;
+      }
+      reject(err);
+    });
     srv.listen(0, "127.0.0.1", () => {
       const addr = srv.address();
       const port = typeof addr === "object" && addr ? addr.port : null;
@@ -130,23 +141,26 @@ function writeRuntimeConfig(releaseDir, port) {
   const cfg = readJson5(cfgPath);
   cfg.http = cfg.http || {};
   cfg.http.host = "127.0.0.1";
-  cfg.http.port = port;
+  cfg.http.port = port || 3000;
   writeJson5(path.join(releaseDir, "config.runtime.json5"), cfg);
 }
 
-async function runRelease({ releaseDir, runTimeoutMs }) {
-  if (runRelease.skipListen) {
-    log("SKIP: listen not permitted; runtime check disabled");
-    return;
-  }
+async function waitForReady({ port, readyFile, timeoutMs }) {
+  if (readyFile) return waitForReadyFile(readyFile, timeoutMs);
+  return waitForStatus(port, timeoutMs);
+}
 
-  const port = await getFreePort();
+async function runRelease({ releaseDir, runTimeoutMs }) {
+  const port = runRelease.skipListen ? null : await getFreePort();
+  const readyFile = port === null ? makeReadyFile("c-obf") : null;
+  if (readyFile) log("WARN: listen not permitted; using ready-file mode");
   writeRuntimeConfig(releaseDir, port);
 
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
 
-  const child = spawn(binPath, [], { cwd: releaseDir, stdio: ["ignore", "pipe", "pipe"] });
+  const childEnv = applyReadyFileEnv(process.env, readyFile);
+  const child = spawn(binPath, [], { cwd: releaseDir, stdio: ["ignore", "pipe", "pipe"], env: childEnv });
   child.stdout.on("data", () => {});
   child.stderr.on("data", () => {});
   let exitErr = null;
@@ -157,7 +171,7 @@ async function runRelease({ releaseDir, runTimeoutMs }) {
   });
 
   try {
-    await withTimeout("waitForStatus", runTimeoutMs, () => waitForStatus(port));
+    await withTimeout("waitForStatus", runTimeoutMs, () => waitForReady({ port, readyFile, timeoutMs: runTimeoutMs }));
     if (exitErr) throw exitErr;
   } finally {
     child.kill("SIGTERM");
@@ -171,6 +185,9 @@ async function runRelease({ releaseDir, runTimeoutMs }) {
         resolve();
       });
     });
+    if (readyFile) {
+      try { fs.rmSync(readyFile, { force: true }); } catch {}
+    }
   }
 }
 
@@ -272,15 +289,15 @@ async function main() {
   } catch (e) {
     if (e && e.code === "EPERM") {
       runRelease.skipListen = true;
-      log("SKIP: cannot listen on localhost (EPERM)");
+      log("WARN: cannot listen on localhost (EPERM); using ready-file mode");
     } else {
       throw e;
     }
   }
 
-  const buildTimeoutMs = Number(process.env.SEAL_C_OBF_E2E_BUILD_TIMEOUT_MS || "180000");
-  const runTimeoutMs = Number(process.env.SEAL_C_OBF_E2E_RUN_TIMEOUT_MS || "15000");
-  const testTimeoutMs = Number(process.env.SEAL_C_OBF_E2E_TIMEOUT_MS || "240000");
+  const buildTimeoutMs = resolveE2ETimeout("SEAL_C_OBF_E2E_BUILD_TIMEOUT_MS", 180000);
+  const runTimeoutMs = resolveE2ERunTimeout("SEAL_C_OBF_E2E_RUN_TIMEOUT_MS", 15000);
+  const testTimeoutMs = resolveE2ETimeout("SEAL_C_OBF_E2E_TIMEOUT_MS", 240000);
   const ctx = { buildTimeoutMs, runTimeoutMs };
 
   const tests = [
