@@ -1944,3 +1944,16 @@
   - Wymaganie: dokumentuj koszt/warunki wlaczenia kazdego zabezpieczenia (toolchain, OS).
 - Blad: brak testu „minimalnego” profilu utrudnial diagnoze regresji.
   - Wymaganie: testy E2E obejmuja profil minimalny + profil maksymalny.
+
+## Dodatkowe wnioski (batch 221-225)
+
+- Blad: `systemctl --user` failowal w non-interactive/SSH bez `XDG_RUNTIME_DIR`/`DBUS_SESSION_BUS_ADDRESS`, co dawalo niejasne bledy.
+  - Wymaganie: przy `--user` waliduj wymagane ENV i podawaj instrukcje (np. `loginctl enable-linger`), albo wymus `serviceScope=system`.
+- Blad: skrypty zakladaly binarke `node`, a na niektorych systemach jest tylko `nodejs`, co dawalo `command not found`.
+  - Wymaganie: wykrywaj `node` lub `nodejs`, loguj wybrana binarke i podawaj instrukcje instalacji.
+- Blad: bind-mounty w Docker na hostach z SELinux dawaly `permission denied` mimo poprawnych praw.
+  - Wymaganie: dla SELinux uzywaj `:z`/`:Z` (volume) albo `--security-opt label=disable` i loguj `getenforce`.
+- Blad: `docker compose exec` bez `-T` w CI wieszal sie lub generowal zaklocone outputy (TTY).
+  - Wymaganie: w non-interactive zawsze dodawaj `-T` i loguj tryb TTY.
+- Blad: procesy ubijane przez OOM/SIGTERM (exit 137/143) byly raportowane jako ogolny FAIL bez diagnozy.
+  - Wymaganie: mapuj exit code 137/143 na OOM/SIGKILL/SIGTERM i loguj hint (limit pamieci, rownoleglosc).
