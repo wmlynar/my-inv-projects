@@ -74,6 +74,14 @@ ensure_repo() {
   fi
 
   if [ -d "$repo_dir/.git" ]; then
+    lock_file="$repo_dir/.git/index.lock"
+    if [ -f "$lock_file" ]; then
+      log "$name: removing stale git lock (${lock_file})"
+      rm -f "$lock_file"
+    fi
+    log "$name: cleaning repo..."
+    git -C "$repo_dir" reset --hard
+    git -C "$repo_dir" clean -fdx
     log "$name: updating repo..."
     git -C "$repo_dir" fetch --all --tags --prune
   else

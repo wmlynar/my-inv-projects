@@ -9,6 +9,11 @@ RUN apt-get update && apt-get install -y \
   openssh-server \
   sudo \
   curl \
+  wget \
+  python3 \
+  procps \
+  iproute2 \
+  iputils-ping \
   rsync \
   ca-certificates \
   && rm -rf /var/lib/apt/lists/*

@@ -18,6 +18,8 @@ BUILDER_IMAGE_BASE="e2e-seal-builder:latest"
 BUILDER_IMAGE_FULL="e2e-seal-builder-full:latest"
 SERVER_IMAGE="e2e-seal-server:latest"
 REMOTE_E2E="${SEAL_DOCKER_E2E_REMOTE:-1}"
+REMOTE_FALLBACK="${SEAL_DOCKER_E2E_REMOTE_FALLBACK:-1}"
+REMOTE_E2E_REQUESTED="$REMOTE_E2E"
 TOOLSET="${SEAL_E2E_TOOLSET:-core}"
 SERVER_DOCKERFILE="$E2E_DIR/Dockerfile.server"
 SERVER_ENTRYPOINT="$E2E_DIR/server-entrypoint.sh"
@@ -152,8 +154,13 @@ if dir_has_files "$REPO_ROOT/node_modules" && ! dir_has_files "$NODE_MODULES_CAC
   log "Using repo node_modules cache."
 fi
 
-if ! command -v ssh-keygen >/dev/null 2>&1; then
-  fail "ssh-keygen not found. Install openssh-client."
+if [ "$REMOTE_E2E" = "1" ] && ! command -v ssh-keygen >/dev/null 2>&1; then
+  if [ "$REMOTE_FALLBACK" = "1" ]; then
+    log "WARN: ssh-keygen not found; falling back to single-container mode."
+    REMOTE_E2E=0
+  else
+    fail "ssh-keygen not found. Install openssh-client."
+  fi
 fi
 
 mkdir -p "$SSH_DIR"
@@ -167,18 +174,20 @@ KEY_FILE="$SSH_DIR/id_ed25519"
 PUB_FILE="${KEY_FILE}.pub"
 AUTH_FILE="$SSH_DIR/authorized_keys"
 
-if [ ! -f "$KEY_FILE" ]; then
-  log "Generating SSH key for docker E2E..."
-  ssh-keygen -t ed25519 -N "" -C "seal-e2e" -f "$KEY_FILE" >/dev/null
-fi
+if [ "$REMOTE_E2E" = "1" ]; then
+  if [ ! -f "$KEY_FILE" ]; then
+    log "Generating SSH key for docker E2E..."
+    ssh-keygen -t ed25519 -N "" -C "seal-e2e" -f "$KEY_FILE" >/dev/null
+  fi
 
-if [ ! -f "$PUB_FILE" ]; then
-  fail "Missing public key: $PUB_FILE"
-fi
+  if [ ! -f "$PUB_FILE" ]; then
+    fail "Missing public key: $PUB_FILE"
+  fi
 
-cp "$PUB_FILE" "$AUTH_FILE"
-chmod 600 "$KEY_FILE" "$AUTH_FILE"
-chmod 644 "$PUB_FILE"
+  cp "$PUB_FILE" "$AUTH_FILE"
+  chmod 600 "$KEY_FILE" "$AUTH_FILE"
+  chmod 644 "$PUB_FILE"
+fi
 
 PULL_ARG=()
 if [ "${SEAL_DOCKER_E2E_PULL:-1}" = "1" ]; then
@@ -209,6 +218,18 @@ fi
 REBUILD_IMAGES="${SEAL_DOCKER_E2E_REBUILD:-0}"
 SKIP_BUILD="${SEAL_DOCKER_E2E_SKIP_BUILD:-0}"
 PROGRESS_MODE="${SEAL_DOCKER_E2E_PROGRESS:-plain}"
+BUILD_NETWORK="${SEAL_DOCKER_E2E_BUILD_NETWORK:-host}"
+BUILD_NETWORK_FALLBACK="${SEAL_DOCKER_E2E_BUILD_NETWORK_FALLBACK:-default}"
+
+docker_build() {
+  local network="$1"
+  shift
+  local net_args=()
+  if [ -n "$network" ] && [ "$network" != "skip" ]; then
+    net_args+=(--network="$network")
+  fi
+  DOCKER_BUILDKIT=1 $DOCKER build "${PULL_ARG[@]}" --progress="$PROGRESS_MODE" "${net_args[@]}" "$@"
+}
 if [ "$REBUILD_IMAGES" != "1" ] && $DOCKER image inspect "$BUILDER_IMAGE" >/dev/null 2>&1; then
   log "Builder image exists; skipping build (set SEAL_DOCKER_E2E_REBUILD=1 to rebuild)."
 elif [ "$SKIP_BUILD" = "1" ]; then
@@ -221,9 +242,18 @@ else
   if [ -n "$LOCK_HASH" ]; then
     BUILD_LABELS+=(--label "org.seal.tools.lock=$LOCK_HASH")
   fi
-  DOCKER_BUILDKIT=1 $DOCKER build "${PULL_ARG[@]}" --progress="$PROGRESS_MODE" --network=host \
+  if ! docker_build "$BUILD_NETWORK" \
     "${BUILD_LABELS[@]}" --build-arg "SEAL_TOOLS_LOCK=$TOOLS_LOCK_ARG" \
-    -t "$BUILDER_IMAGE" -f "$BUILDER_DOCKERFILE" "$REPO_ROOT"
+    -t "$BUILDER_IMAGE" -f "$BUILDER_DOCKERFILE" "$REPO_ROOT"; then
+    if [ -n "$BUILD_NETWORK_FALLBACK" ] && [ "$BUILD_NETWORK_FALLBACK" != "$BUILD_NETWORK" ]; then
+      log "WARN: builder build failed (network=${BUILD_NETWORK}); retrying (network=${BUILD_NETWORK_FALLBACK})."
+      docker_build "$BUILD_NETWORK_FALLBACK" \
+        "${BUILD_LABELS[@]}" --build-arg "SEAL_TOOLS_LOCK=$TOOLS_LOCK_ARG" \
+        -t "$BUILDER_IMAGE" -f "$BUILDER_DOCKERFILE" "$REPO_ROOT" || fail "Builder image build failed."
+    else
+      fail "Builder image build failed."
+    fi
+  fi
   if [ -n "$BUILDER_TAR" ] && [ "${SEAL_DOCKER_E2E_SAVE_IMAGE:-1}" = "1" ]; then
     log "Saving builder image to $BUILDER_TAR"
     $DOCKER save "$BUILDER_IMAGE" -o "$BUILDER_TAR"
@@ -265,12 +295,55 @@ if [ "$REMOTE_E2E" = "1" ]; then
   fi
 
   if [ "$REBUILD_IMAGES" = "1" ] || ! $DOCKER image inspect "$SERVER_IMAGE" >/dev/null 2>&1; then
-    DOCKER_BUILDKIT=1 $DOCKER build "${PULL_ARG[@]}" --progress="$PROGRESS_MODE" --network=host \
+    if ! docker_build "$BUILD_NETWORK" \
       "${SERVER_LABELS[@]}" \
-      -t "$SERVER_IMAGE" -f "$SERVER_DOCKERFILE" "$REPO_ROOT"
+      -t "$SERVER_IMAGE" -f "$SERVER_DOCKERFILE" "$REPO_ROOT"; then
+      if [ -n "$BUILD_NETWORK_FALLBACK" ] && [ "$BUILD_NETWORK_FALLBACK" != "$BUILD_NETWORK" ]; then
+        log "WARN: server build failed (network=${BUILD_NETWORK}); retrying (network=${BUILD_NETWORK_FALLBACK})."
+        docker_build "$BUILD_NETWORK_FALLBACK" \
+          "${SERVER_LABELS[@]}" \
+          -t "$SERVER_IMAGE" -f "$SERVER_DOCKERFILE" "$REPO_ROOT" || fail "Server image build failed."
+      else
+        fail "Server image build failed."
+      fi
+    fi
   fi
 else
   log "Remote SSH E2E disabled (single container mode)."
+fi
+
+SECURITY_OPTS=(--security-opt seccomp=unconfined --security-opt apparmor=unconfined)
+CGROUP_ARGS=()
+CGROUP_SETTING="${SEAL_DOCKER_E2E_CGROUPNS:-host}"
+if [ -n "$CGROUP_SETTING" ] && [ "$CGROUP_SETTING" != "skip" ]; then
+  CGROUP_ARGS+=(--cgroupns="$CGROUP_SETTING")
+fi
+
+SHM_ARGS=()
+if [ "${SEAL_DOCKER_E2E_IPC:-}" = "host" ]; then
+  SHM_ARGS+=(--ipc=host)
+else
+  SHM_SIZE="${SEAL_DOCKER_E2E_SHM_SIZE:-2g}"
+  SHM_ARGS+=(--shm-size "$SHM_SIZE")
+fi
+
+DEBUG_MOUNTS=()
+if [ -d /sys/kernel/debug ]; then
+  DEBUG_MOUNTS+=(-v /sys/kernel/debug:/sys/kernel/debug:rw)
+fi
+if [ -d /sys/kernel/tracing ]; then
+  DEBUG_MOUNTS+=(-v /sys/kernel/tracing:/sys/kernel/tracing:rw)
+fi
+if [ -d /lib/modules ]; then
+  DEBUG_MOUNTS+=(-v /lib/modules:/lib/modules:ro)
+fi
+
+DEVICE_ARGS=()
+if [ -e /dev/kmsg ]; then
+  DEVICE_ARGS+=(--device /dev/kmsg)
+fi
+if [ -e /dev/fuse ]; then
+  DEVICE_ARGS+=(--device /dev/fuse)
 fi
 
 cleanup() {
@@ -279,7 +352,7 @@ cleanup() {
     log "KEEP enabled; skipping docker cleanup."
     return
   fi
-  if [ "$REMOTE_E2E" = "1" ]; then
+  if [ "$REMOTE_E2E_REQUESTED" = "1" ]; then
     log "Cleaning up docker containers..."
     $DOCKER rm -f "$SERVER_NAME" >/dev/null 2>&1 || true
     $DOCKER network rm "$NETWORK_NAME" >/dev/null 2>&1 || true
@@ -289,31 +362,55 @@ trap cleanup EXIT
 
 if [ "$REMOTE_E2E" = "1" ]; then
   if ! $DOCKER network ls --format '{{.Name}}' | grep -q "^${NETWORK_NAME}$"; then
-    $DOCKER network create "$NETWORK_NAME" >/dev/null
+    if ! $DOCKER network create "$NETWORK_NAME" >/dev/null 2>&1; then
+      if [ "$REMOTE_FALLBACK" = "1" ]; then
+        log "WARN: docker network create failed; falling back to single-container mode."
+        REMOTE_E2E=0
+      else
+        fail "docker network create failed."
+      fi
+    fi
   fi
+fi
 
+if [ "$REMOTE_E2E" = "1" ]; then
   if $DOCKER ps -a --format '{{.Names}}' | grep -q "^${SERVER_NAME}$"; then
     log "Removing stale server container..."
     $DOCKER rm -f "$SERVER_NAME" >/dev/null 2>&1 || true
   fi
 
   log "Starting server container..."
-  $DOCKER run -d \
+  if ! $DOCKER run -d \
     --name "$SERVER_NAME" \
     --hostname "$SERVER_NAME" \
     --privileged \
-    --cgroupns=host \
+    "${SECURITY_OPTS[@]}" \
+    "${CGROUP_ARGS[@]}" \
+    "${DEVICE_ARGS[@]}" \
+    "${DEBUG_MOUNTS[@]}" \
     --tmpfs /run \
     --tmpfs /tmp \
     --tmpfs /run/lock \
     -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
     -v "$SSH_DIR:/tmp/seal-ssh:ro" \
     --network "$NETWORK_NAME" \
-    "$SERVER_IMAGE" >/dev/null
+    "$SERVER_IMAGE" >/dev/null; then
+    if [ "$REMOTE_FALLBACK" = "1" ]; then
+      log "WARN: server container failed to start; falling back to single-container mode."
+      $DOCKER rm -f "$SERVER_NAME" >/dev/null 2>&1 || true
+      $DOCKER network rm "$NETWORK_NAME" >/dev/null 2>&1 || true
+      REMOTE_E2E=0
+    else
+      fail "server container failed to start."
+    fi
+  fi
+fi
 
+if [ "$REMOTE_E2E" = "1" ]; then
   log "Waiting for sshd (systemd) to be ready..."
+  SSHD_TIMEOUT="${SEAL_DOCKER_E2E_SSHD_TIMEOUT:-60}"
   READY=0
-  for _ in $(seq 1 60); do
+  for _ in $(seq 1 "$SSHD_TIMEOUT"); do
     if $DOCKER exec "$SERVER_NAME" systemctl is-active ssh >/dev/null 2>&1; then
       READY=1
       break
@@ -327,7 +424,14 @@ if [ "$REMOTE_E2E" = "1" ]; then
 
   if [ "$READY" != "1" ]; then
     $DOCKER logs "$SERVER_NAME" || true
-    fail "sshd did not become ready in time."
+    if [ "$REMOTE_FALLBACK" = "1" ]; then
+      log "WARN: sshd not ready; falling back to single-container mode (set SEAL_DOCKER_E2E_REMOTE_FALLBACK=0 to fail)."
+      $DOCKER rm -f "$SERVER_NAME" >/dev/null 2>&1 || true
+      $DOCKER network rm "$NETWORK_NAME" >/dev/null 2>&1 || true
+      REMOTE_E2E=0
+    else
+      fail "sshd did not become ready in time."
+    fi
   fi
 fi
 
@@ -348,6 +452,11 @@ fi
 $DOCKER run --rm \
   --init \
   --privileged \
+  "${SECURITY_OPTS[@]}" \
+  "${CGROUP_ARGS[@]}" \
+  "${DEVICE_ARGS[@]}" \
+  "${DEBUG_MOUNTS[@]}" \
+  "${SHM_ARGS[@]}" \
   "${BUILDER_NET_ARGS[@]}" \
   -v "$REPO_ROOT:/workspace" \
   -v "$NODE_MODULES_CACHE:/workspace/node_modules" \
@@ -357,6 +466,7 @@ $DOCKER run --rm \
   -v "$PLAYWRIGHT_CACHE_DIR:/root/.cache/ms-playwright" \
   -w /workspace \
   -e SEAL_DOCKER_E2E=1 \
+  -e NPM_CONFIG_UNSAFE_PERM=true \
   -e SEAL_E2E_SSH="${REMOTE_E2E}" \
   -e SEAL_E2E_CONFIG="${SEAL_E2E_CONFIG:-}" \
   -e SEAL_E2E_TOOLSET="${TOOLSET}" \
@@ -365,6 +475,7 @@ $DOCKER run --rm \
   -e SEAL_E2E_JOBS="${SEAL_E2E_JOBS:-}" \
   -e SEAL_E2E_TESTS="${SEAL_E2E_TESTS:-}" \
   -e SEAL_E2E_SKIP="${SEAL_E2E_SKIP:-}" \
+  -e SEAL_E2E_LIMITED_HOST="${SEAL_E2E_LIMITED_HOST:-}" \
   -e SEAL_E2E_RERUN_FAILED="${SEAL_E2E_RERUN_FAILED:-}" \
   -e SEAL_E2E_RERUN_FROM="${SEAL_E2E_RERUN_FROM:-}" \
   -e SEAL_E2E_SUMMARY_PATH="${SEAL_E2E_SUMMARY_PATH:-}" \

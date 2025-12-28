@@ -94,6 +94,7 @@ declare -A TEST_DESC=()
 declare -A TEST_SKIP_RISK=()
 declare -A TEST_HINT=()
 declare -A TEST_SCRIPT=()
+declare -A TEST_HOST_ONLY=()
 declare -A CATEGORY_SEEN=()
 declare -a MANIFEST_ORDER=()
 declare -a CATEGORY_ORDER=()
@@ -103,7 +104,7 @@ if [ ! -f "$MANIFEST_PATH" ]; then
   exit 1
 fi
 
-while IFS=$'\t' read -r name category parallel desc skip_risk hint script; do
+while IFS=$'\t' read -r name category parallel desc skip_risk hint script host_only; do
   if [ -z "$name" ] || [ "$name" = "name" ] || [[ "$name" = \#* ]]; then
     continue
   fi
@@ -113,6 +114,7 @@ while IFS=$'\t' read -r name category parallel desc skip_risk hint script; do
   TEST_SKIP_RISK["$name"]="$skip_risk"
   TEST_HINT["$name"]="$hint"
   TEST_SCRIPT["$name"]="$script"
+  TEST_HOST_ONLY["$name"]="$host_only"
   MANIFEST_ORDER+=("$name")
   if [ -n "$category" ] && [ -z "${CATEGORY_SEEN[$category]:-}" ]; then
     CATEGORY_SEEN["$category"]=1
@@ -165,6 +167,20 @@ if [ -n "$E2E_SKIP_RAW" ]; then
   done
 fi
 
+HOST_LIMITED="${SEAL_E2E_LIMITED_HOST:-0}"
+if [ "$HOST_LIMITED" = "1" ]; then
+  HOST_ONLY_LIST=""
+  for name in "${MANIFEST_ORDER[@]}"; do
+    if [ "${TEST_HOST_ONLY[$name]:-0}" = "1" ]; then
+      SKIP_SET["$name"]=1
+      HOST_ONLY_LIST+="${name} "
+    fi
+  done
+  if [ -n "$HOST_ONLY_LIST" ]; then
+    log "Host-limited mode: skipping host-only tests: ${HOST_ONLY_LIST% }"
+  fi
+fi
+
 filter_tests() {
   local list="$1"
   local out=""
@@ -173,7 +189,7 @@ filter_tests() {
     if [ -n "$E2E_ONLY_RAW" ] && [ -z "${ONLY_SET[$item]:-}" ]; then
       continue
     fi
-    if [ -n "$E2E_SKIP_RAW" ] && [ -n "${SKIP_SET[$item]:-}" ]; then
+    if [ -n "${SKIP_SET[$item]:-}" ]; then
       continue
     fi
     out+="${item},"
@@ -229,7 +245,7 @@ for test in "${SERIAL_TESTS[@]}"; do
   if [ -n "$E2E_ONLY_RAW" ] && [ -z "${ONLY_SET[$test]:-}" ]; then
     continue
   fi
-  if [ -n "$E2E_SKIP_RAW" ] && [ -n "${SKIP_SET[$test]:-}" ]; then
+  if [ -n "${SKIP_SET[$test]:-}" ]; then
     continue
   fi
   SERIAL_FILTERED+=("$test")
@@ -375,7 +391,7 @@ print_combined_summary() {
     if [ -n "$E2E_ONLY_RAW" ] && [ -z "${ONLY_SET[$test]:-}" ]; then
       continue
     fi
-    if [ -n "$E2E_SKIP_RAW" ] && [ -n "${SKIP_SET[$test]:-}" ]; then
+    if [ -n "${SKIP_SET[$test]:-}" ]; then
       continue
     fi
     order_list+=("$test")

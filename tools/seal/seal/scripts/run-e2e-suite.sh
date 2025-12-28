@@ -156,6 +156,7 @@ declare -A TEST_SKIP_RISK=()
 declare -A TEST_PARALLEL=()
 declare -A TEST_HINT=()
 declare -A TEST_SCRIPT=()
+declare -A TEST_HOST_ONLY=()
 declare -A CATEGORY_SEEN=()
 declare -a MANIFEST_ORDER=()
 declare -a CATEGORY_ORDER=()
@@ -165,7 +166,7 @@ if [ ! -f "$MANIFEST_PATH" ]; then
   exit 1
 fi
 
-while IFS=$'\t' read -r name category parallel desc skip_risk hint script; do
+while IFS=$'\t' read -r name category parallel desc skip_risk hint script host_only; do
   if [ -z "$name" ] || [ "$name" = "name" ] || [[ "$name" = \#* ]]; then
     continue
   fi
@@ -175,6 +176,7 @@ while IFS=$'\t' read -r name category parallel desc skip_risk hint script; do
   TEST_SKIP_RISK["$name"]="$skip_risk"
   TEST_HINT["$name"]="$hint"
   TEST_SCRIPT["$name"]="$script"
+  TEST_HOST_ONLY["$name"]="$host_only"
   MANIFEST_ORDER+=("$name")
   if [ -n "$category" ] && [ -z "${CATEGORY_SEEN[$category]:-}" ]; then
     CATEGORY_SEEN["$category"]=1
@@ -261,12 +263,26 @@ if [ -n "$E2E_SKIP_RAW" ]; then
   done
 fi
 
+HOST_LIMITED="${SEAL_E2E_LIMITED_HOST:-0}"
+if [ "$HOST_LIMITED" = "1" ]; then
+  HOST_ONLY_LIST=""
+  for name in "${MANIFEST_ORDER[@]}"; do
+    if [ "${TEST_HOST_ONLY[$name]:-0}" = "1" ]; then
+      E2E_SKIP["$name"]=1
+      HOST_ONLY_LIST+="${name} "
+    fi
+  done
+  if [ -n "$HOST_ONLY_LIST" ]; then
+    log "Host-limited mode: skipping host-only tests: ${HOST_ONLY_LIST% }"
+  fi
+fi
+
 should_run() {
   local name="$1"
   if [ -n "$E2E_ONLY_RAW" ] && [ -z "${E2E_ONLY[$name]:-}" ]; then
     return 1
   fi
-  if [ -n "$E2E_SKIP_RAW" ] && [ -n "${E2E_SKIP[$name]:-}" ]; then
+  if [ -n "${E2E_SKIP[$name]:-}" ]; then
     return 1
   fi
   return 0
@@ -665,29 +681,72 @@ fi
 
 export SEAL_UI_E2E_HEADLESS="${SEAL_UI_E2E_HEADLESS:-1}"
 
+disable_ui_e2e() {
+  log "WARN: $*"
+  export SEAL_UI_E2E=0
+}
+
 if [ "${SEAL_UI_E2E:-0}" = "1" ] && should_run "example-ui"; then
   PW_MARKER="${SEAL_E2E_PLAYWRIGHT_MARKER:-/root/.cache/seal/playwright-installed}"
   PW_CACHE="/root/.cache/ms-playwright"
   PW_HAS_BROWSER=0
+  PW_BROWSER_PATH=""
+  PW_DEPS_OK=1
   if [ -d "$PW_CACHE" ]; then
-    if find "$PW_CACHE" -type f \( -name 'chrome-headless-shell' -o -name 'chrome' \) -print -quit 2>/dev/null | grep -q .; then
+    PW_BROWSER_PATH="$(find "$PW_CACHE" -type f \( -name 'chrome-headless-shell' -o -name 'chrome' \) -print -quit 2>/dev/null || true)"
+    if [ -n "$PW_BROWSER_PATH" ]; then
       PW_HAS_BROWSER=1
     fi
   fi
+  if [ "$PW_HAS_BROWSER" = "1" ] && command -v ldd >/dev/null 2>&1; then
+    if ldd "$PW_BROWSER_PATH" 2>/dev/null | grep -q "not found"; then
+      PW_DEPS_OK=0
+    fi
+  fi
   if ! has_cmd npx; then
-    log "WARN: npx not found; skipping Playwright browser install"
+    if [ "${SEAL_DOCKER_E2E:-0}" = "1" ]; then
+      disable_ui_e2e "npx not found; disabling UI E2E in docker"
+    else
+      log "WARN: npx not found; skipping Playwright browser install"
+    fi
   else
-    if [ ! -f "$PW_MARKER" ] || [ "$PW_HAS_BROWSER" = "0" ]; then
+    if [ ! -f "$PW_MARKER" ] || [ "$PW_HAS_BROWSER" = "0" ] || [ "$PW_DEPS_OK" = "0" ]; then
       if [ -f "$PW_MARKER" ] && [ "$PW_HAS_BROWSER" = "0" ]; then
         log "Playwright marker present but browsers missing; reinstalling."
       fi
+      if [ "$PW_DEPS_OK" = "0" ]; then
+        log "Playwright browser deps missing; reinstalling with --with-deps."
+      fi
       if [ ! -x "$REPO_ROOT/tools/seal/seal/node_modules/.bin/playwright" ]; then
         log "Playwright CLI missing; installing tools/seal/seal npm deps..."
+        set +e
         (cd "$REPO_ROOT/tools/seal/seal" && npm install)
+        npm_status=$?
+        set -e
+        if [ "$npm_status" -ne 0 ]; then
+          if [ "${SEAL_DOCKER_E2E:-0}" = "1" ]; then
+            disable_ui_e2e "Playwright npm install failed; disabling UI E2E in docker"
+          else
+            exit "$npm_status"
+          fi
+        fi
       fi
-      log "Installing Playwright browsers for UI E2E..."
-      (cd "$REPO_ROOT" && npx playwright install --with-deps chromium)
-      touch "$PW_MARKER"
+      if [ "${SEAL_UI_E2E:-0}" = "1" ]; then
+        log "Installing Playwright browsers for UI E2E..."
+        set +e
+        (cd "$REPO_ROOT" && npx playwright install --with-deps chromium)
+        pw_status=$?
+        set -e
+        if [ "$pw_status" -ne 0 ]; then
+          if [ "${SEAL_DOCKER_E2E:-0}" = "1" ]; then
+            disable_ui_e2e "Playwright browser install failed; disabling UI E2E in docker"
+          else
+            exit "$pw_status"
+          fi
+        else
+          touch "$PW_MARKER"
+        fi
+      fi
     fi
   fi
 fi
