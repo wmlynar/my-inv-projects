@@ -751,6 +751,7 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-289 (SHOULD): `fsync` pliku i katalogu po zapisie krytycznych plikow.
 
 - STD-290 (SHOULD): HTTP ma `connect` i `total` timeout dla kazdego requestu.
+- STD-290a (SHOULD): narzedzie do HTTP checkow (curl/wget) jest preflightowane; brak = jasny blad z instrukcja lub jawny SKIP/fallback.
 - STD-291 (SHOULD): retry tylko dla idempotentnych operacji (lub jawnie oznaczonych).
 - STD-292 (SHOULD): komunikaty rozrozniaja DNS/timeout/TLS.
 - STD-293 (SHOULD): wylaczenie TLS verify to opt‑in z ostrzezeniem.

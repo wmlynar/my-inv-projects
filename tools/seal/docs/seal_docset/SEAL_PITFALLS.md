@@ -1643,6 +1643,8 @@
 
 - Blad: requesty HTTP wisialy bez timeoutow.
   - Wymaganie: `connect` i `total` timeout dla kazdego requestu.
+- Blad: health‑check HTTP zakladal obecność `curl`/`wget`, a brak narzedzia dawalo nieczytelny blad lub fail w runtime.
+  - Wymaganie: preflight wykrywa brak narzedzia (curl/wget) i podaje instrukcje instalacji lub fallback/skip.
 - Blad: retry byly wykonywane dla nie‑idempotentnych operacji.
   - Wymaganie: retry tylko dla idempotentnych lub jawnie oznaczonych.
 - Blad: komunikaty nie rozrozniay DNS/timeout/TLS.
