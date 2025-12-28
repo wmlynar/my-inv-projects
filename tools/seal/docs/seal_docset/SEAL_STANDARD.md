@@ -105,6 +105,7 @@ Przykład:
 - STD-034b (SHOULD): walidacja configu (np. `packager`) jest wykonywana w loaderze i dotyczy **wszystkich** komend; nie zakladaj, ze uzytkownik uruchomil `seal check`.
 - STD-034c (SHOULD): booleany w configu sa typu `true/false`; stringi/numbery nie sa akceptowane (brak `!!` coercion).
 - STD-034d (SHOULD): walidacja targetu (host/user/serviceName/installDir) jest scentralizowana i uzywana przez wszystkie komendy (deploy/check/sentinel).
+- STD-034e (SHOULD): sekcje `build.thin`/`target.thin` sa plain object; `null`/array/string/number = fail‑fast (prefer w `seal check`).
 - STD-025 (SHOULD): wszystkie generowane katalogi (cache/release/tmp) maja retention/pruning i loguja przyczyny czyszczenia.
 - STD-025a (SHOULD): cache jest kluczowany po target+config+wersja/format; zmiana schematu wymusza czyszczenie lub nowy namespace cache.
 - STD-028 (SHOULD): zapisy plikow krytycznych sa atomowe (tmp + rename), aby uniknac polowicznych stanow po crashu.
@@ -126,6 +127,8 @@ Przykład:
 - STD-033 (SHOULD): operacje zewnetrzne (ssh/scp/rsync/http) maja timeout i komunikat "co dalej".
 - STD-033a (SHOULD): pobieranie przez `curl`/`wget` uzywa `--fail` + timeoutów (`--connect-timeout`, `--max-time`) i limitu retry; brak odpowiedzi = fail‑fast.
 - STD-033a.a (SHOULD): po pobraniu waliduj format (np. `file`, `tar -tzf` dry‑run, magic bytes); HTML/komunikat błędu zamiast archiwum = fail‑fast z hintem o rate‑limit lub zlym URL.
+- STD-033a.b (SHOULD): dla URLi z przekierowaniami (np. GitHub Releases) uzywaj `curl -L`/`wget --max-redirect`, a liczbe redirectow limituj i loguj finalny URL.
+- STD-033a.c (SHOULD): unikaj `curl | tar` bez weryfikacji; preferuj pobranie do pliku + checksum + `tar -xf` (albo `pipefail` + walidacja rozmiaru/formatu).
 - STD-033b (SHOULD): `rsync` uruchamiaj z `--timeout` (limit bez aktywnosci) oraz globalnym timeoutem procesu.
 - STD-033e (SHOULD): loguj `rsync --version` po obu stronach i fail‑fast, gdy wymagane flagi nie sa wspierane (z instrukcja aktualizacji).
 - STD-033c (SHOULD): instalatory narzedzi zewnetrznych pinuja tag/commit, loguja wersje/commit i w miare mozliwosci weryfikuja checksumy; w razie braku zrodla wspieraja mirror/backup.
@@ -135,6 +138,9 @@ Przykład:
 - STD-033h (SHOULD): parser lockfile narzedzi normalizuje CRLF/BOM/whitespace i waliduje skladnie; duplikaty sekcji i nieznane klucze = fail‑fast z lista problemow.
 - STD-033i (SHOULD): nazwy narzedzi/binarek w lockfile sa walidowane jako bezpieczne basename (bez `/`, `..`, whitespace; tylko `[a-zA-Z0-9_.-]`).
 - STD-033j (SHOULD): preflight dla deployu SSH sprawdza obecność `tar`/`gzip` (wsparcie `-z`/`-tzf`) na hoście zdalnym; brak = fail‑fast z instrukcja.
+- STD-033k (SHOULD): instalatory narzedzi z `pip` uzywaja `python3 -m pip` (nie `pip` z PATH), preferuja venv/pipx, ustawiają `PIP_NO_INPUT=1` i `PIP_DISABLE_PIP_VERSION_CHECK=1`; jeśli używasz `--user`, dodaj `~/.local/bin` do PATH.
+- STD-033l (SHOULD): narzedzia budowane ze zrodel instaluja sie do lokalnego prefixu (`$SEAL_CACHE/tools/...`) przez `DESTDIR`/`CMAKE_INSTALL_PREFIX` bez `sudo`; globalny `make install` do `/usr/local` jest zabroniony w E2E/CI.
+- STD-033m (SHOULD): buildy narzedzi ze zrodel ustawiają jawny limit równoległości (`-j`, `CMAKE_BUILD_PARALLEL_LEVEL`, `MAKEFLAGS`) na podstawie wykrytych limitów CPU/pamięci (cgroup), aby uniknąć OOM.
 - STD-038 (SHOULD): operacje destrukcyjne oferuja `--dry-run`.
 - STD-039 (SHOULD): SIGINT/SIGTERM sprzataja procesy i pliki tymczasowe.
 - STD-043 (SHOULD): waliduj wymagania **warunkowo** od poziomu/trybu (np. level 0/1/2), nie wymuszaj danych dla wyzszych poziomow.
@@ -365,6 +371,7 @@ Przykład:
 - STD-089b (SHOULD): skrypty E2E wyznaczaja repo root wzgledem `__dirname` (CWD‑independent) i loguja effective root.
 - STD-089c (SHOULD): gdy test waliduje wiele sub‑checkow, musi wypisac liste tych, ktore padly (nazwa + got/expected), nie tylko `ok=false`.
 - STD-089d (SHOULD): dlugie pakiety E2E (np. docker) maja konfigurowalny globalny timeout i heartbeat log postepu; kroki instalacyjne musza byc opcjonalne (ENV‑gated).
+- STD-089d.a (SHOULD): dla dlugich krokow uzywaj niebuforowanego outputu (np. `PYTHONUNBUFFERED=1`, `stdbuf -oL -eL`), aby logi pojawialy sie na biezaco i nie wygladalo to na zwis.
 - STD-089e (SHOULD): testy dockerowe sprzataja kontenery/sieci w `trap` (cleanup na error); `KEEP=1` tylko jawnie wylacza cleanup.
 - STD-089e.a (SHOULD): w CI uzywaj `--progress=plain` (lub `BUILDKIT_PROGRESS=plain`) dla `docker build`, aby logi byly diagnostyczne.
 - STD-089f (SHOULD): test‑workspace nie kopiuje `node_modules/`; zaleznosci instaluje osobno (deterministycznie) i loguje czy instalacja byla fresh.

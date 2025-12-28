@@ -83,8 +83,13 @@
 
 - Blad: `curl`/`wget` bez timeoutow i `--fail` potrafil wisiec lub ignorowac HTTP error.
   - Wymaganie: pobieranie z sieci musi miec timeout (`--connect-timeout`, `--max-time`) i `--fail`/`--show-error`, plus ograniczone retry.
+
 - Blad: pobrany plik byl HTML/komunikatem błędu (np. rate‑limit GitHub) mimo HTTP 200, co powodowalo mylace bledy rozpakowania lub cichy brak danych.
   - Wymaganie: waliduj typ/format pobranych plikow (np. `file`, `tar -tzf` dry‑run, magic bytes) i fail‑fast z komunikatem o możliwym rate‑limit lub nieprawidłowym URL.
+  - Wymaganie: dla URLi z przekierowaniami (np. GitHub Releases) uzywaj `curl -L`/`wget --max-redirect`, inaczej pobierzesz stronę HTML zamiast artefaktu.
+
+- Blad: pipeline `curl | tar` bez `pipefail` przechodzil mimo bledu pobierania, a `tar` dostawal puste wejscie (cichy FAIL).
+  - Wymaganie: preferuj pobranie do pliku + weryfikacja + `tar -xf`; jeśli uzywasz pipe, wlacz `set -o pipefail` i waliduj rozmiar/format.
 
 - Blad: `rsync` bez timeoutu potrafil wisiec na zerwanym polaczeniu.
   - Wymaganie: uzywaj `--timeout` w `rsync` (sekundy bez aktywnosci) oraz jawny limit czasu calkowitego.
@@ -162,6 +167,10 @@
 
 - Blad: pakiet z repo APT nie istnial w danej dystrybucji (np. `criu` na niektorych Ubuntu), co przerywalo instalacje i blokowalo E2E.
   - Wymaganie: instalatory narzedzi musza obslugiwac brak pakietu (source build lub SKIP z instrukcja), a preflight/diagnostyka jasno wypisuje, ze pakiet nie ma kandydata w APT.
+
+- Blad: `pip install` failowal na nowych Ubuntu przez `externally-managed-environment`, albo instalowal narzedzia poza PATH (np. `~/.local/bin`), przez co testy nie widzialy binarek.
+  - Wymaganie: instalacje pip rob w venv/pipx albo jawnie uzyj `python3 -m pip install --user` + dodaj `~/.local/bin` do PATH; w kontrolowanych obrazach dopuszczalne `PIP_BREAK_SYSTEM_PACKAGES=1`.
+  - Wymaganie: ustaw `PIP_NO_INPUT=1` i `PIP_DISABLE_PIP_VERSION_CHECK=1`, zeby uniknac promptow i wiszenia.
 
 - Blad: `eval`/`bash -lc "$CMD"` z danymi z configu pozwalal na wstrzykniecia lub bledy quoting.
   - Wymaganie: unikaj `eval`; uzywaj args array lub whitelisty dopuszczalnych tokenow.
@@ -357,6 +366,7 @@
 
 - Blad: `seal check` „wieszal sie” na kompilacji testowej (brak timeoutu i brak outputu).
   - Wymaganie: wszystkie komendy preflight/build maja timeout i widoczny postep.
+  - Wymaganie: dla dlugich krokow wymuszaj niebuforowany output (`PYTHONUNBUFFERED=1`, `stdbuf -oL -eL`) lub jawne flush w narzedziu, aby nie wygladalo na zwis.
   - Wymaganie: `seal check --verbose` pokazuje komendy i stdout/stderr narzedzi.
   - Wymaganie: preflight uzywa plikow tymczasowych (nie stdin), zeby narzedzia nie blokowaly sie na wejsciu.
   - Wymaganie: opcja override toolchaina (np. `--cc gcc`) dla srodowisk z wrapperami `cc`.
@@ -373,6 +383,9 @@
 
 - Blad: instalatory narzedzi (np. z lockfile) probowaly budowac bez wymaganych narzedzi builda (`cmake`/`ninja`/`python3`), a blad byl nieczytelny.
   - Wymaganie: installer preflightuje wymagane build deps i podaje konkretne instrukcje instalacji (pakiety).
+
+- Blad: instalatory budujace ze zrodel wykonywaly `make install` do systemu (`/usr/local`), wymagaly sudo i zostawialy globalne artefakty.
+  - Wymaganie: instaluj narzedzia do katalogu cache (`$SEAL_CACHE/tools/...`) przez `DESTDIR`/`CMAKE_INSTALL_PREFIX`, bez sudo; w PATH dodawaj tylko lokalny prefix.
 
 - Blad: parser lockfile narzedzi byl wrazliwy na CRLF/BOM lub niestandardowe biale znaki, co psulo odczyt sekcji i powodowalo "brakujace" narzedzia.
   - Wymaganie: parser lockfile normalizuje CRLF/BOM, trimuje whitespace i jasno raportuje bledy skladni.
@@ -400,6 +413,8 @@
   - Wymaganie: preflight sprawdza wsparcie C++20 i obecność naglowkow Node (np. `SEAL_NODE_INCLUDE_DIR`) i fail‑fast z instrukcją instalacji.
 - Blad: parametry `thin.*` (np. `chunkSizeBytes`, `zstdLevel`, `timeoutMs`) byly walidowane dopiero w buildzie, a `seal check` przepuszczal bledna konfiguracje.
   - Wymaganie: waliduj limity/liczby w `seal check` i fail‑fast z jasnym bledem, nie dopiero podczas builda.
+- Blad: `build.thin`/`target.thin` ustawione na `null` lub tablice powodowaly TypeError albo ciche pominiecie konfiguracji.
+  - Wymaganie: `thin` musi byc plain object; `null`/array/string/number = fail‑fast z jasnym bledem (prefer w `seal check`).
 
 - Blad: build byl niedeterministyczny lub wykonany na innej architekturze/OS niz target (AIO zawiera runtime z build machine).
   - Wymaganie: preflight waliduje OS/arch i wersje narzedzi; mismatch = fail-fast.
@@ -1801,6 +1816,8 @@
   - Wymaganie: wykrywaj duzy drift (np. >5 min) i fail‑fast z instrukcja synchronizacji czasu.
 - Blad: `nproc` zwracal wysoka wartosc w CI i kompilacja wysypywala RAM.
   - Wymaganie: limituj rownoleglosc takze wzgledem dostepnej pamieci.
+- Blad: buildy narzedzi ze zrodel uzywaly domyslnej rownoległości `make`/`ninja`, co ignorowalo limity cgroup i powodowalo OOM.
+  - Wymaganie: narzucaj jawny limit `-j` (np. z wyliczonego `jobs`) oraz ustaw `CMAKE_BUILD_PARALLEL_LEVEL`/`MAKEFLAGS` w installerach.
 - Blad: limity CPU w cgroup nie byly uwzgledniane, co powodowalo oversubscription i timeouty.
   - Wymaganie: przy wyliczaniu `jobs` uwzgledniaj limity cgroup (quota/period) i loguj wykryta liczbe CPU.
 - Blad: procesy Node.js w CI/containers dostawaly OOM przez zbyt niski limit pamieci.
