@@ -70,6 +70,8 @@
   - Wymaganie: uzywaj `sudo -n` (fail‑fast bez promptu) i wypisz instrukcje, gdy brak uprawnien.
 - Blad: długie testy/deploy wymagały sudo, ale timestamp wygasał w trakcie i proces wisiał.
   - Wymaganie: przy długich runach odświeżaj `sudo -v` w tle albo wymagaj jednorazowej autoryzacji przed startem.
+- Blad: `sudo` uruchamiane bez zachowania ENV gubilo krytyczne zmienne (np. `SEAL_*`, `NPM_*`), co zmienialo zachowanie testow.
+  - Wymaganie: przekazuj wymagane ENV jawnie (`sudo -E` lub `sudo VAR=...`) i loguj kluczowe zmienne na starcie.
 
 - Blad: `curl`/`wget` bez timeoutow i `--fail` potrafil wisiec lub ignorowac HTTP error.
   - Wymaganie: pobieranie z sieci musi miec timeout (`--connect-timeout`, `--max-time`) i `--fail`/`--show-error`, plus ograniczone retry.
@@ -509,6 +511,9 @@
 - Blad: docker buildy korzystaly ze starych obrazow bazowych, bo `--pull` nie byl jawnie kontrolowany.
   - Wymaganie: tryb pull jest jawny (`--pull`/`--no-pull`) i logowany, a bazowy obraz jest identyfikowany po tagu/digescie.
   - Wymaganie: loguj tryb BuildKit (`DOCKER_BUILDKIT`) i `BUILDKIT_PROGRESS`, zeby uniknac roznic w cache i output.
+
+- Blad: skrypty zakladaly `docker compose` (plugin v2), a na hostach z `docker-compose` v1 testy nie startowaly.
+  - Wymaganie: wykrywaj `docker compose` vs `docker-compose`, loguj wybrany binarny i wypisz instrukcje instalacji, gdy brak.
 
 - Blad: obraz testowego serwera byl reuse’owany mimo zmian w Dockerfile/entrypoincie (tag bez zmiany), co uruchamialo stary build.
   - Wymaganie: obraz ma label z hashem wejsc (Dockerfile/entrypoint); mismatch = wymuszenie rebuild.
