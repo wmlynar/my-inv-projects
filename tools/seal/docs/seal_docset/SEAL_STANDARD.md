@@ -108,6 +108,9 @@ Przykład:
 - STD-034e (SHOULD): sekcje `build.thin`/`target.thin` sa plain object; `null`/array/string/number = fail‑fast (prefer w `seal check`).
 - STD-034f (SHOULD): `build.protection` akceptuje tylko boolean lub obiekt; inne typy = fail‑fast (prefer w `seal check`).
 - STD-034g (SHOULD): `installDir` jest absolutny i bez whitespace/metaznakow; walidacja dotyczy lokalnych i SSH targetow.
+- STD-034h (SHOULD): `thin.level` walidowany do `low|medium|high`; niepoprawne wartosci = fail‑fast.
+- STD-034i (SHOULD): `thin.antiDebug.seccompNoDebug.mode` akceptuje tylko `errno|kill`; inne wartosci = fail‑fast.
+- STD-034j (SHOULD): `protection.*.args` oraz `protection.strings.obfuscation` sa walidowane typami/allowlista; bledy = fail‑fast lub jawny warning + log `effective config`.
 - STD-025 (SHOULD): wszystkie generowane katalogi (cache/release/tmp) maja retention/pruning i loguja przyczyny czyszczenia.
 - STD-025a (SHOULD): cache jest kluczowany po target+config+wersja/format; zmiana schematu wymusza czyszczenie lub nowy namespace cache.
 - STD-028 (SHOULD): zapisy plikow krytycznych sa atomowe (tmp + rename), aby uniknac polowicznych stanow po crashu.
@@ -134,8 +137,10 @@ Przykład:
 - STD-033a.c (SHOULD): unikaj `curl | tar` bez weryfikacji; preferuj pobranie do pliku + checksum + `tar -xf` (albo `pipefail` + walidacja rozmiaru/formatu).
 - STD-033a.d (SHOULD): preflight instaluje `ca-certificates` i weryfikuje TLS; brak CA = fail‑fast z instrukcja instalacji.
 - STD-033a.e (SHOULD): nie przekazuj sekretow w URL (`https://token@...`) ani przez `curl -u`; uzywaj naglowkow/ENV/`--netrc` z perms 0600 i redaguj je w logach.
+- STD-033a.f (SHOULD): wspieraj `GITHUB_TOKEN` (lub inny token) dla pobran z GitHub, aby uniknac rate‑limit; brak tokena = warning w logach.
 - STD-033b (SHOULD): `rsync` uruchamiaj z `--timeout` (limit bez aktywnosci) oraz globalnym timeoutem procesu.
 - STD-033b.a (SHOULD): `rsync` uzywa `--safe-links` (lub preflight waliduje brak symlinkow), aby nie kopiowac danych poza docelowym rootem.
+- STD-033b.b (SHOULD): `rsync` uruchamiaj z `--no-devices --no-specials` (lub waliduj typy plikow), aby nie przenosic device nodes przy buildach uruchamianych jako root.
 - STD-033e (SHOULD): loguj `rsync --version` po obu stronach i fail‑fast, gdy wymagane flagi nie sa wspierane (z instrukcja aktualizacji).
 - STD-033c (SHOULD): instalatory narzedzi zewnetrznych pinuja tag/commit, loguja wersje/commit i w miare mozliwosci weryfikuja checksumy; w razie braku zrodla wspieraja mirror/backup.
 - STD-033d (SHOULD): instalatory narzedzi buildowanych ze zrodel preflightuja wymagane zaleznosci (`cmake`/`ninja`/`python3`/`cc`) i podaja konkretne instrukcje instalacji.
@@ -165,6 +170,7 @@ Przykład:
 - STD-049 (SHOULD): przy zapisie plikow krytycznych (zwl. jako root) ustaw `umask 077`, zapisuj do tmp + `fsync` + `rename`, a potem `fsync` katalogu.
 - STD-050 (SHOULD): nazwy plikow tymczasowych (szczegolnie na zdalnych hostach) musza miec losowy komponent; nie opieraj ich wylacznie na czasie (`Date.now()`).
 - STD-051 (SHOULD): kazda operacja, ktora tworzy tmp na hoście (lokalnym lub zdalnym), musi sprzatac je w `finally`/`trap` (usun takze `*.tmp` po nieudanym zapisie).
+- STD-051a (SHOULD): nie uzywaj `mktemp -u`; zawsze tworz plik/katalog atomowo przez `mktemp` (bez TOCTOU).
 - STD-052 (SHOULD): narzedzia wymagane przez mechanizmy lock (`flock`) musza byc sprawdzone przed uzyciem, z czytelnym bledem i instrukcja instalacji.
 - STD-053 (SHOULD): generowany kod C (launchery, wrappery) musi uzywac helpera do C‑escape dla literałów string, aby uniknac bledow kompilacji przy `\n`, `\r`, `\t`, `\0`, `\"`, `\\`.
 - STD-055 (SHOULD): generowany kod C musi byc sprawdzony w **obu** galeziach flag/feature (np. sentinel ON/OFF), bo bledy czesto siedza w rzadziej uzywanej konfiguracji.
@@ -183,8 +189,10 @@ Przykład:
 - STD-106 (SHOULD): ssh/scp/rsync w trybie nieinteraktywnym musza byc uruchamiane z `BatchMode=yes` i fail-fast, bez wiszenia na prompt.
 - STD-106a (SHOULD): dla git/ssh ustaw `GIT_TERMINAL_PROMPT=0`, `GIT_ASKPASS=/bin/false`, `SSH_ASKPASS=/bin/false` (brak promptów); brak danych = szybki fail z instrukcja.
 - STD-106b (SHOULD): przy uruchamianiu `ssh` pod `sudo` zachowaj `SSH_AUTH_SOCK` lub ustaw `IdentityFile` + `IdentitiesOnly=yes`; ustaw jawny `HOME`/`known_hosts`.
+- STD-106b.a (SHOULD): waliduj `SSH_AUTH_SOCK` (czy istnieje i jest socketem); nieprawidlowy socket unsetuj i loguj, aby uniknac mylacych bledow.
 - STD-106c (SHOULD): hostkey prompts eliminuje sie przez pre‑seed `known_hosts` albo jawny `StrictHostKeyChecking=accept-new` (gdy dozwolone); brak wpisu = fail‑fast z instrukcja.
 - STD-106c.a (SHOULD): przy błędzie „REMOTE HOST IDENTIFICATION HAS CHANGED” wypisz instrukcje `ssh-keygen -R <host>`; nie usuwaj wpisów `known_hosts` automatycznie bez zgody.
+- STD-106c.b (SHOULD): `UserKnownHostsFile` musi byc zapisywalny; w przeciwnym razie `accept-new` failuje — uzyj temp pliku lub pre‑seed.
 - STD-106d (SHOULD): w testach/CI uzywaj tymczasowego `UserKnownHostsFile`, aby uniknac konfliktow hostkey miedzy uruchomieniami.
 - STD-106e (SHOULD): ustawiaj prawidlowe permissje kluczy SSH (private key `0600`, `authorized_keys`/`known_hosts` `0644`), inaczej ssh je zignoruje.
 - STD-106e.a (SHOULD): katalog `~/.ssh` ma perms `0700`; inne uprawnienia moga blokowac uzycie kluczy.

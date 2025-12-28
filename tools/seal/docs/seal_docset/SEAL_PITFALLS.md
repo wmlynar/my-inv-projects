@@ -91,6 +91,11 @@
 - Blad: pobrany plik byl HTML/komunikatem błędu (np. rate‑limit GitHub) mimo HTTP 200, co powodowalo mylace bledy rozpakowania lub cichy brak danych.
   - Wymaganie: waliduj typ/format pobranych plikow (np. `file`, `tar -tzf` dry‑run, magic bytes) i fail‑fast z komunikatem o możliwym rate‑limit lub nieprawidłowym URL.
   - Wymaganie: dla URLi z przekierowaniami (np. GitHub Releases) uzywaj `curl -L`/`wget --max-redirect`, inaczej pobierzesz stronę HTML zamiast artefaktu.
+  - Wymaganie: wspieraj `GITHUB_TOKEN`/auth do pobran, aby ograniczyc rate‑limit; brak tokena = jawny warning.
+  - Wymaganie: po pobraniu weryfikuj rozmiar (`Content-Length` gdy dostępny, lub minimalny próg rozmiaru pliku); zbyt mały plik = fail‑fast.
+
+- Blad: HTTP 429/503 zwracal `Retry-After`, ale downloader natychmiast retry’ował lub failował bez instrukcji, co powodowało flakey.
+  - Wymaganie: respektuj `Retry-After` (z limitem) i loguj powód oraz czas oczekiwania; po przekroczeniu limitu daj jasny błąd.
 
 - Blad: pipeline `curl | tar` bez `pipefail` przechodzil mimo bledu pobierania, a `tar` dostawal puste wejscie (cichy FAIL).
   - Wymaganie: preferuj pobranie do pliku + weryfikacja + `tar -xf`; jeśli uzywasz pipe, wlacz `set -o pipefail` i waliduj rozmiar/format.
@@ -109,6 +114,8 @@
 
 - Blad: `rsync` podazal za symlinkami lub kopiuje je jako pliki, co moglo nadpisac dane poza docelowym rootem.
   - Wymaganie: uzywaj `--safe-links` (lub waliduj brak symlinkow w drzewie) i sprawdzaj `realpath` przed sync.
+- Blad: `rsync -a` kopiowal pliki specjalne/urządzenia, gdy build był uruchamiany jako root.
+  - Wymaganie: dodaj `--no-devices --no-specials` (lub waliduj typy plikow przed sync) aby nie przenosic device nodes.
 
 - Blad: `git` korzystajacy z SSH nie dziedziczyl opcji nieinteraktywnych (BatchMode/known_hosts), co blokowalo CI.
   - Wymaganie: ustaw `GIT_SSH_COMMAND="ssh -o BatchMode=yes -o UserKnownHostsFile=... -o StrictHostKeyChecking=accept-new"` w testach/CI.
@@ -211,6 +218,12 @@
 - Blad: operacje SSH uruchamiane przez `sudo` tracily `SSH_AUTH_SOCK` i klucze z agenta, co konczylo sie promptem lub bledem.
   - Wymaganie: przy `sudo` zachowuj `SSH_AUTH_SOCK` (`sudo -E`) albo przekazuj `IdentityFile`/`IdentitiesOnly=yes`.
   - Wymaganie: jawnie ustaw `HOME`/`known_hosts` dla procesu `ssh` uruchamianego jako root.
+
+- Blad: `SSH_AUTH_SOCK` wskazywal na nieistniejacy/stary socket agenta, co powodowalo mylace bledy SSH lub opoznienia.
+  - Wymaganie: waliduj, ze `SSH_AUTH_SOCK` istnieje i jest socketem; w razie braku unsetuj go i loguj ten fakt.
+
+- Blad: `known_hosts` bylo read‑only, a `StrictHostKeyChecking=accept-new` nie moglo zapisac wpisu, co powodowalo fail mimo poprawnego hosta.
+  - Wymaganie: uzywaj zapisywalnego `UserKnownHostsFile` (w temp) lub pre‑seed `known_hosts`; brak zapisu = fail‑fast z instrukcja.
 
 - Blad: skrypty polegaly na `ls`/globbingu (`for f in *`) i psuly sie na spacjach lub pustych katalogach.
   - Wymaganie: nie parsuj `ls`; uzywaj `find -print0` + `xargs -0` lub `glob` z `nullglob`.
@@ -435,6 +448,12 @@
   - Wymaganie: `thin` musi byc plain object; `null`/array/string/number = fail‑fast z jasnym bledem (prefer w `seal check`).
 - Blad: `build.protection` ustawione na `null`/string/array bylo traktowane jak puste `{}` (protection wlaczony), co maskowalo bledna konfiguracje.
   - Wymaganie: `build.protection` akceptuje tylko boolean lub obiekt; inne typy = fail‑fast (prefer w `seal check`).
+- Blad: `thin.level` przyjmowal niepoprawne wartosci i byl walidowany dopiero w buildzie, wiec `seal check` przepuszczal bledna konfiguracje.
+  - Wymaganie: waliduj `thin.level` (low/medium/high) w `seal check` i fail‑fast.
+- Blad: `thin.antiDebug.seccompNoDebug.mode` z nieznana wartoscia byl cicho normalizowany do `errno`, co ukrywalo bledy konfiguracji.
+  - Wymaganie: `seccompNoDebug.mode` akceptuje tylko `errno|kill`; inne wartosci = fail‑fast.
+- Blad: `protection.*.args` oraz `protection.strings.obfuscation` akceptowaly bledne typy/nieznane wartosci i byly cicho ignorowane, co zmienialo skuteczna konfiguracje.
+  - Wymaganie: waliduj typy/allowliste dla `args` i `strings.obfuscation`; bledy = fail‑fast lub jawny warning + log `effective config`.
 
 - Blad: build byl niedeterministyczny lub wykonany na innej architekturze/OS niz target (AIO zawiera runtime z build machine).
   - Wymaganie: preflight waliduje OS/arch i wersje narzedzi; mismatch = fail-fast.
@@ -2034,6 +2053,8 @@
   - Wymaganie: przekazuj parametry jako `"$@"`.
 - Blad: tmp katalog byl tworzony recznie (`/tmp/foo`), co prowadzilo do kolizji i race.
   - Wymaganie: uzywaj `mktemp -d` z losowym sufiksem.
+- Blad: uzycie `mktemp -u` (tylko nazwa) powodowalo TOCTOU i ryzyko przechwycenia pliku przez inny proces.
+  - Wymaganie: nie uzywaj `mktemp -u`; zawsze tworz plik/katalog atomowo przez `mktemp`.
 - Blad: `pushd/popd` w /bin/sh nie dzialalo i psulo skrypty.
   - Wymaganie: w sh uzywaj `cd` + `pwd` lub wymagaj bash.
 - Blad: `echo` interpretowal `-n`/`-e` w danych i psul output.
