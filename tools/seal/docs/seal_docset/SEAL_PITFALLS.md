@@ -277,6 +277,9 @@
   - Wymaganie: pinuj tag/commit, loguj wersje/commit i (gdy to mozliwe) weryfikuj checksumy; zapewnij offline backup/mirror.
   - Wymaganie: brak CLI = twardy blad z instrukcja instalacji.
 
+- Blad: instalatory narzedzi (np. z lockfile) probowaly budowac bez wymaganych narzedzi builda (`cmake`/`ninja`/`python3`), a blad byl nieczytelny.
+  - Wymaganie: installer preflightuje wymagane build deps i podaje konkretne instrukcje instalacji (pakiety).
+
 - Blad: thin build failowal dopiero w trakcie kompilacji launchera (brak `libzstd-dev`), bez jasnej instrukcji instalacji.
   - Wymaganie: `seal check` wykrywa brakujace pakiety (np. `libzstd-dev`) i podaje **konkretne** `apt-get install ...`.
   - Wymaganie: `seal release` (thin) fail‑fast z czytelnym komunikatem, gdy toolchain jest niekompletny.
@@ -595,6 +598,12 @@
 - Blad: zmiana domyslnych ustawien E2E wymagala edycji skryptow w repo, co zostawialo lokalne diffy i rozjazdy miedzy srodowiskami.
   - Wymaganie: defaulty E2E sa w repo jako plik wzorcowy, a lokalne override przechowuj w `.seal/e2e.env` lub pod `SEAL_E2E_CONFIG` (poza repo); runner loguje zrodlo configu.
   - Wymaganie: lokalny plik override jest ignorowany przez git (brak przypadkowych commitow).
+
+- Blad: `SEAL_E2E_CONFIG` wskazywal na nieistniejacy plik, a runner cicho wracal do defaultow, co mylilo wyniki.
+  - Wymaganie: przy jawnym wskazaniu pliku brak = FAIL albo wyrazny warning + log fallback.
+
+- Blad: plik configu E2E byl `source`-owany jako shell, co pozwalalo na wykonanie polecen z pliku.
+  - Wymaganie: plik env jest traktowany jako dane (`KEY=VALUE`), albo przed `source` sprawdz ownership/perms (owner-only, bez world-writable) i loguj ostrzezenie.
 
 - Blad: brak podsumowania SKIP dawał fałszywe poczucie “all green”.
   - Wymaganie: testy musza wypisać liczbę i listę SKIP oraz mieć tryb strict, który traktuje SKIP jako FAIL w runach certyfikacyjnych.

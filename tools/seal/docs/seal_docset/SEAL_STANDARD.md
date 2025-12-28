@@ -112,6 +112,7 @@ Przykład:
 - STD-033a (SHOULD): pobieranie przez `curl`/`wget` uzywa `--fail` + timeoutów (`--connect-timeout`, `--max-time`) i limitu retry; brak odpowiedzi = fail‑fast.
 - STD-033b (SHOULD): `rsync` uruchamiaj z `--timeout` (limit bez aktywnosci) oraz globalnym timeoutem procesu.
 - STD-033c (SHOULD): instalatory narzedzi zewnetrznych pinuja tag/commit, loguja wersje/commit i w miare mozliwosci weryfikuja checksumy; w razie braku zrodla wspieraja mirror/backup.
+- STD-033d (SHOULD): instalatory narzedzi buildowanych ze zrodel preflightuja wymagane zaleznosci (`cmake`/`ninja`/`python3`/`cc`) i podaja konkretne instrukcje instalacji.
 - STD-038 (SHOULD): operacje destrukcyjne oferuja `--dry-run`.
 - STD-039 (SHOULD): SIGINT/SIGTERM sprzataja procesy i pliki tymczasowe.
 - STD-043 (SHOULD): waliduj wymagania **warunkowo** od poziomu/trybu (np. level 0/1/2), nie wymuszaj danych dla wyzszych poziomow.
@@ -228,6 +229,8 @@ Przykład:
 - STD-027l (SHOULD): lokalne patche do narzedzi sa jawnie logowane i sterowane ENV, a wersja patcha/flag wchodzi do stempla cache.
 - STD-027m (SHOULD): testy zalezne od funkcji kernela (cgroup/perf/ptrace) maja tryb strict (ENV), ktory zamienia SKIP na FAIL; w trybie domyslnym SKIP zawsze podaje instrukcje jak wymusic strict.
 - STD-027n (SHOULD): runner E2E loguje aktywny toolset (np. core/full), a testy/instalatory respektuja go (brak narzedzi w toolsecie = SKIP lub jawny FAIL w trybie strict).
+- STD-027o (SHOULD): jesli `SEAL_E2E_CONFIG` jest ustawiony i plik nie istnieje lub nie jest czytelny, runner daje FAIL albo wyrazny warning + log fallback.
+- STD-027p (SHOULD): plik configu E2E jest parsowany jako `KEY=VALUE` (bez wykonywania kodu); jesli uzywasz `source`, sprawdz ownership/perms i blokuj world‑writable pliki.
 - STD-056 (SHOULD): drenaż stdout/stderr dotyczy **wszystkich** scenariuszy testowych (takze gdy spodziewasz sie porazki procesu).
 - STD-059 (SHOULD): testy E2E musza obejmowac scenariusze negatywne (brak plikow, zle uprawnienia, symlink), bo tam najczesciej wychodza regresje.
 - STD-060 (SHOULD): testy musza deterministycznie sprzatac zasoby (tmp/porty/procesy), a brak sprzatania jest traktowany jako fail.
