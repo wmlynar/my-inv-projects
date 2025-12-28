@@ -115,6 +115,7 @@ Przykład:
 - STD-030b (SHOULD): po aktualizacji pliku unit zawsze wykonaj `systemctl daemon-reload` (lub `--user`), aby uniknac starej konfiguracji.
 - STD-030c (SHOULD): wywolania `systemctl` maja timeout i obsługę braku systemd/DBus (SKIP z powodem w testach).
 - STD-030d (SHOULD): `serviceName` nie zawiera sufiksu `.service`; normalizuj lub fail‑fast z jasnym bledem.
+- STD-030e (SHOULD): dla `serviceScope=system` logi `journalctl` uruchamiaj przez `sudo` lub wymagaj grupy `systemd-journal`; brak uprawnien = jasny blad.
 - STD-031 (SHOULD): brak sudo domyslnie; eskalacja tylko jawnie. Waliduj owner/perms/umask w punktach krytycznych.
 - STD-031a (SHOULD): komendy wymagajace `sudo` w trybie nieinteraktywnym uzywaja `sudo -n` i fail‑fast z instrukcja (brak wiszenia na promptach).
 - STD-031b (SHOULD): gdy `sudo` jest konieczne, przekazuj wymagane ENV jawnie (`sudo -E` lub `sudo VAR=...`) i loguj kluczowe zmienne, aby uniknac rozjazdow zachowania.
@@ -123,6 +124,7 @@ Przykład:
 - STD-031e (SHOULD): gdy operacja jest uruchamiana jako `root`, nie uzywaj `sudo`; inaczej minimalne hosty bez `sudo` beda failowac.
 - STD-033 (SHOULD): operacje zewnetrzne (ssh/scp/rsync/http) maja timeout i komunikat "co dalej".
 - STD-033a (SHOULD): pobieranie przez `curl`/`wget` uzywa `--fail` + timeoutów (`--connect-timeout`, `--max-time`) i limitu retry; brak odpowiedzi = fail‑fast.
+- STD-033a.a (SHOULD): po pobraniu waliduj format (np. `file`, `tar -tzf` dry‑run, magic bytes); HTML/komunikat błędu zamiast archiwum = fail‑fast z hintem o rate‑limit lub zlym URL.
 - STD-033b (SHOULD): `rsync` uruchamiaj z `--timeout` (limit bez aktywnosci) oraz globalnym timeoutem procesu.
 - STD-033e (SHOULD): loguj `rsync --version` po obu stronach i fail‑fast, gdy wymagane flagi nie sa wspierane (z instrukcja aktualizacji).
 - STD-033c (SHOULD): instalatory narzedzi zewnetrznych pinuja tag/commit, loguja wersje/commit i w miare mozliwosci weryfikuja checksumy; w razie braku zrodla wspieraja mirror/backup.

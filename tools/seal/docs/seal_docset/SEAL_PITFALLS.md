@@ -87,6 +87,8 @@
 
 - Blad: `curl`/`wget` bez timeoutow i `--fail` potrafil wisiec lub ignorowac HTTP error.
   - Wymaganie: pobieranie z sieci musi miec timeout (`--connect-timeout`, `--max-time`) i `--fail`/`--show-error`, plus ograniczone retry.
+- Blad: pobrany plik byl HTML/komunikatem błędu (np. rate‑limit GitHub) mimo HTTP 200, co powodowalo mylace bledy rozpakowania lub cichy brak danych.
+  - Wymaganie: waliduj typ/format pobranych plikow (np. `file`, `tar -tzf` dry‑run, magic bytes) i fail‑fast z komunikatem o możliwym rate‑limit lub nieprawidłowym URL.
 
 - Blad: `rsync` bez timeoutu potrafil wisiec na zerwanym polaczeniu.
   - Wymaganie: uzywaj `--timeout` w `rsync` (sekundy bez aktywnosci) oraz jawny limit czasu calkowitego.
@@ -1133,6 +1135,8 @@
   - Wymaganie: preflight sprawdza obecność `sudo` gdy jest wymagane i podaje jasne instrukcje instalacji/konfiguracji.
 - Blad: komendy na SSH uzywaly `sudo` nawet gdy user to `root`, co psulo deploy na minimalnych hostach bez `sudo`.
   - Wymaganie: gdy user= root, nie uzywaj `sudo` (lub preflightuj `sudo` tylko gdy faktycznie potrzebne).
+- Blad: `journalctl` dla `serviceScope=system` nie dzialal bez sudo (brak uprawnien do logow), co dawalo mylace "brak logow".
+  - Wymaganie: dla system scope uzywaj `sudo journalctl` lub zapewnij odpowiednie uprawnienia/grupy (np. `systemd-journal`).
 
 - Blad: stare releasy rosly bez limitu (brak cleanup).
   - Wymaganie: retention (np. ostatnie N release) + usuwanie starych katalogow.
