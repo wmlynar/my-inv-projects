@@ -1090,6 +1090,8 @@
   - Wymaganie: IPv6 literal normalizuj do `[addr]` dla ssh/scp/rsync.
 - Blad: `host` zaczynal sie od `-` lub zawieral znaki kontrolne, co bylo interpretowane jako opcje `ssh`.
   - Wymaganie: waliduj `host` against allowlista (brak `-` na poczatku, brak whitespace/CTL).
+- Blad: ostrzezenia SSH (np. "Permanently added host key") trafialy do stderr i psuly parsowanie outputu (np. `systemctl is-active`).
+  - Wymaganie: przy parsowaniu wynikow SSH ignoruj ostrzezenia (filtruj stderr) albo ustaw `LogLevel=ERROR`/preseed `known_hosts`.
 
 - Blad: ssh/scp/rsync w trybie nieinteraktywnym potrafily wisiec na prompt (host key / haslo).
   - Wymaganie: ustawiaj `BatchMode=yes` i fail-fast z jasnym komunikatem, gdy wymagany jest input.
