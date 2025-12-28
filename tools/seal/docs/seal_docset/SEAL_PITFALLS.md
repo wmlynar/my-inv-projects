@@ -883,6 +883,9 @@
 - Blad: brak ustalonego viewportu/locale/animacji powodowal roznice w layout (responsive) i flakey asercje.
   - Wymaganie: ustaw jawny viewport, deviceScaleFactor i locale/timezone w UI E2E; wylacz animacje (np. `prefers-reduced-motion`/global CSS).
 
+- Blad: Playwright pobieral przegladarki przy kazdym uruchomieniu (brak cache), co wydluzalo E2E i zwiekszalo flakey.
+  - Wymaganie: ustaw `PLAYWRIGHT_BROWSERS_PATH` na trwały cache (poza repo) i loguj jego lokalizacje.
+
 ## Deploy / infrastruktura
 
 - Blad: instalacja w `/opt` (mala partycja) powodowala brak miejsca.
