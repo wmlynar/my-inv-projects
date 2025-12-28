@@ -105,6 +105,7 @@ Przykład:
 - STD-025 (SHOULD): wszystkie generowane katalogi (cache/release/tmp) maja retention/pruning i loguja przyczyny czyszczenia.
 - STD-025a (SHOULD): cache jest kluczowany po target+config+wersja/format; zmiana schematu wymusza czyszczenie lub nowy namespace cache.
 - STD-028 (SHOULD): zapisy plikow krytycznych sa atomowe (tmp + rename), aby uniknac polowicznych stanow po crashu.
+- STD-028a (SHOULD): aktualizacja `config.json5` jest atomowa (tmp w tym samym katalogu + `rename` + `fsync` katalogu).
 - STD-029 (SHOULD): operacje bootstrap/deploy/clean sa idempotentne (powtorka nie psuje stanu).
 - STD-029a (SHOULD): szybkie sciezki (payload-only/fast) musza zachowywac parytet walidacji i listy plikow z pelnym deployem; ewentualne roznice musza byc jawnie opisane i testowane.
 - STD-030 (SHOULD): build/deploy/clean uzywaja lockfile; kolizje maja czytelny komunikat i nie niszcza stanu.

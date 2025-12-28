@@ -1035,6 +1035,8 @@
   - Wymaganie: dla configow z sekretami wymusz `umask 077` lub `chmod 0600/0640` po kopii.
 - Blad: tymczasowy plik konfigu z `scp` (np. do diffu) zostawal na dysku lokalnym, co kumulowalo smieci i moglo ujawniac dane.
   - Wymaganie: uzywaj `mktemp` + perms 0600 i sprzataj w `finally` po diff/porownaniu.
+- Blad: aktualizacja `config.json5` odbywala sie przez zwykle `cp`/`copyFile` (bez atomowosci), co moglo zostawic polowiczny plik po crashu.
+  - Wymaganie: zapisuj config atomowo (tmp w tym samym katalogu + `rename` + `fsync` katalogu).
 
 - Blad: brak wczesnej walidacji wolnego miejsca na serwerze powodowal `tar: Cannot mkdir: No space left on device`.
   - Wymaganie: preflight sprawdza wolne miejsce w `installDir` oraz `/tmp` i failuje z instrukcja, jesli za malo miejsca.
