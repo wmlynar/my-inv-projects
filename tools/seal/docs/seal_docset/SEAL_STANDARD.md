@@ -225,6 +225,7 @@ Przykład:
 - STD-147 (SHOULD): retry sieciowe maja exponential backoff + jitter oraz limit prob i max delay.
 - STD-148 (SHOULD): ekstrakcja archiwow ma limit rozmiaru i liczby plikow (ochrona przed zip‑bomb).
 - STD-149 (SHOULD): `host`/`user` w targetach sa walidowane (brak spacji/znakow kontrolnych; whitelist znakow).
+- STD-149a (SHOULD): `target.host` nie zawiera `user@` ani `:port`; port jest tylko w `sshPort`. IPv6 literal jest normalizowany do `[addr]` dla ssh/scp/rsync.
 - STD-150 (SHOULD): zanim uruchomisz `strip`/packer na pliku, zweryfikuj typ (ELF magic/`file`) i w razie braku zgodnosci wykonaj SKIP z powodem.
 - STD-150a (SHOULD): po `strip`/packerze wykonaj szybki smoke test (np. `--version`/`--help` lub krótki run z timeoutem), aby wykryć uszkodzone binarki.
 - STD-151 (SHOULD): gdy operacja wymaga uprawnien/sandbox escape, komunikat musi jasno prosic o zgode; brak cichych fallbackow.
