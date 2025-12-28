@@ -316,6 +316,9 @@
 - Blad: lockfile zawieral duplikaty sekcji narzedzi lub nieznane klucze, a parser je cicho ignorowal (last‑wins), co dawalo niedeterministyczne buildy.
   - Wymaganie: wykrywaj duplikaty i nieznane klucze w lockfile; fail‑fast z lista problemow.
 
+- Blad: nazwy narzedzi/binarek w lockfile zawieraly sciezki lub znaki specjalne, co pozwalalo na nadpisanie nieoczekiwanych plikow.
+  - Wymaganie: nazwy tool/bin sa walidowane jako bezpieczny basename (bez `/`, `..`, whitespace; tylko `[a-zA-Z0-9_.-]`).
+
 - Blad: submodule update w installerach byl ignorowany (`|| true`), co zostawialo niekompletny repo i dawalo pozniejsze, nieczytelne bledy.
   - Wymaganie: `git submodule update --init --recursive` musi fail‑fast (lub jawny SKIP z powodem, jesli submoduly sa opcjonalne).
 
