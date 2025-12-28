@@ -80,6 +80,7 @@ Przykład:
 - STD-032b (SHOULD): buildId musi zawierac komponent losowy lub monotoniczny, aby uniknac kolizji przy rownoleglych buildach.
 - STD-032c (SHOULD): native dodatki/addony sa kompilowane z naglowkami zgodnymi z wersja runtime Node na target (np. `--target` lub pobrane headers); mismatch = fail-fast w preflight/testach.
 - STD-032d (SHOULD): kod native korzysta z API V8 warunkowo (guardy wersji/feature-detect) i ma fallback dla starszych wersji Node.
+- STD-032e (SHOULD): jezeli addon wymaga konkretnego standardu C++ (np. C++20), preflight wykonuje probe kompilatora i fail‑fast z jasnym komunikatem.
 - STD-035 (SHOULD): build zapisuje wersje narzedzi/zaleznosci; build nie pobiera rzeczy z internetu.
 - STD-040 (SHOULD): preflight uzywa tych samych argumentow i srodowiska co runtime.
 - STD-040a (SHOULD): runtime/serwis uruchamia aplikacje z `NODE_ENV=production` (jesli nie ustawiono inaczej), a testy E2E sprawdzaja ten tryb.
@@ -207,6 +208,9 @@ Przykład:
 - STD-027a (SHOULD): gdy narzedzie nie ma wbudowanego timeoutu, testy owijaja je `timeout` (np. GNU `timeout --foreground`) i loguja limit czasu.
 - STD-027b (SHOULD): testy zawsze sprawdzaja `exit code` i `signal` procesu; crash sygnalem = FAIL z logiem.
 - STD-027c (SHOULD): timeouty helperow/pollingu pochodza z jednego zrodla (run/step timeout) lub maja jawny per-tryb override; brak ukrytych limitow.
+- STD-027d (SHOULD): testy funkcji wielomodalnych (np. kilka trybow bootstrapa) pokrywaja kazdy tryb co najmniej raz i loguja aktywny wariant.
+- STD-027e (SHOULD): prereq check (narzedzia/feature) jest per‑test/per‑tryb; brak = SKIP z powodem, nie blokuje reszty suite.
+- STD-027f (SHOULD): override timeoutow jest warunkowy i wlacza sie tylko, gdy dana funkcja/artefakt jest aktywna.
 - STD-056 (SHOULD): drenaż stdout/stderr dotyczy **wszystkich** scenariuszy testowych (takze gdy spodziewasz sie porazki procesu).
 - STD-059 (SHOULD): testy E2E musza obejmowac scenariusze negatywne (brak plikow, zle uprawnienia, symlink), bo tam najczesciej wychodza regresje.
 - STD-060 (SHOULD): testy musza deterministycznie sprzatac zasoby (tmp/porty/procesy), a brak sprzatania jest traktowany jako fail.
@@ -290,6 +294,7 @@ Przykład:
 - STD-089n (SHOULD): w CI/E2E wyłącz `npm audit`/`fund` i progress (`NPM_CONFIG_AUDIT=false`, `NPM_CONFIG_FUND=false`, `NPM_CONFIG_PROGRESS=false`).
 - STD-089o (SHOULD): w testach/CI ustaw `CI=1`, aby wymusic nieinteraktywny tryb narzedzi (brak promptow/spinnerow).
 - STD-089p (SHOULD): w CI/E2E ustaw `NPM_CONFIG_UPDATE_NOTIFIER=false`, aby uniknac sieciowych promptow npm.
+- STD-089q (SHOULD): narzedzia E2E maja pinowane wersje w repo (lockfile) i wspolny installer korzystajacy z locka; ten sam lock obowiazuje lokalnie i w CI/Dockerze.
 - STD-090c (SHOULD): preflight sprawdza **narzedzia CLI** (np. `postject` w `node_modules/.bin`/PATH), nie tylko obecność modulu.
 - STD-091a (SHOULD): funkcje zalezne od architektury (np. CPUID) musza degradująco dzialac na platformach bez wsparcia (pusty/neutralny ID zamiast twardego bledu).
 - STD-092a (SHOULD): `--skip-check` jest wyraznie oznaczony jako ryzykowny i zawsze wypisuje ostrzezenie; krytyczne braki toolchaina nie powinny byc maskowane.
