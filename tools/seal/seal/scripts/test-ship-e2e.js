@@ -24,6 +24,31 @@ function fail(msg) {
   throw new Error(msg);
 }
 
+async function captureOutput(fn) {
+  const origOut = process.stdout.write.bind(process.stdout);
+  const origErr = process.stderr.write.bind(process.stderr);
+  let out = "";
+  let err = "";
+  process.stdout.write = (chunk, encoding, cb) => {
+    out += chunk;
+    return origOut(chunk, encoding, cb);
+  };
+  process.stderr.write = (chunk, encoding, cb) => {
+    err += chunk;
+    return origErr(chunk, encoding, cb);
+  };
+  try {
+    const result = await fn();
+    return { out, err, result };
+  } catch (e) {
+    e.captured = { out, err };
+    throw e;
+  } finally {
+    process.stdout.write = origOut;
+    process.stderr.write = origErr;
+  }
+}
+
 function systemctlUserReady() {
   const res = spawnSync("systemctl", ["--user", "show-environment"], { stdio: "pipe" });
   if (res.status === 0) return true;
@@ -119,6 +144,13 @@ function sshStat(user, host, filePath, sshPort) {
   const parts = out.split(/\s+/).map((x) => Number(x));
   if (parts.length < 3 || parts.some((n) => !Number.isFinite(n))) return null;
   return { ino: parts[0], mtime: parts[1], size: parts[2] };
+}
+
+function sshReadFile(user, host, filePath, sshPort) {
+  const res = sshExec({ user, host, args: ["bash", "-lc", `if [ -f ${shellQuote(filePath)} ]; then cat ${shellQuote(filePath)}; fi`], stdio: "pipe", sshPort });
+  if (!res.ok) return null;
+  const out = (res.stdout || "").trim();
+  return out || null;
 }
 
 function shellQuote(str) {
@@ -342,6 +374,52 @@ async function testShipThinBootstrapSsh() {
     if (plStat1.ino === plStat2.ino && plStat1.mtime === plStat2.mtime) {
       fail("SSH payload did not appear to change between ships; verify build pipeline.");
     }
+
+    const rmRuntime = sshOk(
+      user,
+      host,
+      `rm -f ${shellQuote(`${installDir}/b/a`)} ${shellQuote(`${installDir}/r/rt`)} ${shellQuote(`${installDir}/r/nv`)}`,
+      sshPort
+    );
+    assert.ok(rmRuntime.ok, `Failed to remove runtime before payload-only fallback test: ${rmRuntime.out}`);
+
+    let fallbackOutput = "";
+    try {
+      const cap = await captureOutput(() => shipOnce(targetCfg, { bootstrap: false, pushConfig: false, skipCheck: true, packager: "thin-split" }));
+      fallbackOutput = `${cap.out}\n${cap.err}`;
+    } catch (e) {
+      fallbackOutput = `${(e.captured && e.captured.out) || ""}\n${(e.captured && e.captured.err) || ""}`;
+      throw e;
+    }
+    assert.ok(
+      fallbackOutput.includes("runtime/launcher missing on target; falling back to full upload"),
+      "Expected payload-only fallback log (missing runtime)"
+    );
+    const nvAfterFallback = sshReadFile(user, host, `${installDir}/r/nv`, sshPort);
+    assert.strictEqual(nvAfterFallback, process.version, "Expected runtime version to be restored after fallback");
+
+    const nvWrite = sshOk(
+      user,
+      host,
+      `printf %s ${shellQuote("v0.0.0\n")} > ${shellQuote(`${installDir}/r/nv`)}`,
+      sshPort
+    );
+    assert.ok(nvWrite.ok, `Failed to write runtime version before mismatch test: ${nvWrite.out}`);
+
+    let mismatchOutput = "";
+    try {
+      const cap = await captureOutput(() => shipOnce(targetCfg, { bootstrap: false, pushConfig: false, skipCheck: true, packager: "thin-split" }));
+      mismatchOutput = `${cap.out}\n${cap.err}`;
+    } catch (e) {
+      mismatchOutput = `${(e.captured && e.captured.out) || ""}\n${(e.captured && e.captured.err) || ""}`;
+      throw e;
+    }
+    assert.ok(
+      mismatchOutput.includes("node version mismatch"),
+      "Expected payload-only fallback log (node version mismatch)"
+    );
+    const nvAfterMismatch = sshReadFile(user, host, `${installDir}/r/nv`, sshPort);
+    assert.strictEqual(nvAfterMismatch, process.version, "Expected runtime version to be refreshed after mismatch");
 
     const httpPort = process.env.SEAL_SHIP_SSH_HTTP_PORT
       ? Number(process.env.SEAL_SHIP_SSH_HTTP_PORT)

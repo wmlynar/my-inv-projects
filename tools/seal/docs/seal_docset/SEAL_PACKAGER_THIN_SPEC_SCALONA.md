@@ -743,6 +743,10 @@ Payload-only (BOOTSTRAP) MUSI sprawdzić zgodność `codec_hash`:
 - `release/r/c` vs `<installDir>/r/c`,
 - jeśli brak albo mismatch → **fallback do pełnego bootstrap**.
 
+Payload-only (BOOTSTRAP) MUSI sprawdzić zgodność wersji runtime (Node):
+- `release/r/nv` vs `<installDir>/r/nv`,
+- jeśli brak albo mismatch → **fallback do pełnego uploadu/runtime**.
+
 Przy mismatch:
 - launcher kończy się stabilnym kodem błędu (patrz §12),
 - `seal ship` interpretuje to jako potrzebę re-bootstrap (automatycznie lub po `--force-bootstrap`).

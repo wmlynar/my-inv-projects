@@ -32,6 +32,7 @@ const CODEC_BIN_MAGIC = "SLCB";
 const CODEC_BIN_VERSION = 1;
 const CODEC_BIN_HASH_LEN = 32;
 const CODEC_BIN_LEN = 4 + 1 + 1 + 2 + CODEC_BIN_HASH_LEN;
+const THIN_RUNTIME_VERSION_FILE = "nv";
 
 function readCodecHashFromBin(buf) {
   if (!Buffer.isBuffer(buf) || buf.length < CODEC_BIN_LEN) return null;
@@ -54,6 +55,24 @@ function readThinCodecHash(dirPath) {
       const buf = fs.readFileSync(p);
       const hash = readCodecHashFromBin(buf);
       if (hash) return hash;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function readThinRuntimeVersion(dirPath) {
+  if (!dirPath) return null;
+  const candidates = [
+    path.join(dirPath, "r", THIN_RUNTIME_VERSION_FILE),
+    path.join(dirPath, THIN_RUNTIME_VERSION_FILE),
+  ];
+  for (const p of candidates) {
+    if (!fileExists(p)) continue;
+    try {
+      const text = fs.readFileSync(p, "utf-8").trim();
+      if (text) return text;
     } catch {
       return null;
     }
@@ -260,6 +279,7 @@ function applyThinBootstrapLocal(layout, extractedDir, opts = {}) {
   const plSrc = path.join(extractedDir, "r", "pl");
   const codecSrc = path.join(extractedDir, "r", "c");
   const ihSrc = path.join(extractedDir, "r", integrityFile);
+  const nvSrc = path.join(extractedDir, "r", THIN_RUNTIME_VERSION_FILE);
 
   if (!fileExists(launcherSrc)) throw new Error(`Missing thin launcher: ${launcherSrc}`);
   if (!fileExists(rtSrc)) throw new Error(`Missing thin runtime: ${rtSrc}`);
@@ -273,6 +293,11 @@ function applyThinBootstrapLocal(layout, extractedDir, opts = {}) {
   if (!onlyPayload) {
     copyAtomic(launcherSrc, path.join(bDir, "a"), 0o755);
     copyAtomic(rtSrc, path.join(rDir, "rt"), 0o644);
+    if (fileExists(nvSrc)) {
+      copyAtomic(nvSrc, path.join(rDir, THIN_RUNTIME_VERSION_FILE), 0o644);
+    } else {
+      rmrf(path.join(rDir, THIN_RUNTIME_VERSION_FILE));
+    }
   }
   copyAtomic(plSrc, path.join(rDir, "pl"), 0o644);
   if (fileExists(codecSrc)) {
@@ -294,6 +319,7 @@ function cleanupThinBootstrapLocal(layout, opts = {}) {
   rmrf(path.join(layout.installDir, "r", "pl"));
   rmrf(path.join(layout.installDir, "r", "c"));
   rmrf(path.join(layout.installDir, "r", integrityFile));
+  rmrf(path.join(layout.installDir, "r", THIN_RUNTIME_VERSION_FILE));
 }
 
 function pickBuildIdFromFolder(folderName) {
@@ -373,9 +399,19 @@ function deployLocal({ targetCfg, artifactPath, repoConfigPath, pushConfig, poli
     if (!bootstrap && hasLauncher && hasRuntime) {
       const releaseCodec = readThinCodecHash(extractedDir);
       const installCodec = readThinCodecHash(layout.installDir);
+      const releaseRuntimeVersion = readThinRuntimeVersion(extractedDir);
+      const installRuntimeVersion = readThinRuntimeVersion(layout.installDir);
       if (releaseCodec && installCodec && releaseCodec === installCodec) {
-        canReuse = true;
-        info("Thin bootstrap: reusing launcher/runtime; updating payload only.");
+        if (releaseRuntimeVersion && installRuntimeVersion && releaseRuntimeVersion === installRuntimeVersion) {
+          canReuse = true;
+          info("Thin bootstrap: reusing launcher/runtime; updating payload only.");
+        } else if (!releaseRuntimeVersion) {
+          warn("Thin bootstrap: runtime version metadata missing in release; copying full bootstrap.");
+        } else if (!installRuntimeVersion) {
+          warn("Thin bootstrap: runtime version metadata missing on target; copying full bootstrap.");
+        } else {
+          warn(`Thin bootstrap: node version mismatch (target ${installRuntimeVersion}, release ${releaseRuntimeVersion}); copying full bootstrap.`);
+        }
       } else if (!releaseCodec) {
         warn("Thin bootstrap: codec metadata missing in release; copying full bootstrap.");
       } else if (!installCodec) {
