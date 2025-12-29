@@ -718,6 +718,7 @@ EXAMPLE_DST="${SEAL_E2E_EXAMPLE_ROOT:-/tmp/seal-example-e2e}"
 if [ "${SEAL_E2E_COPY_EXAMPLE:-1}" = "1" ]; then
   log "Preparing disposable example workspace..."
   require_safe_example_root "$EXAMPLE_DST"
+  mkdir -p "$(dirname "$EXAMPLE_DST")"
   rm -rf "$EXAMPLE_DST"
   cp -a "$EXAMPLE_SRC" "$EXAMPLE_DST"
   export SEAL_E2E_EXAMPLE_ROOT="$EXAMPLE_DST"
@@ -1067,30 +1068,33 @@ if [ -z "$THIN_NATIVE_RUN_TIMEOUT_MS" ]; then
 fi
 for name in "${MANIFEST_ORDER[@]}"; do
   script="${TEST_SCRIPT[$name]:-}"
+  missing_script=0
+  missing_reason=""
   if [ -z "$script" ]; then
-    log "ERROR: missing script for test ${name}"
-    TEST_STATUS["$name"]="failed"
-    TEST_DURATIONS["$name"]=0
-    TEST_ORDER+=("$name")
-    FAILURES=$((FAILURES + 1))
-    continue
-  fi
-  if [[ "$script" != /* ]]; then
-    script="$REPO_ROOT/$script"
-  fi
-  if [ ! -f "$script" ]; then
-    log "ERROR: script not found for ${name}: ${script}"
-    TEST_STATUS["$name"]="failed"
-    TEST_DURATIONS["$name"]=0
-    TEST_ORDER+=("$name")
-    FAILURES=$((FAILURES + 1))
-    continue
-  fi
-  if [ "$name" = "thin" ]; then
-    SEAL_THIN_E2E_NATIVE_RUN_TIMEOUT_MS="$THIN_NATIVE_RUN_TIMEOUT_MS" \
-      run_test "$name" "$NODE_BIN" "$script"
+    missing_script=1
+    missing_reason="missing script for test ${name}"
   else
-    run_test "$name" "$NODE_BIN" "$script"
+    if [[ "$script" != /* ]]; then
+      script="$REPO_ROOT/$script"
+    fi
+    if [ ! -f "$script" ]; then
+      missing_script=1
+      missing_reason="script not found for ${name}: ${script}"
+    fi
+  fi
+  if [ "$missing_script" = "1" ]; then
+    log "ERROR: ${missing_reason}"
+    TEST_STATUS["$name"]="failed"
+    TEST_DURATIONS["$name"]=0
+    TEST_ORDER+=("$name")
+    FAILURES=$((FAILURES + 1))
+  else
+    if [ "$name" = "thin" ]; then
+      SEAL_THIN_E2E_NATIVE_RUN_TIMEOUT_MS="$THIN_NATIVE_RUN_TIMEOUT_MS" \
+        run_test "$name" "$NODE_BIN" "$script"
+    else
+      run_test "$name" "$NODE_BIN" "$script"
+    fi
   fi
 done
 

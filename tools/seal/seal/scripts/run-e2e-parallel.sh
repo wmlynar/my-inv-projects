@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+unset BASH_ENV ENV CDPATH GLOBIGNORE
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUNNER="$SCRIPT_DIR/run-e2e-suite.sh"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"

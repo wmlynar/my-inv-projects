@@ -2518,3 +2518,12 @@
   - Wymaganie: porownuj kanoniczny hash configu i pomijaj update, jesli brak zmian; loguj "config unchanged".
 - Blad: logi nie rozroznialy "config updated" vs "config preserved", przez co uzytkownik nie wiedzial, czy override poszedl.
   - Wymaganie: loguj jawnie stan: `config seeded` / `config updated` / `config preserved` wraz z powodem (pushConfig/drift/missing).
+
+## Dodatkowe wnioski (batch 306-310)
+
+- Blad: kopiowanie workspace `example` do `SEAL_E2E_EXAMPLE_ROOT` failowalo, gdy katalog nadrzedny nie istnial (np. cache pod `/root/.cache/...`), co przerywalo caly run.
+  - Wymaganie: przed `cp -a` tworz katalog nadrzedny (`mkdir -p "$(dirname "$dst")"`), loguj efektowny `EXAMPLE_ROOT` i dodaj go do safe-roots, jesli siedzi w cache.
+- Blad: runner rownolegly uruchamial child‑runnera bez przekazania sciezek cache (`SEAL_E2E_CACHE_DIR`/`SEAL_E2E_CACHE_BIN`), co powodowalo `set -u`/unbound albo rozjechane cache.
+  - Wymaganie: wrappery przekazuja **pelny** zestaw zmiennych cache/safe‑roots; gdy dodajesz nowe ENV, aktualizuj wszystkie miejsca uruchomien.
+- Blad: seed cache byl kluczowany przez `SUDO_USER/USER`, ktore w kontenerze bywa puste; skutkiem byly nieczytelne sciezki typu `.../unknown` i kolizje cache.
+  - Wymaganie: wyznacz seed user stabilnie (`id -un` lub `id -u`) i pozwol na jawne override `SEAL_E2E_SEED_ROOT`; zawsze loguj efektywna sciezke.
