@@ -2618,3 +2618,12 @@
   - Wymaganie: wymagaj sciezek absolutnych lub normalizuj przez `realpath`, a wynik loguj na starcie.
 - Blad: bardzo dlugie nazwy testow/grup powodowaly przekroczenie limitu dlugosci sciezek (`ENAMETOOLONG`) przy tworzeniu katalogow logow/tmp.
   - Wymaganie: skracaj nazwy katalogow (prefix + hash) i loguj mapowanie `name -> dir`.
+
+## Dodatkowe wnioski (batch 351-355)
+
+- Blad: `SEAL_E2E_RERUN_FAILED=1` wskazywal na summary z poprzedniej wersji manifestu (nowe/usuniete testy), co powodowalo puste lub mylace reruny.
+  - Wymaganie: przy rerun weryfikuj, czy testy z summary istnieja w aktualnym manifeście; nieznane = ostrzezenie lub fail‑fast z instrukcja.
+- Blad: `SEAL_E2E_SUMMARY_APPEND=1` powodowal, ze plik summary zawieral stare fail'e, a rerun odpalal testy, ktore juz byly naprawione.
+  - Wymaganie: przy append zapisuj run_id w summary i filtruj po ostatnim runie, albo ustaw `SUMMARY_APPEND=0` dla rerun.
+- Blad: `SEAL_E2E_RERUN_FROM` wskazywal na sciezke bez aktualnych uprawnien (np. po `sudo`), co dawalo mylace „brak failed tests”.
+  - Wymaganie: przed rerun waliduj, ze summary jest czytelny; brak dostepu = fail‑fast z jasnym komunikatem.
