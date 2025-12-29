@@ -200,6 +200,7 @@ Przykład:
 - STD-064 (SHOULD): toolchain kompilatora ma jawnie pinowane standardy i flagi (np. `-std=c11`), zeby unikac roznic miedzy maszynami.
 - STD-064a (SHOULD): kompilacja C/C++ ustawia `-fdebug-prefix-map`/`-ffile-prefix-map`, aby nie ujawniac absolutnych sciezek builda w binarkach.
 - STD-067 (SHOULD): walidacja uprawnien nie moze zakladac dostepnosci `sudo`; jesli `serviceUser` == biezacy uzytkownik, uzyj bezposredniego `test -x`/`test -r`.
+- STD-067a (SHOULD): preflight waliduje istnienie `serviceUser`/`serviceGroup` (`getent passwd/group`) i failuje z instrukcja utworzenia, zamiast pozwalac na nieczytelny fail systemd.
 - STD-068 (SHOULD): output narzedzi systemowych (np. `lsblk`, `/proc/mounts`) musi byc normalizowany (trim, filtruj puste, obsluguj array/null), zanim podejmiesz decyzje.
 - STD-069 (SHOULD): probe/inspect nie moga hard-fail na braku `sudo`; zwracaj wynik + note i kontynuuj.
 - STD-102 (SHOULD): uruchamiaj komendy zewnetrzne przez `spawn`/`execFile` z args array i `shell: false`; gdy shell jest konieczny, stosuj `--` i bezpieczne quoting/sanitizacje.

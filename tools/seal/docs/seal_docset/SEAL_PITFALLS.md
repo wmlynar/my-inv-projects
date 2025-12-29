@@ -1244,6 +1244,9 @@
 - Blad: `run-current.sh` i katalog aplikacji mialy zlego wlasciciela (root) i brak prawa wykonania.
   - Wymaganie: `installDir` i `run-current.sh` musza byc wlascicielem uzytkownika uslugi i `run-current.sh` musi byc wykonywalny.
 
+- Blad: `serviceUser`/`serviceGroup` nie istnialy na hoście, a systemd failowal z mylacym komunikatem.
+  - Wymaganie: preflight sprawdza istnienie user/group (`getent passwd/group`) i fail‑fast z instrukcja utworzenia.
+
 - Blad: podwojne uploadowanie artefaktu przy pierwszym deployu (brak configu na serwerze).
   - Wymaganie: sprawdzaj `shared/config.json5` przed uploadem; artefakt wysylany **tylko raz**.
 
