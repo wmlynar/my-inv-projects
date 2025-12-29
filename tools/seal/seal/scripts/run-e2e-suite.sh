@@ -723,44 +723,57 @@ if [ -d "$EXAMPLE_DIR" ]; then
     fi
     if [ "$NEED_EXAMPLE_DEPS" = "1" ]; then
       if command -v flock >/dev/null 2>&1; then
-        exec {lockfd}>"$EXAMPLE_LOCK"
-        flock "$lockfd"
-        if sig_changed "$EXAMPLE_STAMP" "$EXAMPLE_SIG" || ! dir_has_files "$EXAMPLE_NODE_MODULES_DIR"; then
-          log "Installing example dependencies (shared cache)..."
-          if [ -L "$EXAMPLE_DIR/node_modules" ]; then
-            rm -f "$EXAMPLE_DIR/node_modules"
-          fi
-          (cd "$EXAMPLE_DIR" && npm install)
-          if command -v rsync >/dev/null 2>&1; then
-            rsync -a --delete "$EXAMPLE_DIR/node_modules/" "$SHARED_NODE_MODULES_DIR/"
+        (
+          exec {lockfd}>"$EXAMPLE_LOCK"
+          flock "$lockfd"
+          if sig_changed "$EXAMPLE_STAMP" "$EXAMPLE_SIG" || ! dir_has_files "$EXAMPLE_NODE_MODULES_DIR"; then
+            log "Installing example dependencies (shared cache)..."
+            if [ -L "$EXAMPLE_DIR/node_modules" ]; then
+              rm -f "$EXAMPLE_DIR/node_modules"
+            fi
+            npm_install "$EXAMPLE_DIR"
+            if command -v rsync >/dev/null 2>&1; then
+              rsync -a --delete "$EXAMPLE_DIR/node_modules/" "$SHARED_NODE_MODULES_DIR/"
+            else
+              rm -rf "$SHARED_NODE_MODULES_DIR"
+              mkdir -p "$SHARED_NODE_MODULES_DIR"
+              cp -a "$EXAMPLE_DIR/node_modules/." "$SHARED_NODE_MODULES_DIR/"
+            fi
+            rm -rf "$EXAMPLE_DIR/node_modules"
+            ln -s "$SHARED_NODE_MODULES_DIR" "$EXAMPLE_DIR/node_modules"
+            echo "$EXAMPLE_SIG" > "$EXAMPLE_STAMP"
           else
-            rm -rf "$SHARED_NODE_MODULES_DIR"
-            mkdir -p "$SHARED_NODE_MODULES_DIR"
-            cp -a "$EXAMPLE_DIR/node_modules/." "$SHARED_NODE_MODULES_DIR/"
+            log "Example dependencies already installed (shared cache)."
           fi
-          rm -rf "$EXAMPLE_DIR/node_modules"
-          ln -s "$SHARED_NODE_MODULES_DIR" "$EXAMPLE_DIR/node_modules"
-          echo "$EXAMPLE_SIG" > "$EXAMPLE_STAMP"
-        else
-          log "Example dependencies already installed (shared cache)."
-        fi
-        flock -u "$lockfd"
+          flock -u "$lockfd"
+        )
       else
-        log "Installing example dependencies (shared cache)..."
-        if [ -L "$EXAMPLE_DIR/node_modules" ]; then
-          rm -f "$EXAMPLE_DIR/node_modules"
-        fi
-        (cd "$EXAMPLE_DIR" && npm install)
-        if command -v rsync >/dev/null 2>&1; then
-          rsync -a --delete "$EXAMPLE_DIR/node_modules/" "$SHARED_NODE_MODULES_DIR/"
-        else
-          rm -rf "$SHARED_NODE_MODULES_DIR"
-          mkdir -p "$SHARED_NODE_MODULES_DIR"
-          cp -a "$EXAMPLE_DIR/node_modules/." "$SHARED_NODE_MODULES_DIR/"
-        fi
-        rm -rf "$EXAMPLE_DIR/node_modules"
-        ln -s "$SHARED_NODE_MODULES_DIR" "$EXAMPLE_DIR/node_modules"
-        echo "$EXAMPLE_SIG" > "$EXAMPLE_STAMP"
+        (
+          lock_dir="${EXAMPLE_LOCK}.d"
+          while ! mkdir "$lock_dir" 2>/dev/null; do
+            sleep 0.2
+          done
+          trap 'rmdir "$lock_dir" >/dev/null 2>&1 || true' EXIT
+          if sig_changed "$EXAMPLE_STAMP" "$EXAMPLE_SIG" || ! dir_has_files "$EXAMPLE_NODE_MODULES_DIR"; then
+            log "Installing example dependencies (shared cache)..."
+            if [ -L "$EXAMPLE_DIR/node_modules" ]; then
+              rm -f "$EXAMPLE_DIR/node_modules"
+            fi
+            npm_install "$EXAMPLE_DIR"
+            if command -v rsync >/dev/null 2>&1; then
+              rsync -a --delete "$EXAMPLE_DIR/node_modules/" "$SHARED_NODE_MODULES_DIR/"
+            else
+              rm -rf "$SHARED_NODE_MODULES_DIR"
+              mkdir -p "$SHARED_NODE_MODULES_DIR"
+              cp -a "$EXAMPLE_DIR/node_modules/." "$SHARED_NODE_MODULES_DIR/"
+            fi
+            rm -rf "$EXAMPLE_DIR/node_modules"
+            ln -s "$SHARED_NODE_MODULES_DIR" "$EXAMPLE_DIR/node_modules"
+            echo "$EXAMPLE_SIG" > "$EXAMPLE_STAMP"
+          else
+            log "Example dependencies already installed (shared cache)."
+          fi
+        )
       fi
     elif [ ! -d "$EXAMPLE_DIR/node_modules" ]; then
       log "Linking shared node_modules..."
@@ -769,7 +782,7 @@ if [ -d "$EXAMPLE_DIR" ]; then
   else
     if [ "$NEED_EXAMPLE_DEPS" = "1" ]; then
       log "Installing example dependencies..."
-      (cd "$EXAMPLE_DIR" && npm install)
+      npm_install "$EXAMPLE_DIR"
       echo "$EXAMPLE_SIG" > "$EXAMPLE_STAMP"
     fi
   fi
@@ -881,7 +894,7 @@ if [ "${SEAL_UI_E2E:-0}" = "1" ] && should_run "example-ui"; then
       if [ ! -x "$REPO_ROOT/tools/seal/seal/node_modules/.bin/playwright" ]; then
         log "Playwright CLI missing; installing tools/seal/seal npm deps..."
         set +e
-        (cd "$REPO_ROOT/tools/seal/seal" && npm install)
+        npm_install "$REPO_ROOT/tools/seal/seal"
         npm_status=$?
         set -e
         if [ "$npm_status" -ne 0 ]; then
