@@ -2444,6 +2444,11 @@
 - Blad: bardzo długa lista `SEAL_E2E_*` w komendzie przekraczała `ARG_MAX`/limity shella, co kończyło się urwanymi ENV i dziwnymi błędami.
   - Wymaganie: dla wielu zmiennych używaj pliku env (`SEAL_E2E_CONFIG`/`--env-file`) zamiast ogromnej linii poleceń.
 
+## Dodatkowe wnioski (batch 286-290)
+
+- Blad: SSH próbował dziesiątek kluczy z agenta, kończąc na `Too many authentication failures` lub wiszeniu na password‑prompt.
+  - Wymaganie: używaj `-o IdentitiesOnly=yes -o PreferredAuthentications=publickey -o PubkeyAuthentication=yes` i jawnego `-i <key>`; w testach wyłącz `SSH_AUTH_SOCK`, jeśli niepotrzebny.
+
 ## Dodatkowe wnioski (batch 246-250)
 
 - Blad: marker runtime byl tylko „gołym” hashem bez wersji/algorytmu, co utrudnialo zmiane formatu i migracje w przyszlosci.
