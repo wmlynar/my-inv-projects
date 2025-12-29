@@ -2460,6 +2460,8 @@
 
 - Blad: SSH próbował dziesiątek kluczy z agenta, kończąc na `Too many authentication failures` lub wiszeniu na password‑prompt.
   - Wymaganie: używaj `-o IdentitiesOnly=yes -o PreferredAuthentications=publickey -o PubkeyAuthentication=yes` i jawnego `-i <key>`; w testach wyłącz `SSH_AUTH_SOCK`, jeśli niepotrzebny.
+- Blad: `SEAL_E2E_INSTALL_EXAMPLE_DEPS=0` przy pustym `node_modules` w example powodowal błędy bundlera (brak `express/json5`), zamiast jasnej instrukcji.
+  - Wymaganie: gdy instalacja deps example jest wyłączona, runner weryfikuje `node_modules`/shared cache i fail‑fast z instrukcją (`SEAL_E2E_PREPARE_SEED=1` lub `SEAL_E2E_INSTALL_EXAMPLE_DEPS=1`).
 
 ## Dodatkowe wnioski (batch 291-295)
 
