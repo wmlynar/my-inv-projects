@@ -2488,12 +2488,6 @@
 - Blad: unit `Type` nie odpowiadał zachowaniu procesu (np. forking/daemonizing), co kończyło się fałszywym „start ok” lub restart loop.
   - Wymaganie: procesy uruchamiane przez Seala nie daemonizują się; ustaw `Type=simple`/`exec` i testuj rzeczywisty stan procesu.
 
-## Dodatkowe wnioski (batch 306-310)
-
-- Blad: nowe OpenSSH (>=8.8) blokowało `ssh-rsa` (host key i/lub user key), więc auth do starszych serwerów nagle przestał działać.
-  - Wymaganie: preferuj nowoczesne klucze (ed25519/ecdsa); w legacy przypadkach ustaw jawnie `HostKeyAlgorithms=+ssh-rsa` i/lub `PubkeyAcceptedAlgorithms=+ssh-rsa` (z logiem ostrzeżenia).
-- Blad: `scp` w nowych OpenSSH domyślnie używa SFTP, co zmienia zachowanie i bywa niekompatybilne z ograniczonymi serwerami.
-  - Wymaganie: jeśli wymagany jest legacy scp, używaj `scp -O` (force legacy protocol) lub przejdź na `rsync`/`sftp` z jasnym testem kompatybilności.
 
 ## Dodatkowe wnioski (batch 246-250)
 
