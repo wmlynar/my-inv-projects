@@ -2538,3 +2538,12 @@
   - Wymaganie: safe‑roots podawaj jako sciezki bez spacji (lub jawnie escapowane) i bez trailing separatorow; loguj znormalizowana liste.
 - Blad: `mktemp` failowal przez brak inode w `/tmp` przy bardzo rownoleglych runach (duzo malych katalogow/plikow), mimo ze wolne miejsce było OK.
   - Wymaganie: preflight sprawdza wolne inodes (np. `df -Pi`) dla temp/cache i sugeruje inny `SEAL_E2E_TMP_ROOT` przy niskich wartościach.
+
+## Dodatkowe wnioski (batch 316-320)
+
+- Blad: entrypoint uruchamial `bash -lc`, co powodowalo wczytanie `~/.bash_profile`/`/etc/profile` i nieprzewidywalne modyfikacje PATH/ENV (albo `exit/return`), psujac automatyzacje.
+  - Wymaganie: w automatyzacji uzywaj `bash -c`/`sh -c` z czystym ENV lub jawnie wyłącz profile; loguj użyty shell i aktywne profile.
+- Blad: `set -e` w polaczeniu z `wait` na jobach w tle przerywal runnera po pierwszym failu, przez co nie zapisywano summary/logow.
+  - Wymaganie: `wait` zawsze obsluguj jawnie (`if wait ...; then ... else ... fi`), agreguj statusy i wypisuj summary niezaleznie od pojedynczych porazek.
+- Blad: `SEAL_E2E_EXAMPLE_ROOT`/`SEAL_E2E_SEED_ROOT` byly podawane jako sciezki relatywne, co przy `rm -rf` dzialalo w nieoczekiwanym katalogu.
+  - Wymaganie: wymagaj sciezek absolutnych (lub normalizuj przez `realpath`) i loguj efektowny root przed uzyciem.
