@@ -456,6 +456,9 @@ Przykład:
 - STD-089z.a (SHOULD): długie konfiguracje uruchomien E2E są dostarczane przez plik ENV (`SEAL_E2E_CONFIG`) lub wrapper, nie przez wielolinijkowe komendy copy‑paste.
 - STD-089z.b (SHOULD): cleanup E2E/Docker jest scoped do zasobow oznaczonych (`label=seal-e2e`, `COMPOSE_PROJECT_NAME`); globalne `prune` tylko po explicit opt‑in.
 - STD-089z.c (SHOULD): E2E waliduje poziom rownoleglosci vs zasoby (CPU/RAM/cgroup) i ostrzega lub ogranicza jobs; parametry zasobowe sa logowane.
+- STD-089z.d (SHOULD): przed startem E2E wykonaj preflight miejsca na dysku (cache/log/tmp) i fail‑fast przy niskim limicie z instrukcja cleanup/limitu.
+- STD-089z.e (SHOULD): Dockerfile uklada warstwy pod cache: najciezsze i rzadko zmieniane kroki sa na poczatku; czesto zmieniane skrypty/testy na koncu.
+- STD-089z.f (SHOULD): gdy `SEAL_E2E_INSTALL_DEPS=0`, runner wykonuje preflight wymaganych binarek i zwraca jasny blad z instrukcja wlaczenia instalacji.
 - STD-090c (SHOULD): preflight sprawdza **narzedzia CLI** (np. `postject` w `node_modules/.bin`/PATH), nie tylko obecność modulu.
 - STD-091a (SHOULD): funkcje zalezne od architektury (np. CPUID) musza degradująco dzialac na platformach bez wsparcia (pusty/neutralny ID zamiast twardego bledu).
 - STD-092a (SHOULD): `--skip-check` jest wyraznie oznaczony jako ryzykowny i zawsze wypisuje ostrzezenie; krytyczne braki toolchaina nie powinny byc maskowane.

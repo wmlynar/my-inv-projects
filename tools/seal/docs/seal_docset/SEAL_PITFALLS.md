@@ -2355,6 +2355,16 @@
 - Blad: agresywne cleanupy Dockera (`docker system prune`, `builder prune`) niszczyly cudze obrazy/cache.
   - Wymaganie: cleanup jest ograniczony do zasobow z labela `seal-e2e` lub unikalnego `COMPOSE_PROJECT_NAME`; globalny prune tylko przy explicit opt‑in.
 
+## Dodatkowe wnioski (batch 251-255)
+
+- Blad: testy E2E startowaly przy prawie pelnym dysku i padaly dopiero w srodku runu (ENOSPC), co tracilo czas i zostawialo smieci.
+  - Wymaganie: preflight sprawdza wolne miejsce dla cache/log/tmp (np. `df -Pm`) i fail‑fast z instrukcja cleanup/limitu, zanim zacznie sie build.
+- Blad: Dockerfile nie byl uporzadkowany pod cache (ciężkie kompilacje lub instalatory w poznych warstwach), przez co drobne zmiany wymuszaly pełny rebuild.
+  - Wymaganie: najcięższe, najrzadziej zmieniane kroki (kompilacje zrodel, toolchain) musza byc wczesniej; kroki często zmieniane (skrypty/testy) na koncu.
+  - Wymaganie: warstwy instalujace zaleznosci kluczuj po lockfile/wersjach narzedzi (hash pliku), aby cache byl stabilny.
+- Blad: tryb bez instalacji zaleznosci (`SEAL_E2E_INSTALL_DEPS=0`) uruchamial testy bez weryfikacji prerekwizytow, co dawalo nieczytelne `command not found`.
+  - Wymaganie: gdy instalacja jest wylaczona, runner robi preflight `command -v` dla wymaganych narzedzi i daje jasny blad z instrukcja, jaka flaga wlaczyc.
+
 ## Dodatkowe wnioski (batch 246-250)
 
 - Blad: marker runtime byl tylko „gołym” hashem bez wersji/algorytmu, co utrudnialo zmiane formatu i migracje w przyszlosci.
