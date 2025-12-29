@@ -2800,3 +2800,14 @@
   - Wymaganie: przy porazkach automatycznie wlacz `capture_logs` (lub wypisz wyrazny hint jak odpalic z logami).
 - Blad: `SEAL_E2E_TIMEOUT_SCALE` ustawione na 0/ujemne/tekst powodowalo zerowe timeouty lub bledy w `awk`.
   - Wymaganie: waliduj `TIMEOUT_SCALE` jako liczbe > 0; w razie blednej wartosci fail‑fast albo fallback do 1 z ostrzezeniem.
+
+## Dodatkowe wnioski (batch 361-365)
+
+- Blad: manifest E2E dopuszczal puste `description`/`skipRisk`/`failHint` (lub brak `category`), przez co raport/summary byl nieczytelny i trudno bylo ocenic SKIP.
+  - Wymaganie: waliduj, ze pola metadanych sa niepuste (`category`, `description`, `skipRisk`, `failHint`); brak = FAIL w trybie strict lub jawny warning + placeholder w summary.
+- Blad: runner ignorowal `parallel=false` w manifeście i uruchamial testy rownolegle, co powodowalo kolizje portow/plikow i flakey wyniki.
+  - Wymaganie: runner respektuje `parallel` per-test (serial/exclusive) i loguje, gdy test jest wymuszony do trybu sekwencyjnego.
+- Blad: `SEAL_E2E_RERUN_FAILED` uruchamial testy na innym manifeście/konfiguracji (toolset/filtry), co dawalo nieporownywalne wyniki.
+  - Wymaganie: summary zapisuje fingerprint manifestu i konfiguracji (hash pliku E2E + kluczowe ENV), a rerun sprawdza zgodnosc; mismatch = FAIL lub wymaga `--force`.
+- Blad: raport z E2E nie zawieral informacji o buildzie (buildId/outDir/variant), przez co diagnoza trafiala w nie ten artefakt.
+  - Wymaganie: testy loguja buildId/outDir/variant dla kazdego builda, a summary przechowuje te metadane per test.

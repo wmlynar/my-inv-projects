@@ -1058,6 +1058,10 @@ Ten moduł dotyczy testów E2E (zwłaszcza po sealingu), które mają potwierdza
 - TEST-009 (SHOULD): testy wypisują podsumowanie SKIP i mają tryb strict, w którym SKIP = FAIL (runy certyfikacyjne).
 - TEST-010 (SHOULD): testy wykrywają ograniczenia środowiska (OS, brak systemd, brak capów) i oznaczają je jako SKIP z instrukcją naprawy.
 - TEST-011 (SHOULD): testy bezpieczeństwa logują kontekst hosta (kernel/arch, seccomp, kluczowe sysctl), żeby wyniki były porównywalne.
+- TEST-012 (SHOULD): manifest E2E wymaga kompletnych metadanych (`category`, `description`, `skipRisk`, `failHint`, `parallel`, `requirements`); brak = FAIL w trybie strict albo jawny warning + placeholder w summary.
+- TEST-013 (SHOULD): runner respektuje per-test `parallel` (serial/exclusive) i loguje wymuszone uruchomienia sekwencyjne.
+- TEST-014 (SHOULD): summary zawiera fingerprint manifestu i konfiguracji (hash pliku E2E + kluczowe ENV), a rerun weryfikuje zgodnosc (mismatch = FAIL lub `--force`).
+- TEST-015 (SHOULD): dla testow budujacych artefakty loguj buildId/outDir/variant i zapisuj te metadane w summary.
 
 ## 11. Minimalny „kontrakt dla AI” (wersja promptable)
 
