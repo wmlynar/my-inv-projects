@@ -512,6 +512,7 @@ Jeśli log dotyczy błędu:
 ### 2.5. `errorId` (korelacja)
 - LOG-030 (MUST): dla błędów klasy `error|fatal` generuj `errorId` (krótki, unikalny w czasie, np. 8–12 znaków).
 - LOG-031 (SHOULD): `errorId` jest powtarzane w kolejnych logach dotyczących tego samego incydentu.
+- LOG-040 (SHOULD): jeśli logujesz do pliku (np. diagnostyka), musisz mieć rotację/limit rozmiaru/TTL; brak rotacji = ryzyko zapchania dysku. Preferuj stdout/stderr.
 
 ### 2.6. Logi lifecycle (wymagane eventy)
 - LOG-100 (MUST): na starcie emituj `APP_START` z polami:

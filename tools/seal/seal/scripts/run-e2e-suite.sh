@@ -35,6 +35,19 @@ has_cmd() {
   command -v "$1" >/dev/null 2>&1
 }
 
+npm_install() {
+  local dir="$1"
+  if ! has_cmd npm; then
+    log "ERROR: npm not found in PATH."
+    exit 1
+  fi
+  if [ -f "$dir/package-lock.json" ]; then
+    (cd "$dir" && npm ci)
+  else
+    (cd "$dir" && npm install)
+  fi
+}
+
 dir_has_files() {
   local dir="$1"
   [ -d "$dir" ] && [ -n "$(ls -A "$dir" 2>/dev/null)" ]
@@ -54,9 +67,21 @@ hash_inputs() {
 make_sig() {
   local label="$1"
   shift
+  local node_ver="missing"
+  local npm_ver="missing"
+  if command -v node >/dev/null 2>&1; then
+    node_ver="$(node -v 2>/dev/null || true)"
+    node_ver="${node_ver:-missing}"
+  fi
+  if command -v npm >/dev/null 2>&1; then
+    npm_ver="$(npm -v 2>/dev/null || true)"
+    npm_ver="${npm_ver:-missing}"
+  fi
   {
     printf "label=%s\n" "$label"
     printf "node_major=%s\n" "${SEAL_NODE_MAJOR:-24}"
+    printf "node_version=%s\n" "$node_ver"
+    printf "npm_version=%s\n" "$npm_ver"
     hash_inputs "$@"
   } | sha256sum | awk '{print $1}'
 }
@@ -114,7 +139,15 @@ load_e2e_config() {
       cfg="$sample_cfg"
     fi
   fi
-  if [ -n "$cfg" ] && [ -f "$cfg" ]; then
+  if [ -n "$cfg" ]; then
+    if [ ! -f "$cfg" ]; then
+      log "ERROR: SEAL_E2E_CONFIG points to missing file: $cfg"
+      exit 1
+    fi
+    if [ ! -r "$cfg" ]; then
+      log "ERROR: SEAL_E2E_CONFIG is not readable: $cfg"
+      exit 1
+    fi
     log "Loading E2E config: $cfg"
     set -a
     # shellcheck disable=SC1090

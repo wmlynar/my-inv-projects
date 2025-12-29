@@ -1579,6 +1579,9 @@
   - Wymaganie: output ma byc zwięzly i bez duplikatow (np. artefakt tylko raz).
   - Wymaganie: kazda linia ma sens (puste linie tylko gdy poprawiaja czytelnosc).
 
+- Blad: logowanie do pliku bez rotacji/limitu powodowalo zapelnienie dysku i awarie runtime.
+  - Wymaganie: logi produkcyjne na stdout/stderr; jesli logujesz do pliku, wymagaj rotacji/limitu rozmiaru/TTL i loguj aktywne ustawienia.
+
 - Blad: w dokumentacji standardow pojawily sie duplikaty identyfikatorow STD, co utrudnialo odniesienia i automatyczne sprawdzanie zgodnosci.
   - Wymaganie: kazdy identyfikator STD musi byc **unikalny**; gdy dodajesz wariant, uzyj sufiksu (`a/b/...`) i sprawdz duplikaty automatycznie (np. `rg -o "STD-[0-9]+[a-z]?(?:\\.[a-z])?" | sort | uniq -d`).
 
