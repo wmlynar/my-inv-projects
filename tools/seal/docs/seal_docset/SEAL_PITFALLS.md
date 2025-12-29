@@ -2437,6 +2437,13 @@
 - Blad: `tar` zwracał exit code 1 dla ostrzeżeń (np. `file changed as we read it`) i skrypt traktował to jak pełen FAIL lub ignorował całkowicie.
   - Wymaganie: rozróżniaj warning vs fatal dla `tar` (parsing stderr) i podejmuj decyzję wg trybu (strict vs warn); zawsze loguj kontekst.
 
+## Dodatkowe wnioski (batch 281-285)
+
+- Blad: `rsync`/`scp`/`ssh` dziedziczyly `RSYNC_RSH`/`GIT_SSH_COMMAND`/`SSH_CONFIG` z srodowiska, co nadpisywalo nasze opcje (ProxyCommand/ControlPath) i psulo deterministycznosc.
+  - Wymaganie: ustawiaj jawnie `RSYNC_RSH`/`GIT_SSH_COMMAND` albo używaj `ssh -F /dev/null` i loguj effective SSH args.
+- Blad: bardzo długa lista `SEAL_E2E_*` w komendzie przekraczała `ARG_MAX`/limity shella, co kończyło się urwanymi ENV i dziwnymi błędami.
+  - Wymaganie: dla wielu zmiennych używaj pliku env (`SEAL_E2E_CONFIG`/`--env-file`) zamiast ogromnej linii poleceń.
+
 ## Dodatkowe wnioski (batch 246-250)
 
 - Blad: marker runtime byl tylko „gołym” hashem bez wersji/algorytmu, co utrudnialo zmiane formatu i migracje w przyszlosci.
@@ -2458,3 +2465,10 @@
   - Wymaganie: preflight sprawdza, ze `installDir` jest katalogiem (bez symlink); inaczej fail‑fast z instrukcja.
 - Blad: bootstrap po `sudo mkdir` nie weryfikowal owner/perms, przez co zostawal root‑owned installDir i kolejne deploye padaly.
   - Wymaganie: po bootstrapie waliduj owner/perms kluczowych katalogow i w razie bledu daj instrukcje naprawy (lub retry `chown`).
+
+## Dodatkowe wnioski (batch 281-285)
+
+- Blad: E2E uruchomione w sandboxie (np. Codex) padaly na `spawnSync`/`exec` z `EPERM`, a runner nie wykrywal przyczyny i uruchamial tylko czesc krokow.
+  - Wymaganie: preflight/entrypoint wykrywa `EPERM` dla procesu potomnego i natychmiast wymusza eskalacje lub fail‑fast z instrukcja (bez polowicznego runu).
+- Blad: eskalacja byla wykonywana dopiero po utworzeniu cache/log/tmp, co prowadzilo do mieszania ownerow i pozniejszych `EACCES`/root‑owned artefaktow.
+  - Wymaganie: eskaluj **przed** tworzeniem cache/log/tmp; po eskalacji loguj effective user i sciezki artefaktow.

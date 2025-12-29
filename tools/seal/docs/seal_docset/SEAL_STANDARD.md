@@ -334,6 +334,7 @@ Przykład:
 - STD-027c (SHOULD): timeouty helperow/pollingu pochodza z jednego zrodla (run/step timeout) lub maja jawny per-tryb override; brak ukrytych limitow.
 - STD-027d (SHOULD): testy funkcji wielomodalnych (np. kilka trybow bootstrapa) pokrywaja kazdy tryb co najmniej raz i loguja aktywny wariant.
 - STD-027ab (SHOULD): E2E obejmuje rollback po failu restart/ready oraz payload-only fallback (brak runtime lub mismatch wersji).
+- STD-027ac (SHOULD): runner E2E wykrywa potrzebe eskalacji (np. `EPERM` na spawn/priv ops) i re‑execuje sie **przed** tworzeniem cache/log/tmp; brak eskalacji = fail‑fast z instrukcja, bez czesciowego runu.
 - STD-027e (SHOULD): prereq check (narzedzia/feature) jest per‑test/per‑tryb; brak = SKIP z powodem, nie blokuje reszty suite.
 - STD-027f (SHOULD): override timeoutow jest warunkowy i wlacza sie tylko, gdy dana funkcja/artefakt jest aktywna.
 - STD-027g (SHOULD): runner E2E auto‑discoveruje testy lub uzywa manifestu z CI checkiem, aby zadny test nie byl „zapomniany”.
@@ -482,6 +483,8 @@ Przykład:
 - STD-089z.p (SHOULD): stempel cache bazuje na hashu zawartości + wersjach narzędzi, nie tylko na `mtime`.
 - STD-089z.q (SHOULD): `rsync` exit code 24 jest obsługiwany jawnie (warn albo fail‑fast w strict), zawsze z logiem.
 - STD-089z.r (SHOULD): `tar` warningi (exit code 1) są rozróżniane od fatal i logowane; decyzja wg trybu (strict/warn).
+- STD-089z.s (SHOULD): automatyzacja SSH ignoruje zewnętrzne `RSYNC_RSH`/`GIT_SSH_COMMAND`/`SSH_CONFIG` (ustawia jawnie lub `-F /dev/null`) i loguje effective args.
+- STD-089z.t (SHOULD): długie konfiguracje ENV przekazuj przez plik (`SEAL_E2E_CONFIG`/`--env-file`), aby uniknąć limitów `ARG_MAX`.
 - STD-090c (SHOULD): preflight sprawdza **narzedzia CLI** (np. `postject` w `node_modules/.bin`/PATH), nie tylko obecność modulu.
 - STD-091a (SHOULD): funkcje zalezne od architektury (np. CPUID) musza degradująco dzialac na platformach bez wsparcia (pusty/neutralny ID zamiast twardego bledu).
 - STD-092a (SHOULD): `--skip-check` jest wyraznie oznaczony jako ryzykowny i zawsze wypisuje ostrzezenie; krytyczne braki toolchaina nie powinny byc maskowane.
