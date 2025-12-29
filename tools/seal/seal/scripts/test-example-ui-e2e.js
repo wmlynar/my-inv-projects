@@ -24,6 +24,21 @@ function fail(msg) {
   process.stderr.write(`[ui-e2e] ERROR: ${msg}\n`);
 }
 
+function ensureDir(dir) {
+  if (!dir) return;
+  fs.mkdirSync(dir, { recursive: true });
+}
+
+function resolveArtifactsDir() {
+  const envDir = process.env.SEAL_UI_E2E_ARTIFACTS;
+  if (envDir === "0") return null;
+  if (envDir) return path.resolve(envDir);
+  if (process.env.SEAL_E2E_LOG_DIR) {
+    return path.join(process.env.SEAL_E2E_LOG_DIR, "ui-e2e");
+  }
+  return path.join(os.tmpdir(), `seal-ui-e2e-${process.pid}`);
+}
+
 function runCmd(cmd, args, timeoutMs = 5000) {
   return spawnSync(cmd, args, { stdio: "pipe", timeout: timeoutMs });
 }
@@ -261,7 +276,7 @@ async function runRelease({ releaseDir, buildId, runTimeoutMs }) {
   return { port, child, status };
 }
 
-async function runUiTest({ url, buildId, headless }) {
+async function runUiTest({ url, buildId, headless, artifactsDir, captureTrace }) {
   let playwright;
   try {
     playwright = require("playwright");
@@ -270,9 +285,28 @@ async function runUiTest({ url, buildId, headless }) {
   }
 
   const browser = await playwright.chromium.launch({ headless });
+  let context;
   let page;
+  const consoleLogs = [];
+  const pageErrors = [];
+  const requestFailures = [];
+  let traceSaved = false;
   try {
-    page = await browser.newPage();
+    context = await browser.newContext();
+    if (captureTrace) {
+      await context.tracing.start({ screenshots: true, snapshots: true });
+    }
+    page = await context.newPage();
+    page.on("console", (msg) => {
+      consoleLogs.push(`[${msg.type()}] ${msg.text()}`);
+    });
+    page.on("pageerror", (err) => {
+      pageErrors.push(err && err.stack ? err.stack : String(err));
+    });
+    page.on("requestfailed", (req) => {
+      const failure = req.failure();
+      requestFailures.push(`${req.method()} ${req.url()} ${failure ? failure.errorText : "request failed"}`);
+    });
 
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 10_000 });
     await page.waitForSelector("#status", { timeout: 10_000 });
@@ -306,7 +340,51 @@ async function runUiTest({ url, buildId, headless }) {
       },
       { timeout: 10_000 }
     );
+  } catch (err) {
+    if (artifactsDir) {
+      ensureDir(artifactsDir);
+      const prefix = path.join(artifactsDir, `ui-${Date.now()}-${process.pid}`);
+      if (page) {
+        try {
+          await page.screenshot({ path: `${prefix}.png`, fullPage: true });
+        } catch {
+          // ignore
+        }
+        try {
+          const html = await page.content();
+          fs.writeFileSync(`${prefix}.html`, html, "utf-8");
+        } catch {
+          // ignore
+        }
+      }
+      if (consoleLogs.length) {
+        fs.writeFileSync(`${prefix}.console.log`, consoleLogs.join("\n"), "utf-8");
+      }
+      if (pageErrors.length) {
+        fs.writeFileSync(`${prefix}.pageerror.log`, pageErrors.join("\n"), "utf-8");
+      }
+      if (requestFailures.length) {
+        fs.writeFileSync(`${prefix}.request-fail.log`, requestFailures.join("\n"), "utf-8");
+      }
+      if (captureTrace && context) {
+        try {
+          await context.tracing.stop({ path: `${prefix}.trace.zip` });
+          traceSaved = true;
+        } catch {
+          // ignore
+        }
+      }
+      log(`UI artifacts saved: ${artifactsDir}`);
+    }
+    throw err;
   } finally {
+    if (captureTrace && context && !traceSaved) {
+      try {
+        await context.tracing.stop();
+      } catch {
+        // ignore
+      }
+    }
     await browser.close();
   }
 }
