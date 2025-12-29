@@ -2087,7 +2087,9 @@ function e2eForkScanMasked(token) {
 }
 
 function e2eGcPressure() {
-  const mb = Math.max(0, Number(process.env.SEAL_E2E_BOOTSTRAP_SELF_SCAN_GC_MB || 16) || 0);
+  const envMb = Number(process.env.SEAL_E2E_BOOTSTRAP_SELF_SCAN_GC_MB || 0);
+  const fallbackMb = E2E_HAS_MARKER ? 32 : 16;
+  const mb = Math.max(0, Number.isFinite(envMb) && envMb > 0 ? envMb : fallbackMb);
   if (!mb) return;
   const chunks = [];
   const chunkSize = 1024 * 1024;
@@ -2098,9 +2100,31 @@ function e2eGcPressure() {
   for (const buf of chunks) {
     buf.fill(0x5a);
   }
+  const poolSize = typeof Buffer.poolSize === "number" && Buffer.poolSize > 0 ? Buffer.poolSize : 8192;
+  const smallSize = Math.min(4096, Math.max(256, Math.floor(poolSize / 2) - 64));
+  const smallTotal = poolSize * 8;
+  const smallCount = Math.max(8, Math.floor(smallTotal / smallSize));
+  const small = [];
+  for (let i = 0; i < smallCount; i += 1) {
+    small.push(Buffer.alloc(smallSize));
+  }
+  for (const buf of small) {
+    buf.fill(0x5a);
+  }
   if (global.gc) {
     global.gc();
     global.gc();
+  }
+}
+
+function e2eScheduleMarkerScrub() {
+  if (!E2E_HAS_MARKER) return;
+  const delays = [0, 250, 1000];
+  for (const delayMs of delays) {
+    const timer = setTimeout(() => {
+      e2eGcPressure();
+    }, delayMs);
+    if (timer && typeof timer.unref === "function") timer.unref();
   }
 }
 
@@ -3048,6 +3072,7 @@ e2eMaybeCrash("post-gc");
 wipeKeyBuf();
 if (E2E_HAS_MARKER) {
   e2eGcPressure();
+  e2eScheduleMarkerScrub();
 }
 if (global.gc) {
   global.gc();

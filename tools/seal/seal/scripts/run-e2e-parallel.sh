@@ -9,6 +9,7 @@ CACHE_BIN="${SEAL_E2E_CACHE_BIN:-${HOME}/.cache/seal/bin}"
 CACHE_ROOT="${SEAL_E2E_CACHE_DIR:-$(dirname "$CACHE_BIN")}"
 MANIFEST_PATH="${SEAL_E2E_MANIFEST:-$SCRIPT_DIR/e2e-tests.tsv}"
 RUN_ID="${SEAL_E2E_RUN_ID:-$(date +%Y%m%d-%H%M%S)-$$}"
+export SEAL_E2E_RUN_ID="$RUN_ID"
 FAIL_FAST="${SEAL_E2E_FAIL_FAST:-0}"
 
 log() {
