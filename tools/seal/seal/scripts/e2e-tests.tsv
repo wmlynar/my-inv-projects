@@ -1,4 +1,4 @@
-# Legacy manifest; keep in sync with e2e-tests.json5.
+# Deprecated export (read-only); source of truth: e2e-tests.json5.
 name	category	parallel	description	skip_risk	fail_hint	script	host_only
 thin	packagers	1	Builds and runs thin packager (core flow, runtime + integrity).	high	Check toolchain (cc/pkg-config/libzstd) and thin build logs.	tools/seal/seal/scripts/test-thin-e2e.js	0
 thin-anti-debug	security	1	Validates anti-debug and hardening probes around thin runtime.	high	Check ptrace/perf/bpf tooling and strict env flags.	tools/seal/seal/scripts/test-thin-anti-debug-e2e.js	1

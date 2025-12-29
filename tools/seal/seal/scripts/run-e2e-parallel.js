@@ -5,16 +5,50 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const crypto = require("crypto");
-const { spawn } = require("child_process");
+const { spawn, spawnSync } = require("child_process");
 
 const SCRIPT_DIR = __dirname;
 const RUNNER = path.join(SCRIPT_DIR, "run-e2e-suite.sh");
 const { loadManifest } = require("./e2e-manifest");
 const { detectCapabilities } = require("./e2e-capabilities");
 const { resolveJsonSummaryPath, buildPlan, printPlan, buildJsonSummary, writeJsonSummary } = require("./e2e-report");
+const { hasCommand } = require("./e2e-utils");
 
 function log(msg) {
   process.stdout.write(`[seal-e2e-parallel] ${msg}\n`);
+}
+
+function ensureEscalation() {
+  if (process.env.SEAL_E2E_ESCALATED === "1") {
+    return;
+  }
+  const uid = typeof process.getuid === "function" ? process.getuid() : null;
+  if (uid === 0) {
+    process.env.SEAL_E2E_ESCALATED = "1";
+    return;
+  }
+  if (!hasCommand("sudo")) {
+    log("ERROR: escalation required but sudo not found.");
+    process.exit(1);
+  }
+  const reexecArgs = ["-E", "env", "SEAL_E2E_ESCALATED=1", process.execPath, ...process.argv.slice(1)];
+  const nonInteractive = spawnSync("sudo", ["-n", "true"], { stdio: "ignore" });
+  if (nonInteractive.status === 0) {
+    log("Escalating via sudo...");
+    const res = spawnSync("sudo", reexecArgs, { stdio: "inherit" });
+    process.exit(res.status === null ? 1 : res.status);
+  }
+  if (!process.stdin.isTTY) {
+    log("ERROR: escalation required but no TTY; re-run with sudo or Codex escalation.");
+    process.exit(1);
+  }
+  log("Escalation required; you may be prompted.");
+  const auth = spawnSync("sudo", ["-v"], { stdio: "inherit" });
+  if (auth.status !== 0) {
+    process.exit(auth.status === null ? 1 : auth.status);
+  }
+  const res = spawnSync("sudo", reexecArgs, { stdio: "inherit" });
+  process.exit(res.status === null ? 1 : res.status);
 }
 
 function formatDuration(total) {
@@ -221,6 +255,7 @@ function spawnRunner(env, label) {
 }
 
 async function main() {
+  ensureEscalation();
   const env = process.env;
   const runId = env.SEAL_E2E_RUN_ID || makeRunId();
   env.SEAL_E2E_RUN_ID = runId;
@@ -230,6 +265,7 @@ async function main() {
   const cacheBin = env.SEAL_E2E_CACHE_BIN || path.join(home, ".cache", "seal", "bin");
   const cacheRoot = env.SEAL_E2E_CACHE_DIR || path.dirname(cacheBin);
   const manifestPath = env.SEAL_E2E_MANIFEST || path.join(SCRIPT_DIR, "e2e-tests.json5");
+  const manifestStrict = normalizeFlag(env.SEAL_E2E_MANIFEST_STRICT, "1") === "1";
   const logRoot = env.SEAL_E2E_LOG_DIR || path.join(cacheRoot, "e2e-logs", runId);
   const summaryPath = env.SEAL_E2E_SUMMARY_PATH || path.join(cacheRoot, "e2e-summary", `run-${runId}.tsv`);
   const summaryLastPath = env.SEAL_E2E_SUMMARY_PATH ? "" : path.join(cacheRoot, "e2e-summary", "last.tsv");
@@ -278,8 +314,17 @@ async function main() {
     log(`ERROR: missing E2E manifest: ${manifestPath}`);
     process.exit(1);
   }
-
-  const { tests, order: manifestOrder } = loadManifest(manifestPath);
+  if (!manifestStrict) {
+    log("WARN: SEAL_E2E_MANIFEST_STRICT=0; manifest validation warnings are non-fatal.");
+  }
+  let manifestData;
+  try {
+    manifestData = loadManifest(manifestPath, { strict: manifestStrict, log });
+  } catch (err) {
+    log(`ERROR: ${err.message}`);
+    process.exit(1);
+  }
+  const { tests, order: manifestOrder } = manifestData;
   const testByName = new Map(tests.map((item) => [item.name, item]));
 
   let onlyList = parseList(env.SEAL_E2E_TESTS);
@@ -360,6 +405,33 @@ async function main() {
   if (planMode) {
     printPlan(plan.entries, testByName, capabilities, log);
     process.exit(0);
+  }
+
+  const missingScripts = [];
+  for (const name of selectedTests) {
+    const test = testByName.get(name);
+    const scriptPath = test ? test.script : "";
+    if (!scriptPath) {
+      missingScripts.push(`${name}: <missing script>`);
+      continue;
+    }
+    const resolved = path.isAbsolute(scriptPath) ? scriptPath : path.join(REPO_ROOT, scriptPath);
+    let stat = null;
+    try {
+      stat = fs.statSync(resolved);
+    } catch {
+      stat = null;
+    }
+    if (!stat || !stat.isFile()) {
+      missingScripts.push(`${name}: ${resolved}`);
+    }
+  }
+  if (missingScripts.length) {
+    log("ERROR: missing E2E test scripts:");
+    for (const entry of missingScripts) {
+      log(`  - ${entry}`);
+    }
+    process.exit(1);
   }
 
   log("Effective config:");

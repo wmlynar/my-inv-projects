@@ -1066,6 +1066,8 @@ Ten moduł dotyczy testów E2E (zwłaszcza po sealingu), które mają potwierdza
 - TEST-017 (SHOULD): `category`/`skipRisk` są normalizowane i walidowane (np. `low|medium|high`); nieznane wartości = warning + fallback do `misc/unknown`.
 - TEST-018 (SHOULD): runner wykonuje preflight `script` (istnienie i uruchamialność); brak pliku lub brak uprawnień = fail‑fast z pełną ścieżką.
 - TEST-019 (SHOULD): summary jest samowystarczalne: zawiera metadane testu oraz reason SKIP/planu, aby dało się zdiagnozować i rerunować bez dodatkowego kontekstu.
+- TEST-020 (SHOULD): `e2e-tests.json5` jest jedynym źródłem prawdy; runner nie używa TSV jako manifestu (TSV tylko jako export).
+- TEST-021 (SHOULD): manifest zawiera sekcję `meta` z allowlistami (`categories`, `skipRisk`, `requirements`) używanymi do walidacji.
 
 ## 11. Minimalny „kontrakt dla AI” (wersja promptable)
 

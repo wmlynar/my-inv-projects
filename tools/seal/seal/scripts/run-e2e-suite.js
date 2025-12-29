@@ -20,6 +20,39 @@ function log(msg) {
   process.stdout.write(`[seal-e2e] ${msg}\n`);
 }
 
+function ensureEscalation() {
+  if (process.env.SEAL_E2E_ESCALATED === "1") {
+    return;
+  }
+  const uid = typeof process.getuid === "function" ? process.getuid() : null;
+  if (uid === 0) {
+    process.env.SEAL_E2E_ESCALATED = "1";
+    return;
+  }
+  if (!hasCommand("sudo")) {
+    log("ERROR: escalation required but sudo not found.");
+    process.exit(1);
+  }
+  const reexecArgs = ["-E", "env", "SEAL_E2E_ESCALATED=1", process.execPath, ...process.argv.slice(1)];
+  const nonInteractive = spawnSync("sudo", ["-n", "true"], { stdio: "ignore" });
+  if (nonInteractive.status === 0) {
+    log("Escalating via sudo...");
+    const res = spawnSync("sudo", reexecArgs, { stdio: "inherit" });
+    process.exit(res.status === null ? 1 : res.status);
+  }
+  if (!process.stdin.isTTY) {
+    log("ERROR: escalation required but no TTY; re-run with sudo or Codex escalation.");
+    process.exit(1);
+  }
+  log("Escalation required; you may be prompted.");
+  const auth = spawnSync("sudo", ["-v"], { stdio: "inherit" });
+  if (auth.status !== 0) {
+    process.exit(auth.status === null ? 1 : auth.status);
+  }
+  const res = spawnSync("sudo", reexecArgs, { stdio: "inherit" });
+  process.exit(res.status === null ? 1 : res.status);
+}
+
 function formatDuration(total) {
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);
@@ -318,15 +351,9 @@ async function runCommand(cmd, args, options) {
 }
 
 async function main() {
+  ensureEscalation();
   const env = process.env;
   loadE2EConfig(env);
-  if ((env.SEAL_E2E_REQUIRE_ESCALATION || "1") === "1" && env.SEAL_E2E_ESCALATED !== "1") {
-    const uid = typeof process.getuid === "function" ? process.getuid() : null;
-    if (uid !== 0) {
-      log("ERROR: escalation required; re-run via run-e2e-suite.sh or sudo.");
-      process.exit(1);
-    }
-  }
 
   const runId = env.SEAL_E2E_RUN_ID || makeRunId();
   env.SEAL_E2E_RUN_ID = runId;
@@ -407,11 +434,22 @@ async function main() {
   }
 
   const manifestPath = env.SEAL_E2E_MANIFEST || path.join(SCRIPT_DIR, "e2e-tests.json5");
+  const manifestStrict = env.SEAL_E2E_MANIFEST_STRICT !== "0";
   if (!fs.existsSync(manifestPath)) {
     log(`ERROR: missing E2E manifest: ${manifestPath}`);
     process.exit(1);
   }
-  const { tests, order: manifestOrder } = loadManifest(manifestPath);
+  if (!manifestStrict) {
+    log("WARN: SEAL_E2E_MANIFEST_STRICT=0; manifest validation warnings are non-fatal.");
+  }
+  let manifestData;
+  try {
+    manifestData = loadManifest(manifestPath, { strict: manifestStrict, log });
+  } catch (err) {
+    log(`ERROR: ${err.message}`);
+    process.exit(1);
+  }
+  const { tests, order: manifestOrder } = manifestData;
   const testByName = new Map(tests.map((item) => [item.name, item]));
 
   const logEffectiveConfig = () => {
@@ -508,6 +546,33 @@ async function main() {
   if (planMode) {
     printPlan(plan.entries, testByName, capabilities, log);
     process.exit(0);
+  }
+
+  const missingScripts = [];
+  for (const name of plan.selected) {
+    const test = testByName.get(name);
+    const scriptPath = test ? test.script : "";
+    if (!scriptPath) {
+      missingScripts.push(`${name}: <missing script>`);
+      continue;
+    }
+    const resolved = path.isAbsolute(scriptPath) ? scriptPath : path.join(REPO_ROOT, scriptPath);
+    let stat = null;
+    try {
+      stat = fs.statSync(resolved);
+    } catch {
+      stat = null;
+    }
+    if (!stat || !stat.isFile()) {
+      missingScripts.push(`${name}: ${resolved}`);
+    }
+  }
+  if (missingScripts.length) {
+    log("ERROR: missing E2E test scripts:");
+    for (const entry of missingScripts) {
+      log(`  - ${entry}`);
+    }
+    process.exit(1);
   }
 
   const shouldRun = (name) => {

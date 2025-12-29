@@ -2762,8 +2762,8 @@
   - Wymaganie: normalizuj newline do LF przy odczycie manifestu i trimuj `\\r`.
 - Blad: duplikaty nazw testow w manifeście powodowaly nadpisanie metadanych (ostatnia linia wygrywa), co ukrywalo brakujace testy.
   - Wymaganie: wykrywaj duplikaty nazw testow w manifeście i fail‑fast z lista konfliktow.
-- Zmiana: manifest E2E jest teraz w `e2e-tests.json5` (JSON/JSON5), a TSV zostaje jako legacy/fallback.
-  - Wymaganie: traktuj JSON5 jako źródło prawdy; TSV utrzymuj tylko jeśli potrzebny.
+- Zmiana: manifest E2E jest teraz w `e2e-tests.json5` (JSON/JSON5); TSV to tylko legacy export (runner go nie używa).
+  - Wymaganie: JSON5 jest jedynym źródłem prawdy; TSV generuj tylko pomocniczo (read‑only).
 
 ## Dodatkowe wnioski (batch 341-345)
 

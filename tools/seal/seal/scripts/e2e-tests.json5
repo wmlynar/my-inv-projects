@@ -1,4 +1,27 @@
 {
+  "meta": {
+    "categories": [
+      "packagers",
+      "security",
+      "misc",
+      "flow",
+      "hardening",
+      "obfuscation",
+      "ui",
+      "deploy"
+    ],
+    "skipRisk": [
+      "low",
+      "medium",
+      "high",
+      "unknown"
+    ],
+    "requirements": [
+      "host",
+      "docker",
+      "root"
+    ]
+  },
   "tests": [
     {
       "name": "thin",
