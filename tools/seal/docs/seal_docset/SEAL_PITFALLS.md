@@ -2581,3 +2581,12 @@
   - Wymaganie: `HOME_KEEP` uzywaj tylko do debug; loguj sciezke i dodaj instrukcje cleanup/retention.
 - Blad: izolowane HOME bylo wspoldzielone miedzy runami (brak per‑run sufiksu), przez co pliki z poprzednich uruchomien wplywaly na wyniki.
   - Wymaganie: izolowany HOME jest zawsze unikalny per‑run (np. suffix z `RUN_ID`) i sprzatany w `trap`, chyba ze `HOME_KEEP=1`.
+
+## Dodatkowe wnioski (batch 336-340)
+
+- Blad: manifest E2E (`e2e-tests.tsv`) zawieral taby w opisach/hintach, co przesuwalo kolumny i prowadzilo do blednego mapowania (np. zle `parallel`/`script`).
+  - Wymaganie: w TSV nie uzywaj tabow w polach opisowych; waliduj liczbe kolumn i fail‑fast, gdy parser widzi nadmiar/za malo pol.
+- Blad: CRLF w `e2e-tests.tsv` zostawial `\\r` w nazwach testow, przez co filtry `SEAL_E2E_TESTS` nie pasowaly.
+  - Wymaganie: normalizuj newline do LF przy odczycie manifestu i trimuj `\\r`.
+- Blad: duplikaty nazw testow w manifeście powodowaly nadpisanie metadanych (ostatnia linia wygrywa), co ukrywalo brakujace testy.
+  - Wymaganie: wykrywaj duplikaty nazw testow w manifeście i fail‑fast z lista konfliktow.
