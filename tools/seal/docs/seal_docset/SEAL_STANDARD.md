@@ -464,6 +464,8 @@ Przykład:
 - STD-089z.f (SHOULD): gdy `SEAL_E2E_INSTALL_DEPS=0`, runner wykonuje preflight wymaganych binarek i zwraca jasny blad z instrukcja wlaczenia instalacji.
 - STD-089z.g (SHOULD): E2E generuje unikalny `RUN_ID` i izoluje logi/summary per‑run; sciezki sa logowane na starcie.
 - STD-089z.h (SHOULD): keep‑alive `sudo -v` (jesli uzywany) jest uruchamiany w tle i sprzatany w `trap` (PID logowany).
+- STD-089z.i (SHOULD): skrypty automatyzacji SSH ustawiają jawnie `ControlMaster`/`ControlPath` (np. `no` albo krótki hashed path), aby uniknąć zależności od `~/.ssh/config`.
+- STD-089z.j (SHOULD): przed ekstrakcją `tar` waliduj listę plików (`tar -tf`) i odrzuć ścieżki z `..` lub absolutne; po ekstrakcji weryfikuj root.
 - STD-090c (SHOULD): preflight sprawdza **narzedzia CLI** (np. `postject` w `node_modules/.bin`/PATH), nie tylko obecność modulu.
 - STD-091a (SHOULD): funkcje zalezne od architektury (np. CPUID) musza degradująco dzialac na platformach bez wsparcia (pusty/neutralny ID zamiast twardego bledu).
 - STD-092a (SHOULD): `--skip-check` jest wyraznie oznaczony jako ryzykowny i zawsze wypisuje ostrzezenie; krytyczne braki toolchaina nie powinny byc maskowane.

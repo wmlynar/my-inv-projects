@@ -2377,6 +2377,15 @@
 - Blad: keep‑alive `sudo -v` uruchomiony w tle nie byl sprzatany, zostawiajac procesy po zakonczeniu testow.
   - Wymaganie: background keep‑alive jest zawsze ubijany w `trap` (z zachowaniem exit code), a jego PID jest logowany.
 
+## Dodatkowe wnioski (batch 261-265)
+
+- Blad: SSH uruchomione z ControlMaster/ControlPath (dziedziczone z `~/.ssh/config`) zostawialo stale sockety i wplywalo na kolejne runy (permission denied / reuse z innym userem).
+  - Wymaganie: skrypty ustawiają jawnie `-o ControlMaster=no -o ControlPath=none` lub dedykowany, krótki `ControlPath` w cache; loguj effective SSH options.
+- Blad: zbyt dlugi `ControlPath` (głęboka ścieżka w repo) powodowal `too long for Unix domain socket`, co przerywalo SSH/rsync.
+  - Wymaganie: jeśli używasz multiplexingu, generuj krótki ControlPath (np. hash), albo wyłącz multiplexing dla automatyzacji.
+- Blad: rozpakowanie archiwum `tar` bez walidacji sciezek pozwalalo na path traversal (`../` lub absolutne sciezki).
+  - Wymaganie: przed `tar -xf` wykonaj `tar -tf` i odrzuć wpisy z `..`/`/`; po ekstrakcji weryfikuj, że wszystkie pliki są pod katalogiem docelowym.
+
 ## Dodatkowe wnioski (batch 246-250)
 
 - Blad: marker runtime byl tylko „gołym” hashem bez wersji/algorytmu, co utrudnialo zmiane formatu i migracje w przyszlosci.
