@@ -232,6 +232,7 @@ Przykład:
 - STD-106w (SHOULD): ustawiaj `ServerAliveCountMax`, aby ograniczyc maksymalny czas wiszenia polaczen SSH przy zerwaniu sieci.
 - STD-106x (SHOULD): komendy SSH nieinteraktywne uruchamiaj z `-n` lub `</dev/null`, aby nie czytaly stdin i nie wieszaly sie na braku inputu.
 - STD-106y (SHOULD): zdalna komenda dla `ssh` jest przekazywana jako pojedynczy string; argumenty musza byc jawnie quotingowane (shell‑escape), bo `ssh` konkatenowal args bez quoting.
+- STD-106z (SHOULD): dla wielu krokow/duzych komend SSH uzywaj skryptu (upload lub `bash -s` z stdin), a nie ogromnych one‑linerow, aby uniknac limitow dlugosci i bledow quoting.
 - STD-107 (SHOULD): parsowanie outputu narzedzi systemowych powinno wymuszac `LC_ALL=C` (lub `LANG=C`) albo uzywac trybu `--json`/`--output`, aby uniknac roznic locale.
 - STD-108 (SHOULD): unikaj `exec()` z domyslnym `maxBuffer`; uzywaj `spawn`/`execFile` lub ustaw `maxBuffer` i loguj przycinki outputu.
 - STD-109 (SHOULD): zawsze stosuj `--` przed listą sciezek w komendach zewnetrznych (rm/cp/rsync/scp), aby sciezki zaczynajace sie od `-` nie byly traktowane jako opcje.

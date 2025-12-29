@@ -107,6 +107,9 @@
 - Blad: `ssh/scp/rsync` dziedziczyly ustawienia z `~/.ssh/config` (ProxyCommand, IdentityFile, HostKeyAlgorithms), co zmienialo zachowanie w CI lub na stacjach dev.
   - Wymaganie: w trybie deterministycznym/CI uzywaj jawnego configu (`-F /dev/null` lub dedicated config) i loguj efektywne opcje; nie polegaj na globalnym `~/.ssh/config`.
 
+- Blad: bardzo długie komendy `ssh` (wiele `VAR=...` i `&&`) przekraczaly limit dlugosci lub gubily quoting.
+  - Wymaganie: dla wieloetapowych operacji uzywaj skryptu (upload + `bash`, lub `ssh host 'bash -s' < script`), zamiast ogromnego one-linera.
+
 - Blad: `bash -lc` na hoście zdalnym kończył się kodem != 0 przez `.bash_logout` (np. `clear_console`), mimo że właściwa komenda się wykonała.
   - Wymaganie: do zdalnych jednorazowych komend używaj `bash -c` (nie login shell), albo zapewnij, że `.bash_logout` zwraca 0 i nie emituje outputu.
 
