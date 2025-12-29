@@ -170,18 +170,21 @@ function printCategorySummary(options) {
     let skipCount = 0;
     let failCount = 0;
     let abortCount = 0;
+    let durationSum = 0;
     for (const name of orderList) {
       const row = index.get(name);
       const meta = pickTestMeta(testByName, name, row);
       if (meta.category !== category) continue;
       const status = (row && row.status) || "skipped";
+      const duration = row ? Number(row.duration || 0) : 0;
       total += 1;
       if (status === "ok") okCount += 1;
       else if (status === "failed") failCount += 1;
       else if (status === "aborted") abortCount += 1;
       else skipCount += 1;
+      durationSum += duration;
     }
-    logger(`Category ${category}: total=${total} ok=${okCount} skipped=${skipCount} failed=${failCount} aborted=${abortCount}`);
+    logger(`Category ${category}: total=${total} ok=${okCount} skipped=${skipCount} failed=${failCount} aborted=${abortCount} time=${fmt(durationSum)}`);
     logger("  Test | Status | Time | Parallel | SkipRisk | Description");
     for (const name of orderList) {
       const row = index.get(name);
@@ -228,6 +231,24 @@ function printStatusList(options) {
     if (row && row.logPath) {
       logger(`    log: ${row.logPath}`);
     }
+  }
+}
+
+function printTimingSummary(options) {
+  const {
+    label,
+    entries,
+    log,
+    formatDuration,
+  } = options || {};
+  if (!Array.isArray(entries) || entries.length === 0) return;
+  const logger = typeof log === "function" ? log : (msg) => process.stdout.write(`${msg}\n`);
+  const fmt = typeof formatDuration === "function" ? formatDuration : (value) => String(value);
+  const rows = [...entries].sort((a, b) => (b.duration || 0) - (a.duration || 0));
+  logger(label || "Timing summary:");
+  for (const row of rows) {
+    const status = row.status ? `  ${row.status}` : "";
+    logger(`  - ${row.name || ""}${status}  (${fmt(row.duration || 0)})`);
   }
 }
 
@@ -327,19 +348,26 @@ function buildJsonSummary(options) {
     const test = testByName.get(name) || {};
     const category = test.category || "misc";
     if (!categoryMap.has(category)) {
-      categoryMap.set(category, { name: category, totals: { total: 0, ok: 0, failed: 0, skipped: 0, aborted: 0 }, tests: [] });
+      categoryMap.set(category, {
+        name: category,
+        durationSec: 0,
+        totals: { total: 0, ok: 0, failed: 0, skipped: 0, aborted: 0 },
+        tests: [],
+      });
     }
     const entry = categoryMap.get(category);
     const status = statusByTest[name] || "skipped";
+    const durationSec = durationByTest[name] || 0;
     entry.totals.total += 1;
     if (status === "ok") entry.totals.ok += 1;
     else if (status === "failed") entry.totals.failed += 1;
     else if (status === "aborted") entry.totals.aborted += 1;
     else entry.totals.skipped += 1;
+    entry.durationSec += durationSec;
     entry.tests.push({
       name,
       status,
-      durationSec: durationByTest[name] || 0,
+      durationSec,
       parallel: test.parallel === "1",
       skipRisk: test.skipRisk || "",
       description: test.description || "",
@@ -375,6 +403,7 @@ module.exports = {
   formatSummaryRow,
   printCategorySummary,
   printStatusList,
+  printTimingSummary,
   countStatuses,
   listFailedTests,
   buildPlan,

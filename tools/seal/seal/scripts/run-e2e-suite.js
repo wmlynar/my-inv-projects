@@ -11,9 +11,9 @@ const {
   resolveJsonSummaryPath,
   ensureSummaryFile,
   formatSummaryRow,
-  listFailedTests,
   printCategorySummary,
   printStatusList,
+  printTimingSummary,
   countStatuses,
   buildJsonSummary,
   writeJsonSummary,
@@ -22,7 +22,7 @@ const { hasCommand } = require("./e2e-utils");
 const { loadE2EConfig } = require("./e2e-runner-config");
 const { assertEscalated, makeRunId, formatDuration } = require("./e2e-runner-utils");
 const { applyToolsetDefaults, applyE2EFeatureFlags, applySshDefaults } = require("./e2e-runner-env");
-const { preparePlan } = require("./e2e-runner-plan");
+const { preparePlan, applyRerunFailedFilters } = require("./e2e-runner-plan");
 
 const SCRIPT_DIR = __dirname;
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "../../../..");
@@ -200,15 +200,29 @@ async function runCommand(cmd, args, options) {
     const child = spawn(cmd, args, { env: options.env, cwd: options.cwd, stdio: ["inherit", "pipe", "pipe"] });
     ensureDir(path.dirname(options.logFile));
     const logStream = fs.createWriteStream(options.logFile);
+    let settled = false;
     const forward = (chunk, target) => {
       logStream.write(chunk);
       target.write(chunk);
     };
+    const finish = (code, extraMessage) => {
+      if (settled) return;
+      settled = true;
+      if (extraMessage) {
+        const line = `${extraMessage}\n`;
+        logStream.write(line);
+        process.stderr.write(line);
+      }
+      logStream.end();
+      resolve(code);
+    };
     child.stdout.on("data", (chunk) => forward(chunk, process.stdout));
     child.stderr.on("data", (chunk) => forward(chunk, process.stderr));
+    child.on("error", (err) => {
+      finish(1, `[seal-e2e] ERROR: failed to spawn ${cmd}: ${err && err.message ? err.message : String(err)}`);
+    });
     child.on("close", (code) => {
-      logStream.end();
-      resolve(code === null ? 1 : code);
+      finish(code === null ? 1 : code);
     });
   });
 }
@@ -326,37 +340,23 @@ async function main() {
     fs.renameSync(tmpPath, summaryLastPath);
   };
 
-  const rerunFailed = env.SEAL_E2E_RERUN_FAILED === "1";
+  const rerunFailed = env.SEAL_E2E_RERUN_FAILED === "1" && !setupOnly;
   const rerunFrom = env.SEAL_E2E_RERUN_FROM || summaryLastPath || summaryPath;
   const planMode = env.SEAL_E2E_PLAN === "1" || env.SEAL_E2E_EXPLAIN === "1";
   const adjustFilters = ({ onlyList, skipList }) => {
-    if (!rerunFailed || setupOnly) {
-      return { onlyList, skipList };
-    }
-    if (!rerunFrom) {
-      log("WARN: SEAL_E2E_RERUN_FAILED=1 but no summary path is set.");
-      return { onlyList, skipList };
-    }
-    const failed = listFailedTests(rerunFrom);
-    if (!failed.length) {
-      log(`No failed tests in ${rerunFrom}; nothing to rerun.`);
-      process.exit(0);
-    }
-    let nextOnly = onlyList;
-    if (nextOnly.length) {
-      nextOnly = nextOnly.filter((item) => failed.includes(item));
-    } else {
-      nextOnly = failed;
-    }
-    if (!nextOnly.length) {
-      log("No tests left after rerun/filters.");
-      process.exit(0);
-    }
-    if (!env.SEAL_E2E_SUMMARY_SCOPE) {
-      summaryScope = "selected";
-    }
-    log(`Rerun failed tests only: ${nextOnly.join(" ")}`);
-    return { onlyList: nextOnly, skipList };
+    return applyRerunFailedFilters({
+      onlyList,
+      skipList,
+      rerunFailed,
+      rerunFrom,
+      log,
+      emptyExitCode: 0,
+      onScopeSelected: () => {
+        if (!env.SEAL_E2E_SUMMARY_SCOPE) {
+          summaryScope = "selected";
+        }
+      },
+    });
   };
   const {
     manifestOrder,
@@ -780,14 +780,14 @@ async function main() {
     sumTests += testDurations[name] || 0;
   }
 
-  log(`Timing summary (total ${formatDuration(total)}):`);
   const timingRows = Object.keys(testDurations)
-    .map((name) => ({ name, duration: testDurations[name] || 0 }))
-    .sort((a, b) => b.duration - a.duration);
-  for (const row of timingRows) {
-    const status = testStatus[row.name];
-    log(`  - ${row.name}  ${status}  (${formatDuration(row.duration)})`);
-  }
+    .map((name) => ({ name, duration: testDurations[name] || 0, status: testStatus[name] }));
+  printTimingSummary({
+    label: `Timing summary (total ${formatDuration(total)}):`,
+    entries: timingRows,
+    log,
+    formatDuration,
+  });
   const totals = countStatuses(summaryOrder, summaryRows);
   log(`Stats: total=${totals.total}, ok=${totals.ok}, skipped=${totals.skipped}, failed=${totals.failed}, aborted=${totals.aborted}`);
   if (sumTests > 0 && total > sumTests) {

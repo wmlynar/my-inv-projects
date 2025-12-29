@@ -14,9 +14,9 @@ const {
   ensureSummaryFile,
   parseSummaryRows,
   formatSummaryRow,
-  listFailedTests,
   printCategorySummary,
   printStatusList,
+  printTimingSummary,
   countStatuses,
   buildJsonSummary,
   writeJsonSummary,
@@ -29,7 +29,7 @@ const {
   normalizeFlag,
   safeName,
 } = require("./e2e-runner-utils");
-const { preparePlan } = require("./e2e-runner-plan");
+const { preparePlan, applyRerunFailedFilters } = require("./e2e-runner-plan");
 
 function log(msg) {
   process.stdout.write(`[seal-e2e-parallel] ${msg}\n`);
@@ -196,30 +196,15 @@ async function main() {
     rerunFrom = env.SEAL_E2E_RERUN_FROM || summaryLastPath;
   }
   const adjustFilters = ({ onlyList, skipList }) => {
-    if (!rerunFailed) {
-      return { onlyList, skipList };
-    }
-    if (!rerunFrom) {
-      log("WARN: SEAL_E2E_RERUN_FAILED=1 but no summary path is set.");
-      return { onlyList, skipList };
-    }
-    const failed = listFailedTests(rerunFrom);
-    if (!failed.length) {
-      log(`No failed tests in ${rerunFrom}; nothing to rerun.`);
-      process.exit(0);
-    }
-    let nextOnly = onlyList;
-    if (nextOnly.length) {
-      nextOnly = intersectLists(nextOnly, failed);
-    } else {
-      nextOnly = failed;
-    }
-    if (!nextOnly.length) {
-      log("No tests left after rerun/filters.");
-      process.exit(1);
-    }
-    log(`Rerun failed tests only: ${nextOnly.join(" ")}`);
-    return { onlyList: nextOnly, skipList };
+    return applyRerunFailedFilters({
+      onlyList,
+      skipList,
+      rerunFailed,
+      rerunFrom,
+      log,
+      intersect: intersectLists,
+      emptyExitCode: 1,
+    });
   };
 
   const {
@@ -482,12 +467,12 @@ async function main() {
       duration: groupDurations[name],
       status: groupStatus[name],
     }));
-    if (!entries.length) return;
-    log("Group timing summary:");
-    entries.sort((a, b) => b.duration - a.duration);
-    for (const entry of entries) {
-      log(`  - ${entry.name}  ${entry.status}  (${formatDuration(entry.duration)})`);
-    }
+    printTimingSummary({
+      label: "Group timing summary:",
+      entries,
+      log,
+      formatDuration,
+    });
   }
 
   function printDetailedSummary(groupOrderList) {

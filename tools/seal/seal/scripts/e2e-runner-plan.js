@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const { loadManifest } = require("./e2e-manifest");
 const { detectCapabilities } = require("./e2e-capabilities");
-const { buildPlan, printPlan } = require("./e2e-report");
+const { buildPlan, printPlan, listFailedTests } = require("./e2e-report");
 const { parseTestFilters } = require("./e2e-runner-config");
 
 function loadManifestData(manifestPath, manifestStrict, log) {
@@ -66,6 +66,60 @@ function ensureTestScripts(selectedTests, testByName, repoRoot, log) {
     }
     process.exit(1);
   }
+}
+
+function applyRerunFailedFilters(options) {
+  const {
+    onlyList,
+    skipList,
+    rerunFailed,
+    rerunFrom,
+    log,
+    intersect,
+    emptyExitCode,
+    onScopeSelected,
+  } = options || {};
+  const baseOnly = Array.isArray(onlyList) ? onlyList : [];
+  const baseSkip = Array.isArray(skipList) ? skipList : [];
+  if (!rerunFailed) {
+    return { onlyList: baseOnly, skipList: baseSkip };
+  }
+  if (!rerunFrom) {
+    if (typeof log === "function") {
+      log("WARN: SEAL_E2E_RERUN_FAILED=1 but no summary path is set.");
+    }
+    return { onlyList: baseOnly, skipList: baseSkip };
+  }
+  const failed = listFailedTests(rerunFrom);
+  if (!failed.length) {
+    if (typeof log === "function") {
+      log(`No failed tests in ${rerunFrom}; nothing to rerun.`);
+    }
+    process.exit(0);
+  }
+  let nextOnly = baseOnly;
+  if (nextOnly.length) {
+    if (typeof intersect === "function") {
+      nextOnly = intersect(nextOnly, failed);
+    } else {
+      nextOnly = nextOnly.filter((item) => failed.includes(item));
+    }
+  } else {
+    nextOnly = failed;
+  }
+  if (!nextOnly.length) {
+    if (typeof log === "function") {
+      log("No tests left after rerun/filters.");
+    }
+    process.exit(typeof emptyExitCode === "number" ? emptyExitCode : 0);
+  }
+  if (typeof onScopeSelected === "function") {
+    onScopeSelected();
+  }
+  if (typeof log === "function") {
+    log(`Rerun failed tests only: ${nextOnly.join(" ")}`);
+  }
+  return { onlyList: nextOnly, skipList: baseSkip };
 }
 
 function preparePlan(options) {
@@ -138,4 +192,5 @@ function preparePlan(options) {
 
 module.exports = {
   preparePlan,
+  applyRerunFailedFilters,
 };
