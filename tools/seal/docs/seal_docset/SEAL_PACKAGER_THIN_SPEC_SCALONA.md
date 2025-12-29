@@ -2,7 +2,7 @@
 
 Data: 2025-12-24  
 Status: **proposal → implementacja**  
-Dotyczy: **packager thin** w frameworku SEAL (**to NIE jest flaga `--fast`**): `thin-split`  
+Dotyczy: **packager thin** w frameworku SEAL: `thin-split`  
 (`thin-single` traktujemy jako **legacy** i nie używamy w repo)
 
 Źródła scalone w tym dokumencie:
@@ -67,11 +67,7 @@ BOOTSTRAP korzysta z **tego samego formatu kontenera THIN** i **tego samego deko
 
 ## 2. UX i integracja w SEAL
 
-### 2.1 Dlaczego to NIE jest `--fast`
-W SEAL istnieje już semantyka `--fast` związana z “fast ship from sources (unsafe)”/bundle. Mechanizm thin ma być **osobnym packagerem**:
-- CLI/config: `--packager thin-split` (BOOTSTRAP).
-
-### 2.2 Minimalny UX (do zapamiętania)
+### 2.1 Minimalny UX (do zapamiętania)
 Docelowo użytkownik ma 1–2 komendy:
 
 ```bash
@@ -114,12 +110,14 @@ npx seal release prod --packager thin-split
   - `tmpfile` używa `mkstemp` i usuwa plik z dysku (unlink), ale nie używa memfd; pliki tymczasowe są tworzone z `umask(077)`.
 - Native bootstrap (opcjonalny, tylko thin-split):
   - `build.thin.nativeBootstrap: { enabled: false, mode: "compile" }`.
+  - Addon trafia do `r/n` (bez rozszerzenia `.node`).
   - `mode: "compile" | "string"`:
     - `compile` (domyślnie): natywny addon kompiluje CJS w native (`CompileFunction`), bez JS‑owego stringa źródła i bez wrappera w JS.
     - `string` (legacy): natywny addon tworzy `ExternalString`, a bootstrap używa klasycznego `_compile`.
   - Zysk: mniej kopii plaintextu w JS heapie i krótszy czas życia jawnego kodu (poza pamięcią wewnętrzną V8).
   - W trybie E2E może zostać wygenerowany dodatkowy string wyłącznie na potrzeby self‑scan.
   - Wymaga nagłówków Node (np. `/usr/include/node` lub `SEAL_NODE_INCLUDE_DIR`) oraz kompilatora C++ z obsługą C++20.
+  - Opcjonalnie: `build.protection.nativeBootstrapObfuscator` (obfuscating clang++ + args) dla C++ addonu.
 
 **Anti‑debug / integrity (opcjonalne):**
 - `build.thin.antiDebug`:

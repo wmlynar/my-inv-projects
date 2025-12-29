@@ -45,7 +45,7 @@ function loadE2EConfig(env, options) {
   for (const line of configText.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) continue;
-    const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)=/);
+    const match = trimmed.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=/);
     if (match) vars.add(match[1]);
   }
   if (!vars.size) return;

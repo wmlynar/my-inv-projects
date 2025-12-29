@@ -8,6 +8,60 @@ To repo jest „piaskownicą” do testowania SEAL end‑to‑end:
 
 ---
 
+## Szybki start (po pobraniu repo) – `seal` w PATH + autocomplete
+
+Minimalna liczba kroków (zakłada Node >= 20):
+
+```bash
+cd <katalog_z_repo>/tools/seal  # jeśli klonowałeś cały monorepo
+# albo: cd <katalog_z_repo>     # jeśli to repo SEAL
+./install.sh
+```
+
+Skrypt instaluje **pełne zależności bezpieczeństwa do deployu** (C obfuskator + packery),
+ale **bez** E2E/anti‑debug/Docker/Playwright. Podpina `seal` do PATH i ustawia
+autocomplete (może poprosić o `sudo`). Teraz:
+
+```bash
+seal --help
+```
+
+Autocomplete (bash) instaluje się automatycznie przy pierwszym uruchomieniu.
+Żeby zadziałało w **tej** sesji:
+
+```bash
+source ~/.local/share/bash-completion/completions/seal
+```
+
+Sprawdzenie, że CLI działa na przykładzie:
+
+```bash
+cd ../example
+seal check
+```
+
+Opcjonalnie: uruchomienie przykładu w dev:
+
+```bash
+npm run dev
+```
+
+Opcjonalne flagi środowiskowe dla `install.sh`:
+
+```bash
+SEAL_INSTALL_EXTRAS=1 ./install.sh  # wszystko (E2E + anti-debug + packers + Docker + Playwright)
+SEAL_INSTALL_C_OBFUSCATOR=0 ./install.sh
+SEAL_C_OBFUSCATOR=hikari ./install.sh
+SEAL_INSTALL_PACKERS=0 ./install.sh
+SEAL_INSTALL_ANTIDEBUG=1 SEAL_INSTALL_PLAYWRIGHT=1 ./install.sh
+SEAL_INSTALL_DOCKER=1 SEAL_INSTALL_PACKERS=1 ./install.sh
+```
+
+Uwaga: jeśli nie chcesz `npm link`, możesz dodać `node_modules/.bin` do `PATH`
+albo używać `npx seal`. Autocomplete działa tylko dla komendy `seal` w PATH.
+
+---
+
 ## Wymagania
 
 - Linux
@@ -128,6 +182,10 @@ seal --help
 
 Jeśli używasz `seal` jako komendy systemowej, możesz włączyć podpowiedzi:
 
+SEAL **automatycznie** instaluje completion dla bash do
+`~/.local/share/bash-completion/completions/seal` (o ile wykryje bash i interaktywny terminal).
+Wyłącz to przez `SEAL_NO_COMPLETION_AUTO=1`.
+
 Jednorazowo w sesji:
 
 ```bash
@@ -168,6 +226,23 @@ Wyjaśnienie zresolve'owanej konfiguracji (co skąd się wzięło):
 
 ```bash
 seal config explain [target]
+```
+
+Szybki shipment przez overlay profilu (tymczasowe nadpisania builda):
+
+```json5
+build: {
+  profileOverlays: {
+    fast: {
+      obfuscationProfile: "none"
+    }
+  }
+}
+```
+
+```bash
+seal ship prod --profile-overlay fast
+seal ship prod --fast
 ```
 
 ---
@@ -276,7 +351,7 @@ SEAL_E2E_SLOW=1 SEAL_THIN_E2E=1 node tools/seal/seal/scripts/test-thin-e2e.js
 
 W Docker E2E skala timeoutów jest ustawiana automatycznie (2x).
 
-Jeśli build używa native bootstrap (`r/nb.node`) i start jest wolny na danym hoście, ustaw:
+Jeśli build używa native bootstrap (`r/n`) i start jest wolny na danym hoście, ustaw:
 
 ```bash
 SEAL_THIN_E2E=1 SEAL_THIN_E2E_NATIVE_RUN_TIMEOUT_MS=240000 \

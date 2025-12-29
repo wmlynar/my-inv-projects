@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 
 const { findProjectRoot } = require("../lib/paths");
-const { getSealPaths, loadProjectConfig, loadTargetConfig, resolveTargetName, resolveConfigName, getConfigFile } = require("../lib/project");
+const { getSealPaths, loadProjectConfig, loadProjectConfigRaw, loadTargetConfig, resolveTargetName, resolveConfigName, getConfigFile, applyProfileOverlay } = require("../lib/project");
 const { ensureDir, fileExists, safeWriteFile } = require("../lib/fsextra");
 const {
   normalizePackager,
@@ -235,13 +235,29 @@ function resolveExplainTarget(projectRoot, targetNameOrConfig) {
   return { targetName, targetCfg: t.cfg, cfgName, localCfg };
 }
 
-async function cmdConfigExplain(cwd, targetNameOrConfig) {
+function overlayHasPath(overlay, pathParts) {
+  let cur = overlay;
+  for (const key of pathParts) {
+    if (!cur || typeof cur !== "object" || Array.isArray(cur)) return false;
+    if (!Object.prototype.hasOwnProperty.call(cur, key)) return false;
+    cur = cur[key];
+  }
+  return true;
+}
+
+async function cmdConfigExplain(cwd, targetNameOrConfig, opts) {
+  opts = opts || {};
   const projectRoot = findProjectRoot(cwd);
   const paths = getSealPaths(projectRoot);
-  const proj = loadProjectConfig(projectRoot);
+  const overlayName = opts.profileOverlay || null;
+  const proj = loadProjectConfig(projectRoot, { profileOverlay: overlayName });
   if (!proj) throw new Error("Brak seal.json5 (projekt). Zrób: seal init");
 
-  const rawProj = fileExists(paths.sealFile) ? readJson5(paths.sealFile) : {};
+  const rawProjBase = loadProjectConfigRaw(projectRoot) || {};
+  const overlayRes = applyProfileOverlay(rawProjBase, overlayName);
+  const rawProj = overlayRes.cfg;
+  const overlayCfg = overlayRes.overlay;
+  const overlayApplied = overlayRes.overlayName;
   const { targetName, targetCfg, cfgName, localCfg } = resolveExplainTarget(projectRoot, targetNameOrConfig);
   const rawTarget = targetName
     ? readJson5(path.join(paths.targetsDir, `${targetName}.json5`))
@@ -265,12 +281,16 @@ async function cmdConfigExplain(cwd, targetNameOrConfig) {
   });
 
   const securityProfile = proj.build.securityProfile || null;
-  const securitySource = hasPath(rawProj, ["build", "securityProfile"]) ? "project" : null;
+  const securitySource = overlayApplied && overlayHasPath(overlayCfg, ["securityProfile"])
+    ? "profileOverlay"
+    : (hasPath(rawProjBase, ["build", "securityProfile"]) ? "project" : null);
 
   const obfProfile = proj.build.obfuscationProfile || "balanced";
-  const obfSource = hasPath(rawProj, ["build", "obfuscationProfile"])
-    ? "project"
-    : (securityProfile ? "securityProfile" : "default");
+  const obfSource = overlayApplied && overlayHasPath(overlayCfg, ["obfuscationProfile"])
+    ? "profileOverlay"
+    : (hasPath(rawProjBase, ["build", "obfuscationProfile"])
+        ? "project"
+        : (securityProfile ? "securityProfile" : "default"));
 
   const consoleEnv = process.env.SEAL_CONSOLE_MODE;
   const consoleRaw = consoleEnv !== undefined
@@ -279,9 +299,11 @@ async function cmdConfigExplain(cwd, targetNameOrConfig) {
   const consoleRes = resolveConsoleMode(consoleRaw);
   const consoleSource = consoleEnv !== undefined
     ? "env"
-    : (hasPath(rawProj, ["build", "consoleMode"]) || hasPath(rawProj, ["build", "stripConsole"])
-        ? "project"
-        : "default");
+    : (overlayApplied && (overlayHasPath(overlayCfg, ["consoleMode"]) || overlayHasPath(overlayCfg, ["stripConsole"]))
+        ? "profileOverlay"
+        : (hasPath(rawProjBase, ["build", "consoleMode"]) || hasPath(rawProjBase, ["build", "stripConsole"])
+            ? "project"
+            : "default"));
 
   const packagerSource = hasPath(rawTarget, ["packager"])
     ? "target"
@@ -293,9 +315,11 @@ async function cmdConfigExplain(cwd, targetNameOrConfig) {
   const frontendCfg = proj.build.frontendObfuscation;
   const frontendEnabled = frontendCfg === false ? false : !(typeof frontendCfg === "object" && frontendCfg && frontendCfg.enabled === false);
   const frontendProfile = (typeof frontendCfg === "object" && frontendCfg && frontendCfg.profile) ? frontendCfg.profile : obfProfile;
-  const frontendProfileSource = (typeof frontendCfg === "object" && frontendCfg && frontendCfg.profile)
-    ? "project"
-    : obfSource;
+  const frontendProfileSource = overlayApplied && overlayHasPath(overlayCfg, ["frontendObfuscation"])
+    ? "profileOverlay"
+    : ((typeof frontendCfg === "object" && frontendCfg && frontendCfg.profile)
+        ? "project"
+        : obfSource);
 
   const rawTargetSentinelProfile = readSentinelProfile(rawTarget);
   const rawProjSentinelProfile = readSentinelProfile(rawProj);
@@ -304,7 +328,9 @@ async function cmdConfigExplain(cwd, targetNameOrConfig) {
   const projProfilePresent = rawProjSentinelProfile !== null && rawProjSentinelProfile !== undefined;
   const sentinelProfileSource = targetProfilePresent
     ? "target"
-    : (projProfilePresent ? "project" : null);
+    : (overlayApplied && overlayHasPath(overlayCfg, ["sentinel", "profile"])
+        ? "profileOverlay"
+        : (projProfilePresent ? "project" : null));
   const sentinelProfile = sentinelProfileRaw !== null && sentinelProfileRaw !== undefined
     ? String(sentinelProfileRaw)
     : null;
@@ -317,6 +343,9 @@ async function cmdConfigExplain(cwd, targetNameOrConfig) {
   console.log("");
 
   console.log("Profiles:");
+  if (overlayApplied) {
+    console.log(`  profileOverlay: ${overlayApplied} (cli)`);
+  }
   console.log(`  securityProfile: ${securityProfile || "none"}${sourceTag(securitySource)}`);
   console.log(`  obfuscationProfile: ${obfProfile}${sourceTag(obfSource)}`);
   console.log(`  frontendObfuscation: ${frontendEnabled ? "enabled" : "disabled"} (profile=${frontendProfile}${sourceTag(frontendProfileSource)})`);
@@ -361,6 +390,7 @@ async function cmdConfigExplain(cwd, targetNameOrConfig) {
   console.log(`  strip: ${stripLabel}`);
   console.log(`  elfPacker: ${elfPackerLabel}`);
   console.log(`  cObfuscator: ${protectionCfg.cObfuscator || "disabled"}`);
+  console.log(`  nativeBootstrapObfuscator: ${protectionCfg.nativeBootstrapObfuscatorCmd || "disabled"}`);
   console.log("");
 
   console.log("Sentinel:");

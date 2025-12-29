@@ -1,6 +1,10 @@
 "use strict";
 
-function bashCompletionScript() {
+function getCompletionScript(shell) {
+  const target = String(shell || "bash").toLowerCase();
+  if (target !== "bash") {
+    throw new Error(`Unsupported shell: ${target}. Supported: bash`);
+  }
   return `# bash completion for seal
 _seal_find_root() {
   local dir="$PWD"
@@ -128,13 +132,13 @@ _seal_complete() {
   local opts=""
   case "$cmd" in
     init) opts="--force" ;;
-    check) opts="--strict --verbose --cc" ;;
-    release) opts="--config --skip-check --check-verbose --check-cc --packager --payload-only --timing" ;;
+    check) opts="--strict --verbose --cc --profile-overlay --fast" ;;
+    release) opts="--config --skip-check --check-verbose --check-cc --packager --payload-only --profile-overlay --fast --timing" ;;
     run-local) opts="--sealed --config" ;;
     verify) opts="--explain" ;;
     sentinel) opts="--force --insecure --skip-verify --json" ;;
-    deploy) opts="--bootstrap --push-config --skip-sentinel-verify --restart --wait --wait-timeout --wait-interval --wait-url --wait-mode --wait-http-timeout --accept-drift --allow-drift --warn-drift --artifact --fast --fast-no-node-modules --timing" ;;
-    ship) opts="--bootstrap --push-config --skip-sentinel-verify --no-wait --wait-timeout --wait-interval --wait-url --wait-mode --wait-http-timeout --accept-drift --allow-drift --warn-drift --skip-check --check-verbose --check-cc --packager --payload-only --fast --fast-no-node-modules --timing" ;;
+    deploy) opts="--bootstrap --push-config --skip-sentinel-verify --restart --wait --wait-timeout --wait-interval --wait-url --wait-mode --wait-http-timeout --accept-drift --allow-drift --warn-drift --artifact --profile-overlay --fast --timing" ;;
+    ship) opts="--bootstrap --push-config --skip-sentinel-verify --no-wait --wait-timeout --wait-interval --wait-url --wait-mode --wait-http-timeout --accept-drift --allow-drift --warn-drift --skip-check --check-verbose --check-cc --packager --payload-only --profile-overlay --fast --timing" ;;
     run) opts="--kill --sudo --accept-drift --allow-drift" ;;
     rollback) opts="--accept-drift --allow-drift" ;;
     remote) opts="--accept-drift --allow-drift --skip-sentinel-verify" ;;
@@ -157,11 +161,7 @@ complete -F _seal_complete seal
 }
 
 function cmdCompletion(shell) {
-  const target = String(shell || "bash").toLowerCase();
-  if (target !== "bash") {
-    throw new Error(`Unsupported shell: ${target}. Supported: bash`);
-  }
-  process.stdout.write(bashCompletionScript());
+  process.stdout.write(getCompletionScript(shell));
 }
 
-module.exports = { cmdCompletion };
+module.exports = { cmdCompletion, getCompletionScript };

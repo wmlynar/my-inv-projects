@@ -12,7 +12,7 @@ async function cmdRelease(cwd, targetArg, opts) {
   opts = opts || {};
   const { timing, report } = resolveTiming(opts.timing);
   const projectRoot = findProjectRoot(cwd);
-  const proj = loadProjectConfig(projectRoot);
+  const proj = loadProjectConfig(projectRoot, { profileOverlay: opts.profileOverlay });
   if (!proj) throw new Error("Brak seal.json5 (projekt). Jeśli to root monorepo z listą projects, uruchom polecenie w root (wykona się dla podprojektów) albo przejdź do podprojektu.");
 
   const targetName = resolveTargetName(projectRoot, targetArg);
@@ -37,6 +37,7 @@ async function cmdRelease(cwd, targetArg, opts) {
         cc: opts.checkCc || null,
         packager: opts.packager || null,
         payloadOnly: !!opts.payloadOnly,
+        profileOverlay: opts.profileOverlay || null,
         skipRemote: true,
       }));
     }

@@ -70,6 +70,42 @@ function mergeConfig(base, override) {
   return out;
 }
 
+function normalizeProfileOverlayName(raw) {
+  if (raw === undefined || raw === null) return null;
+  const name = String(raw).trim();
+  return name ? name : null;
+}
+
+function resolveProfileOverlay(rawCfg, overlayName) {
+  const name = normalizeProfileOverlayName(overlayName);
+  if (!name) return null;
+  const build = rawCfg && rawCfg.build;
+  if (!isPlainObject(build)) {
+    throw new Error(`Invalid build.profileOverlays (missing build config for overlay "${name}")`);
+  }
+  const overlays = build.profileOverlays;
+  if (!isPlainObject(overlays)) {
+    throw new Error(`Missing build.profileOverlays (requested overlay "${name}")`);
+  }
+  if (!Object.prototype.hasOwnProperty.call(overlays, name)) {
+    const available = Object.keys(overlays).sort();
+    const hint = available.length ? `Available overlays: ${available.join(", ")}` : "No overlays defined.";
+    throw new Error(`Unknown profile overlay: ${name}. ${hint}`);
+  }
+  const overlay = overlays[name];
+  if (!isPlainObject(overlay)) {
+    throw new Error(`Invalid build.profileOverlays.${name} (expected object)`);
+  }
+  return { name, overlay };
+}
+
+function applyProfileOverlay(rawCfg, overlayName) {
+  const resolved = resolveProfileOverlay(rawCfg, overlayName);
+  if (!resolved) return { cfg: rawCfg, overlayName: null, overlay: null };
+  const merged = mergeConfig(rawCfg, { build: resolved.overlay });
+  return { cfg: merged, overlayName: resolved.name, overlay: resolved.overlay };
+}
+
 function hasPath(obj, pathParts) {
   let cur = obj;
   for (const key of pathParts) {
@@ -292,20 +328,23 @@ function collectWorkspaceDefaults(projectRoot) {
   return merged;
 }
 
-function loadProjectConfig(projectRoot) {
+function loadProjectConfigRaw(projectRoot) {
   const { sealFile } = getSealPaths(projectRoot);
-  let cfg = null;
-
-  if (fs.existsSync(sealFile)) {
-    cfg = readJson5(sealFile);
-    if (isWorkspaceConfig(cfg)) return null;
-  }
-
-  if (!cfg) return null;
+  if (!fs.existsSync(sealFile)) return null;
+  const cfg = readJson5(sealFile);
+  if (isWorkspaceConfig(cfg)) return null;
   const workspaceDefaults = collectWorkspaceDefaults(projectRoot);
-  const rawMerged = workspaceDefaults ? mergeConfig(workspaceDefaults, cfg) : cfg;
-  const rawCfg = JSON.parse(JSON.stringify(rawMerged));
-  cfg = JSON.parse(JSON.stringify(rawMerged));
+  return workspaceDefaults ? mergeConfig(workspaceDefaults, cfg) : cfg;
+}
+
+function loadProjectConfig(projectRoot, opts) {
+  const rawMerged = loadProjectConfigRaw(projectRoot);
+  if (!rawMerged) return null;
+  const overlayName = opts && opts.profileOverlay ? opts.profileOverlay : null;
+  const overlayRes = applyProfileOverlay(rawMerged, overlayName);
+  const rawWithOverlay = overlayRes.cfg;
+  const rawCfg = JSON.parse(JSON.stringify(rawWithOverlay));
+  cfg = JSON.parse(JSON.stringify(rawWithOverlay));
 
   // Fill defaults defensively
   cfg.appName = cfg.appName || detectAppName(projectRoot);
@@ -455,6 +494,8 @@ module.exports = {
   loadSealFile,
   loadWorkspaceConfig,
   isWorkspaceConfig,
+  loadProjectConfigRaw,
+  applyProfileOverlay,
   loadProjectConfig,
   loadTargetConfig,
   loadPolicy,

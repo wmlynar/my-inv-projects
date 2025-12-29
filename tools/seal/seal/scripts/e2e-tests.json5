@@ -94,6 +94,20 @@
       "requirements": []
     },
     {
+      "name": "install",
+      "category": "misc",
+      "parallel": false,
+      "description": "Runs install.sh in a clean HOME and verifies seal + bash completion.",
+      "skipRisk": "medium",
+      "failHint": "Check install.sh logs, apt availability, and completion output.",
+      "script": "tools/seal/seal/scripts/test-install-e2e.js",
+      "hostOnly": false,
+      "requirements": [
+        "docker",
+        "root"
+      ]
+    },
+    {
       "name": "user-flow",
       "category": "flow",
       "parallel": false,

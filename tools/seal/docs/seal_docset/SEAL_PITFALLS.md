@@ -1246,6 +1246,18 @@
 - Blad: testy uruchamialy procesy z `stdio: "pipe"` bez drenażu, co moglo blokowac proces i zawieszac E2E.
   - Wymaganie: zawsze drenowac stdout/stderr (lub uzywac `inherit`/`ignore`) i obslugiwac wczesny exit procesu.
 
+- Blad: testy z `waitForReady` nie odroznialy wczesnego exitu od prawidlowego zakonczenia po "ready", co dawalo falszywe FAIL/timeouty.
+  - Wymaganie: po sygnale "ready" ignoruj wczesny exit, a przed "ready" traktuj go jako FAIL; zawsze obsluguj `child.on("error")`.
+
+- Blad: tryb `ready-file` akceptowal niepoprawny/ucinany JSON, przez co test mogl przejsc mimo bledu w sygnale gotowosci.
+  - Wymaganie: w trybie `ready-file` waliduj JSON i w razie potrzeby ponawiaj odczyt przez krotki czas (retry) zanim uznasz blad.
+
+- Blad: testy uruchamiajace procesy przez `spawn` nie obslugiwaly `error`, przez co awaria uruchomienia mogla zawiesic test.
+  - Wymaganie: zawsze obsluguj `child.on("error")` i uwzgledniaj to w `Promise.race`/`exitPromise`.
+
+- Blad: testy z `waitForReady` nie robily `Promise.race` z wczesnym `exit`, przez co timeout maskowal rzeczywisty blad startu.
+  - Wymaganie: `waitForReady` zawsze sciga sie z `exit`/`error`, a wynik "exit przed ready" jest twardym FAIL.
+
 - Blad: testy ekstrakcji opieraly sie tylko na analizie plikow na dysku, pomijajac wycieki w pamieci runtime.
   - Wymaganie: testy obejmuja co najmniej jedna metode runtime (dump/core/ptrace) oraz skan markerow i tokenow podpisu.
 
@@ -2771,14 +2783,10 @@
 
 ## Dodatkowe wnioski (batch 336-340)
 
-- Blad: manifest E2E (`e2e-tests.tsv`) zawieral taby w opisach/hintach, co przesuwalo kolumny i prowadzilo do blednego mapowania (np. zle `parallel`/`script`).
-  - Wymaganie: w TSV nie uzywaj tabow w polach opisowych; waliduj liczbe kolumn i fail‑fast, gdy parser widzi nadmiar/za malo pol.
-- Blad: CRLF w `e2e-tests.tsv` zostawial `\\r` w nazwach testow, przez co filtry `SEAL_E2E_TESTS` nie pasowaly.
-  - Wymaganie: normalizuj newline do LF przy odczycie manifestu i trimuj `\\r`.
 - Blad: duplikaty nazw testow w manifeście powodowaly nadpisanie metadanych (ostatnia linia wygrywa), co ukrywalo brakujace testy.
   - Wymaganie: wykrywaj duplikaty nazw testow w manifeście i fail‑fast z lista konfliktow.
-- Zmiana: manifest E2E jest teraz w `e2e-tests.json5` (JSON/JSON5); TSV to tylko legacy export (runner go nie używa).
-  - Wymaganie: JSON5 jest jedynym źródłem prawdy; TSV generuj tylko pomocniczo (read‑only).
+- Zmiana: manifest E2E jest w `e2e-tests.json5` (JSON5).
+  - Wymaganie: JSON5 jest jedynym źródłem prawdy.
 
 ## Dodatkowe wnioski (batch 341-345)
 

@@ -11,7 +11,6 @@ const {
   scpFrom,
   normalizeStrictHostKeyChecking,
   normalizeSshPort,
-  sshNonInteractiveArgs,
   formatSshFailure,
 } = require("./ssh");
 const { spawnSyncSafe } = require("./spawn");
@@ -277,17 +276,6 @@ function buildRemoteTarValidateCmd(remoteArtifactTmpQ, expectedRoot) {
   return `( ${parts.join("\n")} )`;
 }
 
-function ensureRsyncAvailable(targetCfg, user, host) {
-  const local = spawnSyncSafe("rsync", ["--version"], { stdio: "pipe" });
-  if (!local.ok) {
-    throw new Error("Fast deploy requires rsync on the local machine.");
-  }
-  const remote = sshExecTarget(targetCfg, { user, host, args: ["bash", "-lc", "command -v rsync >/dev/null 2>&1"], stdio: "pipe" });
-  if (!remote.ok) {
-    throw new Error(`Fast deploy requires rsync on ${host}.`);
-  }
-}
-
 function bootstrapHint(targetCfg, layout, user, host, issues) {
   const targetName = targetLabel(targetCfg);
   const owner = shQuote(`${user}:${user}`);
@@ -530,39 +518,7 @@ function cleanupReleasesSsh({ targetCfg, current, policy }) {
   ok(`Retention: removed ${toDelete.length} old release(s) on ${host}`);
 }
 
-function cleanupFastReleasesSsh({ targetCfg, current }) {
-  const { user, host } = sshUserHost(targetCfg);
-  const layout = remoteLayout(targetCfg);
-  const appName = targetCfg.appName || targetCfg.serviceName || "app";
-  const prefix = `${appName}-fast`;
-
-  const listCmd = ["bash", "-lc", `ls -1 ${shQuote(layout.releasesDir)} 2>/dev/null || true`];
-  const listRes = sshExecTarget(targetCfg, { user, host, args: listCmd, stdio: "pipe" });
-  if (!listRes.ok) {
-    warn(`Fast cleanup skipped (cannot list releases on ${host})`);
-    return;
-  }
-
-  const names = (listRes.stdout || "")
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .filter((name) => name.startsWith(prefix));
-  const toDelete = names.filter((name) => name !== current);
-  if (!toDelete.length) return;
-
-  const rmArgs = toDelete.map((name) => shQuote(`${layout.releasesDir}/${name}`)).join(" ");
-  const rmCmd = ["bash", "-lc", `rm -rf ${rmArgs}`];
-  const rmRes = sshExecTarget(targetCfg, { user, host, args: rmCmd, stdio: "pipe" });
-  if (!rmRes.ok) {
-    warn(`Fast cleanup failed on ${host} (status=${rmRes.status})`);
-    return;
-  }
-
-  ok(`Fast cleanup: removed ${toDelete.length} old fast release(s) on ${host}`);
-}
-
-function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootstrap, policy, fast, releaseDir, buildId, allowAutoBootstrap, payloadOnlyRequired, timing }) {
+function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootstrap, policy, releaseDir, buildId, allowAutoBootstrap, payloadOnlyRequired, timing }) {
   const thinMode = resolveThinMode(targetCfg);
   const thinIntegrityMode = targetCfg && targetCfg._thinIntegrityMode ? targetCfg._thinIntegrityMode : null;
   const thinIntegrityFile = targetCfg && targetCfg._thinIntegrityFile ? targetCfg._thinIntegrityFile : "ih";
@@ -1046,164 +1002,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
 
   ok(`Deployed on ${host}: ${folderName}`);
 
-  if (!fast) cleanupReleasesSsh({ targetCfg, current: folderName, policy });
-  // Always clean fast releases after a successful normal deploy.
-  cleanupFastReleasesSsh({ targetCfg, current: folderName });
-  return { layout, folderName, relDir, autoBootstrap };
-}
-
-function deploySshFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, bootstrap, buildId, allowAutoBootstrap, timing }) {
-  const thinMode = resolveThinMode(targetCfg);
-  const thinIntegrityFile = targetCfg && targetCfg._thinIntegrityFile ? targetCfg._thinIntegrityFile : "ih";
-  const autoBootstrapAllowed = allowAutoBootstrap !== false;
-  let effectiveBootstrap = !!bootstrap;
-  let autoBootstrap = false;
-  const timeSync = timing && timing.timeSync ? timing.timeSync : (label, fn) => fn();
-  const { res: preflight, layout, user, host } = timeSync(
-    "deploy.ssh.preflight",
-    () => checkRemoteWritable(targetCfg, { requireService: !effectiveBootstrap })
-  );
-  let out = `${preflight.stdout}\n${preflight.stderr}`.trim();
-  if (!preflight.ok) {
-    throw new Error(`ssh preflight failed${formatSshFailure(preflight) || (out || preflight.error ? `: ${out || preflight.error}` : "")}`);
-  }
-  let issues = collectPreflightIssues(out, layout);
-  if (issues.length && !effectiveBootstrap && autoBootstrapAllowed) {
-    warn(`Auto bootstrap: ${issues.join("; ")}. Running bootstrap.`);
-    timeSync("deploy.ssh.bootstrap", () => bootstrapSsh(targetCfg));
-    effectiveBootstrap = true;
-    autoBootstrap = true;
-    const retry = timeSync(
-      "deploy.ssh.preflight_retry",
-      () => checkRemoteWritable(targetCfg, { requireService: false })
-    );
-    out = `${retry.res.stdout}\n${retry.res.stderr}`.trim();
-    if (!retry.res.ok) {
-      throw new Error(`ssh preflight failed after bootstrap${formatSshFailure(retry.res) || (out || retry.res.error ? `: ${out || retry.res.error}` : "")}`);
-    }
-    issues = collectPreflightIssues(out, layout);
-  }
-  if (issues.length) {
-    throw new Error(bootstrapHint(targetCfg, layout, user, host, issues));
-  }
-
-  let shouldPushConfig = !!pushConfig;
-  const remoteCfg = `${layout.sharedDir}/config.json5`;
-  const remoteCfgQ = shQuote(remoteCfg);
-
-  if (!shouldPushConfig) {
-    const cfgCheck = timeSync("deploy.ssh.check_config", () => sshExecTarget(targetCfg, {
-      user,
-      host,
-      args: ["bash", "-lc", `if [ -f ${remoteCfgQ} ]; then echo __SEAL_CFG_OK__; else echo __SEAL_CFG_MISSING__; fi`],
-      stdio: "pipe",
-    }));
-    if (!cfgCheck.ok) {
-      throw new Error(`ssh config check failed (status=${cfgCheck.status})${formatSshFailure(cfgCheck)}`);
-    }
-    if ((cfgCheck.stdout || "").includes("__SEAL_CFG_MISSING__")) {
-      warn("Remote config missing. Pushing repo config once (safe default for first deploy).");
-      shouldPushConfig = true;
-    }
-  }
-
-  timeSync("deploy.ssh.fast.rsync_check", () => ensureRsyncAvailable(targetCfg, user, host));
-
-  const appName = targetCfg.appName || targetCfg.serviceName || "app";
-  const suffix = buildId ? String(buildId) : "fast";
-  const folderName = `${appName}-fast-${suffix}`;
-  const relDir = `${layout.releasesDir}/${folderName}`;
-
-  const mkdirRes = timeSync("deploy.ssh.fast.mkdir", () => sshExecTarget(targetCfg, {
-    user,
-    host,
-    args: ["bash", "-lc", `mkdir -p ${shQuote(relDir)} ${shQuote(layout.sharedDir)}`],
-    stdio: "pipe",
-  }));
-  if (!mkdirRes.ok) {
-    throw new Error(`ssh mkdir failed (status=${mkdirRes.status})${formatSshFailure(mkdirRes)}`);
-  }
-
-  const sshOptsParts = sshNonInteractiveArgs(sshStrictHostKeyChecking(targetCfg));
-  const port = sshPort(targetCfg);
-  if (port) sshOptsParts.push("-p", String(port));
-  const sshOpts = sshOptsParts.join(" ");
-  const baseArgs = [
-    "-az",
-    "--delete",
-    "--info=progress2",
-    "-e",
-    `ssh ${sshOpts}`,
-  ];
-
-  info(`Fast sync (bundle) to ${host}:${relDir}`);
-  const srcArg = releaseDir.endsWith(path.sep) ? releaseDir : `${releaseDir}${path.sep}`;
-  const dstArg = `${user}@${host}:${relDir}/`;
-  const rsyncRes = timeSync(
-    "deploy.ssh.fast.rsync",
-    () => spawnSyncSafe("rsync", baseArgs.concat([srcArg, dstArg]), { stdio: "inherit" })
-  );
-  if (!rsyncRes.ok) {
-    throw new Error(`fast rsync failed (status=${rsyncRes.status})`);
-  }
-
-  if (shouldPushConfig) {
-    const tmpCfg = `/tmp/${targetCfg.serviceName}-config.json5`;
-    const tmpCfgQ = shQuote(tmpCfg);
-    info(`Uploading config to ${host}:${tmpCfg}`);
-    const upCfg = timeSync("deploy.ssh.upload_config", () => scpToTarget(targetCfg, {
-      user,
-      host,
-      localPath: repoConfigPath,
-      remotePath: tmpCfg,
-    }));
-    if (!upCfg.ok) throw new Error(`scp config failed (status=${upCfg.status})${formatSshFailure(upCfg)}`);
-    const cfgCmd = ["bash", "-lc", `cp ${tmpCfgQ} ${remoteCfgQ} && rm -f ${tmpCfgQ}`];
-    const cfgRes = timeSync("deploy.ssh.fast.apply_config", () => sshExecTarget(targetCfg, {
-      user,
-      host,
-      args: cfgCmd,
-      stdio: "pipe",
-    }));
-    if (!cfgRes.ok) {
-      throw new Error(`config write failed (status=${cfgRes.status})${formatSshFailure(cfgRes)}`);
-    }
-  }
-
-  if (thinMode === "bootstrap") {
-    warn("FAST mode: removing thin bootstrap runtime so bundle release can run.");
-  }
-  const cleanupCmd = [
-    "bash", "-lc",
-    `rm -f ${shQuote(`${layout.installDir}/b/a`)} ${shQuote(`${layout.installDir}/r/rt`)} ${shQuote(`${layout.installDir}/r/pl`)} ${shQuote(`${layout.installDir}/r/${thinIntegrityFile}`)} ${shQuote(`${layout.installDir}/r/${THIN_RUNTIME_VERSION_FILE}`)}`
-  ];
-  const cleanupRes = timeSync("deploy.ssh.fast.cleanup", () => sshExecTarget(targetCfg, {
-    user,
-    host,
-    args: cleanupCmd,
-    stdio: "pipe",
-  }));
-  if (!cleanupRes.ok) {
-    const cleanupOut = `${cleanupRes.stdout}\n${cleanupRes.stderr}`.trim();
-    throw new Error(`fast cleanup failed (status=${cleanupRes.status})${cleanupOut ? `: ${cleanupOut}` : ""}`);
-  }
-
-  const currentFileQ = shQuote(layout.currentFile);
-  const curCmd = ["bash", "-lc", `echo ${shQuote(folderName)} > ${currentFileQ}`];
-  const curRes = timeSync("deploy.ssh.fast.set_current", () => sshExecTarget(targetCfg, {
-    user,
-    host,
-    args: curCmd,
-    stdio: "pipe",
-  }));
-  if (!curRes.ok) {
-    const curOut = `${curRes.stdout}\n${curRes.stderr}`.trim();
-    throw new Error(`update current.buildId failed (status=${curRes.status})${curOut ? `: ${curOut}` : ""}`);
-  }
-
-  ok(`Deployed on ${host}: ${folderName} (${buildId || "fast"})`);
-
-  cleanupFastReleasesSsh({ targetCfg, current: folderName });
+  cleanupReleasesSsh({ targetCfg, current: folderName, policy });
   return { layout, folderName, relDir, autoBootstrap };
 }
 
@@ -1524,7 +1323,6 @@ function rollbackSsh(targetCfg) {
 set -euo pipefail
 ROOT=${shQuote(layout.installDir)}
 APP=${shQuote(targetCfg.appName || targetCfg.serviceName || "app")}
-FAST_PREFIX="${APP}-fast-"
 cur="$(cat "$ROOT/current.buildId" || true)"
 cd ${shQuote(layout.releasesDir)}
 rels="$(ls -1 | sort -r)"
@@ -1537,9 +1335,6 @@ for r in $rels; do
   esac
   if [ "$r" = "$cur" ]; then found=1; continue; fi
   if [ "$found" = "1" ]; then
-    case "$r" in
-      "$FAST_PREFIX"*) continue ;;
-    esac
     prev="$r"; break;
   fi
 done
@@ -1710,7 +1505,6 @@ function configPushSsh({ targetCfg, localConfigPath }) {
 module.exports = {
   bootstrapSsh,
   deploySsh,
-  deploySshFast,
   statusSsh,
   logsSsh,
   enableSsh,

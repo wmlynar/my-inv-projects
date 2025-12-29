@@ -11,6 +11,7 @@
 - [SEAL_DEPLOY_SPEC.md](SEAL_DEPLOY_SPEC.md)
 - [SEAL_DEPLOY_REFERENCE.md](SEAL_DEPLOY_REFERENCE.md)
 - [SEAL_STANDARD.md](SEAL_STANDARD.md)
+- [SEAL_E2E_FRAMEWORK_SPEC.md](SEAL_E2E_FRAMEWORK_SPEC.md)
 - [SEAL_CONTRACT_AI.md](SEAL_CONTRACT_AI.md)
 - [SEAL_PITFALLS.md](SEAL_PITFALLS.md)
 - [SEAL_PACKAGER_THIN_SPEC_SCALONA.md](SEAL_PACKAGER_THIN_SPEC_SCALONA.md)
@@ -28,6 +29,7 @@ Docset v0.5 składa się z:
 - **SEAL_DEPLOY_SPEC v0.5** – wymagania i kontrakty dla narzędzia `seal` (SPEC/ARCH).
 - **SEAL_DEPLOY_REFERENCE v0.5** – referencyjna implementacja i przykłady (REF).
 - **SEAL_STANDARD v1.3** – standard jakości aplikacji sealowanych.
+- **SEAL_E2E_FRAMEWORK_SPEC v0.1** – specyfikacja frameworka testow E2E (wspolne API i enforcement).
 - **SEAL_CONTRACT_AI v1.3** – krótki kontrakt „promptable” dla generatorów kodu.
 - **SEAL_PITFALLS v0.5** – lista realnych błędów do uniknięcia + wymagania zapobiegawcze.
 - **SEAL_PACKAGER_THIN_SPEC_SCALONA** – specyfikacja packagera `thin-split` (BOOTSTRAP).

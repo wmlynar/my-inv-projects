@@ -77,6 +77,11 @@
     "frontendObfuscation": {
       "enabled": true
     },
+    "profileOverlays": {
+      "fast": {
+        "obfuscationProfile": "none"
+      }
+    },
     "protection": {
       "enabled": true,
       "seaMain": {

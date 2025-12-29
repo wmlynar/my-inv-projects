@@ -131,6 +131,10 @@ function run() {
     const deployOpts = getCompletions({ completionPath, cwd: root, words: ["seal", "deploy", "--"], cword: 2, label: "deploy opts" });
     assertIncludes(deployOpts, "--bootstrap", "deploy options");
     assertIncludes(deployOpts, "--skip-sentinel-verify", "deploy options");
+    assertIncludes(deployOpts, "--fast", "deploy options");
+
+    const shipOpts = getCompletions({ completionPath, cwd: root, words: ["seal", "ship", "--"], cword: 2, label: "ship opts" });
+    assertIncludes(shipOpts, "--fast", "ship options");
 
     const packagerOpts = getCompletions({ completionPath, cwd: root, words: ["seal", "release", "--packager", ""], cword: 3, label: "packager opts" });
     assertIncludes(packagerOpts, "thin-split", "packager options");

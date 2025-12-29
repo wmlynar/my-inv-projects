@@ -1813,6 +1813,8 @@ Przykład (aktualny dla v0.5):
       // strings: { obfuscation: "xorstr" | "crystr" | "obfuscate" | ["xorstr", "crystr"] },
       // C-level obfuscation (dla launchera thin; wymaga obfuscating clang):
       // cObfuscator: { tool: "obfuscator-llvm" | "hikari", cmd: "/path/to/obfuscating-clang", args: ["-mllvm", "-fla", "-mllvm", "-sub"] },
+      // Native bootstrap obfuscation (C++ addon; tylko gdy thin.nativeBootstrap.enabled=true):
+      // nativeBootstrapObfuscator: { cmd: "/path/to/obfuscating-clang++", args: ["-mllvm", "-fla", "-mllvm", "-sub"] },
     },
 
     // Katalogi kopiowane 1:1 do release (np. static assets, dane)
@@ -1834,6 +1836,7 @@ Przykład (aktualny dla v0.5):
 - `build.packager`: `auto` (domyślnie `thin-split`).
 - `build.securityProfile`: preset poziomu zabezpieczeń (`minimal|balanced|strict|max`), **domyślnie `strict`**. Preset ustawia **domyślne wartości** (nie nadpisuje jawnych pól).
 - `build.obfuscationProfile`: jeśli nie ustawione jawnie, dziedziczy poziom z `securityProfile` (`minimal|balanced|strict|max`). Dodatkowa wartość: `none`.
+- `build.profileOverlays`: opcjonalna mapa overlay (np. `fast`) używana przez `--profile-overlay <name>` (alias: `--fast`); wartości to **częściowe** nadpisania sekcji `build` (bez zmian na dysku).
 - `build.sentinel.profile`: domyślnie `auto` (sentinel włączany tylko dla `thin` + targetów `ssh`); opcje: `off|auto|required|strict`.
 - `build.sentinel.timeLimit.enforce`: `always` (domyślnie) lub `mismatch` (expiry tylko przy niedopasowaniu fingerprintu lub braku blobu).
 - `build.includeDirs`: `["public", "data"]`.
@@ -1841,7 +1844,7 @@ Przykład (aktualny dla v0.5):
 - `build.thin.mode`: `split`.
 - `build.thin.level`: `low` | `medium` | `high`.
 - `build.thin.appBind`: domyślnie `{ enabled: true }`.
-- `build.thin.nativeBootstrap`: domyślnie `{ enabled: false }` (tylko thin-split).
+- `build.thin.nativeBootstrap`: domyślnie `{ enabled: false }` (tylko thin-split, addon trafia do `r/n`).
 - `build.thin.launcherHardening`: domyślnie `true`.
 - `build.thin.launcherHardeningCET`: domyślnie `true` (jeśli compiler nie wspiera `-fcf-protection=full`, build fail‑fast; wyłącz ręcznie).
 - `build.thin.launcherObfuscation`: domyślnie `true` (wymaga `build.protection.cObfuscator`).
@@ -1862,6 +1865,8 @@ Przykład (aktualny dla v0.5):
 - `build.protection.cObfuscator.tool`: obfuscator dla kodu C (launchera thin). Wartości: `obfuscator-llvm` lub `hikari`.
 - `build.protection.cObfuscator.cmd`: ścieżka do obfuscating clang (wymagane, jeśli `cObfuscator` ustawione).
 - `build.protection.cObfuscator.args`: **wymagane**; argumenty obfuscatora (np. `-mllvm -fla -mllvm -sub`). Brak args = błąd.
+- `build.protection.nativeBootstrapObfuscator.cmd`: obfuscating C++ compiler dla native bootstrap (addon thin); używane tylko, gdy `thin.nativeBootstrap.enabled=true`.
+- `build.protection.nativeBootstrapObfuscator.args`: **wymagane**, jeśli `nativeBootstrapObfuscator` ustawione; argumenty obfuscatora (np. `-mllvm -fla -mllvm -sub`).
 
 ### 29.4. Polityka (`seal.json5#policy`)
 

@@ -859,20 +859,6 @@ function applyHardeningPost(releaseDir, appName, packagerUsed, hardCfg) {
       throw new Error(`ELF packer failed${tool}: ${reason}`);
     }
     steps.push({ step: "elf_packer", target: hardTargetLabel, ...r });
-    if (nativeBootstrapPresent) {
-      const nr = tryElfPacker(nativeBootstrapPath, cfg);
-      if (!nr.ok) {
-        const reason = nr.reason || "elf_packer_failed";
-        const tool = nr.tool ? ` (${nr.tool})` : "";
-        throw new Error(`ELF packer failed for native bootstrap${tool}: ${reason}`);
-      }
-      steps.push({
-        step: "elf_packer_native_bootstrap",
-        target: "native_bootstrap",
-        file: `r/${THIN_NATIVE_BOOTSTRAP_FILE}`,
-        ...nr,
-      });
-    }
   } else if (!isScript && !isThin && hardeningSupported) {
     steps.push({ step: "elf_packer", ok: false, skipped: true, reason: "disabled_by_default" });
   }
@@ -1375,7 +1361,8 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
     artifactPath = await timeAsync("build.artifact", async () => createArtifact({ projectRoot, appName, buildId, releaseDir, outDir: baseOutDir }));
     ok(`Artifact: ${artifactPath}`);
   } else {
-    info(`Artifact skipped (${payloadOnlyEnabled ? "payload-only build" : "fast mode"})`);
+    const reason = payloadOnlyEnabled ? "payload-only build" : "skipArtifact enabled";
+    info(`Artifact skipped (${reason})`);
   }
 
   return { appName, buildId, outDir: baseOutDir, releaseDir, artifactPath, meta, packagerUsed, packError, payloadOnly: payloadOnlyEnabled };

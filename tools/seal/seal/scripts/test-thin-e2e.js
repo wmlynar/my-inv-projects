@@ -18,6 +18,7 @@ const {
   withSealedBinary,
   terminateChild,
   spawnSyncWithTimeout,
+  readReadyPayload,
 } = require("./e2e-utils");
 
 const { buildRelease } = require("../src/lib/build");
@@ -134,15 +135,6 @@ function checkNativePrereqs() {
   return { ok: true, skip: false };
 }
 
-function parseReadyPayload(raw) {
-  if (!raw) return null;
-  try {
-    return JSON.parse(String(raw));
-  } catch {
-    return null;
-  }
-}
-
 async function buildThinRelease(buildTimeoutMs, opts = {}) {
   const projectCfg = loadProjectConfig(EXAMPLE_ROOT);
   projectCfg.build = projectCfg.build || {};
@@ -257,13 +249,14 @@ async function runRelease({ releaseDir, buildId, runTimeoutMs, env }) {
     env,
     log,
     captureOutput: true,
-  }, ({ port, readyFile, ready }) => {
+  }, async ({ port, readyFile, ready }) => {
     if (readyFile) {
-      const payload = parseReadyPayload(ready);
-      if (payload) {
-        assert.strictEqual(payload.appName, "seal-example");
-        assert.strictEqual(payload.buildId, buildId);
+      const payload = await readReadyPayload(readyFile, ready, 1000);
+      if (!payload) {
+        throw new Error(`ready-file payload invalid (${readyFile})`);
       }
+      assert.strictEqual(payload.appName, "seal-example");
+      assert.strictEqual(payload.buildId, buildId);
       return;
     }
     assert.strictEqual(ready.appName, "seal-example");

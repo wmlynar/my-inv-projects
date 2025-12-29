@@ -327,6 +327,30 @@ build: {
 }
 ```
 
+### 3.7. Profile overlays (`build.profileOverlays` + `--profile-overlay`)
+
+Overlay to **tymczasowe nadpisanie** ustawień builda (np. szybki shipment bez obfuskacji).
+Overlay jest scalany **tylko** z `build` i nie zmienia plików na dysku.
+
+Przykład w `seal.json5`:
+```json5
+build: {
+  profileOverlays: {
+    fast: {
+      obfuscationProfile: "none"
+    }
+  }
+}
+```
+
+Użycie:
+```bash
+seal ship prod --profile-overlay fast
+seal ship prod --fast
+seal release prod --profile-overlay fast
+```
+`--fast` to skrót dla `--profile-overlay fast`.
+
 ---
 
 ## 4. Artefakty `seal-out/run/` + `seal plan` (REF)
@@ -536,27 +560,6 @@ Przykład w `seal-config/targets/<name>.json5`:
 ```
 
 Uwaga: dla targetów SSH tryb HTTP wymaga `curl` albo `wget` na serwerze.
-
----
-
-## 7.1. Fast ship (unsafe) (`seal ship --fast`)
-
-**Cel:** ultra-szybkie prototypowanie bez SEA (bundle + rsync).
-
-Zasady:
-- `seal ship <target> --fast` buduje bundle i synchronizuje go na serwer przez `rsync` (bez `.tgz`).
-- Zawsze tworzy nowy katalog release: `appName-fast-<buildId>`, a po pełnym syncu przełącza `current.buildId` (brak aktualizacji in-place).
-- Do release trafia `appctl` uruchamiający bundle (`app.bundle.cjs`).
-- Frontend (public/) jest obfuskowany/minifikowany zgodnie z configiem.
-- Backend jest obfuskowany w jednym bundlu (jak bundle packager).
-- **Tryb unsafe**: brak SEA (mimo obfuskacji).
-- `rsync` minimalizuje transfer (przy kolejnych deployach).
-- Wymaga `rsync` lokalnie i na serwerze.
-- `node_modules` nie jest używane (bundle zawiera zależności).
-  - `--fast-no-node-modules` jest ignorowane w tym trybie.
-- Po udanym zwykłym deployu SEAL usuwa wszystkie `*-fast` release'y (niezależnie od retention), żeby nie zostawiać źródeł na dysku.
-
----
 
 ## 8. Multi-target deploy
 

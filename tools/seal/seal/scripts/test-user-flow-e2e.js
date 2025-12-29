@@ -18,6 +18,7 @@ const {
   createLogger,
   terminateChild,
   spawnSyncWithTimeout,
+  readReadyPayload,
 } = require("./e2e-utils");
 const { readJson5, writeJson5 } = require("../src/lib/json5io");
 
@@ -171,19 +172,42 @@ async function runSealed(releaseDir, appName, port, readyFile) {
   const args = useAppctl ? ["run"] : [];
   const childEnv = applyReadyFileEnv(process.env, readyFile);
   const child = spawn(bin, args, { cwd: releaseDir, stdio: ["ignore", "pipe", "pipe"], env: childEnv });
-  let exitErr = null;
-  child.on("exit", (code, signal) => {
-    if (code && code !== 0) {
-      exitErr = new Error(`app exited early (code=${code}, signal=${signal || "none"})`);
-    }
+  if (child.stdout) child.stdout.on("data", () => {});
+  if (child.stderr) child.stderr.on("data", () => {});
+  const exitPromise = new Promise((resolve) => {
+    child.on("exit", (code, signal) => resolve({ code, signal }));
   });
+  const spawnError = new Promise((_, reject) => {
+    child.on("error", (err) => {
+      const msg = err && err.message ? err.message : String(err);
+      reject(new Error(`spawn failed: ${msg}`));
+    });
+  });
+  spawnError.catch(() => {});
 
   try {
-    const status = await waitForReady({ port, readyFile, timeoutMs: 12000 });
-    if (exitErr) throw exitErr;
+    const winner = await Promise.race([
+      waitForReady({ port, readyFile, timeoutMs: 12000 }).then((status) => ({ type: "ready", status })),
+      exitPromise.then((info) => ({ type: "exit", info })),
+      spawnError,
+    ]);
+    if (winner && winner.type === "exit") {
+      const detail = [
+        winner.info.code !== null ? `code=${winner.info.code}` : null,
+        winner.info.signal ? `signal=${winner.info.signal}` : null,
+      ].filter(Boolean).join(", ");
+      throw new Error(`app exited before ready (${detail || "no status"})`);
+    }
+    const status = winner && winner.type === "ready" ? winner.status : null;
+    if (!status) {
+      throw new Error("ready payload missing");
+    }
     if (readyFile) {
-      const payload = parseReadyPayload(status);
-      if (payload && payload.buildId === "DEV") {
+      const payload = await readReadyPayload(readyFile, status, 1000);
+      if (!payload) {
+        throw new Error(`ready-file payload invalid (${readyFile})`);
+      }
+      if (payload.buildId === "DEV") {
         throw new Error("unexpected buildId=DEV in sealed run");
       }
     } else if (status.buildId === "DEV") {

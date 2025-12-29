@@ -131,6 +131,33 @@ function parseArgsEnv(raw, envName, opts = {}) {
   return trimmed.split(/\s+/).filter(Boolean);
 }
 
+function parseJsonOrNull(raw) {
+  if (!raw) return null;
+  try {
+    return JSON.parse(String(raw));
+  } catch {
+    return null;
+  }
+}
+
+async function readReadyPayload(readyFile, raw, timeoutMs = 1000) {
+  let payload = parseJsonOrNull(raw);
+  if (payload) return payload;
+  if (!readyFile) return null;
+  const deadline = Date.now() + Math.max(0, Number(timeoutMs) || 0);
+  while (Date.now() < deadline) {
+    await delay(100);
+    try {
+      const next = fs.readFileSync(readyFile, "utf8");
+      payload = parseJsonOrNull(next);
+      if (payload) return payload;
+    } catch {
+      // ignore and retry
+    }
+  }
+  return null;
+}
+
 function spawnSyncWithTimeout(cmd, args, options = {}) {
   const opts = { ...(options || {}) };
   if (opts.timeout === undefined) {
@@ -440,6 +467,7 @@ module.exports = {
   waitForReadyFile,
   delay,
   parseArgsEnv,
+  readReadyPayload,
   spawnSyncWithTimeout,
   withTimeout,
   httpJson,

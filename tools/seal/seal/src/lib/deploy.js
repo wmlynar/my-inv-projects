@@ -8,7 +8,7 @@ const https = require("https");
 const crypto = require("crypto");
 
 const { spawnSyncSafe } = require("./spawn");
-const { ensureDir, fileExists, rmrf, copyFile, copyDir } = require("./fsextra");
+const { ensureDir, fileExists, rmrf, copyFile } = require("./fsextra");
 const { info, warn, err, ok, hr } = require("./ui");
 const { normalizeRetention, filterReleaseNames, computeKeepSet } = require("./retention");
 const { getTarRoot } = require("./tarSafe");
@@ -378,26 +378,7 @@ function cleanupLocalReleases({ targetCfg, layout, current, policy }) {
   ok(`Retention: removed ${toDelete.length} old release(s)`);
 }
 
-function cleanupFastReleasesLocal({ targetCfg, layout, current }) {
-  const appName = targetCfg.appName || targetCfg.serviceName || "app";
-  const prefix = `${appName}-fast`;
-
-  const releases = fs.readdirSync(layout.releasesDir, { withFileTypes: true })
-    .filter((d) => d.isDirectory())
-    .map((d) => d.name)
-    .filter((name) => name.startsWith(prefix));
-
-  const toDelete = releases.filter((name) => name !== current);
-  if (!toDelete.length) return;
-
-  for (const name of toDelete) {
-    rmrf(path.join(layout.releasesDir, name));
-  }
-
-  ok(`Fast cleanup: removed ${toDelete.length} old fast release(s)`);
-}
-
-function deployLocal({ targetCfg, artifactPath, repoConfigPath, pushConfig, policy, fast, bootstrap }) {
+function deployLocal({ targetCfg, artifactPath, repoConfigPath, pushConfig, policy, bootstrap }) {
   const layout = localInstallLayout(targetCfg);
   const thinMode = resolveThinMode(targetCfg);
   const integrityFile = targetCfg && targetCfg._thinIntegrityFile ? targetCfg._thinIntegrityFile : "ih";
@@ -473,49 +454,9 @@ function deployLocal({ targetCfg, artifactPath, repoConfigPath, pushConfig, poli
 
   ok(`Deployed (files only): ${folderName}`);
 
-  if (!fast) cleanupLocalReleases({ targetCfg, layout, current: folderName, policy });
-  // Always clean fast releases after a successful normal deploy.
-  cleanupFastReleasesLocal({ targetCfg, layout, current: folderName });
+  cleanupLocalReleases({ targetCfg, layout, current: folderName, policy });
 
   return { layout, extractedDir, folderName };
-}
-
-function deployLocalFast({ targetCfg, releaseDir, repoConfigPath, pushConfig, buildId }) {
-  const layout = localInstallLayout(targetCfg);
-  const thinMode = resolveThinMode(targetCfg);
-
-  ensureDir(layout.installDir);
-  ensureDir(layout.releasesDir);
-  ensureDir(layout.sharedDir);
-
-  const appName = targetCfg.appName || targetCfg.serviceName || "app";
-  const suffix = buildId ? String(buildId) : "fast";
-  const folderName = `${appName}-fast-${suffix}`;
-  const relDir = path.join(layout.releasesDir, folderName);
-
-  rmrf(relDir);
-  ensureDir(relDir);
-
-  copyDir(releaseDir, relDir);
-
-  if (thinMode === "bootstrap") {
-    warn("FAST mode: removing thin bootstrap runtime so bundle release can run.");
-  }
-  cleanupThinBootstrapLocal(layout, { integrityFile: targetCfg && targetCfg._thinIntegrityFile ? targetCfg._thinIntegrityFile : "ih" });
-
-  fs.writeFileSync(layout.currentFile, folderName, "utf-8");
-
-  const sharedCfg = path.join(layout.sharedDir, "config.json5");
-  if (pushConfig || !fileExists(sharedCfg)) {
-    copyFile(repoConfigPath, sharedCfg);
-    ok(`Config updated: ${sharedCfg}`);
-  } else {
-    ok(`Config preserved (drift-safe): ${sharedCfg}`);
-  }
-
-  ok(`Deployed (fast): ${folderName} (${buildId || "fast"})`);
-  cleanupFastReleasesLocal({ targetCfg, layout, current: folderName });
-  return { layout, relDir, folderName };
 }
 
 function checkConfigDriftLocal({ targetCfg, localConfigPath, showDiff = true }) {
@@ -777,7 +718,6 @@ function runLocalForeground(targetCfg, opts = {}) {
 function rollbackLocal(targetCfg) {
   const layout = localInstallLayout(targetCfg);
   const appName = targetCfg.appName || targetCfg.serviceName || "app";
-  const fastPrefix = `${appName}-fast-`;
   const thinMode = resolveThinMode(targetCfg);
   const integrityFile = targetCfg && targetCfg._thinIntegrityFile ? targetCfg._thinIntegrityFile : "ih";
   if (!fileExists(layout.currentFile)) throw new Error("No current.buildId – deploy first.");
@@ -796,11 +736,8 @@ function rollbackLocal(targetCfg) {
   }
   let prev = null;
   for (let i = idx + 1; i < releases.length; i += 1) {
-    const candidate = releases[i];
-    if (!candidate.startsWith(fastPrefix)) {
-      prev = candidate;
-      break;
-    }
+    prev = releases[i];
+    break;
   }
   if (!prev) {
     throw new Error("No previous release to rollback to.");
@@ -856,7 +793,6 @@ function uninstallLocal(targetCfg) {
 module.exports = {
   bootstrapLocal,
   deployLocal,
-  deployLocalFast,
   statusLocal,
   logsLocal,
   enableLocal,

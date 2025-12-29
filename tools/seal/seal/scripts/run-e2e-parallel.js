@@ -104,7 +104,7 @@ function writeCombinedSummary(summaryPath, groupOrder, groupSummary, syntheticRo
 }
 
 function spawnRunner(env, label) {
-  const child = spawn(RUNNER, [], { env, stdio: "inherit" });
+  const child = spawn("bash", [RUNNER], { env, stdio: "inherit" });
   const start = Date.now();
   const promise = new Promise((resolve) => {
     let settled = false;

@@ -4387,6 +4387,13 @@ async function runReleaseBootstrapStageScan({ releaseDir, runTimeoutMs, stage, p
       });
     });
   });
+  const spawnError = new Promise((_, reject) => {
+    child.on("error", (err) => {
+      const msg = err && err.message ? err.message : String(err);
+      reject(new Error(`spawn failed: ${msg}`));
+    });
+  });
+  spawnError.catch(() => {});
 
   let scanRes = { skip: "scan not executed" };
   try {
@@ -4395,6 +4402,7 @@ async function runReleaseBootstrapStageScan({ releaseDir, runTimeoutMs, stage, p
       Promise.race([
         waitForMarkerFile(markerPath, stage, markerTimeout).then(() => ({ ok: true })),
         exitPromise.then((info) => ({ exit: info })),
+        spawnError,
       ])
     );
     if (winner && winner.exit) {
@@ -5001,10 +5009,17 @@ async function runReleaseBootstrapCrashNoLeak({ releaseDir, runTimeoutMs, stage,
       resolve({ code, signal, stdout, stderr, pid: child.pid });
     });
   });
+  const spawnError = new Promise((_, reject) => {
+    child.on("error", (err) => {
+      const msg = err && err.message ? err.message : String(err);
+      reject(new Error(`spawn failed: ${msg}`));
+    });
+  });
+  spawnError.catch(() => {});
 
   let info = null;
   try {
-    info = await withTimeout("bootstrap crash", runTimeoutMs, () => exitPromise);
+    info = await withTimeout("bootstrap crash", runTimeoutMs, () => Promise.race([exitPromise, spawnError]));
   } finally {
     await terminateChild(child);
   }
@@ -5057,10 +5072,17 @@ async function runReleaseBootstrapCrashExpectCore({ releaseDir, runTimeoutMs, st
       resolve({ code, signal, stdout, stderr, pid: child.pid });
     });
   });
+  const spawnError = new Promise((_, reject) => {
+    child.on("error", (err) => {
+      const msg = err && err.message ? err.message : String(err);
+      reject(new Error(`spawn failed: ${msg}`));
+    });
+  });
+  spawnError.catch(() => {});
 
   let info = null;
   try {
-    info = await withTimeout("bootstrap crash (expect core)", runTimeoutMs, () => exitPromise);
+    info = await withTimeout("bootstrap crash (expect core)", runTimeoutMs, () => Promise.race([exitPromise, spawnError]));
   } finally {
     await terminateChild(child);
   }
@@ -5932,6 +5954,13 @@ async function runReleaseStraceCapture({ releaseDir, runTimeoutMs, env }) {
       stdout: Buffer.concat(outChunks).toString("utf8"),
       stderr: Buffer.concat(errChunks).toString("utf8"),
     }));
+    child.on("error", (err) => resolve({
+      code: null,
+      signal: null,
+      stdout: Buffer.concat(outChunks).toString("utf8"),
+      stderr: Buffer.concat(errChunks).toString("utf8"),
+      error: err,
+    }));
   });
 
   try {
@@ -5953,6 +5982,9 @@ async function runReleaseStraceCapture({ releaseDir, runTimeoutMs, env }) {
   }
 
   const exit = await exitPromise;
+  if (exit.error) {
+    throw exit.error;
+  }
   const out = `${exit.stdout || ""}${exit.stderr || ""}`;
   if (/operation not permitted/i.test(out) || /permission denied/i.test(out) || /ptrace/i.test(out)) {
     log("SKIP: strace capture blocked by ptrace policy");

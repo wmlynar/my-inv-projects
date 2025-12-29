@@ -12,9 +12,8 @@ const { info, warn, ok, hr } = require("../lib/ui");
 const { resolveTiming } = require("../lib/timing");
 
 const { cmdRelease } = require("./release");
-const { buildFastRelease } = require("../lib/fastRelease");
-const { deployLocal, deployLocalFast, bootstrapLocal, statusLocal, logsLocal, enableLocal, startLocal, restartLocal, stopLocal, disableLocalOnly, disableLocal, rollbackLocal, downLocal, uninstallLocal, runLocalForeground, ensureCurrentReleaseLocal, waitForReadyLocal, checkConfigDriftLocal } = require("../lib/deploy");
-const { deploySsh, deploySshFast, bootstrapSsh, installServiceSsh, statusSsh, logsSsh, enableSsh, startSsh, restartSsh, stopSsh, disableSshOnly, disableSsh, rollbackSsh, downSsh, uninstallSsh, runSshForeground, ensureCurrentReleaseSsh, waitForReadySsh, checkConfigDriftSsh } = require("../lib/deploySsh");
+const { deployLocal, bootstrapLocal, statusLocal, logsLocal, enableLocal, startLocal, restartLocal, stopLocal, disableLocalOnly, disableLocal, rollbackLocal, downLocal, uninstallLocal, runLocalForeground, ensureCurrentReleaseLocal, waitForReadyLocal, checkConfigDriftLocal } = require("../lib/deploy");
+const { deploySsh, bootstrapSsh, installServiceSsh, statusSsh, logsSsh, enableSsh, startSsh, restartSsh, stopSsh, disableSshOnly, disableSsh, rollbackSsh, downSsh, uninstallSsh, runSshForeground, ensureCurrentReleaseSsh, waitForReadySsh, checkConfigDriftSsh } = require("../lib/deploySsh");
 
 function ensureConfigDriftOk({ targetCfg, targetName, configFile, acceptDrift }) {
   if (acceptDrift) {
@@ -128,8 +127,8 @@ function resolveWaitEnabled(opts, targetCfg, defaultEnabled) {
   return defaultEnabled;
 }
 
-function resolveTarget(projectRoot, targetArg) {
-  const proj = loadProjectConfig(projectRoot);
+function resolveTarget(projectRoot, targetArg, opts) {
+  const proj = loadProjectConfig(projectRoot, { profileOverlay: opts && opts.profileOverlay });
   if (!proj) throw new Error("Brak seal.json5 (projekt). Jeśli to root monorepo z listą projects, uruchom polecenie w root (wykona się dla podprojektów) albo przejdź do podprojektu.");
   const targetName = resolveTargetName(projectRoot, targetArg);
   const t = loadTargetConfig(projectRoot, targetName);
@@ -155,27 +154,23 @@ async function ensureArtifact(projectRoot, proj, opts, targetName, configName, t
   if (last) return { path: last, built: false };
 
   // Build now
-  await cmdRelease(projectRoot, targetName, { config: configName, skipCheck: false, packager: null, timing });
+  await cmdRelease(projectRoot, targetName, {
+    config: configName,
+    skipCheck: false,
+    packager: null,
+    profileOverlay: opts.profileOverlay || null,
+    timing,
+  });
   const built = findLastArtifact(projectRoot, proj.appName);
   if (!built) throw new Error("Build produced no artifact");
   return { path: built, built: true };
-}
-
-function ensureFastRelease(projectRoot, proj, targetCfg, configName, opts, timing) {
-  if (opts.artifact) {
-    throw new Error("Fast deploy ignores --artifact (bundle is built locally).");
-  }
-  if (opts && opts.fastNoNodeModules) {
-    warn("FAST mode ignores --fast-no-node-modules (bundle has no node_modules).");
-  }
-  return buildFastRelease({ projectRoot, projectCfg: proj, targetCfg, configName, timing });
 }
 
 async function cmdDeploy(cwd, targetArg, opts) {
   opts = opts || {};
   const { timing, report } = resolveTiming(opts.timing);
   const projectRoot = findProjectRoot(cwd);
-  const { proj, targetName, targetCfg, packagerSpec } = resolveTarget(projectRoot, targetArg);
+  const { proj, targetName, targetCfg, packagerSpec } = resolveTarget(projectRoot, targetArg, opts);
   const policy = loadPolicy(projectRoot);
   const sentinelCfg = resolveSentinelConfig({ projectRoot, projectCfg: proj, targetCfg, targetName, packagerSpec });
   const autoBootstrapEnabled = !(proj && proj.deploy && proj.deploy.autoBootstrap === false);
@@ -195,13 +190,9 @@ async function cmdDeploy(cwd, targetArg, opts) {
     });
   }
 
-  const isFast = !!opts.fast;
   const isSsh = (targetCfg.kind || "local").toLowerCase() === "ssh";
   if (payloadOnly && !isSsh) {
     throw new Error("Payload-only deploy is supported only for SSH targets");
-  }
-  if (payloadOnly && isFast) {
-    throw new Error("Payload-only deploy is not supported with --fast");
   }
   if (payloadOnly && opts.bootstrap) {
     throw new Error("Payload-only deploy cannot be combined with --bootstrap");
@@ -210,24 +201,16 @@ async function cmdDeploy(cwd, targetArg, opts) {
     throw new Error("Payload-only deploy requires a local releaseDir (use: seal ship <target> --payload-only)");
   }
 
-  const fastRelease = isFast
-    ? await timing.timeAsync("deploy.fast_build", async () => ensureFastRelease(projectRoot, proj, targetCfg, configName, opts, timing))
-    : null;
   let artifactInfo = null;
   let artifactPath = null;
-  if (!isFast && !payloadOnly) {
+  if (!payloadOnly) {
     artifactInfo = await timing.timeAsync("deploy.ensure_artifact", async () => ensureArtifact(projectRoot, proj, opts, targetName, configName, timing));
     artifactPath = artifactInfo ? artifactInfo.path : null;
-  } else if (!isFast && opts.artifact) {
-    artifactPath = path.resolve(opts.artifact);
   }
 
   hr();
   info(`Deploy -> ${targetName} (${targetCfg.kind})`);
-  if (!isFast && !payloadOnly && artifactInfo && !artifactInfo.built) info(`Artifact: ${artifactPath}`);
-  if (isFast) {
-    warn("FAST mode: bundle synced via rsync (unsafe, no SEA).");
-  }
+  if (!payloadOnly && artifactInfo && !artifactInfo.built) info(`Artifact: ${artifactPath}`);
   if (payloadOnly) {
     info("Payload-only deploy: updating thin payload only.");
   }
@@ -244,33 +227,19 @@ async function cmdDeploy(cwd, targetArg, opts) {
   let autoBootstrap = false;
   if (isSsh) {
     info(`Auto bootstrap: ${autoBootstrapEnabled ? "enabled" : "disabled"} (deploy.autoBootstrap)`);
-    let deployRes;
-    if (isFast) {
-      deployRes = deploySshFast({
-        targetCfg,
-        releaseDir: fastRelease.releaseDir,
-        repoConfigPath: configFile,
-        pushConfig: !!opts.pushConfig,
-        bootstrap: !!opts.bootstrap,
-        allowAutoBootstrap: autoBootstrapEnabled,
-        buildId: fastRelease.buildId,
-        timing,
-      });
-    } else {
-      deployRes = deploySsh({
-        targetCfg,
-        artifactPath,
-        repoConfigPath: configFile,
-        pushConfig: !!opts.pushConfig,
-        bootstrap: !!opts.bootstrap,
-        policy,
-        releaseDir: opts.releaseDir || null,
-        buildId: opts.buildId || null,
-        allowAutoBootstrap: autoBootstrapEnabled,
-        payloadOnlyRequired: payloadOnly,
-        timing,
-      });
-    }
+    const deployRes = deploySsh({
+      targetCfg,
+      artifactPath,
+      repoConfigPath: configFile,
+      pushConfig: !!opts.pushConfig,
+      bootstrap: !!opts.bootstrap,
+      policy,
+      releaseDir: opts.releaseDir || null,
+      buildId: opts.buildId || null,
+      allowAutoBootstrap: autoBootstrapEnabled,
+      payloadOnlyRequired: payloadOnly,
+      timing,
+    });
     autoBootstrap = !!(deployRes && deployRes.autoBootstrap);
     const shouldInstall = !!opts.bootstrap || autoBootstrap;
     if (shouldInstall) {
@@ -286,24 +255,14 @@ async function cmdDeploy(cwd, targetArg, opts) {
       }
     }
   } else {
-    if (isFast) {
-      timing.timeSync("deploy.local.fast", () => deployLocalFast({
-        targetCfg,
-        releaseDir: fastRelease.releaseDir,
-        repoConfigPath: configFile,
-        pushConfig: !!opts.pushConfig,
-        buildId: fastRelease.buildId,
-      }));
-    } else {
-      timing.timeSync("deploy.local", () => deployLocal({
-        targetCfg,
-        artifactPath,
-        repoConfigPath: configFile,
-        pushConfig: !!opts.pushConfig,
-        policy,
-        bootstrap: !!opts.bootstrap,
-      }));
-    }
+    timing.timeSync("deploy.local", () => deployLocal({
+      targetCfg,
+      artifactPath,
+      repoConfigPath: configFile,
+      pushConfig: !!opts.pushConfig,
+      policy,
+      bootstrap: !!opts.bootstrap,
+    }));
   }
 
   if (opts.restart) {
@@ -368,34 +327,6 @@ async function cmdDeploy(cwd, targetArg, opts) {
 async function cmdShip(cwd, targetArg, opts) {
   opts = opts || {};
   const { timing, report } = resolveTiming(opts.timing);
-  if (opts.payloadOnly && opts.fast) {
-    throw new Error("Payload-only build is not supported with --fast");
-  }
-  if (opts.fast) {
-    if (opts.packager) warn("FAST mode ignores --packager.");
-    if (opts.skipCheck) warn("FAST mode ignores --skip-check.");
-    const deployOpts = {
-      bootstrap: !!opts.bootstrap,
-      pushConfig: !!opts.pushConfig,
-      skipSentinelVerify: !!opts.skipSentinelVerify,
-      restart: true,
-      artifact: null,
-      fast: true,
-      fastNoNodeModules: !!opts.fastNoNodeModules,
-      acceptDrift: !!opts.acceptDrift,
-      warnDrift: !!opts.warnDrift,
-      wait: opts.wait !== false,
-      waitTimeout: opts.waitTimeout,
-      waitInterval: opts.waitInterval,
-      waitUrl: opts.waitUrl,
-      waitMode: opts.waitMode,
-      waitHttpTimeout: opts.waitHttpTimeout,
-      timing,
-    };
-    await timing.timeAsync("ship.deploy", async () => cmdDeploy(cwd, targetArg, deployOpts));
-    if (report) timing.report({ title: "Ship timing" });
-    return;
-  }
 
   const releaseOpts = {
     config: null,
@@ -404,6 +335,7 @@ async function cmdShip(cwd, targetArg, opts) {
     checkCc: opts.checkCc || null,
     packager: opts.packager || null,
     payloadOnly: !!opts.payloadOnly,
+    profileOverlay: opts.profileOverlay || null,
     timing,
   };
   const releaseRes = await timing.timeAsync("ship.release", async () => cmdRelease(cwd, targetArg, releaseOpts));
@@ -419,6 +351,7 @@ async function cmdShip(cwd, targetArg, opts) {
     acceptDrift: !!opts.acceptDrift,
     warnDrift: !!opts.warnDrift,
     payloadOnly,
+    profileOverlay: opts.profileOverlay || null,
     wait: opts.wait !== false,
     waitTimeout: opts.waitTimeout,
     waitInterval: opts.waitInterval,

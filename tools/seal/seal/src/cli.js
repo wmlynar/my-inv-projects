@@ -1,5 +1,9 @@
 "use strict";
 
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+
 const { Command } = require("commander");
 
 const { wizard } = require("./commands/wizard");
@@ -7,7 +11,7 @@ const { cmdInit } = require("./commands/init");
 const { cmdCheck } = require("./commands/check");
 const { cmdBatch } = require("./commands/batch");
 const { cmdClean } = require("./commands/clean");
-const { cmdCompletion } = require("./commands/completion");
+const { cmdCompletion, getCompletionScript } = require("./commands/completion");
 const { cmdRelease } = require("./commands/release");
 const { cmdVerify } = require("./commands/verify");
 const { cmdRunLocal } = require("./commands/runLocal");
@@ -31,6 +35,47 @@ function hasHelpOrVersionFlag(args) {
   return args.some((a) => a === "--help" || a === "-h" || a === "--version" || a === "-V");
 }
 
+function shouldAutoInstallCompletion() {
+  if (process.env.SEAL_NO_COMPLETION_AUTO === "1") return false;
+  if (process.env.CI) return false;
+  const shell = process.env.SHELL || "";
+  const isBash = shell.endsWith("/bash") || shell === "bash" || !!process.env.BASH_VERSION;
+  if (!isBash) return false;
+  if (!process.stdout.isTTY && !process.stdin.isTTY) return false;
+  return true;
+}
+
+function ensureBashCompletionInstalled() {
+  if (!shouldAutoInstallCompletion()) return;
+  const userDir =
+    process.env.BASH_COMPLETION_USER_DIR ||
+    path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), ".local", "share"), "bash-completion");
+  const completionDir = path.join(userDir, "completions");
+  const completionPath = path.join(completionDir, "seal");
+  try {
+    const script = getCompletionScript("bash");
+    const existing = fs.existsSync(completionPath)
+      ? fs.readFileSync(completionPath, "utf-8")
+      : null;
+    if (existing === script) return;
+    fs.mkdirSync(completionDir, { recursive: true });
+    fs.writeFileSync(completionPath, script, "utf-8");
+  } catch {
+    // Best-effort only; completion should never break CLI usage.
+  }
+}
+
+function applyFastOverlay(opts) {
+  if (!opts) return opts;
+  if (opts.fast) {
+    if (opts.profileOverlay && String(opts.profileOverlay) !== "fast") {
+      throw new Error(`--fast is shorthand for --profile-overlay fast (got: ${opts.profileOverlay})`);
+    }
+    opts.profileOverlay = "fast";
+  }
+  return opts;
+}
+
 function getAutoBatchRequest(argv, cwd) {
   if (process.env[BATCH_SKIP_ENV] === "1") return null;
   const args = argv.slice(2);
@@ -45,6 +90,7 @@ function getAutoBatchRequest(argv, cwd) {
 
 async function main(argv) {
   const cwd = process.cwd();
+  ensureBashCompletionInstalled();
   const autoBatch = getAutoBatchRequest(argv, cwd);
   if (autoBatch) {
     await cmdBatch(cwd, autoBatch.cmd, autoBatch.args, {
@@ -96,7 +142,9 @@ async function main(argv) {
     .option("--strict", "Treat warnings as errors", false)
     .option("--verbose", "Show tool output (diagnostics for slow/hanging checks)", false)
     .option("--cc <compiler>", "C compiler for thin toolchain check (e.g. gcc/clang)", null)
-    .action(async (target, opts) => cmdCheck(process.cwd(), target, opts));
+    .option("--profile-overlay <name>", "Apply build profile overlay (seal.json5 build.profileOverlays.<name>)", null)
+    .option("--fast", "Shorthand for --profile-overlay fast", false)
+    .action(async (target, opts) => cmdCheck(process.cwd(), target, applyFastOverlay(opts)));
 
   program
     .command("target")
@@ -113,7 +161,9 @@ async function main(argv) {
   configCmd
     .command("explain [targetOrConfig]")
     .description("Explain resolved config (profiles, packager, thin/protection/sentinel)")
-    .action(async (targetOrConfig) => cmdConfigExplain(process.cwd(), targetOrConfig));
+    .option("--profile-overlay <name>", "Apply build profile overlay for explain (seal.json5 build.profileOverlays.<name>)", null)
+    .option("--fast", "Shorthand for --profile-overlay fast", false)
+    .action(async (targetOrConfig, opts) => cmdConfigExplain(process.cwd(), targetOrConfig, applyFastOverlay(opts)));
   configCmd
     .command("diff [targetOrConfig]")
     .description("Show diff between repo seal-config/configs and server shared/config.json5 (requires SSH). Accepts target or config path/name.")
@@ -165,8 +215,10 @@ async function main(argv) {
     .option("--check-cc <compiler>", "C compiler for preflight checks (e.g. gcc/clang)", null)
     .option("--packager <packager>", "Override packager: thin-split|sea|bundle|none|auto(=thin-split)", null)
     .option("--payload-only", "Build thin payload only (skip launcher/runtime; requires thin-split bootstrap)", false)
+    .option("--profile-overlay <name>", "Apply build profile overlay (seal.json5 build.profileOverlays.<name>)", null)
+    .option("--fast", "Shorthand for --profile-overlay fast", false)
     .option("--timing", "Print timing summary for the build", false)
-    .action(async (target, opts) => cmdRelease(process.cwd(), target, opts));
+    .action(async (target, opts) => cmdRelease(process.cwd(), target, applyFastOverlay(opts)));
 
   program
     .command("run-local")
@@ -209,10 +261,10 @@ async function main(argv) {
     .option("--accept-drift, --allow-drift", "Allow start/restart when repo config differs from target", false)
     .option("--warn-drift", "Warn before deploy if repo config differs from target", false)
     .option("--artifact <path>", "Deploy a specific artifact (.tgz) instead of building", null)
-    .option("--fast", "Fast deploy from sources (unsafe)", false)
-    .option("--fast-no-node-modules", "Exclude node_modules in fast mode", false)
+    .option("--profile-overlay <name>", "Apply build profile overlay (seal.json5 build.profileOverlays.<name>)", null)
+    .option("--fast", "Shorthand for --profile-overlay fast", false)
     .option("--timing", "Print timing summary for deploy steps", false)
-    .action(async (target, opts) => cmdDeploy(process.cwd(), target, opts));
+    .action(async (target, opts) => cmdDeploy(process.cwd(), target, applyFastOverlay(opts)));
 
   program
     .command("ship")
@@ -234,10 +286,10 @@ async function main(argv) {
     .option("--check-cc <compiler>", "C compiler for preflight checks (e.g. gcc/clang)", null)
     .option("--packager <packager>", "Override packager: thin-split|sea|bundle|none|auto(=thin-split)", null)
     .option("--payload-only", "Build thin payload only (skip launcher/runtime; requires thin-split bootstrap)", false)
-    .option("--fast", "Fast ship from sources (unsafe)", false)
-    .option("--fast-no-node-modules", "Exclude node_modules in fast mode", false)
+    .option("--profile-overlay <name>", "Apply build profile overlay (seal.json5 build.profileOverlays.<name>)", null)
+    .option("--fast", "Shorthand for --profile-overlay fast", false)
     .option("--timing", "Print timing summary for ship steps", false)
-    .action(async (target, opts) => cmdShip(process.cwd(), target, opts));
+    .action(async (target, opts) => cmdShip(process.cwd(), target, applyFastOverlay(opts)));
 
   program
     .command("rollback")

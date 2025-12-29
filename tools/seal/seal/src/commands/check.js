@@ -103,7 +103,7 @@ async function cmdCheck(cwd, targetArg, opts) {
   const errors = [];
   const warnings = [];
 
-  const proj = loadProjectConfig(projectRoot);
+  const proj = loadProjectConfig(projectRoot, { profileOverlay: opts.profileOverlay });
   if (!proj) {
     errors.push("Missing seal.json5 (project). If this is a workspace root with projects, run the command from that root (it will execute for subprojects) or cd into a project.");
   }
