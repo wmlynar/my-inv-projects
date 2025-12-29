@@ -2547,3 +2547,12 @@
   - Wymaganie: `wait` zawsze obsluguj jawnie (`if wait ...; then ... else ... fi`), agreguj statusy i wypisuj summary niezaleznie od pojedynczych porazek.
 - Blad: `SEAL_E2E_EXAMPLE_ROOT`/`SEAL_E2E_SEED_ROOT` byly podawane jako sciezki relatywne, co przy `rm -rf` dzialalo w nieoczekiwanym katalogu.
   - Wymaganie: wymagaj sciezek absolutnych (lub normalizuj przez `realpath`) i loguj efektowny root przed uzyciem.
+
+## Dodatkowe wnioski (batch 321-325)
+
+- Blad: aktualizacja `summary/last.tsv` w trybie rownoleglym powodowala wyscigi (kilka procesow zapisuje “last” naraz), przez co “last” nie odpowiadal faktycznie ostatniemu runowi.
+  - Wymaganie: `last.tsv` aktualizuje tylko proces nadrzedny albo zapis jest chroniony lockiem; loguj, kto i kiedy aktualizuje “last”.
+- Blad: `SEAL_E2E_TESTS` z duplikatami lub pustymi tokenami powodowal powtórne uruchomienia testow albo mylacy “pusty filtr”.
+  - Wymaganie: normalizuj listy testow (trim, usun puste, dedupe) i loguj finalny zestaw uruchamianych testow.
+- Blad: tryb fail‑fast ubijal grupy, ale zostawial procesy potomne i nie drukowal summary.
+  - Wymaganie: fail‑fast zabija cala grupe procesow (PGID) i **zawsze** wypisuje summary/cleanup w `trap`, nawet przy wczesnym wyjsciu.
