@@ -1154,10 +1154,10 @@ if [ ! -d "$TMPDIR_SAFE" ] || [ ! -w "$TMPDIR_SAFE" ] || [ ! -x "$TMPDIR_SAFE" ]
   TMPDIR_SAFE="/tmp"
 fi
 if [ -n "$BASE_DIR" ] && [ -d "$BASE_DIR" ]; then
-  if [ -w "$BASE_DIR" ]; then
+  if [ -w "$BASE_DIR" ] && [ -x "$BASE_DIR" ]; then
     XATTR_PATH="$BASE_DIR"
   else
-    if command -v sudo >/dev/null 2>&1 && sudo -n test -w "$BASE_DIR" >/dev/null 2>&1; then
+    if command -v sudo >/dev/null 2>&1 && sudo -n test -w "$BASE_DIR" -a -x "$BASE_DIR" >/dev/null 2>&1; then
       XATTR_PATH="$BASE_DIR"
       XATTR_SUDO=1
     else

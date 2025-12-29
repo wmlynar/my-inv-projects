@@ -32,6 +32,23 @@ dir_has_files() {
   [ -d "$1" ] && [ -n "$(ls -A "$1" 2>/dev/null)" ]
 }
 
+if [ -z "${SEAL_E2E_LIMITED_HOST:-}" ]; then
+  SEAL_E2E_LIMITED_HOST=1
+fi
+
+if [ -z "${SEAL_E2E_LOG_DIR:-}" ]; then
+  SEAL_E2E_LOG_DIR="/root/.cache/seal/e2e-logs/$(date +%Y%m%d-%H%M%S)-$$"
+fi
+
+if [ -z "${SEAL_E2E_LOG_FILTERED:-}" ]; then
+  SEAL_E2E_LOG_FILTERED=0
+fi
+
+fail() {
+  echo "[docker-e2e] ERROR: $*" >&2
+  exit 1
+}
+
 load_e2e_config() {
   local cfg="${SEAL_E2E_CONFIG:-}"
   local default_cfg="$REPO_ROOT/.seal/e2e.env"
@@ -59,23 +76,6 @@ load_e2e_config() {
 }
 
 load_e2e_config
-
-if [ -z "${SEAL_E2E_LIMITED_HOST:-}" ]; then
-  SEAL_E2E_LIMITED_HOST=1
-fi
-
-if [ -z "${SEAL_E2E_LOG_DIR:-}" ]; then
-  SEAL_E2E_LOG_DIR="/root/.cache/seal/e2e-logs/$(date +%Y%m%d-%H%M%S)-$$"
-fi
-
-if [ -z "${SEAL_E2E_LOG_FILTERED:-}" ]; then
-  SEAL_E2E_LOG_FILTERED=0
-fi
-
-fail() {
-  echo "[docker-e2e] ERROR: $*" >&2
-  exit 1
-}
 
 SUDO_KEEPALIVE_PID=""
 
