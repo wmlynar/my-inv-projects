@@ -945,6 +945,9 @@
 - Blad: loader configu wywolywal helper (`fail`) zdefiniowany ponizej, co przy bledzie configu konczylo sie `fail: command not found`.
   - Wymaganie: helpery uzywane w preflight/config load musza byc zdefiniowane **przed** ich uzyciem; w shell nie zakladaj istnienia funkcji ponizej miejsca wywolania.
 
+- Blad: uruchomienie E2E przez `sudo` nie moglo odczytac `SEAL_E2E_CONFIG` (plik w `$HOME` z perms 600) albo wskazywalo na nieistniejacy plik (inny `HOME`/CWD), co powodowalo fallback lub fail w pozniejszym kroku.
+  - Wymaganie: config E2E jest rozwiazywany do sciezki absolutnej **przed** eskalacja albo jest czytelny dla uzytkownika uruchamiajacego test (root). Loguj `whoami` + sciezke configu.
+
 - Blad: plik configu E2E byl `source`-owany jako shell, co pozwalalo na wykonanie polecen z pliku.
   - Wymaganie: plik env jest traktowany jako dane (`KEY=VALUE`), albo przed `source` sprawdz ownership/perms (owner-only, bez world-writable) i loguj ostrzezenie.
 

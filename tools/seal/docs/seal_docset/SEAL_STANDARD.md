@@ -466,6 +466,7 @@ Przykład:
 - STD-089t (SHOULD): E2E ma jeden kanoniczny wrapper (skrypt/komenda), ktory laduje config z pliku `.env` i loguje **effective config**; dokumentacja nie wymaga kopiowania dlugich, wielolinijkowych komend z dziesiatkami ENV.
 - STD-089t.a (SHOULD): duze konfiguracje przekazuj przez plik `.env`/config (nie przez jedna linie shell), aby uniknac limitu `ARG_MAX`.
 - STD-089t.b (SHOULD): helpery uzywane w preflight/config load sa zdefiniowane **przed** wywolaniem loadera; unikaj `command not found` w przypadku blednego configu.
+- STD-089t.c (SHOULD): przy uruchamianiu E2E przez `sudo` config jest rozwiazywany do sciezki absolutnej **przed** eskalacja lub jest czytelny dla roota; loguj `whoami` i sciezke configu.
 - STD-089u (SHOULD): instalatory narzedzi E2E obsluguja brak pakietu w APT (np. `criu` bez kandydata) przez build ze zrodel lub jawny SKIP z instrukcja; brak pakietu nie moze konczyc sie nieczytelnym `apt-get` error.
 - STD-089v (SHOULD): testy E2E loguja zuzycie dysku (np. `df -h` dla cache/log/tmp) na starcie i koncu, aby szybko wykryc leak/rozrost.
 - STD-089w (SHOULD): E2E ma retention/limit dla cache/logow/artefaktow (liczba/rozmiar/TTL) i czytelne instrukcje cleanup przy `ENOSPC`.
