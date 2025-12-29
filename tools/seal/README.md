@@ -244,6 +244,8 @@ build: {
 seal ship prod --profile-overlay fast
 seal ship prod --fast
 ```
+`--fast` to celowy skrót do szybkich iteracji w trakcie developmentu (krótsze cykle deployu).  
+Gdy projekt dojrzewa, przechodzisz na pełne buildy bez `--fast`.
 
 ---
 

@@ -104,6 +104,17 @@
       "requirements": []
     },
     {
+      "name": "profile-overlay",
+      "category": "misc",
+      "parallel": true,
+      "description": "Validates profile overlay in config explain and build metadata.",
+      "skipRisk": "low",
+      "failHint": "Check build.profileOverlays in seal.json5 and config explain output.",
+      "script": "tools/seal/seal/scripts/test-profile-overlay-e2e.js",
+      "hostOnly": false,
+      "requirements": []
+    },
+    {
       "name": "install",
       "category": "misc",
       "parallel": false,
@@ -240,6 +251,17 @@
       "skipRisk": "low",
       "failHint": "Check decoy config and output integrity.",
       "script": "tools/seal/seal/scripts/test-decoy-e2e.js",
+      "hostOnly": false,
+      "requirements": []
+    },
+    {
+      "name": "config-sync",
+      "category": "deploy",
+      "parallel": false,
+      "description": "Exercises config add/diff/push/pull with SSH sync.",
+      "skipRisk": "high",
+      "failHint": "Check SSH env (SEAL_SHIP_SSH_*), sudo, and remote shared/config.json5.",
+      "script": "tools/seal/seal/scripts/test-config-sync-e2e.js",
       "hostOnly": false,
       "requirements": []
     },

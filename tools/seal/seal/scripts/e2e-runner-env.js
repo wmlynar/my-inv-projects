@@ -34,6 +34,8 @@ function applyE2EFeatureFlags(env, toolset) {
   env.SEAL_POSTJECT_E2E = "1";
   env.SEAL_SHIP_E2E = "1";
   env.SEAL_DECOY_E2E = "1";
+  env.SEAL_CONFIG_SYNC_E2E = "1";
+  env.SEAL_PROFILE_OVERLAY_E2E = "1";
   env.SEAL_THIN_CHUNK_SIZE = env.SEAL_THIN_CHUNK_SIZE || "8388608";
   env.SEAL_THIN_ZSTD_LEVEL = env.SEAL_THIN_ZSTD_LEVEL || "1";
   if (!env.SEAL_E2E_TIMEOUT_SCALE && env.SEAL_DOCKER_E2E === "1") {

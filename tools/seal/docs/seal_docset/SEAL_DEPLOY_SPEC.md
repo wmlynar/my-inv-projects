@@ -71,7 +71,7 @@ Najważniejsze zmiany względem v0.3.1:
 - Jeden format konfiguracji Seala: **JSON5** (`seal.json5` + `seal-config/*`).
 - Serwer bez symlinków: aktywny release jest wskazywany przez `current.buildId`, a `run-current.sh` uruchamia `appctl` z aktywnego release.
 - Retencja release’ów: domyślnie `keep_releases=1` (tylko ostatni release) + cleanup po udanym deployu.
-- Drift configu: domyślnie **błąd** (wymusza jawne `pull-config --apply` albo `--push-config`).
+- Drift configu: domyślnie **błąd** (wymusza jawne `seal config pull --apply` albo `--push-config`).
 
 ## Idea przewodnia (guiding idea)
 
@@ -105,7 +105,7 @@ Seal ma zdejmować z głowy temat „jak zabezpieczyć kod, żeby mnie nie okrad
 - 8. Konwencje repozytorium seal-deploy
 - 9. Workflow użytkownika (dev → seal → deploy → serwis)
 - 10. Konfiguracja: rozdzielenie „deploy” vs „config aplikacji”
-- 11. Serwer/robot: przygotowanie środowiska (bootstrap z `seal deploy --bootstrap`)
+- 11. Serwer/robot: przygotowanie środowiska (bootstrap z `seal ship --bootstrap`)
 - 12. Artefakty wdrożeniowe i struktura na serwerze
 - 13. Usługa systemd + `appctl`
 - 14. Sealing: bundlowanie, minifikacja, obfuskacja, binarka
@@ -275,7 +275,7 @@ Seal dostarcza:
   - deploy+restart+readiness (główny flow): `seal ship <target>`,
   - przygotowanie serwera (pierwszy raz): `seal ship <target> --bootstrap`,
   - serwis: `seal remote <target> logs|status|restart|stop|disable|down` + `seal run <target>`,
-  - operacje na konfiguracji: `seal diff-config <target>`, `seal pull-config <target>`,
+  - operacje na konfiguracji: `seal config diff <target>`, `seal config pull <target>`,
 - przykład (sample app) i/lub zestaw testów referencyjnych.
 
 **Ergonomia i diagnostyka:**
@@ -343,7 +343,7 @@ Ta sekcja jest celowo krótka: ma umożliwić szybkie zrozumienie *dlaczego* Sea
    Bo usuwa „konfigurację konfiguracji”. Wyjątki są jawne (`--config` / mapowanie), żeby nie robić magii.
 
 4) **Config edytowalny na serwerze + repo jako źródło prawdy**  
-   Bo serwis czasem wymaga hotfixu na miejscu, ale repo ma pozostać canonical. Stąd drift detection + `pull-config` jako domknięcie pętli.
+   Bo serwis czasem wymaga hotfixu na miejscu, ale repo ma pozostać canonical. Stąd drift detection + `seal config pull` jako domknięcie pętli.
 
 5) **Sekrety w repo i snapshotach są OK**  
    Bo środowisko z repo jest zaufane, a celem jest ochrona kodu źródłowego, nie ochrona sekretów.
@@ -582,8 +582,8 @@ W tej wersji dokumentu przyjmujemy zasadę:
 - **Repo jest źródłem prawdy**, ale zmiana zrobiona na serwerze może zostać *świadomie* „adoptowana” z powrotem do repo.
 
 Mechanizmy:
-- `seal diff-config <target>` – pokazuje różnice pomiędzy `seal-config/configs/<config>.json5` (repo) a `shared/config.json5` (serwer) lub ostatnim snapshotem.
-- `seal pull-config <target>` – pobiera aktualny config z serwera:
+- `seal config diff <target>` – pokazuje różnice pomiędzy `seal-config/configs/<config>.json5` (repo) a `shared/config.json5` (serwer) lub ostatnim snapshotem.
+- `seal config pull <target>` – pobiera aktualny config z serwera:
   - zawsze zapisuje `seal-out/remote/<target>.current.json5` + wpis do `seal-out/remote/<target>.history/`,
   - opcjonalnie `--apply` kopiuje ten plik jako `seal-config/configs/<config>.json5` (czyli „przenosi” zmianę z serwera do repo).
 - `seal deploy --push-config` – nadpisuje `shared/config.json5` configiem z repo (świadome „przywrócenie” repo na serwerze).
@@ -1401,6 +1401,8 @@ Alias (MAY): `seal wizard`.
 - `--bootstrap`: przygotowanie serwera (katalogi + uprawnienia; po udanym deployu instalacja runnera + unit, bez autostartu).
 - `--push-config`: świadomie nadpisuje `shared/config.json5` na serwerze wersją z repo.
 - `--profile-overlay <name>` / `--fast`: tymczasowe nadpisania builda.
+  - `--fast` jest celowym skrótem pod szybkie iteracje w trakcie developmentu (krótsze cykle deployu).
+  - Na końcowym etapie developmentu rekomendowane są pełne buildy bez `--fast`.
 - `--no-wait` lub `--wait-*`: sterowanie readiness po restarcie.
 
 #### `seal deploy <target...> [--bootstrap]`
@@ -1431,7 +1433,7 @@ Docelowe API (MUST) jako podkomendy:
 - `seal config pull <target> [--apply]` – pobierz config z serwera (świadome „serwer → repo”),
 - `seal config push <target>` – świadomie wypchnij config z repo na serwer.
 
-Kompatybilność (MAY): aliasy historyczne `seal diff-config`, `seal pull-config`.
+Kompatybilność (MAY): brak historycznych aliasów.
 
 ---
 
@@ -1849,6 +1851,7 @@ Przykład (aktualny dla v0.5):
 - `build.securityProfile`: preset poziomu zabezpieczeń (`minimal|balanced|strict|max`), **domyślnie `strict`**. Preset ustawia **domyślne wartości** (nie nadpisuje jawnych pól).
 - `build.obfuscationProfile`: jeśli nie ustawione jawnie, dziedziczy poziom z `securityProfile` (`minimal|balanced|strict|max`). Dodatkowa wartość: `none`.
 - `build.profileOverlays`: opcjonalna mapa overlay (np. `fast`) używana przez `--profile-overlay <name>` (alias: `--fast`); wartości to **częściowe** nadpisania sekcji `build` (bez zmian na dysku).
+  - `fast` nie jest legacy: to świadomy tryb “szybkiego cyklu”, łatwy do zapamiętania i użycia.
 - `build.sentinel.profile`: domyślnie `auto` (sentinel włączany tylko dla `thin` + targetów `ssh`); opcje: `off|auto|required|strict`.
 - `build.sentinel.timeLimit.enforce`: `always` (domyślnie) lub `mismatch` (expiry tylko przy niedopasowaniu fingerprintu lub braku blobu).
 - `build.includeDirs`: `["public", "data"]`.

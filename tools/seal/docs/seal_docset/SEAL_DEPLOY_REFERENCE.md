@@ -349,6 +349,8 @@ seal ship prod --fast
 seal release prod --profile-overlay fast
 ```
 `--fast` to skrót dla `--profile-overlay fast`.
+Celowo utrzymujemy `--fast` jako łatwą do zapamiętania komendę na szybkie cykle deployu w trakcie developmentu.
+Gdy projekt dojrzewa, przechodzisz na pełne, stabilne buildy (bez `--fast`), ale wczesne iteracje mają dzięki temu krótsze pętle.
 
 ---
 

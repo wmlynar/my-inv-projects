@@ -32,11 +32,11 @@ function ensureConfigDriftOk({ targetCfg, targetName, configFile, acceptDrift })
   if (!res || res.status === "same") return;
   if (res.status === "missing") {
     warn(`Config missing on target (${res.path || "shared/config.json5"}).`);
-    throw new Error(`Refusing to start with missing config. Fix: seal config push ${targetName} (or deploy --push-config), or rerun with --accept-drift.`);
+    throw new Error(`Refusing to start with missing config. Fix: seal config push ${targetName} (or ship --push-config), or rerun with --accept-drift.`);
   }
   if (res.status === "diff") {
     warn("Config drift detected (repo vs target).");
-    throw new Error(`Refusing to start with config drift. Fix: seal config push ${targetName} (or deploy --push-config), or rerun with --accept-drift.`);
+    throw new Error(`Refusing to start with config drift. Fix: seal config push ${targetName} (or ship --push-config), or rerun with --accept-drift.`);
   }
   if (res.status === "error") {
     throw new Error(res.message || "Config drift check failed");

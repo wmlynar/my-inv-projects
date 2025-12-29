@@ -24,7 +24,7 @@ function guessHint(message) {
     return "Fix: seal config push <target> (or rerun with --accept-drift)";
   }
   if (/Config missing on target|missing config on target/i.test(msg)) {
-    return "Fix: seal config push <target> (or deploy --push-config)";
+    return "Fix: seal config push <target> (or ship --push-config)";
   }
   if (/target\.host missing/i.test(msg)) {
     return "Set target.host in seal-config/targets/<target>.json5";
@@ -33,7 +33,7 @@ function guessHint(message) {
     return "Use an absolute path without spaces, e.g. /home/admin/apps/<app>";
   }
   if (/Missing appctl/i.test(msg)) {
-    return "Run: seal deploy <target> --bootstrap (installs runner + unit)";
+    return "Run: seal ship <target> --bootstrap (installs runner + unit)";
   }
   if (/ELF packer failed/i.test(msg)) {
     return "Install the packer or disable build.protection.elfPacker";
@@ -42,7 +42,7 @@ function guessHint(message) {
     return "Install obfuscating clang and set build.protection.cObfuscator";
   }
   if (/sentinel verify failed: launcher missing/i.test(msg)) {
-    return "Run: seal deploy <target> --bootstrap (installs launcher) or fix target.installDir";
+    return "Run: seal ship <target> --bootstrap (installs launcher) or fix target.installDir";
   }
   if (/sentinel verify failed: cannot switch to service user/i.test(msg)) {
     return "Ensure sudo/runuser/su is available, or set target.serviceUser=root (or use --skip-verify)";
