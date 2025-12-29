@@ -1,6 +1,8 @@
+# Legacy manifest; keep in sync with e2e-tests.json5.
 name	category	parallel	description	skip_risk	fail_hint	script	host_only
 thin	packagers	1	Builds and runs thin packager (core flow, runtime + integrity).	high	Check toolchain (cc/pkg-config/libzstd) and thin build logs.	tools/seal/seal/scripts/test-thin-e2e.js	0
 thin-anti-debug	security	1	Validates anti-debug and hardening probes around thin runtime.	high	Check ptrace/perf/bpf tooling and strict env flags.	tools/seal/seal/scripts/test-thin-anti-debug-e2e.js	1
+thin-anti-debug-dump	security	1	Validates real runtime dump behavior (gcore/external dumps).	high	Check gcore/gdb or SEAL_E2E_DUMP_CMD and SEAL_E2E_REAL_DUMP.	tools/seal/seal/scripts/test-thin-anti-debug-dump-e2e.js	1
 legacy-packagers	packagers	1	Covers legacy packagers (bundle/SEA) compatibility and runtime.	medium	Check postject/SEA tooling and packager availability.	tools/seal/seal/scripts/test-legacy-packagers-e2e.js	0
 compat	misc	1	Checks packager compatibility (sentinel/strip/elfPacker) via config explain.	low	Verify config explain output and packager gating.	tools/seal/seal/scripts/test-compat-e2e.js	0
 completion	misc	1	Checks CLI bash completion output and target discovery.	low	Check bash availability and completion script output.	tools/seal/seal/scripts/test-completion-e2e.js	0

@@ -5,22 +5,11 @@ const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
 const { readJson5, writeJson5 } = require("../src/lib/json5io");
+const { createLogger, stripAnsi, resolveExampleRoot } = require("./e2e-utils");
 
-const EXAMPLE_ROOT = process.env.SEAL_E2E_EXAMPLE_ROOT || path.resolve(__dirname, "..", "..", "example");
+const { log, fail } = createLogger("compat-e2e");
+const EXAMPLE_ROOT = resolveExampleRoot();
 const SEAL_BIN = path.resolve(__dirname, "..", "bin", "seal.js");
-
-function log(msg) {
-  process.stdout.write(`[compat-e2e] ${msg}\n`);
-}
-
-function fail(msg) {
-  process.stderr.write(`[compat-e2e] ERROR: ${msg}\n`);
-  process.exit(1);
-}
-
-function stripAnsi(input) {
-  return String(input || "").replace(/\u001b\[[0-9;]*m/g, "");
-}
 
 function runSeal(cwd, args) {
   const res = spawnSync(process.execPath, [SEAL_BIN, ...args], {
@@ -218,6 +207,7 @@ function main() {
 
   if (failure) {
     fail(failure.stack || failure.message || String(failure));
+    process.exit(1);
   }
 }
 

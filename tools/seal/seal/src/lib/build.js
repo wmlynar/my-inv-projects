@@ -17,6 +17,7 @@ const { applyDecoy } = require("./decoy");
 const { packSea } = require("./packagers/sea");
 const { packFallback } = require("./packagers/fallback");
 const { packThin, applyLauncherSelfHash } = require("./packagers/thin");
+const { THIN_NATIVE_BOOTSTRAP_FILE } = require("./thinPaths");
 const {
   normalizePackager,
   resolveBundleFallback,
@@ -813,6 +814,10 @@ function applyHardeningPost(releaseDir, appName, packagerUsed, hardCfg) {
   const thinSplitLauncher = packagerUsed === "thin-split"
     ? path.join(releaseDir, "b", "a")
     : null;
+  const nativeBootstrapPath = packagerUsed === "thin-split"
+    ? path.join(releaseDir, "r", THIN_NATIVE_BOOTSTRAP_FILE)
+    : null;
+  const nativeBootstrapPresent = nativeBootstrapPath ? fileExists(nativeBootstrapPath) : false;
   const hardTargetPath = (thinSplitLauncher && fileExists(thinSplitLauncher))
     ? thinSplitLauncher
     : exePath;
@@ -833,16 +838,13 @@ function applyHardeningPost(releaseDir, appName, packagerUsed, hardCfg) {
 
   if (!isScript && stripEnabled) {
     steps.push({ step: "strip", target: hardTargetLabel, ...tryStripBinary(hardTargetPath, { cmd: stripTool, args: stripArgs }) });
-    if (packagerUsed === "thin-split") {
-      const nativePath = path.join(releaseDir, "r", "nb.node");
-      if (fileExists(nativePath)) {
-        steps.push({
-          step: "strip_native_bootstrap",
-          target: "native_bootstrap",
-          file: "r/nb.node",
-          ...tryStripBinary(nativePath, { cmd: stripTool, args: stripArgs }),
-        });
-      }
+    if (nativeBootstrapPresent) {
+      steps.push({
+        step: "strip_native_bootstrap",
+        target: "native_bootstrap",
+        file: `r/${THIN_NATIVE_BOOTSTRAP_FILE}`,
+        ...tryStripBinary(nativeBootstrapPath, { cmd: stripTool, args: stripArgs }),
+      });
     }
   } else if (!isScript && !isThin && hardeningSupported) {
     steps.push({ step: "strip", ok: false, skipped: true, reason: stripEnabled ? "strip_failed" : "disabled_by_default", target: hardTargetLabel });
@@ -857,6 +859,20 @@ function applyHardeningPost(releaseDir, appName, packagerUsed, hardCfg) {
       throw new Error(`ELF packer failed${tool}: ${reason}`);
     }
     steps.push({ step: "elf_packer", target: hardTargetLabel, ...r });
+    if (nativeBootstrapPresent) {
+      const nr = tryElfPacker(nativeBootstrapPath, cfg);
+      if (!nr.ok) {
+        const reason = nr.reason || "elf_packer_failed";
+        const tool = nr.tool ? ` (${nr.tool})` : "";
+        throw new Error(`ELF packer failed for native bootstrap${tool}: ${reason}`);
+      }
+      steps.push({
+        step: "elf_packer_native_bootstrap",
+        target: "native_bootstrap",
+        file: `r/${THIN_NATIVE_BOOTSTRAP_FILE}`,
+        ...nr,
+      });
+    }
   } else if (!isScript && !isThin && hardeningSupported) {
     steps.push({ step: "elf_packer", ok: false, skipped: true, reason: "disabled_by_default" });
   }
@@ -1024,6 +1040,9 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   if (payloadOnlyEnabled && !(packagerRequested === "thin" && thinMode === "bootstrap")) {
     throw new Error("payload-only build requires thin-split (bootstrap) packager");
   }
+  if (payloadOnlyEnabled && packagerRequested === "thin" && thinMode === "bootstrap") {
+    warn("Payload-only build reuses launcher/runtime; launcher-level changes require a full build.");
+  }
   // Normalize protection config early (used for SEA main packing)
   let protectionCfg = resolveProtectionConfig(projectCfg);
   const hardEnabled = protectionCfg.enabled !== false;
@@ -1069,8 +1088,17 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
     if (launcherObfuscation && !protectionCfg.cObfuscator) {
       throw new Error(`thin.launcherObfuscation enabled but no protection.cObfuscator configured (${packagerSpec.label})`);
     }
+    if (protectionCfg.nativeBootstrapObfuscatorCmd && !thinCfg.nativeBootstrap.enabled) {
+      warn("nativeBootstrapObfuscator configured but thin.nativeBootstrap is disabled; ignoring.");
+    }
     const launcherHardening = thinCfg.launcherHardening !== false;
     const launcherHardeningCET = thinCfg.launcherHardeningCET !== false;
+    const nativeBootstrapObfuscator = protectionCfg.nativeBootstrapObfuscatorCmd
+      ? {
+        cmd: protectionCfg.nativeBootstrapObfuscatorCmd,
+        args: protectionCfg.nativeBootstrapObfuscatorArgs,
+      }
+      : null;
     const res = await timeAsync(`build.packager.${packagerSpec.label}`, async () => packThin({
       stageDir,
       releaseDir,
@@ -1092,6 +1120,7 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
       appBind: thinCfg.appBind,
       snapshotGuard: thinCfg.snapshotGuard,
       nativeBootstrap: thinCfg.nativeBootstrap,
+      nativeBootstrapObfuscator,
       projectRoot,
       targetName: targetCfg.target || targetCfg.config || "default",
       sentinel: sentinelCfg,
@@ -1175,11 +1204,11 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
 
   // Protection (post-pack): make it harder to recover code by casually viewing files.
   // Default: enabled (can be disabled in seal.json5 -> build.protection.enabled=false)
-  const skipProtectionPost = payloadOnlyEnabled && packagerUsed === "thin-split";
-  const hardPost = skipProtectionPost
-    ? { enabled: false, reason: "payload_only", steps: [] }
+  const reuseProtectionPost = payloadOnlyEnabled && packagerUsed === "thin-split" && hardEnabled;
+  const hardPost = reuseProtectionPost
+    ? { enabled: true, reused: true, reason: "payload_only", steps: [] }
     : timeSync("build.protection", () => applyHardeningPost(releaseDir, appName, packagerUsed, protectionCfg));
-  const protectionEnabled = hardEnabled && !skipProtectionPost;
+  const protectionEnabled = hardEnabled;
   const protection = {
     enabled: protectionEnabled,
     seaMainPacking,
@@ -1188,8 +1217,8 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
     cObfuscator: protectionCfg.cObfuscator || null,
   };
 
-  if (skipProtectionPost) {
-    warn("Protection skipped (payload-only build).");
+  if (reuseProtectionPost) {
+    info("Protection reused (payload-only build).");
   } else if (!hardEnabled) {
     info('Protection disabled');
   } else {
@@ -1222,8 +1251,8 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
     thinIntegrity = { enabled: true, ok: true, target: "launcher", mode: thinIntegrityMode, file: thinIntegrityFile };
     ok(`Thin integrity OK (${thinIntegrityMode === "sidecar" ? "sidecar" : "inline"})`);
   } else if (thinIntegrityEnabled && packagerUsed === "thin-split" && payloadOnlyEnabled) {
-    thinIntegrity = { enabled: false, skipped: true, reason: "payload_only" };
-    warn("Thin integrity skipped (payload-only build).");
+    thinIntegrity = { enabled: true, reused: true, target: "launcher", mode: thinIntegrityMode, file: thinIntegrityFile };
+    info("Thin integrity reused (payload-only build).");
   }
   protection.integrity = thinIntegrity;
 

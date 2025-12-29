@@ -143,6 +143,7 @@ function resolveTarget(projectRoot, targetArg) {
   t.cfg._thinIntegrityEnabled = !!(thinCfg.integrity && thinCfg.integrity.enabled);
   t.cfg._thinIntegrityMode = thinCfg.integrity && thinCfg.integrity.mode ? thinCfg.integrity.mode : null;
   t.cfg._thinIntegrityFile = thinCfg.integrity && thinCfg.integrity.file ? thinCfg.integrity.file : null;
+  t.cfg._thinNativeBootstrapEnabled = !!(thinCfg.nativeBootstrap && thinCfg.nativeBootstrap.enabled);
   return { proj, targetName, targetCfg: t.cfg, packagerSpec };
 }
 

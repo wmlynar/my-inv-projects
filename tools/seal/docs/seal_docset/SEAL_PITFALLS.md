@@ -60,8 +60,14 @@
 - Blad: `spawn` dostawal ENV z wartosciami `undefined`/non‑string, co dawalo `ERR_INVALID_ARG_TYPE` albo literalny string `undefined` w procesie potomnym.
   - Wymaganie: przed uruchomieniem child procesow filtruj ENV do stringow; `null/undefined` usuwaj, inne typy serializuj jawnie lub fail‑fast.
 
+- Blad: kilka buildow E2E uzywalo tego samego `outDir`, a `buildRelease` czyscil katalog; pozniejsze testy uruchamialy sie na nie tym buildzie (false PASS/FAIL).
+  - Wymaganie: kazdy wariant builda w E2E ma osobny `outDir` (unikalny per build/run); nie nadpisuj buildow w tym samym katalogu.
+
 - Blad: wewnetrzne uruchomienia `node` uzywaly binarki z PATH, co na maszynach z wieloma wersjami Node dawalo niespojne wyniki (inna wersja dla CLI i child procesu).
   - Wymaganie: uruchamiaj child‑node przez `process.execPath` (lub jawnie zweryfikowana sciezke), a w logach wypisz `node -v` i binarke.
+
+- Blad: helper testowy tworzyl Promise wyjscia procesu bez konsumpcji; przy `failOnExit=false` dochodzilo do nieobsluzonego rejection.
+  - Wymaganie: wszystkie background Promise (exit/error) sa konsumowane (`catch`), nawet gdy nie sa awaitowane; brak = FAIL.
 
 - Blad: operacje na sciezkach (rm/rsync/copy) podazaly za symlinkami i mogly wyjsc poza root.
   - Wymaganie: przed operacjami destrukcyjnymi sprawdz `realpath` i czy jest w dozwolonym root.
@@ -1184,6 +1190,133 @@
 
 - Blad: `frida` nie byla dostępna w repozytoriach dystrybucji, przez co testy byly stale SKIP.
   - Wymaganie: instaluj `frida-tools` przez pip lub dostarcz binarke w toolchainie testowym; loguj sposób instalacji.
+
+- Blad: brak realnego testu dumpu pamieci powodowal, ze “anti-debug” wygladal na skuteczny, mimo ze dump zawieral markery.
+  - Wymaganie: uruchamiaj testy real-dump (`SEAL_E2E_REAL_DUMP=1`), z baseline na procesie niechronionym (marker musi byc widoczny) i z buildem chronionym (marker musi zniknac).
+
+- Blad: skan dumpu omijal tokeny podpisu bundla, przez co czesciowy leak nadal przechodzil jako OK.
+  - Wymaganie: skanuj dumpy pod katem markerow **i** tokenow podpisu bundla; obecność któregokolwiek = FAIL.
+
+- Blad: brak jawnego testu “kill-mode” seccomp powodowal, ze profil mógł wyglądać na aktywny, a w rzeczywistosci tylko logowal.
+  - Wymaganie: włącz probe `SEAL_SECCOMP_KILL_PROBE=1` i oczekuj SIGSYS/SIGKILL; brak kill = FAIL.
+
+- Blad: brak baseline dla core-dump powodowal, ze blokada core byla mylona z brakiem dumpow w systemie.
+  - Wymaganie: dla trybu certyfikacyjnego ustaw `SEAL_E2E_STRICT_CORE_BASELINE=1` i upewnij sie, ze baseline (anti-debug OFF) tworzy core; w przeciwnym razie traktuj jako SKIP.
+
+- Blad: brak testu “maps denylist” dla wstrzyknietej biblioteki (LD_PRELOAD) nie wykrywal regresji.
+  - Wymaganie: testuj wstrzykniecie liba o nazwie z denylist (np. `frida`) i oczekuj FAIL uruchomienia.
+
+- Blad: testy leak-check nie rozroznialy wariantu z/bez `nativeBootstrap`, co dawalo falszywe wnioski o tym, co realnie wycieka.
+  - Wymaganie: uruchamiaj leak-check w dwóch wariantach (nativeBootstrap on/off) i porownuj wyniki; brak native bootstrap nie moze maskowac realnych leakow.
+
+- Blad: nowe flagi strict nie byly dokumentowane, przez co tryb certyfikacyjny nadal “przepuszczal” SKIP.
+  - Wymaganie: uzywaj `SEAL_E2E_STRICT_ATTACH_BASELINE=1`, `SEAL_E2E_STRICT_TOOL_BASELINE=1`, `SEAL_E2E_STRICT_HOST_BASELINE=1`, `SEAL_E2E_STRICT_REAL_DUMP=1` oraz `SEAL_E2E_STRICT_CORE_BASELINE=1` w srodowiskach, gdzie oczekujesz twardych FAIL.
+
+### Wnioski ogolne (security/E2E)
+
+- Blad: testy weryfikowaly tylko "czy mechanizm jest wlaczony", zamiast tego, czy realnie utrudnia wydobycie kodu.
+  - Wymaganie: kazdy mechanizm bezpieczenstwa ma test skutecznosci (symulacja ataku + oczekiwany wynik), nie tylko sprawdzenie flag.
+
+- Blad: brak baseline na procesie niechronionym powodowal falszywe OK (bo atak w ogole nie dzialal w srodowisku).
+  - Wymaganie: kazdy test ataku ma baseline "bez ochrony", ktory **musi** przejsc, inaczej wynik jest SKIP/FAIL.
+
+- Blad: funkcje niekompatybilne z packagerem byly ignorowane (silent no-op), co wygladalo jak dzialajaca ochrona.
+  - Wymaganie: niekompatybilne kombinacje musza fail-fast z jasnym komunikatem; E2E pokrywa przypadek "supported" i "unsupported".
+
+- Blad: SKIP bez jawnego powodu ukrywal realny brak weryfikacji.
+  - Wymaganie: kazdy SKIP musi zawierac przyczyne i instrukcje odblokowania; tryb certyfikacyjny zamienia SKIP na FAIL.
+
+- Blad: testy ekstrakcji opieraly sie tylko na analizie plikow na dysku, pomijajac wycieki w pamieci runtime.
+  - Wymaganie: testy obejmuja co najmniej jedna metode runtime (dump/core/ptrace) oraz skan markerow i tokenow podpisu.
+
+- Blad: stale markery w testach prowadziły do falszywych pozytywow (cache, artefakty z poprzednich runow).
+  - Wymaganie: markery sa losowe per run, a testy zawsze sprzataja artefakty i cache.
+
+- Blad: brak pinowania wersji narzedzi bezpieczenstwa powodowal rozjazdy miedzy CI/hostem.
+  - Wymaganie: wersje narzedzi testowych sa pinowane i logowane; brak zgodnosci = FAIL lub jawny SKIP.
+
+- Blad: brak logu "effective config" powodowal, ze nie bylo wiadomo, jakie realne zabezpieczenia weszly w build.
+  - Wymaganie: kazdy build/test loguje effective config (packager, profile, mechanizmy ON/OFF).
+
+### Wnioski ogolne (funkcjonalnosc Seal / anti-debug/hack)
+
+- Blad: obfuskacja/minify byly traktowane jako ochrona przed runtime dumpem lub debugiem.
+  - Wymaganie: obfuskacja to tylko warstwa utrudniajaca; realna ochrona wymaga runtime guardow (anti-debug) i wczesnego uruchomienia guardow (najlepiej przed zaladowaniem JS).
+
+- Blad: funkcje anti-debug byly wlaczane na packagerach, ktore ich nie wspieraja, co dawalo falszywe poczucie ochrony.
+  - Wymaganie: matrix "packager -> wspierane funkcje" jest jawna, a build failuje, gdy wymagany mechanizm nie jest wspierany.
+
+- Blad: guardy przechodzily w tryb "log-only" lub byly cicho wylaczane po bledzie systemowym.
+  - Wymaganie: domyslnie "fail-closed" (blad aktywacji = przerwanie uruchomienia), a tryb tolerancyjny wymaga jawnej decyzji.
+
+- Blad: weryfikacja release konczyla sie na sprawdzeniu plikow JS na dysku, bez analizy binarek.
+  - Wymaganie: po buildzie skanuj binarki (np. `strings`/`rg`) pod katem markerow/fragmentow JS; znalezienie = FAIL.
+
+- Blad: "anti-debug" byl wykonywany tylko na starcie, co pozwalalo na pozniejsze attach/dump.
+  - Wymaganie: guardy krytyczne powinny miec re-check (interval lub event-based), a testy musza to pokrywac.
+
+- Blad: brak rozdzielenia "ochrona build-time" vs "ochrona runtime" mieszal odpowiedzialnosc i mylil uzytkownikow.
+  - Wymaganie: CLI/dokumentacja jasno grupuja zabezpieczenia (build vs runtime) i loguja, co realnie weszlo do artefaktu i co aktywne w runtime.
+
+- Blad: testy anti-debug sprawdzaly pojedynczy wektor (np. ptrace), a inne pozostawaly niezweryfikowane.
+  - Wymaganie: E2E ma macierz wektorow (ptrace/process_vm_readv/proc-mem/LD_PRELOAD/dump) i przynajmniej jeden test z kazdej kategorii.
+
+- Blad: brak jawnego threat modelu (root vs user) powodowal nierealne oczekiwania co do "pelnej" ochrony.
+  - Wymaganie: dokumentacja/CLI jasno komunikuje ograniczenia (root moze odzyskac kod), a cel to maksymalne utrudnienie i czas.
+
+- Blad: zabezpieczenia byly konfigurowane w kilku miejscach (build/target/ENV), a uzytkownik nie widzial stanu koncowego.
+  - Wymaganie: `seal check`/`seal config explain` wypisuje "effective config" oraz powody wylaczen/override.
+
+- Blad: wymagania kernelowe/uprawnienia dla anti-debug byly wykrywane dopiero w runtime.
+  - Wymaganie: preflight sprawdza wymagane funkcje/capy przed build/deploy; brak = fail-fast z instrukcja.
+
+- Blad: brak bezpiecznego trybu serwisowego/debug wymuszal wylaczanie calych profili zabezpieczen.
+  - Wymaganie: dedykowany override dla operatora (jawny, logowany, opcjonalnie z TTL) pozwala czasowo wylaczyc wybrane guardy bez zmiany profilu.
+
+- Blad: brak budzetu wydajnosciowego dla guardow powodowal, ze zabezpieczenia byly odbierane jako "bugi" (wolny start/latencja).
+  - Wymaganie: mierz i loguj overhead (czas startu, pamiec), definiuj limity i tuningi (np. interwal re-check).
+
+- Blad: komunikaty z guardow zdradzaly obecnosci Seal lub szczegoly implementacji.
+  - Wymaganie: komunikaty runtime sa neutralne, a szczegoly trafiaja tylko do logow instalatora/CLI.
+
+- Blad: mechanizmy ochrony zakladaly, ze inne guardy zawsze dzialaja, co przy czesciowym wylaczeniu tworzylo luki.
+  - Wymaganie: kazdy guard jest niezalezny; brak jednego guardu nie moze wylaczyc pozostalych, a degradacja musi byc jawnie zalogowana.
+
+- Blad: brak widocznego zrodla konfiguracji (plik/ENV/CLI) utrudnial audyt i debug.
+  - Wymaganie: `seal check` i logi builda pokazuja effective config razem ze zrodlem kazdej wartosci (file/env/cli/default).
+
+- Blad: brak self-testu guardow w runtime pozwalal na "ciche" niepowodzenie zabezpieczenia.
+  - Wymaganie: krytyczne guardy maja probe/self-test (np. proba ptrace/denylist/dump) i twardy FAIL przy braku efektu.
+
+- Blad: brak jawnej sciezki kompatybilnosci wymuszal wylaczanie calych profili dla narzedzi operacyjnych (APM/profilery/crash).
+  - Wymaganie: istnieje jawny allowlist/compat mode (auditowany i logowany), a domyslne profile pozostaja bezpieczne.
+
+- Blad: rozne kody wyjscia lub czasy startu zalezne od ataku tworzyly side-channel (da sie wykryc aktywny guard).
+  - Wymaganie: reakcje guardow sa deterministyczne (stale kody/komunikaty), a timingi maja ograniczony jitter.
+
+- Blad: rozproszone logi ujawnialy szczegoly ochron w publicznych logach aplikacji.
+  - Wymaganie: logi "user-facing" nie ujawniaja informacji o guardach; szczegoly trafiaja do logow instalatora/CLI.
+
+- Blad: mechanizmy opieraly sie tylko na blackliscie nazw procesow/narzedzi, co bylo latwe do obejscia.
+  - Wymaganie: detekcja powinna byc behavior-based (syscall/ptrace/dump), a nazwy traktuj jako sygnal pomocniczy.
+
+- Blad: guardy chronily tylko proces glowny, a worker/child byl uruchamiany bez ochrony.
+  - Wymaganie: procesy potomne dziedzicza guardy albo sa uruchamiane przez wrapper; E2E weryfikuje ten scenariusz.
+
+- Blad: release/installDir byl writable dla nieuprzywilejowanych, co umozliwialo podmiane runtime/payload lub plikow JS.
+  - Wymaganie: katalog release jest read-only dla runtime usera, a zmiany wymagaja jawnego deployu i integrity check.
+
+- Blad: dynamiczne ladowanie kodu (eval/Function/dynamic import z writable path) omijalo obfuskacje i integrity.
+  - Wymaganie: w profilach secure blokuj eval/Function oraz ogranicz dynamic import do allowlisty katalogow read-only.
+
+- Blad: override ochron (np. w serwisie) byl mozliwy bez audytu i bez ograniczen czasowych.
+  - Wymaganie: override musi byc jawny, logowany i time-bound (TTL), a w produkcji wymaga dodatkowego potwierdzenia.
+
+- Blad: re-check guardow byl oparty o timer w watku event loop i mogl byc blokowany przez dlugie operacje.
+  - Wymaganie: guardy krytyczne korzystaja z niezaleznego zegara/monitoru i wykrywaja nadmierne opoznienia.
+
+- Blad: packager fallback (np. thin-split -> bundle) zmienial model bezpieczenstwa bez jasnego komunikatu.
+  - Wymaganie: fallback jest jawny i zawsze loguje zmiane poziomu ochrony; tryb secure failuje zamiast fallbacku.
 
 ### Sentinel E2E (środowisko testowe)
 

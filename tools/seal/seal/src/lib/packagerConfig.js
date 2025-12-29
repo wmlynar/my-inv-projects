@@ -449,7 +449,7 @@ function resolveProtectionConfig(projectCfg) {
   const enabled = !(typeof raw === "object" && raw && raw.enabled === false);
   const cfg = (typeof raw === "object" && raw) ? raw : {};
 
-  const structuredFields = ["seaMain", "bundle", "strip", "elfPacker", "cObfuscator", "strings"];
+  const structuredFields = ["seaMain", "bundle", "strip", "elfPacker", "cObfuscator", "nativeBootstrapObfuscator", "strings"];
   for (const key of structuredFields) {
     if (cfg[key] !== undefined && (cfg[key] === null || typeof cfg[key] !== "object" || Array.isArray(cfg[key]))) {
       throw new Error(`Invalid build.protection.${key}: expected object`);
@@ -515,6 +515,22 @@ function resolveProtectionConfig(projectCfg) {
   const cObfuscatorCmd = (cObfCfg && cObfCfg.cmd) ?? null;
   const cObfuscatorArgs = normalizeArgList((cObfCfg && cObfCfg.args) ?? null);
 
+  const nbObfRaw = cfg.nativeBootstrapObfuscator;
+  const nbObfCfg = (nbObfRaw && typeof nbObfRaw === "object" && !Array.isArray(nbObfRaw)) ? nbObfRaw : null;
+  if (nbObfRaw !== undefined && nbObfCfg === null) {
+    throw new Error("Invalid build.protection.nativeBootstrapObfuscator: expected object");
+  }
+  const nativeBootstrapObfuscatorCmd = (nbObfCfg && nbObfCfg.cmd) ?? null;
+  const nativeBootstrapObfuscatorArgs = normalizeArgList((nbObfCfg && nbObfCfg.args) ?? null);
+  if (nbObfCfg) {
+    if (!nativeBootstrapObfuscatorCmd) {
+      throw new Error("Invalid build.protection.nativeBootstrapObfuscator.cmd: expected string");
+    }
+    if (!nativeBootstrapObfuscatorArgs || !nativeBootstrapObfuscatorArgs.length) {
+      throw new Error("Invalid build.protection.nativeBootstrapObfuscator.args: expected non-empty list");
+    }
+  }
+
   const seaMainCfg = (cfg.seaMain && typeof cfg.seaMain === "object")
     ? cfg.seaMain
     : {};
@@ -539,6 +555,8 @@ function resolveProtectionConfig(projectCfg) {
     cObfuscator,
     cObfuscatorCmd,
     cObfuscatorArgs,
+    nativeBootstrapObfuscatorCmd,
+    nativeBootstrapObfuscatorArgs,
     stringObfuscation,
     raw,
   };

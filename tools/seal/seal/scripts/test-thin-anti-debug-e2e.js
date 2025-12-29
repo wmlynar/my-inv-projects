@@ -4,18 +4,30 @@
 const assert = require("assert");
 const crypto = require("crypto");
 const fs = require("fs");
-const http = require("http");
-const net = require("net");
 const os = require("os");
 const path = require("path");
 const { spawn, spawnSync } = require("child_process");
-const { hasCommand, resolveE2ETimeout, resolveE2ERunTimeout, applyReadyFileEnv, makeReadyFile, waitForReadyFile } = require("./e2e-utils");
+const {
+  hasCommand,
+  resolveE2ETimeout,
+  resolveE2ERunTimeout,
+  applyReadyFileEnv,
+  makeReadyFile,
+  waitForReady,
+  getFreePort,
+  withTimeout,
+  delay,
+  resolveExampleRoot,
+  createLogger,
+  terminateChild,
+  withSealedBinary,
+} = require("./e2e-utils");
 
 const { buildRelease } = require("../src/lib/build");
 const { loadProjectConfig, loadTargetConfig, resolveConfigName } = require("../src/lib/project");
 const { readJson5, writeJson5 } = require("../src/lib/json5io");
 
-const EXAMPLE_ROOT = process.env.SEAL_E2E_EXAMPLE_ROOT || path.resolve(__dirname, "..", "..", "example");
+const EXAMPLE_ROOT = resolveExampleRoot();
 const ERRNO = { EPERM: 1, EACCES: 13, EFAULT: 14 };
 const LEAK_TOKENS = [
   "function ",
@@ -72,6 +84,7 @@ const SUITE_ORDER = [
   "build",
   "env",
   "leaks",
+  "dump",
   "bootstrap",
   "attach",
   "config",
@@ -86,9 +99,7 @@ const DANGEROUS_CAPS = {
   SYSLOG: 34,
 };
 
-function log(msg) {
-  process.stdout.write(`[thin-anti-debug-e2e] ${msg}\n`);
-}
+const { log, fail } = createLogger("thin-anti-debug-e2e");
 
 function normalizeSuiteList(input) {
   const raw = Array.isArray(input) ? input.join(",") : (input || "");
@@ -105,10 +116,6 @@ function normalizeSuiteList(input) {
     set.add(part);
   }
   return SUITE_ORDER.filter((name) => set.has(name));
-}
-
-function fail(msg) {
-  process.stderr.write(`[thin-anti-debug-e2e] ERROR: ${msg}\n`);
 }
 
 function runCmd(cmd, args, timeoutMs = 5000) {
@@ -518,10 +525,6 @@ function ensureSharedHelper(ctx, name, src, extraArgs = []) {
   return info;
 }
 
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 function parseDelayList(raw, fallback) {
   if (!raw) return Array.isArray(fallback) ? fallback : [];
   const out = [];
@@ -531,65 +534,6 @@ function parseDelayList(raw, fallback) {
     if (Number.isFinite(val) && val >= 0) out.push(Math.floor(val));
   }
   return out.length ? out : (Array.isArray(fallback) ? fallback : []);
-}
-
-function withTimeout(label, ms, fn) {
-  let timer = null;
-  const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
-  });
-  return Promise.race([fn(), timeout]).finally(() => {
-    if (timer) clearTimeout(timer);
-  });
-}
-
-function httpJson({ port, path: reqPath, timeoutMs }) {
-  return new Promise((resolve, reject) => {
-    const req = http.request(
-      {
-        host: "127.0.0.1",
-        port,
-        path: reqPath,
-        method: "GET",
-        timeout: timeoutMs,
-      },
-      (res) => {
-        const chunks = [];
-        res.on("data", (c) => chunks.push(c));
-        res.on("end", () => {
-          const raw = Buffer.concat(chunks).toString("utf8");
-          try {
-            const json = JSON.parse(raw);
-            resolve({ status: res.statusCode, json });
-          } catch (e) {
-            reject(new Error(`Invalid JSON response: ${raw.slice(0, 200)}`));
-          }
-        });
-      }
-    );
-    req.on("timeout", () => req.destroy(new Error("HTTP timeout")));
-    req.on("error", (err) => reject(err));
-    req.end();
-  });
-}
-
-async function waitForStatus(port, timeoutMs = 10_000) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    try {
-      const { status, json } = await httpJson({ port, path: "/api/status", timeoutMs: 800 });
-      if (status === 200 && json && json.ok) return json;
-    } catch {
-      // ignore and retry
-    }
-    await delay(200);
-  }
-  throw new Error(`Timeout waiting for /api/status on port ${port}`);
-}
-
-async function waitForReady({ port, readyFile, timeoutMs }) {
-  if (readyFile) return waitForReadyFile(readyFile, timeoutMs);
-  return waitForStatus(port, timeoutMs);
 }
 
 async function waitForMarkerFile(markerPath, expected, timeoutMs = 10_000) {
@@ -604,29 +548,6 @@ async function waitForMarkerFile(markerPath, expected, timeoutMs = 10_000) {
     await delay(100);
   }
   throw new Error(`Timeout waiting for marker "${expected}"`);
-}
-
-function getFreePort() {
-  return new Promise((resolve, reject) => {
-    if (process.env.SEAL_E2E_NO_LISTEN === "1") {
-      resolve(null);
-      return;
-    }
-    const srv = net.createServer();
-    srv.on("error", (err) => {
-      if (err && err.code === "EPERM") {
-        process.env.SEAL_E2E_NO_LISTEN = "1";
-        resolve(null);
-        return;
-      }
-      reject(err);
-    });
-    srv.listen(0, "127.0.0.1", () => {
-      const addr = srv.address();
-      const port = typeof addr === "object" && addr ? addr.port : null;
-      srv.close(() => resolve(port));
-    });
-  });
 }
 
 function writeRuntimeConfig(releaseDir, port) {
@@ -645,64 +566,27 @@ async function ensureRuntimeConfig(releaseDir) {
 }
 
 async function runReleaseWithReady({ releaseDir, runTimeoutMs, env, onReady, skipMessage }) {
-  const port = runReleaseOk.skipListen ? null : await getFreePort();
-  const readyFile = port === null ? makeReadyFile("thin-anti-debug") : null;
-  if (readyFile) {
-    log("WARN: listen not permitted; using ready-file mode");
-  }
-  writeRuntimeConfig(releaseDir, port);
-
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
-
-  const baseEnv = Object.assign({}, process.env, env || {});
-  const childEnv = applyReadyFileEnv(baseEnv, readyFile);
-  const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe", env: childEnv });
-  const outChunks = [];
-  const errChunks = [];
-  child.stdout.on("data", (c) => outChunks.push(c));
-  child.stderr.on("data", (c) => errChunks.push(c));
-
-  const exitPromise = new Promise((_, reject) => {
-    child.on("exit", (code, signal) => {
-      const stdout = Buffer.concat(outChunks).toString("utf8").trim();
-      const stderr = Buffer.concat(errChunks).toString("utf8").trim();
-      const detail = [
-        code !== null ? `code=${code}` : null,
-        signal ? `signal=${signal}` : null,
-        stdout ? `stdout: ${stdout.slice(0, 400)}` : null,
-        stderr ? `stderr: ${stderr.slice(0, 400)}` : null,
-      ].filter(Boolean).join("; ");
-      reject(new Error(`process exited early (${detail || "no output"})`));
-    });
-  });
-
-  let stdout = "";
-  let stderr = "";
-  try {
-    await withTimeout("waitForStatus", runTimeoutMs, () =>
-      Promise.race([waitForReady({ port, readyFile, timeoutMs: runTimeoutMs }), exitPromise])
-    );
-    await onReady({ child, port });
-  } finally {
-    child.kill("SIGTERM");
-    await new Promise((resolve) => {
-      const t = setTimeout(() => {
-        child.kill("SIGKILL");
-        resolve();
-      }, 4000);
-      child.on("exit", () => {
-        clearTimeout(t);
-        resolve();
-      });
-    });
-    stdout = Buffer.concat(outChunks).toString("utf8");
-    stderr = Buffer.concat(errChunks).toString("utf8");
-    if (readyFile) {
-      try { fs.rmSync(readyFile, { force: true }); } catch {}
+  const outputs = await withSealedBinary({
+    label: "thin-anti-debug",
+    releaseDir,
+    binPath,
+    runTimeoutMs,
+    writeRuntimeConfig,
+    env,
+    log,
+    skipListen: runReleaseOk.skipListen === true,
+    captureOutput: { full: true },
+  }, async ({ child, port, logs, readyFile }) => {
+    if (readyFile && skipMessage) {
+      log(skipMessage);
+      return null;
     }
-  }
-  return { stdout, stderr };
+    await onReady({ child, port });
+    return logs ? logs.text() : { stdout: "", stderr: "" };
+  });
+  return outputs;
 }
 
 function readProcStatus(pid) {
@@ -1808,6 +1692,16 @@ function bufferHasAnyToken(buf, tokenBuffers) {
   return "";
 }
 
+function dedupeTokenBuffers(tokenBuffers) {
+  const uniq = new Map();
+  for (const buf of tokenBuffers || []) {
+    if (!buf || !buf.length) continue;
+    const key = buf.toString("hex");
+    if (!uniq.has(key)) uniq.set(key, buf);
+  }
+  return Array.from(uniq.values());
+}
+
 function bufferHasAnyTokenBuf(buf, tokenBuffers) {
   for (const token of tokenBuffers) {
     if (buf.includes(token)) return token;
@@ -2411,6 +2305,41 @@ function runExternalDumpScan(pid, tokenBuffers) {
   return { ok: true };
 }
 
+function runGcoreDumpScan(pid, tokenBuffers) {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-gcore-dump-"));
+  const prefix = path.join(tmpDir, "seal-core");
+  let hit = "";
+  try {
+    const res = runGcore(pid, prefix);
+    if (!res) return { skip: "gcore/gdb missing" };
+    if (res.error && res.error.code === "ETIMEDOUT") {
+      return { skip: "gcore timed out" };
+    }
+    const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+    const files = fs.readdirSync(tmpDir).filter((f) => f.startsWith("seal-core"));
+    if (!files.length) {
+      if (res.status === 0) {
+        return { skip: "gcore output missing" };
+      }
+      return { skip: out.slice(0, 120) || "gcore failed" };
+    }
+    const corePath = path.join(tmpDir, files[0]);
+    const maxMb = Number(process.env.SEAL_E2E_CORE_SCAN_MAX_MB || "256");
+    hit = scanFileForTokenStream(corePath, tokenBuffers, maxMb * 1024 * 1024);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+  if (hit) return { hit };
+  return { ok: true };
+}
+
+function runDumpScan(pid, tokenBuffers) {
+  if (process.env.SEAL_E2E_DUMP_CMD) {
+    return runExternalDumpScan(pid, tokenBuffers);
+  }
+  return runGcoreDumpScan(pid, tokenBuffers);
+}
+
 function runAvmlDumpScan(pid, tokenBuffers) {
   if (process.env.SEAL_E2E_MEMDUMP !== "1") return { skip: "memdump disabled" };
   if (!hasCommand("avml")) return { skip: "avml missing" };
@@ -2516,6 +2445,35 @@ function checkPerfRecordBlocked(pid) {
   }
 }
 
+function checkPerfRecordAllowed(pid) {
+  if (!hasCommand("perf")) return { skip: "perf missing" };
+  const strict = process.env.SEAL_E2E_STRICT_TOOL_BASELINE === "1";
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-perf-"));
+  const dataPath = path.join(tmpDir, "perf.data");
+  try {
+    const res = runCmd("perf", ["record", "-p", String(pid), "-o", dataPath, "--", "sleep", "1"], 12000);
+    const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+    if (res.error && res.error.code === "ETIMEDOUT") {
+      if (strict) throw new Error("perf record timed out");
+      return { skip: "perf record timed out" };
+    }
+    if (res.status === 0 && fs.existsSync(dataPath)) {
+      return { ok: true };
+    }
+    if (/permission denied|not permitted|not allowed|operation not permitted/i.test(out)) {
+      if (strict) throw new Error("perf record blocked");
+      return { skip: "perf record blocked" };
+    }
+    if (/unknown option|usage:|not supported|no such file/i.test(out)) {
+      return { skip: out.slice(0, 120) || "perf record unsupported" };
+    }
+    if (strict) throw new Error(`perf record failed (${out.slice(0, 120) || "error"})`);
+    return { skip: out.slice(0, 120) || "perf record failed" };
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
 function checkPerfTraceBlocked(pid) {
   if (!hasCommand("perf")) return { skip: "perf missing" };
   const strict = process.env.SEAL_E2E_STRICT_PERF === "1";
@@ -2536,6 +2494,29 @@ function checkPerfTraceBlocked(pid) {
     return { skip: out.slice(0, 120) || "perf trace unsupported" };
   }
   return { ok: true, note: out.slice(0, 200) };
+}
+
+function checkPerfTraceAllowed(pid) {
+  if (!hasCommand("perf")) return { skip: "perf missing" };
+  const strict = process.env.SEAL_E2E_STRICT_TOOL_BASELINE === "1";
+  const res = runCmd("perf", ["trace", "-p", String(pid), "--", "sleep", "1"], 12000);
+  const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+  if (res.error && res.error.code === "ETIMEDOUT") {
+    if (strict) throw new Error("perf trace timed out");
+    return { skip: "perf trace timed out" };
+  }
+  if (res.status === 0) {
+    return { ok: true };
+  }
+  if (/permission denied|not permitted|not allowed|operation not permitted/i.test(out)) {
+    if (strict) throw new Error("perf trace blocked");
+    return { skip: "perf trace blocked" };
+  }
+  if (/unknown option|usage:|not supported|no such file/i.test(out)) {
+    return { skip: out.slice(0, 120) || "perf trace unsupported" };
+  }
+  if (strict) throw new Error(`perf trace failed (${out.slice(0, 120) || "error"})`);
+  return { skip: out.slice(0, 120) || "perf trace failed" };
 }
 
 function runRrAttach(pid, timeoutMs = 8000) {
@@ -2569,6 +2550,28 @@ function checkRrAttachBlocked(pid) {
   return { ok: true, note: out.slice(0, 200) };
 }
 
+function checkRrAttachAllowed(pid) {
+  if (!hasCommand("rr")) return { skip: "rr missing" };
+  const strict = process.env.SEAL_E2E_STRICT_TOOL_BASELINE === "1";
+  const { res, out } = runRrAttach(pid, 8000);
+  if (res.error && res.error.code === "ETIMEDOUT") {
+    if (strict) throw new Error("rr attach timed out");
+    return { skip: "rr attach timed out" };
+  }
+  if (/unknown option|usage:|expects.*command/i.test(out)) {
+    return { skip: "rr attach unsupported" };
+  }
+  if (res.status === 0) {
+    return { ok: true };
+  }
+  if (/permission denied|not permitted|ptrace|perf_event_open/i.test(out)) {
+    if (strict) throw new Error("rr attach blocked");
+    return { skip: "rr attach blocked" };
+  }
+  if (strict) throw new Error(`rr attach failed (${out.slice(0, 120) || "error"})`);
+  return { skip: out.slice(0, 120) || "rr attach failed" };
+}
+
 function checkBpftraceAttachBlocked(pid) {
   if (!hasCommand("bpftrace")) return { skip: "bpftrace missing" };
   const strict = process.env.SEAL_E2E_STRICT_BPFTRACE === "1";
@@ -2590,6 +2593,30 @@ function checkBpftraceAttachBlocked(pid) {
     return { skip: out.slice(0, 120) || "bpftrace unsupported" };
   }
   return { ok: true, note: out.slice(0, 200) };
+}
+
+function checkBpftraceAttachAllowed(pid) {
+  if (!hasCommand("bpftrace")) return { skip: "bpftrace missing" };
+  const strict = process.env.SEAL_E2E_STRICT_TOOL_BASELINE === "1";
+  const script = `tracepoint:sched:sched_switch /args->next_pid == ${pid} || args->prev_pid == ${pid}/ { exit(); }`;
+  const res = runCmd("bpftrace", ["-e", script], 8000);
+  const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+  if (res.error && res.error.code === "ETIMEDOUT") {
+    if (strict) throw new Error("bpftrace timed out");
+    return { skip: "bpftrace timed out" };
+  }
+  if (res.status === 0) {
+    return { ok: true };
+  }
+  if (/permission denied|not permitted|operation not permitted/i.test(out)) {
+    if (strict) throw new Error("bpftrace blocked");
+    return { skip: "bpftrace blocked" };
+  }
+  if (/requires root|not supported|unknown probe/i.test(out)) {
+    return { skip: out.slice(0, 120) || "bpftrace unsupported" };
+  }
+  if (strict) throw new Error(`bpftrace failed (${out.slice(0, 120) || "error"})`);
+  return { skip: out.slice(0, 120) || "bpftrace failed" };
 }
 
 function checkBpftraceUprobeBlocked(pid) {
@@ -2616,6 +2643,30 @@ function checkBpftraceUprobeBlocked(pid) {
   return { ok: true, note: out.slice(0, 200) };
 }
 
+function checkBpftraceUprobeAllowed(pid) {
+  if (!hasCommand("bpftrace")) return { skip: "bpftrace missing" };
+  const strict = process.env.SEAL_E2E_STRICT_TOOL_BASELINE === "1";
+  const target = `/proc/${pid}/exe`;
+  const script = `uprobe:${target}:_start { exit(); }`;
+  const res = runCmd("bpftrace", ["-e", script], 8000);
+  const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+  if (res.error && res.error.code === "ETIMEDOUT") {
+    if (strict) throw new Error("bpftrace uprobe timed out");
+    return { skip: "bpftrace uprobe timed out" };
+  }
+  if (res.status === 0) {
+    return { ok: true };
+  }
+  if (/permission denied|not permitted|operation not permitted/i.test(out)) {
+    if (strict) throw new Error("bpftrace uprobe blocked");
+    return { skip: "bpftrace uprobe blocked" };
+  }
+  if (/no probes to attach|unknown probe|not supported|cannot open/i.test(out)) {
+    return { skip: out.slice(0, 120) || "bpftrace uprobe unsupported" };
+  }
+  if (strict) throw new Error(`bpftrace uprobe failed (${out.slice(0, 120) || "error"})`);
+  return { skip: out.slice(0, 120) || "bpftrace uprobe failed" };
+}
 async function checkGdbServerAttachBlockedPid(pid) {
   if (!hasCommand("gdbserver")) return { skip: "gdbserver not installed" };
   const isRoot = isRootUser();
@@ -2881,6 +2932,45 @@ function checkLttngAttachBlocked(pid) {
   }
 }
 
+function checkLttngAttachAllowed(pid) {
+  if (!hasCommand("lttng")) return { skip: "lttng missing" };
+  const strict = process.env.SEAL_E2E_STRICT_TOOL_BASELINE === "1";
+  const sess = `seal-e2e-${pid}-${Date.now()}`;
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-lttng-"));
+  try {
+    let res = runCmd("lttng", ["create", sess, "--output", outDir], 8000);
+    let out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+    if (res.status !== 0) {
+      if (/permission denied|not permitted/i.test(out)) {
+        if (strict) throw new Error("lttng create blocked");
+        return { skip: "lttng create blocked" };
+      }
+      return { skip: out ? `lttng create failed: ${out.slice(0, 120)}` : "lttng create failed" };
+    }
+    res = runCmd("lttng", ["enable-event", "-u", "--all"], 8000);
+    out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+    if (res.status !== 0) {
+      if (/permission denied|not permitted/i.test(out)) {
+        if (strict) throw new Error("lttng enable blocked");
+        return { skip: "lttng enable blocked" };
+      }
+      return { skip: out ? `lttng enable failed: ${out.slice(0, 120)}` : "lttng enable failed" };
+    }
+    res = runCmd("lttng", ["track", "-u", "-p", String(pid)], 8000);
+    out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+    if (res.status === 0) {
+      return { ok: true };
+    }
+    if (/permission denied|not permitted/i.test(out)) {
+      if (strict) throw new Error("lttng track blocked");
+      return { skip: "lttng track blocked" };
+    }
+    return { skip: out ? `lttng track failed: ${out.slice(0, 120)}` : "lttng track failed" };
+  } finally {
+    runCmd("lttng", ["destroy", sess], 8000);
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+}
 function checkSystemtapAttachBlocked(pid) {
   if (!hasCommand("stap")) return { skip: "systemtap missing" };
   const strict = process.env.SEAL_E2E_STRICT_SYSTEMTAP === "1";
@@ -3053,6 +3143,28 @@ function checkSysdigBlocked(pid) {
   return { ok: true, note: out.slice(0, 200) };
 }
 
+function checkSysdigAllowed(pid) {
+  if (!hasCommand("sysdig")) return { skip: "sysdig missing" };
+  const strict = process.env.SEAL_E2E_STRICT_TOOL_BASELINE === "1";
+  const res = runCmd("sysdig", ["-n", "5", `proc.pid=${pid}`], 8000);
+  const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+  if (res.error && res.error.code === "ETIMEDOUT") {
+    if (strict) throw new Error("sysdig timed out");
+    return { skip: "sysdig timed out" };
+  }
+  if (res.status === 0) {
+    return { ok: true };
+  }
+  if (/permission denied|not permitted|operation not permitted|access denied/i.test(out)) {
+    if (strict) throw new Error("sysdig blocked");
+    return { skip: "sysdig blocked" };
+  }
+  if (/unable to open|cannot open|probe.*not loaded|kernel module|driver|no such file|failed to/i.test(out)) {
+    return { skip: out.slice(0, 120) || "sysdig unsupported" };
+  }
+  if (strict) throw new Error(`sysdig failed (${out.slice(0, 120) || "error"})`);
+  return { skip: out.slice(0, 120) || "sysdig failed" };
+}
 function checkAuditctlBlocked(pid) {
   if (!hasCommand("auditctl")) return { skip: "auditctl missing" };
   const strict = process.env.SEAL_E2E_STRICT_AUDITCTL === "1";
@@ -3154,6 +3266,38 @@ function checkProcMemBlocked(pid, helperPath) {
   return { skip: "non-permission errors" };
 }
 
+function checkProcMemAllowed(pid, helperPath) {
+  const strict = process.env.SEAL_E2E_STRICT_ATTACH_BASELINE === "1";
+  const maps = getReadableMapAddresses(pid, 6);
+  if (maps.blocked) {
+    return { skip: "maps blocked" };
+  }
+  if (!maps.addresses.length) {
+    return { skip: "no readable maps" };
+  }
+  for (const addr of maps.addresses) {
+    const res = runCmd(helperPath, [String(pid), addr, "32"], 5000);
+    if (res.error) {
+      const msg = res.error && res.error.code ? res.error.code : String(res.error);
+      if (strict) throw new Error(`mem helper failed: ${msg}`);
+      return { skip: `mem helper failed: ${msg}` };
+    }
+    const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+    if (/unsupported/i.test(out)) {
+      return { skip: "mem helper unsupported" };
+    }
+    if (res.status === 0) {
+      return { ok: true, note: `addr=0x${addr}` };
+    }
+    const errno = parseHelperErrno(out);
+    if (errno === ERRNO.EPERM || errno === ERRNO.EACCES) {
+      if (strict) throw new Error(`/proc/<pid>/mem blocked (errno ${errno})`);
+      return { skip: `permission denied (${errno})` };
+    }
+  }
+  return { skip: "mem read failed" };
+}
+
 function checkProcMemWriteBlocked(pid, helperPath) {
   const isRoot = isRootUser();
   const strict = process.env.SEAL_E2E_STRICT_PROC_MEM === "1";
@@ -3227,6 +3371,38 @@ function checkVmReadBlocked(pid, helperPath) {
   return { skip: "non-permission errors" };
 }
 
+function checkVmReadAllowed(pid, helperPath) {
+  const strict = process.env.SEAL_E2E_STRICT_ATTACH_BASELINE === "1";
+  const maps = getReadableMapAddresses(pid, 6);
+  if (maps.blocked) {
+    return { skip: "maps blocked" };
+  }
+  if (!maps.addresses.length) {
+    return { skip: "no readable maps" };
+  }
+  for (const addr of maps.addresses) {
+    const res = runCmd(helperPath, [String(pid), addr, "32"], 5000);
+    if (res.error) {
+      const msg = res.error && res.error.code ? res.error.code : String(res.error);
+      if (strict) throw new Error(`vmread helper failed: ${msg}`);
+      return { skip: `vmread helper failed: ${msg}` };
+    }
+    const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+    if (/unsupported/i.test(out)) {
+      return { skip: "process_vm_readv unsupported" };
+    }
+    if (res.status === 0) {
+      return { ok: true, note: `addr=0x${addr}` };
+    }
+    const errno = parseHelperErrno(out);
+    if (errno === ERRNO.EPERM || errno === ERRNO.EACCES) {
+      if (strict) throw new Error(`process_vm_readv blocked (errno ${errno})`);
+      return { skip: `permission denied (${errno})` };
+    }
+  }
+  return { skip: "process_vm_readv failed" };
+}
+
 function checkVmWriteBlocked(pid, helperPath) {
   const isRoot = isRootUser();
   const strict = process.env.SEAL_E2E_STRICT_PROC_MEM === "1";
@@ -3280,6 +3456,50 @@ function checkPtraceBlocked(pid, helperPath) {
     throw new Error("ptrace attach succeeded (unexpected)");
   }
   return { ok: true, note: out ? out.slice(0, 120) : "" };
+}
+
+function checkPtraceAllowed(pid, helperPath) {
+  const strict = process.env.SEAL_E2E_STRICT_ATTACH_BASELINE === "1";
+  const res = runCmd(helperPath, [String(pid)], 5000);
+  if (res.error) {
+    const msg = res.error && res.error.code ? res.error.code : String(res.error);
+    if (strict) throw new Error(`ptrace helper failed: ${msg}`);
+    return { skip: `ptrace helper failed: ${msg}` };
+  }
+  const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+  if (/unsupported/i.test(out)) {
+    return { skip: "ptrace helper unsupported" };
+  }
+  if (res.status === 0) {
+    return { ok: true };
+  }
+  const errno = parseHelperErrno(out);
+  if (errno === ERRNO.EPERM || errno === ERRNO.EACCES) {
+    if (strict) throw new Error(`ptrace blocked (errno ${errno})`);
+    return { skip: `permission denied (${errno})` };
+  }
+  if (strict) throw new Error(`ptrace failed (${out.slice(0, 120) || "error"})`);
+  return { skip: out ? out.slice(0, 120) : "ptrace failed" };
+}
+
+function checkGdbAttachAllowed(pid) {
+  if (!hasCommand("gdb")) return { skip: "gdb missing" };
+  const strict = process.env.SEAL_E2E_STRICT_ATTACH_BASELINE === "1";
+  const res = runGdbAttach(pid, 6000);
+  if (res.error && res.error.code === "ETIMEDOUT") {
+    if (strict) throw new Error("gdb attach timed out");
+    return { skip: "gdb attach timed out" };
+  }
+  const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+  if (res.status === 0) {
+    return { ok: true };
+  }
+  if (/operation not permitted|permission denied|ptrace/i.test(out)) {
+    if (strict) throw new Error(`gdb attach blocked (${out.slice(0, 120) || "permission"})`);
+    return { skip: "gdb attach blocked" };
+  }
+  if (strict) throw new Error(`gdb attach failed (${out.slice(0, 120) || "error"})`);
+  return { skip: out ? out.slice(0, 120) : "gdb attach failed" };
 }
 
 function checkPidfdBlocked(pid, helperPath) {
@@ -3491,93 +3711,48 @@ function checkCoreFilesAfterCrash(releaseDir, pid, sinceMs) {
 }
 
 async function runReleaseOk({ releaseDir, runTimeoutMs, env }) {
-  const port = runReleaseOk.skipListen ? null : await getFreePort();
-  const readyFile = port === null ? makeReadyFile("thin-anti-debug") : null;
-  if (readyFile) log("WARN: listen not permitted; using ready-file mode");
-  writeRuntimeConfig(releaseDir, port);
-
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
-
-  const baseEnv = Object.assign({}, process.env, env || {});
-  const childEnv = applyReadyFileEnv(baseEnv, readyFile);
-  const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe", env: childEnv });
-  const outChunks = [];
-  const errChunks = [];
-  child.stdout.on("data", (c) => outChunks.push(c));
-  child.stderr.on("data", (c) => errChunks.push(c));
-
-  const exitPromise = new Promise((_, reject) => {
-    child.on("exit", (code, signal) => {
-      const stdout = Buffer.concat(outChunks).toString("utf8").trim();
-      const stderr = Buffer.concat(errChunks).toString("utf8").trim();
-      const detail = [
-        code !== null ? `code=${code}` : null,
-        signal ? `signal=${signal}` : null,
-        stdout ? `stdout: ${stdout.slice(0, 400)}` : null,
-        stderr ? `stderr: ${stderr.slice(0, 400)}` : null,
-      ].filter(Boolean).join("; ");
-      reject(new Error(`process exited early (${detail || "no output"})`));
-    });
+  await withSealedBinary({
+    label: "thin-anti-debug",
+    releaseDir,
+    binPath,
+    runTimeoutMs,
+    writeRuntimeConfig,
+    env,
+    log,
+    skipListen: runReleaseOk.skipListen === true,
+    captureOutput: true,
   });
-
-  try {
-    await withTimeout("waitForStatus", runTimeoutMs, () =>
-      Promise.race([waitForReady({ port, readyFile, timeoutMs: runTimeoutMs }), exitPromise])
-    );
-  } finally {
-    child.kill("SIGTERM");
-    await new Promise((resolve) => {
-      const t = setTimeout(() => {
-        child.kill("SIGKILL");
-        resolve();
-      }, 4000);
-      child.on("exit", () => {
-        clearTimeout(t);
-        resolve();
-      });
-    });
-    if (readyFile) {
-      try { fs.rmSync(readyFile, { force: true }); } catch {}
-    }
-  }
 }
 
 async function runReleaseExpectFail({ releaseDir, runTimeoutMs, env, expectStderr, args }) {
-  const port = runReleaseOk.skipListen ? null : await getFreePort();
-  const readyFile = port === null ? makeReadyFile("thin-anti-debug") : null;
-  if (readyFile) log("WARN: listen not permitted; using ready-file mode");
-  writeRuntimeConfig(releaseDir, port);
-
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
-
-  const baseEnv = Object.assign({}, process.env, env || {});
-  const childEnv = applyReadyFileEnv(baseEnv, readyFile);
   const childArgs = Array.isArray(args) ? args : [];
-  const child = spawn(binPath, childArgs, { cwd: releaseDir, stdio: "pipe", env: childEnv });
-  const outChunks = [];
-  const errChunks = [];
-  child.stdout.on("data", (c) => outChunks.push(c));
-  child.stderr.on("data", (c) => errChunks.push(c));
-
-  const exitPromise = new Promise((resolve) => {
-    child.on("exit", (code, signal) => {
-      const stdout = Buffer.concat(outChunks).toString("utf8").trim();
-      const stderr = Buffer.concat(errChunks).toString("utf8").trim();
-      resolve({ code, signal, stdout, stderr });
-    });
-  });
-
-  try {
+  await withSealedBinary({
+    label: "thin-anti-debug",
+    releaseDir,
+    binPath,
+    runTimeoutMs,
+    writeRuntimeConfig,
+    env,
+    log,
+    args: childArgs,
+    skipListen: runReleaseOk.skipListen === true,
+    waitForReady: false,
+    failOnExit: false,
+    captureOutput: { full: true },
+  }, async ({ port, readyFile, exitInfo, logs }) => {
     const winner = await withTimeout("expectFail", runTimeoutMs, () => Promise.race([
-      exitPromise,
-      waitForReady({ port, readyFile, timeoutMs: runTimeoutMs }).then(() => ({ ok: true })),
+      exitInfo.then((info) => ({ type: "exit", info })),
+      waitForReady({ port, readyFile, timeoutMs: runTimeoutMs }).then(() => ({ type: "ready" })),
     ]));
-    if (winner && winner.ok) {
+    if (winner && winner.type === "ready") {
       throw new Error("process reached /api/status (expected failure)");
     }
-    const { code, signal, stderr, stdout } = winner || {};
+    const info = winner && winner.info ? winner.info : {};
+    const { code, signal } = info;
     if (code === 0) {
       throw new Error("process exited with code=0 (expected failure)");
     }
@@ -3585,32 +3760,56 @@ async function runReleaseExpectFail({ releaseDir, runTimeoutMs, env, expectStder
       throw new Error("process did not fail as expected");
     }
     if (expectStderr) {
-      const hay = [stderr, stdout].filter(Boolean).join("\n");
+      const output = logs ? logs.text() : { stdout: "", stderr: "" };
+      const hay = [output.stderr, output.stdout].filter(Boolean).join("\n");
       const ok = expectStderr instanceof RegExp ? expectStderr.test(hay) : hay.includes(String(expectStderr));
       if (!ok) {
         const detail = [
-          stderr ? `stderr: ${stderr.slice(0, 200)}` : null,
-          stdout ? `stdout: ${stdout.slice(0, 200)}` : null,
+          output.stderr ? `stderr: ${output.stderr.slice(0, 200)}` : null,
+          output.stdout ? `stdout: ${output.stdout.slice(0, 200)}` : null,
         ].filter(Boolean).join("; ");
         throw new Error(`stderr/stdout did not match expected pattern: ${expectStderr}${detail ? ` (${detail})` : ""}`);
       }
     }
-  } finally {
-    child.kill("SIGTERM");
-    await new Promise((resolve) => {
-      const t = setTimeout(() => {
-        child.kill("SIGKILL");
-        resolve();
-      }, 4000);
-      child.on("exit", () => {
-        clearTimeout(t);
-        resolve();
-      });
-    });
-  }
-  if (readyFile) {
-    try { fs.rmSync(readyFile, { force: true }); } catch {}
-  }
+  });
+}
+
+async function runReleaseExpectSignal({ releaseDir, runTimeoutMs, env, signals }) {
+  const binPath = path.join(releaseDir, "seal-example");
+  assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
+  await withSealedBinary({
+    label: "thin-anti-debug",
+    releaseDir,
+    binPath,
+    runTimeoutMs,
+    writeRuntimeConfig,
+    env,
+    log,
+    skipListen: runReleaseOk.skipListen === true,
+    waitForReady: false,
+    failOnExit: false,
+    captureOutput: { full: true },
+  }, async ({ port, readyFile, exitInfo, logs }) => {
+    const winner = await withTimeout("expectSignal", runTimeoutMs, () => Promise.race([
+      exitInfo.then((info) => ({ type: "exit", info })),
+      waitForReady({ port, readyFile, timeoutMs: runTimeoutMs }).then(() => ({ type: "ready" })),
+    ]));
+    if (winner && winner.type === "ready") {
+      throw new Error("process reached /api/status (expected signal)");
+    }
+    const info = winner && winner.info ? winner.info : {};
+    const expected = Array.isArray(signals) ? signals : [signals || ""].filter(Boolean);
+    if (!info.signal || (expected.length && !expected.includes(info.signal))) {
+      const output = logs ? logs.text() : { stdout: "", stderr: "" };
+      const detail = [
+        info.signal ? `signal=${info.signal}` : null,
+        info.code !== null ? `code=${info.code}` : null,
+        output.stderr ? `stderr: ${output.stderr.slice(0, 200)}` : null,
+        output.stdout ? `stdout: ${output.stdout.slice(0, 200)}` : null,
+      ].filter(Boolean).join("; ");
+      throw new Error(`process exited without expected signal (${expected.join(", ") || "none"})${detail ? `; ${detail}` : ""}`);
+    }
+  });
 }
 
 async function runReleaseMemfdSealProbe({ releaseDir, runTimeoutMs }) {
@@ -3854,6 +4053,7 @@ async function runReleaseLeakChecks({ releaseDir, outDir, runTimeoutMs, helpers 
   if (bundleSig.skip) {
     log(`SKIP: bundle signatures (${bundleSig.skip})`);
   }
+  const dumpTokens = dedupeTokenBuffers(tokenBuffers.concat(bundleTokens));
   const maxScanBytes = Number(process.env.SEAL_E2E_MAX_SCAN_BYTES || "33554432");
   let leakPid = null;
 
@@ -3917,13 +4117,13 @@ async function runReleaseLeakChecks({ releaseDir, outDir, runTimeoutMs, helpers 
       else log(`OK: mem scan clean (${memScan.scanned} bytes)`);
 
       log("Checking full memory dump (avml)...");
-      const avmlRes = runAvmlDumpScan(child.pid, tokenBuffers);
+      const avmlRes = runAvmlDumpScan(child.pid, dumpTokens);
       if (avmlRes.skip) log(`SKIP: avml dump (${avmlRes.skip})`);
       else if (avmlRes.hit) throw new Error(`avml dump leak "${avmlRes.hit}"`);
       else log("OK: avml dump scan clean");
 
       log("Checking external dump tool...");
-      const extDump = runExternalDumpScan(child.pid, tokenBuffers);
+      const extDump = runExternalDumpScan(child.pid, dumpTokens);
       if (extDump.skip) log(`SKIP: external dump (${extDump.skip})`);
       else if (extDump.hit) throw new Error(`external dump leak "${extDump.hit}"`);
       else log("OK: external dump scan clean");
@@ -4027,7 +4227,7 @@ async function runReleaseLeakChecks({ releaseDir, outDir, runTimeoutMs, helpers 
       if (leakPid && !base.includes(String(leakPid))) continue;
       let hit = "";
       try {
-        hit = scanFileForTokenStream(filePath, tokenBuffers, coreMaxBytes);
+        hit = scanFileForTokenStream(filePath, dumpTokens, coreMaxBytes);
       } catch (e) {
         const code = e && e.code ? e.code : "";
         if (code === "EACCES" || code === "EPERM") {
@@ -4220,17 +4420,7 @@ async function runReleaseBootstrapStageScan({ releaseDir, runTimeoutMs, stage, p
     }
     scanRes = scanFn(child.pid);
   } finally {
-    child.kill("SIGTERM");
-    await new Promise((resolve) => {
-      const t = setTimeout(() => {
-        child.kill("SIGKILL");
-        resolve();
-      }, 4000);
-      child.on("exit", () => {
-        clearTimeout(t);
-        resolve();
-      });
-    });
+    await terminateChild(child);
     try { fs.rmSync(markerPath, { force: true }); } catch {}
   }
   return scanRes;
@@ -4827,17 +5017,7 @@ async function runReleaseBootstrapCrashNoLeak({ releaseDir, runTimeoutMs, stage,
   try {
     info = await withTimeout("bootstrap crash", runTimeoutMs, () => exitPromise);
   } finally {
-    child.kill("SIGTERM");
-    await new Promise((resolve) => {
-      const t = setTimeout(() => {
-        child.kill("SIGKILL");
-        resolve();
-      }, 4000);
-      child.on("exit", () => {
-        clearTimeout(t);
-        resolve();
-      });
-    });
+    await terminateChild(child);
   }
 
   if (!info) {
@@ -4865,6 +5045,65 @@ async function runReleaseBootstrapCrashNoLeak({ releaseDir, runTimeoutMs, stage,
   const stderrHit = scanTextForTokens("stderr", info.stderr, tokens);
   if (stderrHit) throw new Error(stderrHit);
   log("OK: bootstrap crash output clean");
+}
+
+async function runReleaseBootstrapCrashExpectCore({ releaseDir, runTimeoutMs, stage }) {
+  const binPath = path.join(releaseDir, "seal-example");
+  assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
+  const crashStage = stage || "decoded";
+  const childEnv = Object.assign({}, process.env, {
+    SEAL_E2E_BOOTSTRAP_CRASH_STAGE: crashStage,
+  });
+  const startMs = Date.now();
+  const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe", env: childEnv });
+  const outChunks = [];
+  const errChunks = [];
+  child.stdout.on("data", (c) => outChunks.push(c));
+  child.stderr.on("data", (c) => errChunks.push(c));
+
+  const exitPromise = new Promise((resolve) => {
+    child.on("exit", (code, signal) => {
+      const stdout = Buffer.concat(outChunks).toString("utf8").trim();
+      const stderr = Buffer.concat(errChunks).toString("utf8").trim();
+      resolve({ code, signal, stdout, stderr, pid: child.pid });
+    });
+  });
+
+  let info = null;
+  try {
+    info = await withTimeout("bootstrap crash (expect core)", runTimeoutMs, () => exitPromise);
+  } finally {
+    await terminateChild(child);
+  }
+
+  if (!info) {
+    throw new Error("bootstrap crash did not exit");
+  }
+  if (info.code === 0) {
+    throw new Error("bootstrap crash exited with code=0");
+  }
+  if (info.code === null && !info.signal) {
+    throw new Error("bootstrap crash exited without signal");
+  }
+
+  const coreRes = checkCoreFilesAfterCrash(releaseDir, info.pid, startMs);
+  if (coreRes.skip) {
+    const strict = process.env.SEAL_E2E_STRICT_CORE_BASELINE === "1";
+    const msg = `bootstrap crash core check skipped (${coreRes.skip})`;
+    if (strict) throw new Error(msg);
+    log(`SKIP: ${msg} (set SEAL_E2E_STRICT_CORE_BASELINE=1 to enforce)`);
+  } else if (coreRes.ok) {
+    const strict = process.env.SEAL_E2E_STRICT_CORE_BASELINE === "1";
+    const msg = "bootstrap crash produced no core dump";
+    if (strict) throw new Error(msg);
+    log(`SKIP: ${msg} (set SEAL_E2E_STRICT_CORE_BASELINE=1 to enforce)`);
+  } else {
+    log(`OK: bootstrap crash core detected (${coreRes.reason})`);
+  }
+
+  for (const entry of listCoreFiles(releaseDir, startMs)) {
+    try { fs.rmSync(path.join(releaseDir, entry), { force: true }); } catch {}
+  }
 }
 
 async function runReleaseChildAttachChecks({ releaseDir, outDir, runTimeoutMs, helpers }) {
@@ -5364,6 +5603,119 @@ async function runReleasePtraceHelperFail({ releaseDir, runTimeoutMs, env, helpe
   });
 }
 
+async function runReleaseAttachBaselineChecks({ releaseDir, runTimeoutMs, helpers }) {
+  await runReleaseWithReady({
+    releaseDir,
+    runTimeoutMs,
+    skipMessage: "SKIP: listen not permitted; attach baseline disabled",
+    onReady: async ({ child }) => {
+      const baseline = { ok: 0, skip: 0 };
+      const noteSkip = (label, res) => {
+        baseline.skip += 1;
+        log(`SKIP: ${label} (${res.skip})`);
+      };
+      const noteOk = (label, res) => {
+        baseline.ok += 1;
+        const suffix = res && res.note ? ` (${res.note})` : "";
+        log(`OK: ${label}${suffix}`);
+      };
+
+      log("Checking ptrace helper (baseline)...");
+      const ptraceRes = checkPtraceAllowed(child.pid, helpers.ptrace.path);
+      if (ptraceRes.skip) noteSkip("ptrace baseline", ptraceRes);
+      else noteOk("ptrace baseline allowed", ptraceRes);
+
+      log("Checking gdb attach (baseline)...");
+      const gdbRes = checkGdbAttachAllowed(child.pid);
+      if (gdbRes.skip) noteSkip("gdb baseline", gdbRes);
+      else noteOk("gdb baseline allowed", gdbRes);
+
+      log("Checking /proc/<pid>/mem read (baseline)...");
+      const memRes = checkProcMemAllowed(child.pid, helpers.mem.path);
+      if (memRes.skip) noteSkip("mem baseline", memRes);
+      else noteOk("mem read baseline allowed", memRes);
+
+      log("Checking process_vm_readv (baseline)...");
+      const vmRes = checkVmReadAllowed(child.pid, helpers.vm.path);
+      if (vmRes.skip) noteSkip("vmread baseline", vmRes);
+      else noteOk("process_vm_readv baseline allowed", vmRes);
+
+      if (baseline.ok === 0) {
+        const strictHost = process.env.SEAL_E2E_STRICT_HOST_BASELINE === "1";
+        const msg = "attach baseline skipped (host policy/tooling blocks checks)";
+        if (strictHost) {
+          throw new Error(msg);
+        }
+        log(`SKIP: ${msg} (set SEAL_E2E_STRICT_HOST_BASELINE=1 to enforce)`);
+      }
+    },
+  });
+}
+
+async function runReleaseToolingBaselineChecks({ releaseDir, runTimeoutMs }) {
+  await runReleaseWithReady({
+    releaseDir,
+    runTimeoutMs,
+    skipMessage: "SKIP: listen not permitted; tooling baseline disabled",
+    onReady: async ({ child }) => {
+      const baseline = { ok: 0, skip: 0 };
+      const strictTool = process.env.SEAL_E2E_STRICT_TOOL_BASELINE === "1";
+      const noteSkip = (label, res) => {
+        baseline.skip += 1;
+        log(`SKIP: ${label} (${res.skip})`);
+      };
+      const noteOk = (label, res) => {
+        baseline.ok += 1;
+        const suffix = res && res.note ? ` (${res.note})` : "";
+        log(`OK: ${label}${suffix}`);
+      };
+
+      log("Checking perf record baseline...");
+      const perfRec = checkPerfRecordAllowed(child.pid);
+      if (perfRec.skip) noteSkip("perf record baseline", perfRec);
+      else noteOk("perf record baseline allowed", perfRec);
+
+      log("Checking perf trace baseline...");
+      const perfTrace = checkPerfTraceAllowed(child.pid);
+      if (perfTrace.skip) noteSkip("perf trace baseline", perfTrace);
+      else noteOk("perf trace baseline allowed", perfTrace);
+
+      log("Checking rr attach baseline...");
+      const rrRes = checkRrAttachAllowed(child.pid);
+      if (rrRes.skip) noteSkip("rr baseline", rrRes);
+      else noteOk("rr baseline allowed", rrRes);
+
+      log("Checking bpftrace baseline...");
+      const bpfRes = checkBpftraceAttachAllowed(child.pid);
+      if (bpfRes.skip) noteSkip("bpftrace baseline", bpfRes);
+      else noteOk("bpftrace baseline allowed", bpfRes);
+
+      log("Checking bpftrace uprobe baseline...");
+      const bpfU = checkBpftraceUprobeAllowed(child.pid);
+      if (bpfU.skip) noteSkip("bpftrace uprobe baseline", bpfU);
+      else noteOk("bpftrace uprobe baseline allowed", bpfU);
+
+      log("Checking lttng baseline...");
+      const lttngRes = checkLttngAttachAllowed(child.pid);
+      if (lttngRes.skip) noteSkip("lttng baseline", lttngRes);
+      else noteOk("lttng baseline allowed", lttngRes);
+
+      log("Checking sysdig baseline...");
+      const sysdigRes = checkSysdigAllowed(child.pid);
+      if (sysdigRes.skip) noteSkip("sysdig baseline", sysdigRes);
+      else noteOk("sysdig baseline allowed", sysdigRes);
+
+      if (baseline.ok === 0) {
+        const msg = "tooling baseline skipped (host policy/tooling blocks checks)";
+        if (strictTool) {
+          throw new Error(msg);
+        }
+        log(`SKIP: ${msg} (set SEAL_E2E_STRICT_TOOL_BASELINE=1 to enforce)`);
+      }
+    },
+  });
+}
+
 async function runReleaseGcoreFail({ releaseDir, runTimeoutMs, env }) {
   await runReleaseWithReady({
     releaseDir,
@@ -5383,44 +5735,34 @@ async function runReleaseGcoreFail({ releaseDir, runTimeoutMs, env }) {
 }
 
 async function runReleaseCrashNoCore({ releaseDir, runTimeoutMs, env }) {
-  const port = await getFreePort();
-  const readyFile = port === null ? makeReadyFile("thin-anti-debug") : null;
-  if (readyFile) log("WARN: listen not permitted; using ready-file mode");
-  writeRuntimeConfig(releaseDir, port);
-
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
-
-  const baseEnv = Object.assign({}, process.env, env || {});
-  const childEnv = applyReadyFileEnv(baseEnv, readyFile);
   const startMs = Date.now();
-  const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe", env: childEnv });
-  const outChunks = [];
-  const errChunks = [];
-  child.stdout.on("data", (c) => outChunks.push(c));
-  child.stderr.on("data", (c) => errChunks.push(c));
-
-  const exitPromise = new Promise((resolve) => {
-    child.on("exit", (code, signal) => {
-      const stdout = Buffer.concat(outChunks).toString("utf8").trim();
-      const stderr = Buffer.concat(errChunks).toString("utf8").trim();
-      resolve({ code, signal, stdout, stderr, pid: child.pid });
-    });
-  });
-
-  try {
+  await withSealedBinary({
+    label: "thin-anti-debug",
+    releaseDir,
+    binPath,
+    runTimeoutMs,
+    writeRuntimeConfig,
+    env,
+    log,
+    skipListen: runReleaseOk.skipListen === true,
+    waitForReady: false,
+    failOnExit: false,
+  }, async ({ child, port, readyFile, exitInfo }) => {
+    const pid = child.pid;
     const winner = await withTimeout("core crash", runTimeoutMs, () => Promise.race([
-      exitPromise,
-      waitForReady({ port, readyFile, timeoutMs: runTimeoutMs }).then(() => ({ ok: true })),
+      exitInfo.then((info) => ({ type: "exit", info })),
+      waitForReady({ port, readyFile, timeoutMs: runTimeoutMs }).then(() => ({ type: "ready" })),
     ]));
-    if (winner && winner.ok) {
+    if (winner && winner.type === "ready") {
       throw new Error("process reached /api/status (expected crash)");
     }
-    const { code, signal, pid } = winner || {};
-    if (code === 0) {
+    const info = winner && winner.info ? winner.info : {};
+    if (info.code === 0) {
       throw new Error("process exited with code=0 (expected crash)");
     }
-    if (code === null && !signal) {
+    if (info.code === null && !info.signal) {
       throw new Error("process did not crash as expected");
     }
     const coreRes = checkCoreFilesAfterCrash(releaseDir, pid, startMs);
@@ -5431,104 +5773,69 @@ async function runReleaseCrashNoCore({ releaseDir, runTimeoutMs, env }) {
     } else {
       log("OK: no core dump after crash");
     }
-  } finally {
-    child.kill("SIGTERM");
-    await new Promise((resolve) => {
-      const t = setTimeout(() => {
-        child.kill("SIGKILL");
-        resolve();
-      }, 4000);
-      child.on("exit", () => {
-        clearTimeout(t);
-        resolve();
-      });
-    });
-    if (readyFile) {
-      try { fs.rmSync(readyFile, { force: true }); } catch {}
-    }
+  });
+}
+
+function noteAttachSkip(label, reason) {
+  if (!reason) return;
+  const text = String(reason);
+  const labelLower = label.toLowerCase();
+  if (text.toLowerCase().startsWith(labelLower)) {
+    log(`SKIP: ${text}`);
+  } else {
+    log(`SKIP: ${label} (${text})`);
   }
 }
 
-async function runReleaseGdbAttachFail({ releaseDir, runTimeoutMs, env }) {
-  if (!hasCommand("gdb")) {
-    log("SKIP: gdb not installed; gdb attach test disabled");
+async function runReleaseAttachFail({
+  releaseDir,
+  runTimeoutMs,
+  env,
+  label,
+  requiredCommand,
+  preflight,
+  checkAttach,
+}) {
+  if (requiredCommand && !hasCommand(requiredCommand)) {
+    noteAttachSkip(label, `${requiredCommand} not installed`);
     return;
   }
-  const isRoot = isRootUser();
-  const strict = process.env.SEAL_E2E_STRICT_PTRACE === "1";
-
-  const port = await getFreePort();
-  const readyFile = port === null ? makeReadyFile("thin-anti-debug") : null;
-  if (readyFile) log("WARN: listen not permitted; using ready-file mode");
-  writeRuntimeConfig(releaseDir, port);
+  if (typeof preflight === "function") {
+    const skipReason = await preflight();
+    if (skipReason) {
+      noteAttachSkip(label, skipReason);
+      return;
+    }
+  }
 
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
-
-  const baseEnv = Object.assign({}, process.env, env || {});
-  const childEnv = applyReadyFileEnv(baseEnv, readyFile);
-  const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe", env: childEnv });
-  const outChunks = [];
-  const errChunks = [];
-  child.stdout.on("data", (c) => outChunks.push(c));
-  child.stderr.on("data", (c) => errChunks.push(c));
-
-  const exitPromise = new Promise((_, reject) => {
-    child.on("exit", (code, signal) => {
-      const stdout = Buffer.concat(outChunks).toString("utf8").trim();
-      const stderr = Buffer.concat(errChunks).toString("utf8").trim();
-      const detail = [
-        code !== null ? `code=${code}` : null,
-        signal ? `signal=${signal}` : null,
-        stdout ? `stdout: ${stdout.slice(0, 400)}` : null,
-        stderr ? `stderr: ${stderr.slice(0, 400)}` : null,
-      ].filter(Boolean).join("; ");
-      reject(new Error(`process exited early (${detail || "no output"})`));
-    });
+  await withSealedBinary({
+    label: "thin-anti-debug",
+    releaseDir,
+    binPath,
+    runTimeoutMs,
+    writeRuntimeConfig,
+    env,
+    log,
+    skipListen: runReleaseOk.skipListen === true,
+  }, async ({ child }) => {
+    const res = await checkAttach(child.pid);
+    if (res && res.skip) {
+      noteAttachSkip(label, res.skip);
+    }
   });
+}
 
-  try {
-    await withTimeout("waitForStatus", runTimeoutMs, () =>
-      Promise.race([waitForReady({ port, readyFile, timeoutMs: runTimeoutMs }), exitPromise])
-    );
-    const gdbRes = runGdbAttach(child.pid, 5000);
-    if (gdbRes.error && gdbRes.error.code === "ETIMEDOUT") {
-      throw new Error("gdb attach timed out (unexpected)");
-    }
-    const out = `${gdbRes.stdout || ""}${gdbRes.stderr || ""}`.trim();
-    const failMarkers = [
-      /could not attach/i,
-      /operation not permitted/i,
-      /permission denied/i,
-      /ptrace:/i,
-      /not being run/i,
-      /no such process/i,
-      /inappropriate ioctl/i,
-    ];
-    const isFailure = gdbRes.status !== 0 || failMarkers.some((re) => re.test(out));
-    if (!isFailure) {
-      if (isRoot && !strict) {
-        log("SKIP: gdb attach succeeded (set SEAL_E2E_STRICT_PTRACE=1 to enforce)");
-        return;
-      }
-      throw new Error(`gdb attach succeeded (unexpected)${out ? `; output=${out.slice(0, 400)}` : ""}`);
-    }
-  } finally {
-    child.kill("SIGTERM");
-    await new Promise((resolve) => {
-      const t = setTimeout(() => {
-        child.kill("SIGKILL");
-        resolve();
-      }, 4000);
-      child.on("exit", () => {
-        clearTimeout(t);
-        resolve();
-      });
-    });
-    if (readyFile) {
-      try { fs.rmSync(readyFile, { force: true }); } catch {}
-    }
-  }
+async function runReleaseGdbAttachFail({ releaseDir, runTimeoutMs, env }) {
+  await runReleaseAttachFail({
+    releaseDir,
+    runTimeoutMs,
+    env,
+    label: "gdb attach",
+    requiredCommand: "gdb",
+    checkAttach: checkGdbAttachBlockedPid,
+  });
 }
 
 async function runReleaseLldbAttachFail({ releaseDir, runTimeoutMs, env }) {
@@ -5551,276 +5858,36 @@ async function runReleaseLldbAttachFail({ releaseDir, runTimeoutMs, env }) {
 }
 
 async function runReleaseStraceAttachFail({ releaseDir, runTimeoutMs, env }) {
-  if (!hasCommand("strace")) {
-    log("SKIP: strace not installed; strace attach test disabled");
-    return;
-  }
-  const isRoot = isRootUser();
-  const strict = process.env.SEAL_E2E_STRICT_PTRACE === "1";
-
-  const port = await getFreePort();
-  const readyFile = port === null ? makeReadyFile("thin-anti-debug") : null;
-  if (readyFile) log("WARN: listen not permitted; using ready-file mode");
-  writeRuntimeConfig(releaseDir, port);
-
-  const binPath = path.join(releaseDir, "seal-example");
-  assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
-
-  const baseEnv = Object.assign({}, process.env, env || {});
-  const childEnv = applyReadyFileEnv(baseEnv, readyFile);
-  const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe", env: childEnv });
-  const outChunks = [];
-  const errChunks = [];
-  child.stdout.on("data", (c) => outChunks.push(c));
-  child.stderr.on("data", (c) => errChunks.push(c));
-
-  const exitPromise = new Promise((_, reject) => {
-    child.on("exit", (code, signal) => {
-      const stdout = Buffer.concat(outChunks).toString("utf8").trim();
-      const stderr = Buffer.concat(errChunks).toString("utf8").trim();
-      const detail = [
-        code !== null ? `code=${code}` : null,
-        signal ? `signal=${signal}` : null,
-        stdout ? `stdout: ${stdout.slice(0, 400)}` : null,
-        stderr ? `stderr: ${stderr.slice(0, 400)}` : null,
-      ].filter(Boolean).join("; ");
-      reject(new Error(`process exited early (${detail || "no output"})`));
-    });
+  await runReleaseAttachFail({
+    releaseDir,
+    runTimeoutMs,
+    env,
+    label: "strace attach",
+    requiredCommand: "strace",
+    checkAttach: checkStraceAttachBlockedPid,
   });
-
-  try {
-    await withTimeout("waitForStatus", runTimeoutMs, () =>
-      Promise.race([waitForReady({ port, readyFile, timeoutMs: runTimeoutMs }), exitPromise])
-    );
-    const logPath = path.join(os.tmpdir(), `seal-strace-attach-${Date.now()}.log`);
-    const res = runStraceAttach(child.pid, logPath, 5000);
-    if (res.error && res.error.code === "ETIMEDOUT") {
-      if (isRoot && !strict) {
-        log("SKIP: strace attach timed out (set SEAL_E2E_STRICT_PTRACE=1 to enforce)");
-        return;
-      }
-      throw new Error("strace attach timed out (unexpected)");
-    }
-    const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
-    const failMarkers = [
-      /operation not permitted/i,
-      /permission denied/i,
-      /ptrace/i,
-      /not being run/i,
-      /inappropriate ioctl/i,
-    ];
-    const isFailure = res.status !== 0 || failMarkers.some((re) => re.test(out));
-    if (!isFailure) {
-      const trace = fs.existsSync(logPath) ? fs.readFileSync(logPath, "utf8").slice(0, 800) : "";
-      if (isRoot && !strict) {
-        log("SKIP: strace attach succeeded (set SEAL_E2E_STRICT_PTRACE=1 to enforce)");
-        return;
-      }
-      throw new Error(`strace attach succeeded (unexpected)${trace ? `; trace=${trace}` : ""}`);
-    }
-  } finally {
-    child.kill("SIGTERM");
-    await new Promise((resolve) => {
-      const t = setTimeout(() => {
-        child.kill("SIGKILL");
-        resolve();
-      }, 4000);
-      child.on("exit", () => {
-        clearTimeout(t);
-        resolve();
-      });
-    });
-    if (readyFile) {
-      try { fs.rmSync(readyFile, { force: true }); } catch {}
-    }
-  }
 }
 
 async function runReleaseLtraceAttachFail({ releaseDir, runTimeoutMs, env }) {
-  if (!hasCommand("ltrace")) {
-    log("SKIP: ltrace not installed; ltrace attach test disabled");
-    return;
-  }
-  const isRoot = isRootUser();
-  const strict = process.env.SEAL_E2E_STRICT_PTRACE === "1";
-
-  const port = await getFreePort();
-  const readyFile = port === null ? makeReadyFile("thin-anti-debug") : null;
-  if (readyFile) log("WARN: listen not permitted; using ready-file mode");
-  writeRuntimeConfig(releaseDir, port);
-
-  const binPath = path.join(releaseDir, "seal-example");
-  assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
-
-  const baseEnv = Object.assign({}, process.env, env || {});
-  const childEnv = applyReadyFileEnv(baseEnv, readyFile);
-  const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe", env: childEnv });
-  const outChunks = [];
-  const errChunks = [];
-  child.stdout.on("data", (c) => outChunks.push(c));
-  child.stderr.on("data", (c) => errChunks.push(c));
-
-  const exitPromise = new Promise((_, reject) => {
-    child.on("exit", (code, signal) => {
-      const stdout = Buffer.concat(outChunks).toString("utf8").trim();
-      const stderr = Buffer.concat(errChunks).toString("utf8").trim();
-      const detail = [
-        code !== null ? `code=${code}` : null,
-        signal ? `signal=${signal}` : null,
-        stdout ? `stdout: ${stdout.slice(0, 400)}` : null,
-        stderr ? `stderr: ${stderr.slice(0, 400)}` : null,
-      ].filter(Boolean).join("; ");
-      reject(new Error(`process exited early (${detail || "no output"})`));
-    });
+  await runReleaseAttachFail({
+    releaseDir,
+    runTimeoutMs,
+    env,
+    label: "ltrace attach",
+    requiredCommand: "ltrace",
+    checkAttach: checkLtraceAttachBlockedPid,
   });
-
-  try {
-    await withTimeout("waitForStatus", runTimeoutMs, () =>
-      Promise.race([waitForReady({ port, readyFile, timeoutMs: runTimeoutMs }), exitPromise])
-    );
-    const logPath = path.join(os.tmpdir(), `seal-ltrace-attach-${Date.now()}.log`);
-    const res = runLtraceAttach(child.pid, logPath, 5000);
-    if (res.error && res.error.code === "ETIMEDOUT") {
-      if (isRoot && !strict) {
-        log("SKIP: ltrace attach timed out (set SEAL_E2E_STRICT_PTRACE=1 to enforce)");
-        return;
-      }
-      throw new Error("ltrace attach timed out (unexpected)");
-    }
-    const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
-    const failMarkers = [
-      /operation not permitted/i,
-      /permission denied/i,
-      /ptrace/i,
-      /cannot attach/i,
-      /not being run/i,
-      /inappropriate ioctl/i,
-    ];
-    const isFailure = res.status !== 0 || failMarkers.some((re) => re.test(out));
-    if (!isFailure) {
-      const trace = fs.existsSync(logPath) ? fs.readFileSync(logPath, "utf8").slice(0, 800) : "";
-      if (isRoot && !strict) {
-        log("SKIP: ltrace attach succeeded (set SEAL_E2E_STRICT_PTRACE=1 to enforce)");
-        return;
-      }
-      throw new Error(`ltrace attach succeeded (unexpected)${trace ? `; trace=${trace}` : ""}`);
-    }
-  } finally {
-    child.kill("SIGTERM");
-    await new Promise((resolve) => {
-      const t = setTimeout(() => {
-        child.kill("SIGKILL");
-        resolve();
-      }, 4000);
-      child.on("exit", () => {
-        clearTimeout(t);
-        resolve();
-      });
-    });
-    if (readyFile) {
-      try { fs.rmSync(readyFile, { force: true }); } catch {}
-    }
-  }
 }
 
 async function runReleaseGdbServerAttachFail({ releaseDir, runTimeoutMs, env }) {
-  if (!hasCommand("gdbserver")) {
-    log("SKIP: gdbserver not installed; gdbserver attach test disabled");
-    return;
-  }
-  const isRoot = isRootUser();
-  const strict = process.env.SEAL_E2E_STRICT_PTRACE === "1";
-
-  const port = await getFreePort();
-  const readyFile = port === null ? makeReadyFile("thin-anti-debug") : null;
-  if (readyFile) log("WARN: listen not permitted; using ready-file mode");
-  const gdbPort = await getFreePort();
-  if (gdbPort === null) {
-    log("SKIP: gdbserver attach disabled (listen not permitted)");
-    return;
-  }
-  writeRuntimeConfig(releaseDir, port);
-
-  const binPath = path.join(releaseDir, "seal-example");
-  assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
-
-  const baseEnv = Object.assign({}, process.env, env || {});
-  const childEnv = applyReadyFileEnv(baseEnv, readyFile);
-  const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe", env: childEnv });
-  const outChunks = [];
-  const errChunks = [];
-  child.stdout.on("data", (c) => outChunks.push(c));
-  child.stderr.on("data", (c) => errChunks.push(c));
-
-  const exitPromise = new Promise((_, reject) => {
-    child.on("exit", (code, signal) => {
-      const stdout = Buffer.concat(outChunks).toString("utf8").trim();
-      const stderr = Buffer.concat(errChunks).toString("utf8").trim();
-      const detail = [
-        code !== null ? `code=${code}` : null,
-        signal ? `signal=${signal}` : null,
-        stdout ? `stdout: ${stdout.slice(0, 400)}` : null,
-        stderr ? `stderr: ${stderr.slice(0, 400)}` : null,
-      ].filter(Boolean).join("; ");
-      reject(new Error(`process exited early (${detail || "no output"})`));
-    });
+  await runReleaseAttachFail({
+    releaseDir,
+    runTimeoutMs,
+    env,
+    label: "gdbserver attach",
+    requiredCommand: "gdbserver",
+    checkAttach: checkGdbServerAttachBlockedPid,
   });
-
-  try {
-    await withTimeout("waitForStatus", runTimeoutMs, () =>
-      Promise.race([waitForReady({ port, readyFile, timeoutMs: runTimeoutMs }), exitPromise])
-    );
-    const hostPort = `127.0.0.1:${gdbPort}`;
-    const res = runGdbServerAttach(child.pid, hostPort, 5000);
-    if (res.error && res.error.code === "ETIMEDOUT") {
-      if (isRoot && !strict) {
-        log("SKIP: gdbserver attach timed out (set SEAL_E2E_STRICT_PTRACE=1 to enforce)");
-        return;
-      }
-      throw new Error("gdbserver attach timed out (unexpected)");
-    }
-    const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
-    const skipMarkers = [
-      /address already in use/i,
-      /cannot bind/i,
-      /failed to bind/i,
-    ];
-    if (skipMarkers.some((re) => re.test(out))) {
-      log(`SKIP: gdbserver attach (${out.slice(0, 120)})`);
-      return;
-    }
-    const failMarkers = [
-      /operation not permitted/i,
-      /permission denied/i,
-      /ptrace/i,
-      /cannot attach/i,
-      /not being run/i,
-      /inappropriate ioctl/i,
-    ];
-    const isFailure = res.status !== 0 || failMarkers.some((re) => re.test(out));
-    if (!isFailure) {
-      if (isRoot && !strict) {
-        log("SKIP: gdbserver attach succeeded (set SEAL_E2E_STRICT_PTRACE=1 to enforce)");
-        return;
-      }
-      throw new Error(`gdbserver attach succeeded (unexpected)${out ? `; output=${out.slice(0, 200)}` : ""}`);
-    }
-  } finally {
-    child.kill("SIGTERM");
-    await new Promise((resolve) => {
-      const t = setTimeout(() => {
-        child.kill("SIGKILL");
-        resolve();
-      }, 4000);
-      child.on("exit", () => {
-        clearTimeout(t);
-        resolve();
-      });
-    });
-    if (readyFile) {
-      try { fs.rmSync(readyFile, { force: true }); } catch {}
-    }
-  }
 }
 
 async function runReleaseLldbServerAttachFail({ releaseDir, runTimeoutMs, env }) {
@@ -5942,34 +6009,24 @@ async function runReleaseExpectFailAfterReady({
   expectStderr,
   onReady,
 }) {
-  const port = await getFreePort();
-  const readyFile = port === null ? makeReadyFile("thin-anti-debug") : null;
-  if (readyFile) log("WARN: listen not permitted; using ready-file mode");
-  writeRuntimeConfig(releaseDir, port);
-
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
-
-  const baseEnv = Object.assign({}, process.env, env || {});
-  const childEnv = applyReadyFileEnv(baseEnv, readyFile);
-  const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe", env: childEnv });
-  const outChunks = [];
-  const errChunks = [];
-  child.stdout.on("data", (c) => outChunks.push(c));
-  child.stderr.on("data", (c) => errChunks.push(c));
-
-  const exitPromise = new Promise((resolve) => {
-    child.on("exit", (code, signal) => {
-      const stdout = Buffer.concat(outChunks).toString("utf8").trim();
-      const stderr = Buffer.concat(errChunks).toString("utf8").trim();
-      resolve({ code, signal, stdout, stderr });
-    });
-  });
-
-  try {
+  await withSealedBinary({
+    label: "thin-anti-debug",
+    releaseDir,
+    binPath,
+    runTimeoutMs: Math.max(readyTimeoutMs, failTimeoutMs),
+    writeRuntimeConfig,
+    env,
+    log,
+    skipListen: runReleaseOk.skipListen === true,
+    waitForReady: false,
+    failOnExit: false,
+    captureOutput: { full: true },
+  }, async ({ child, port, readyFile, exitInfo, logs }) => {
     await withTimeout("waitForReady", readyTimeoutMs, () => Promise.race([
       waitForReady({ port, readyFile, timeoutMs: readyTimeoutMs }),
-      exitPromise.then(({ code, signal }) => {
+      exitInfo.then(({ code, signal }) => {
         throw new Error(`process exited before ready (code=${code} signal=${signal || "none"})`);
       }),
     ]));
@@ -5978,8 +6035,8 @@ async function runReleaseExpectFailAfterReady({
       await onReady({ child, port });
     }
 
-    const failRes = await withTimeout("waitForFail", failTimeoutMs, () => exitPromise);
-    const { code, signal, stderr } = failRes || {};
+    const failRes = await withTimeout("waitForFail", failTimeoutMs, () => exitInfo);
+    const { code, signal } = failRes || {};
     if (code === 0) {
       throw new Error("process exited with code=0 (expected failure)");
     }
@@ -5987,28 +6044,14 @@ async function runReleaseExpectFailAfterReady({
       throw new Error("process did not fail as expected");
     }
     if (expectStderr) {
-      const hay = String(stderr || "");
+      const output = logs ? logs.text() : { stdout: "", stderr: "" };
+      const hay = String(output.stderr || "");
       const ok = expectStderr instanceof RegExp ? expectStderr.test(hay) : hay.includes(String(expectStderr));
       if (!ok) {
         throw new Error(`stderr did not match expected pattern: ${expectStderr}`);
       }
     }
-  } finally {
-    child.kill("SIGTERM");
-    await new Promise((resolve) => {
-      const t = setTimeout(() => {
-        child.kill("SIGKILL");
-        resolve();
-      }, 4000);
-      child.on("exit", () => {
-        clearTimeout(t);
-        resolve();
-      });
-    });
-    if (readyFile) {
-      try { fs.rmSync(readyFile, { force: true }); } catch {}
-    }
-  }
+  });
 }
 
 async function runReleaseStopResumeExpectFail({ releaseDir, readyTimeoutMs, failTimeoutMs, stopMs, expectStderr }) {
@@ -6109,10 +6152,12 @@ async function runReleaseCgroupFreezeFail({
 
 async function buildThinSplit({
   outRoot,
+  outDirName,
   antiDebug,
   integrity,
   appBind,
   snapshotGuard,
+  nativeBootstrap,
   launcherHardening,
   launcherObfuscation,
 }) {
@@ -6127,6 +6172,7 @@ async function buildThinSplit({
   if (integrity !== undefined) thinCfg.integrity = Object.assign({}, thinCfg.integrity || {}, integrity);
   if (appBind !== undefined) thinCfg.appBind = Object.assign({}, thinCfg.appBind || {}, appBind);
   if (snapshotGuard !== undefined) thinCfg.snapshotGuard = Object.assign({}, thinCfg.snapshotGuard || {}, snapshotGuard);
+  if (nativeBootstrap !== undefined) thinCfg.nativeBootstrap = Object.assign({}, thinCfg.nativeBootstrap || {}, nativeBootstrap);
   if (launcherHardening !== undefined) thinCfg.launcherHardening = launcherHardening;
   if (launcherObfuscation !== undefined) thinCfg.launcherObfuscation = launcherObfuscation;
   projectCfg.build.thin = thinCfg;
@@ -6134,7 +6180,9 @@ async function buildThinSplit({
   const targetCfg = loadTargetConfig(EXAMPLE_ROOT, "local").cfg;
   const configName = resolveConfigName(targetCfg, "local");
 
-  const outDir = path.join(outRoot, "seal-out");
+  const label = outDirName ? String(outDirName) : `build-${++buildThinSplit.counter}`;
+  const safeLabel = label.replace(/[^a-z0-9._-]+/gi, "-");
+  const outDir = path.join(outRoot, `seal-out-${safeLabel}`);
   const res = await buildRelease({
     projectRoot: EXAMPLE_ROOT,
     projectCfg,
@@ -6145,6 +6193,7 @@ async function buildThinSplit({
   });
   return res;
 }
+buildThinSplit.counter = 0;
 
 function tamperLauncher(releaseDir) {
   const launcherPath = path.join(releaseDir, "b", "a");
@@ -6300,7 +6349,12 @@ async function main() {
       buildThinSplit({
         outRoot,
         integrity: { enabled: true },
-        antiDebug: { enabled: true, tracerPid: true, denyEnv: true },
+        antiDebug: {
+          enabled: true,
+          tracerPid: true,
+          denyEnv: true,
+          ptraceGuard: { enabled: true, dumpable: true },
+        },
         launcherObfuscation: false,
       })
     );
@@ -6493,6 +6547,19 @@ async function main() {
         runReleaseLeakChecks({ releaseDir: resA.releaseDir, outDir: resA.outDir, runTimeoutMs, helpers })
       );
 
+      log("Building thin-split with nativeBootstrap disabled...");
+      const resFallback = await withTimeout("buildRelease(nativeBootstrap off)", buildTimeoutMs, () =>
+        buildThinSplit({
+          outRoot,
+          nativeBootstrap: { enabled: false },
+          launcherObfuscation: false,
+        })
+      );
+      log("Testing leak checks with nativeBootstrap disabled...");
+      await withTimeout("leak checks (nativeBootstrap off)", testTimeoutMs, () =>
+        runReleaseLeakChecks({ releaseDir: resFallback.releaseDir, outDir: resFallback.outDir, runTimeoutMs, helpers })
+      );
+
       log("Testing delayed marker scans...");
       const delayList = parseDelayList(process.env.SEAL_E2E_DELAY_SCAN_MS_LIST, [2000, 6000]);
       await withTimeout("delayed marker scans", testTimeoutMs, () =>
@@ -6502,6 +6569,72 @@ async function main() {
           delaysMs: delayList,
         })
       );
+    }
+
+    if (suiteEnabled("dump")) {
+      log("Suite: dump");
+      if (process.env.SEAL_E2E_REAL_DUMP !== "1") {
+        log("SKIP: real dump tests disabled (set SEAL_E2E_REAL_DUMP=1 to enable)");
+      } else {
+        const strictRealDump = process.env.SEAL_E2E_STRICT_REAL_DUMP === "1";
+        const dumpToolLabel = process.env.SEAL_E2E_DUMP_CMD
+          ? `external:${process.env.SEAL_E2E_DUMP_CMD}`
+          : "gcore/gdb";
+        log(`Dump tool: ${dumpToolLabel}`);
+
+        log("Building thin-split without anti-debug for dump baseline...");
+        const resDump = await withTimeout("buildRelease(dump baseline)", buildTimeoutMs, () =>
+          buildThinSplit({
+            outRoot,
+            antiDebug: { enabled: false },
+            launcherObfuscation: false,
+          })
+        );
+
+        const pauseMs = Number(process.env.SEAL_E2E_BOOTSTRAP_PAUSE_MS || "8000");
+        const baselineMarkerHex = crypto.randomBytes(24).toString("hex");
+        const baselineMarkerBuf = Buffer.from(baselineMarkerHex, "hex");
+
+        log("Testing dump baseline (expect marker present)...");
+        const baselineRes = await runReleaseBootstrapStageScan({
+          releaseDir: resDump.releaseDir,
+          runTimeoutMs,
+          stage: "decoded",
+          pauseMs,
+          env: { SEAL_E2E_KEY_MARKER_HEX: baselineMarkerHex },
+          scanFn: (pid) => runDumpScan(pid, [baselineMarkerBuf]),
+        });
+        if (baselineRes.skip) {
+          const msg = `dump baseline (${baselineRes.skip})`;
+          if (strictRealDump) {
+            throw new Error(msg);
+          }
+          log(`SKIP: ${msg}; set SEAL_E2E_STRICT_REAL_DUMP=1 to enforce`);
+        } else if (!baselineRes.hit) {
+          throw new Error("dump baseline did not expose marker");
+        } else {
+          log("OK: dump baseline captured marker");
+
+          const protectedMarkerHex = crypto.randomBytes(24).toString("hex");
+          const protectedMarkerBuf = Buffer.from(protectedMarkerHex, "hex");
+          log("Testing protected dump (expect blocked/clean)...");
+          const protectedRes = await runReleaseBootstrapStageScan({
+            releaseDir: resA.releaseDir,
+            runTimeoutMs,
+            stage: "decoded",
+            pauseMs,
+            env: { SEAL_E2E_KEY_MARKER_HEX: protectedMarkerHex },
+            scanFn: (pid) => runDumpScan(pid, [protectedMarkerBuf]),
+          });
+          if (protectedRes.skip) {
+            log(`OK: protected dump blocked (${protectedRes.skip})`);
+          } else if (protectedRes.hit) {
+            throw new Error(`protected dump leak "${protectedRes.hit}"`);
+          } else {
+            log("OK: protected dump clean");
+          }
+        }
+      }
     }
 
     if (suiteEnabled("bootstrap")) {
@@ -6574,6 +6707,23 @@ async function main() {
 
     if (suiteEnabled("attach")) {
       log("Suite: attach");
+      log("Building thin-split baseline (antiDebug off) for attach checks...");
+      const resAttachBaseline = await withTimeout("buildRelease(attach baseline)", buildTimeoutMs, () =>
+        buildThinSplit({
+          outRoot,
+          antiDebug: { enabled: false },
+          launcherObfuscation: false,
+        })
+      );
+      await withTimeout("attach baseline checks", testTimeoutMs, () =>
+        runReleaseAttachBaselineChecks({ releaseDir: resAttachBaseline.releaseDir, runTimeoutMs, helpers })
+      );
+      log("OK: attach baseline checks completed");
+      await withTimeout("tooling baseline checks", testTimeoutMs, () =>
+        runReleaseToolingBaselineChecks({ releaseDir: resAttachBaseline.releaseDir, runTimeoutMs })
+      );
+      log("OK: tooling baseline checks completed");
+
       log("Testing gdb attach (expect failure)...");
       await withTimeout("gdb attach fail", testTimeoutMs, () =>
         runReleaseGdbAttachFail({ releaseDir: resA.releaseDir, runTimeoutMs })
@@ -6730,6 +6880,27 @@ async function main() {
       );
       log("OK: seccomp probe ok");
 
+      log("Testing seccomp kill mode (expect SIGSYS)...");
+      const resKill = await withTimeout("buildRelease(seccomp kill)", buildTimeoutMs, () =>
+        buildThinSplit({
+          outRoot,
+          antiDebug: {
+            enabled: true,
+            seccompNoDebug: { enabled: true, mode: "kill" },
+          },
+          launcherObfuscation: false,
+        })
+      );
+      await withTimeout("seccomp kill probe", testTimeoutMs, () =>
+        runReleaseExpectSignal({
+          releaseDir: resKill.releaseDir,
+          runTimeoutMs,
+          env: { SEAL_SECCOMP_KILL_PROBE: "1" },
+          signals: ["SIGSYS", "SIGKILL"],
+        })
+      );
+      log("OK: seccomp kill mode terminates process");
+
       log("Testing seccomp aggressive probe (expect success)...");
       const resAgg = await withTimeout("buildRelease(seccomp aggressive)", buildTimeoutMs, () =>
         buildThinSplit({
@@ -6756,6 +6927,22 @@ async function main() {
           releaseDir: resA.releaseDir,
           runTimeoutMs,
           env: { SEAL_CORE_CRASH_PROBE: "1" },
+        })
+      );
+
+      log("Testing core crash baseline (expect core dump)...");
+      const resCore = await withTimeout("buildRelease(core baseline)", buildTimeoutMs, () =>
+        buildThinSplit({
+          outRoot,
+          antiDebug: { enabled: false },
+          launcherObfuscation: false,
+        })
+      );
+      await withTimeout("core crash baseline", testTimeoutMs, () =>
+        runReleaseBootstrapCrashExpectCore({
+          releaseDir: resCore.releaseDir,
+          runTimeoutMs,
+          stage: "decoded",
         })
       );
 
@@ -7103,6 +7290,70 @@ async function main() {
         runReleaseExpectFail({ releaseDir: resC.releaseDir, runTimeoutMs, expectStderr: "[thin] runtime invalid" })
       );
       log("OK: maps denylist triggers failure");
+
+      log("Building thin-split with maps denylist (injected library)...");
+      const resMaps = await withTimeout("buildRelease(maps deny inject)", buildTimeoutMs, () =>
+        buildThinSplit({
+          outRoot,
+          antiDebug: {
+            enabled: true,
+            tracerPid: false,
+            denyEnv: false,
+            loaderGuard: false,
+            coreDump: false,
+            ptraceGuard: { enabled: false },
+            seccompNoDebug: { enabled: false },
+            mapsDenylist: ["frida"],
+          },
+          launcherObfuscation: false,
+        })
+      );
+      await withTimeout("maps deny baseline ok", testTimeoutMs, () =>
+        runReleaseOk({ releaseDir: resMaps.releaseDir, runTimeoutMs })
+      );
+      const injectDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-maps-inject-"));
+      const injectLib = path.join(injectDir, "frida-hook.so");
+      try {
+        fs.copyFileSync(helpers.preload.path, injectLib);
+        await withTimeout("maps deny inject fail", testTimeoutMs, () =>
+          runReleaseExpectFail({
+            releaseDir: resMaps.releaseDir,
+            runTimeoutMs,
+            env: { LD_PRELOAD: injectLib },
+            expectStderr: "[thin] runtime invalid",
+          })
+        );
+      } finally {
+        fs.rmSync(injectDir, { recursive: true, force: true });
+      }
+      log("OK: maps denylist blocks injected library");
+
+      log("Testing integrity inline + ELF packer (expect build fail)...");
+      await withTimeout("integrity inline conflict", buildTimeoutMs, async () => {
+        const conflictRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-integrity-inline-"));
+        try {
+          let threw = false;
+          try {
+            await buildThinSplit({
+              outRoot: conflictRoot,
+              integrity: { enabled: true, mode: "inline" },
+              launcherObfuscation: false,
+            });
+          } catch (e) {
+            const msg = e && e.message ? e.message : String(e);
+            if (!/thin\.integrity.*compatible.*elfPacker/i.test(msg)) {
+              throw e;
+            }
+            threw = true;
+          }
+          if (!threw) {
+            throw new Error("expected build failure for thin.integrity inline + elfPacker");
+          }
+        } finally {
+          fs.rmSync(conflictRoot, { recursive: true, force: true });
+        }
+      });
+      log("OK: integrity inline conflict rejected");
 
       log("Testing periodic TracerPid (forced after ready)...");
       const resD = await withTimeout("buildRelease(tracerpid interval)", buildTimeoutMs, () =>

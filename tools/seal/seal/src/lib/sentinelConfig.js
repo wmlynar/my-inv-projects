@@ -271,11 +271,34 @@ function resolveSentinelConfig({ projectRoot, projectCfg, targetCfg, targetName,
   const enabledRaw = cfg.enabled;
   const supportsSentinel = !!(packagerSpec && packagerSupportsSentinel(packagerSpec.label));
   const isSsh = (targetCfg && String(targetCfg.kind || "local").toLowerCase() === "ssh");
-  const enabled = (enabledRaw === undefined || enabledRaw === null || enabledRaw === "auto")
+  const enabledAuto = enabledRaw === undefined || enabledRaw === null || enabledRaw === "auto";
+  const enabled = enabledAuto
     ? (supportsSentinel && isSsh)
     : !!enabledRaw;
+  const sentinelConfigured = projHasSentinel || targetRaw !== undefined || profileRaw !== undefined;
 
-  if (!enabled) return { enabled: false, profile: profileName || null };
+  if (!enabled) {
+    if (enabledAuto && sentinelConfigured && (!supportsSentinel || !isSsh)) {
+      const label = packagerSpec ? (packagerSpec.label === "sea" ? "SEA" : packagerSpec.label) : "unknown";
+      const notes = [];
+      if (!supportsSentinel) {
+        notes.push(`Sentinel auto disabled: ${label} does not support sentinel (requires thin-split)`);
+      }
+      if (!isSsh) {
+        notes.push("Sentinel auto disabled: target is not SSH");
+      }
+      return {
+        enabled: false,
+        profile: profileName || null,
+        compat: {
+          disabled: { auto: true, packager: !supportsSentinel, target: !isSsh },
+          packager: packagerSpec ? packagerSpec.label : "unknown",
+          notes,
+        },
+      };
+    }
+    return { enabled: false, profile: profileName || null };
+  }
   if (!supportsSentinel) {
     const label = packagerSpec ? packagerSpec.label : "unknown";
     return {

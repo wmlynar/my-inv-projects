@@ -10,6 +10,7 @@ const { spawnSyncSafe } = require("../spawn");
 const { ensureDir, fileExists } = require("../fsextra");
 const { info, warn } = require("../ui");
 const { SEAL_OUT_DIR } = require("../paths");
+const { THIN_NATIVE_BOOTSTRAP_FILE } = require("../thinPaths");
 
 const THIN_VERSION = 1;
 const THIN_FOOTER_LEN = 32;
@@ -581,7 +582,14 @@ function resolveCc(cObfuscator) {
   return null;
 }
 
-function resolveCxx() {
+function resolveCxx(cmdOverride) {
+  if (cmdOverride) {
+    const cmd = String(cmdOverride);
+    if (cmd.includes("/")) {
+      return isExecutable(cmd) ? cmd : null;
+    }
+    return hasCommand(cmd) ? cmd : null;
+  }
   const envCxx = process.env.CXX;
   if (envCxx) return envCxx;
   if (hasCommand("c++")) return "c++";
@@ -2469,9 +2477,26 @@ function wipeKeyBuf() {
 
 const NATIVE_BOOTSTRAP_ENABLED = ${nativeBootstrapEnabled ? 1 : 0};
 const NATIVE_BOOTSTRAP_MODE = ${JSON.stringify(nativeBootstrapMode || "compile")};
-const NATIVE_BOOTSTRAP_PATH = process.env.SEAL_THIN_NATIVE || path.join(process.cwd(), "r", "nb.node");
+const NATIVE_BOOTSTRAP_PATH = process.env.SEAL_THIN_NATIVE || path.join(process.cwd(), "r", ${JSON.stringify(THIN_NATIVE_BOOTSTRAP_FILE)});
 
 let nativeAddon = null;
+
+function loadNativeAddon(filePath) {
+  if (!filePath) return null;
+  try {
+    const m = new Module(filePath, module);
+    m.filename = filePath;
+    m.paths = Module._nodeModulePaths(path.dirname(filePath));
+    if (typeof process.dlopen === "function") {
+      process.dlopen(m, filePath);
+      return m.exports;
+    }
+  } catch {}
+  try {
+    return require(filePath);
+  } catch {}
+  return null;
+}
 
 const SENTINEL_ENABLED = ${sentinelEnabled ? 1 : 0};
 const SENTINEL_EXIT_CODE = ${sentinelExitCode};
@@ -2983,7 +3008,7 @@ function readE2eCodeFromFd(sourceFd) {
 
 if (NATIVE_BOOTSTRAP_ENABLED) {
   try {
-    nativeAddon = require(NATIVE_BOOTSTRAP_PATH);
+    nativeAddon = loadNativeAddon(NATIVE_BOOTSTRAP_PATH);
     if (NATIVE_BOOTSTRAP_MODE === "string") {
       if (nativeAddon && typeof nativeAddon.readExternalStringFromFd === "function") {
         code = nativeAddon.readExternalStringFromFd(fd);
@@ -4417,6 +4442,21 @@ static int anti_debug_e2e_probe(void) {
 #endif
   }
 
+  const char *seccomp_kill_probe = getenv("SEAL_SECCOMP_KILL_PROBE");
+  if (seccomp_kill_probe && strcmp(seccomp_kill_probe, "1") == 0) {
+#if THIN_AD_SECCOMP && THIN_AD_SECCOMP_KILL
+#ifndef __NR_ptrace
+    return fail_msg("[thin] runtime invalid", 81);
+#else
+    errno = 0;
+    (void)syscall(__NR_ptrace, (int)PTRACE_TRACEME, 0, 0, 0);
+    return fail_msg("[thin] runtime invalid", 81);
+#endif
+#else
+    return fail_msg("[thin] runtime invalid", 81);
+#endif
+  }
+
   const char *seccomp_aggr_probe = getenv("SEAL_SECCOMP_AGGRESSIVE_PROBE");
   if (seccomp_aggr_probe && strcmp(seccomp_aggr_probe, "1") == 0) {
 #if THIN_AD_SECCOMP && THIN_AD_SECCOMP_AGGRESSIVE
@@ -4836,8 +4876,11 @@ function buildLauncher(
   return { ok: true, path: outPath };
 }
 
-function buildNativeBootstrap(stageDir) {
-  const cxx = resolveCxx();
+function buildNativeBootstrap(stageDir, obfuscator) {
+  if (obfuscator && obfuscator.cmd && (!Array.isArray(obfuscator.args) || !obfuscator.args.length)) {
+    return { ok: false, errorShort: "nativeBootstrapObfuscator args missing", error: "missing_native_obf_args" };
+  }
+  const cxx = resolveCxx(obfuscator && obfuscator.cmd ? obfuscator.cmd : null);
   if (!cxx) {
     return { ok: false, errorShort: "C++ compiler not found (c++/g++/clang++)", error: "missing_cxx" };
   }
@@ -4855,6 +4898,11 @@ function buildNativeBootstrap(stageDir) {
   }
   const outPath = path.join(stageDir, "thin-native.node");
   const includeFlags = includeDirs.flatMap((dir) => ["-I", dir]);
+  const obfArgs = (obfuscator && Array.isArray(obfuscator.args))
+    ? obfuscator.args.map((v) => String(v))
+    : [];
+  const systemIncludeDirs = obfuscator ? getSystemIncludeDirs() : [];
+  const systemIncludeFlags = systemIncludeDirs.flatMap((dir) => ["-isystem", dir]);
   const args = [
     "-shared",
     "-fPIC",
@@ -4863,6 +4911,8 @@ function buildNativeBootstrap(stageDir) {
     "-std=c++20",
     "-pthread",
     "-DNODE_GYP_MODULE_NAME=seal_thin_native",
+    ...obfArgs,
+    ...systemIncludeFlags,
     ...includeFlags,
     "-o",
     outPath,
@@ -4899,6 +4949,7 @@ async function packThin({
   appBind,
   snapshotGuard,
   nativeBootstrap,
+  nativeBootstrapObfuscator,
   projectRoot,
   targetName,
   sentinel,
@@ -5039,7 +5090,7 @@ async function packThin({
     let nativeRes = null;
     if (nativeBootstrapEnabled) {
       info("Thin: building native bootstrap addon...");
-      nativeRes = timeSync("build.packager.thin.native_bootstrap", () => buildNativeBootstrap(stageDir));
+      nativeRes = timeSync("build.packager.thin.native_bootstrap", () => buildNativeBootstrap(stageDir, nativeBootstrapObfuscator));
       if (!nativeRes.ok) return nativeRes;
     }
 
@@ -5059,7 +5110,7 @@ async function packThin({
         fs.writeFileSync(path.join(rDir, "rt"), runtimeContainer);
         fs.writeFileSync(path.join(rDir, "pl"), payloadContainer);
         if (nativeRes && nativeRes.path) {
-          const nativeOut = path.join(rDir, "nb.node");
+          const nativeOut = path.join(rDir, THIN_NATIVE_BOOTSTRAP_FILE);
           fs.copyFileSync(nativeRes.path, nativeOut);
           fs.chmodSync(nativeOut, 0o755);
         }

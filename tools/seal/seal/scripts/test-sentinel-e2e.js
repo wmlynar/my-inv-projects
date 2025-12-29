@@ -4,12 +4,19 @@
 const assert = require("assert");
 const crypto = require("crypto");
 const fs = require("fs");
-const http = require("http");
-const net = require("net");
 const os = require("os");
 const path = require("path");
 const { spawn, spawnSync } = require("child_process");
-const { hasCommand, resolveE2ETimeout, resolveE2ERunTimeout, applyReadyFileEnv, makeReadyFile, waitForReadyFile } = require("./e2e-utils");
+const {
+  hasCommand,
+  resolveE2ETimeout,
+  resolveE2ERunTimeout,
+  waitForReady,
+  withTimeout,
+  resolveExampleRoot,
+  createLogger,
+  withSealedBinary,
+} = require("./e2e-utils");
 
 const { buildRelease } = require("../src/lib/build");
 const { loadProjectConfig, loadTargetConfig, resolveConfigName } = require("../src/lib/project");
@@ -17,15 +24,9 @@ const { readJson5, writeJson5 } = require("../src/lib/json5io");
 const { buildAnchor, deriveOpaqueDir, deriveOpaqueFile, packBlob } = require("../src/lib/sentinelCore");
 const { buildFingerprintHash } = require("../src/lib/sentinelConfig");
 
-const EXAMPLE_ROOT = process.env.SEAL_E2E_EXAMPLE_ROOT || path.resolve(__dirname, "..", "..", "example");
+const EXAMPLE_ROOT = resolveExampleRoot();
 
-function log(msg) {
-  process.stdout.write(`[sentinel-e2e] ${msg}\n`);
-}
-
-function fail(msg) {
-  process.stderr.write(`[sentinel-e2e] ERROR: ${msg}\n`);
-}
+const { log, fail } = createLogger("sentinel-e2e");
 
 function runCmd(cmd, args, timeoutMs = 5000) {
   return spawnSync(cmd, args, { stdio: "pipe", timeout: timeoutMs });
@@ -67,73 +68,6 @@ function checkPrereqs() {
   return { ok: true, skip: false };
 }
 
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function withTimeout(label, ms, fn) {
-  let timer = null;
-  const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => {
-      reject(new Error(`${label} timed out after ${ms}ms`));
-    }, ms);
-  });
-  return Promise.race([fn(), timeout]).finally(() => {
-    if (timer) clearTimeout(timer);
-  });
-}
-
-function httpJson({ port, path: reqPath, timeoutMs }) {
-  return new Promise((resolve, reject) => {
-    const req = http.request(
-      {
-        host: "127.0.0.1",
-        port,
-        path: reqPath,
-        method: "GET",
-        timeout: timeoutMs,
-      },
-      (res) => {
-        const chunks = [];
-        res.on("data", (c) => chunks.push(c));
-        res.on("end", () => {
-          const raw = Buffer.concat(chunks).toString("utf8");
-          try {
-            const json = JSON.parse(raw);
-            resolve({ status: res.statusCode, json });
-          } catch (e) {
-            reject(new Error(`Invalid JSON response: ${raw.slice(0, 200)}`));
-          }
-        });
-      }
-    );
-    req.on("timeout", () => {
-      req.destroy(new Error("HTTP timeout"));
-    });
-    req.on("error", (err) => reject(err));
-    req.end();
-  });
-}
-
-async function waitForStatus(port, timeoutMs = 10_000) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    try {
-      const { status, json } = await httpJson({ port, path: "/api/status", timeoutMs: 800 });
-      if (status === 200 && json && json.ok) return json;
-    } catch {
-      // ignore and retry
-    }
-    await delay(200);
-  }
-  throw new Error(`Timeout waiting for /api/status on port ${port}`);
-}
-
-async function waitForReady({ port, readyFile, timeoutMs }) {
-  if (readyFile) return waitForReadyFile(readyFile, timeoutMs);
-  return waitForStatus(port, timeoutMs);
-}
-
 function parseReadyPayload(raw) {
   if (!raw) return null;
   try {
@@ -141,29 +75,6 @@ function parseReadyPayload(raw) {
   } catch {
     return null;
   }
-}
-
-function getFreePort() {
-  return new Promise((resolve, reject) => {
-    if (process.env.SEAL_E2E_NO_LISTEN === "1") {
-      resolve(null);
-      return;
-    }
-    const srv = net.createServer();
-    srv.on("error", (err) => {
-      if (err && err.code === "EPERM") {
-        process.env.SEAL_E2E_NO_LISTEN = "1";
-        resolve(null);
-        return;
-      }
-      reject(err);
-    });
-    srv.listen(0, "127.0.0.1", () => {
-      const addr = srv.address();
-      const port = typeof addr === "object" && addr ? addr.port : null;
-      srv.close(() => resolve(port));
-    });
-  });
 }
 
 function readFileTrim(p) {
@@ -444,121 +355,57 @@ function installSentinelBlob({
 }
 
 async function runReleaseExpectOk({ releaseDir, buildId, runTimeoutMs }) {
-  const port = await getFreePort();
-  const readyFile = port === null ? makeReadyFile("sentinel") : null;
-  if (readyFile) log("WARN: listen not permitted; using ready-file mode");
-  writeRuntimeConfig(releaseDir, port);
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
 
-  const childEnv = applyReadyFileEnv(process.env, readyFile);
-  const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe", env: childEnv });
-  const outChunks = [];
-  const errChunks = [];
-  child.stdout.on("data", (c) => outChunks.push(c));
-  child.stderr.on("data", (c) => errChunks.push(c));
-  const childExit = new Promise((resolve) => {
-    child.on("exit", (code, signal) => resolve({ type: "exit", code, signal }));
-  });
-  const childError = new Promise((resolve) => {
-    child.on("error", (err) => resolve({ type: "error", err }));
-  });
-
-  let status;
-  try {
-    const earlyResult = await withTimeout("waitForStatus", runTimeoutMs, () =>
-      Promise.race([waitForReady({ port, readyFile, timeoutMs: runTimeoutMs }), childExit, childError])
-    );
-    if (earlyResult && earlyResult.type === "error") {
-      throw new Error(`spawn failed: ${earlyResult.err && earlyResult.err.message ? earlyResult.err.message : "unknown error"}`);
-    }
-    if (earlyResult && earlyResult.type === "exit") {
-      const stdout = Buffer.concat(outChunks).toString("utf8").trim();
-      const stderr = Buffer.concat(errChunks).toString("utf8").trim();
-      const detail = [
-        earlyResult.code !== null ? `code=${earlyResult.code}` : null,
-        earlyResult.signal ? `signal=${earlyResult.signal}` : null,
-        stdout ? `stdout: ${stdout.slice(0, 400)}` : null,
-        stderr ? `stderr: ${stderr.slice(0, 400)}` : null,
-      ].filter(Boolean).join("; ");
-      throw new Error(`process exited early (${detail || "no output"})`);
-    }
-    status = earlyResult;
-  } finally {
-    child.kill("SIGTERM");
-    await new Promise((resolve) => {
-      const t = setTimeout(() => {
-        child.kill("SIGKILL");
-        resolve();
-      }, 4000);
-      child.on("exit", () => {
-        clearTimeout(t);
-        resolve();
-      });
-    });
+  await withSealedBinary({
+    label: "sentinel",
+    releaseDir,
+    binPath,
+    runTimeoutMs,
+    writeRuntimeConfig,
+    log,
+    captureOutput: true,
+  }, ({ port, readyFile, ready }) => {
     if (readyFile) {
-      try { fs.rmSync(readyFile, { force: true }); } catch {}
+      const payload = parseReadyPayload(ready);
+      if (payload) {
+        assert.strictEqual(payload.appName, "seal-example");
+        assert.strictEqual(payload.buildId, buildId);
+      }
+      return;
     }
-  }
-
-  if (readyFile) {
-    const payload = parseReadyPayload(status);
-    if (payload) {
-      assert.strictEqual(payload.appName, "seal-example");
-      assert.strictEqual(payload.buildId, buildId);
-    }
-  } else {
-    assert.strictEqual(status.appName, "seal-example");
-    assert.strictEqual(status.buildId, buildId);
-    assert.strictEqual(status.http.port, port);
-  }
+    assert.strictEqual(ready.appName, "seal-example");
+    assert.strictEqual(ready.buildId, buildId);
+    assert.strictEqual(ready.http.port, port);
+  });
 }
 
 async function runReleaseExpectFail({ releaseDir, runTimeoutMs, expectCode }) {
-  const port = await getFreePort();
-  const readyFile = port === null ? makeReadyFile("sentinel") : null;
-  if (readyFile) log("WARN: listen not permitted; using ready-file mode");
-  writeRuntimeConfig(releaseDir, port);
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
 
-  const childEnv = applyReadyFileEnv(process.env, readyFile);
-  const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe", env: childEnv });
-  child.stdout.on("data", () => {});
-  child.stderr.on("data", () => {});
-  const childExit = new Promise((resolve) => {
-    child.on("exit", (code, signal) => resolve({ type: "exit", code, signal }));
-  });
-  const childError = new Promise((resolve) => {
-    child.on("error", (err) => resolve({ type: "error", err }));
+  const exitInfo = await withSealedBinary({
+    label: "sentinel",
+    releaseDir,
+    binPath,
+    runTimeoutMs,
+    writeRuntimeConfig,
+    log,
+    waitForReady: false,
+    failOnExit: false,
+    captureOutput: true,
+  }, async ({ port, readyFile, exitInfo: exitPromise }) => {
+    const winner = await withTimeout("waitForExit", runTimeoutMs, () => Promise.race([
+      exitPromise.then((info) => ({ type: "exit", info })),
+      waitForReady({ port, readyFile, timeoutMs: runTimeoutMs }).then(() => ({ type: "ready" })),
+    ]));
+    if (winner && winner.type === "ready") {
+      throw new Error("process reached /api/status (expected failure)");
+    }
+    return winner && winner.info ? winner.info : { code: null, signal: null };
   });
 
-  let exitInfo = null;
-  try {
-    exitInfo = await withTimeout("waitForExit", runTimeoutMs, async () =>
-      Promise.race([childExit, childError])
-    );
-  } finally {
-    if (child.exitCode === null) {
-      child.kill("SIGTERM");
-      await new Promise((resolve) => {
-        const t = setTimeout(() => {
-          child.kill("SIGKILL");
-          resolve();
-        }, 4000);
-        child.on("exit", () => {
-          clearTimeout(t);
-          resolve();
-        });
-      });
-    }
-    if (readyFile) {
-      try { fs.rmSync(readyFile, { force: true }); } catch {}
-    }
-  }
-  if (exitInfo && exitInfo.type === "error") {
-    throw new Error(`spawn failed: ${exitInfo.err && exitInfo.err.message ? exitInfo.err.message : "unknown error"}`);
-  }
   const { code } = exitInfo || {};
   if (expectCode !== undefined && expectCode !== null) {
     assert.strictEqual(code, expectCode);
@@ -568,49 +415,27 @@ async function runReleaseExpectFail({ releaseDir, runTimeoutMs, expectCode }) {
 }
 
 async function runReleaseExpectExpire({ releaseDir, buildId, runTimeoutMs, expectCode, expireTimeoutMs }) {
-  const port = await getFreePort();
-  const readyFile = port === null ? makeReadyFile("sentinel") : null;
-  if (readyFile) log("WARN: listen not permitted; using ready-file mode");
-  writeRuntimeConfig(releaseDir, port);
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
 
-  const childEnv = applyReadyFileEnv(process.env, readyFile);
-  const child = spawn(binPath, [], { cwd: releaseDir, stdio: "pipe", env: childEnv });
-  const outChunks = [];
-  const errChunks = [];
-  child.stdout.on("data", (c) => outChunks.push(c));
-  child.stderr.on("data", (c) => errChunks.push(c));
-  const childExit = new Promise((resolve) => {
-    child.on("exit", (code, signal) => resolve({ type: "exit", code, signal }));
-  });
-  const childError = new Promise((resolve) => {
-    child.on("error", (err) => resolve({ type: "error", err }));
+  const exitInfo = await withSealedBinary({
+    label: "sentinel",
+    releaseDir,
+    binPath,
+    runTimeoutMs,
+    writeRuntimeConfig,
+    log,
+    failOnExit: false,
+    captureOutput: true,
+  }, async ({ exitInfo: exitPromise }) => {
+    return await withTimeout("waitForExpire", expireTimeoutMs, () => exitPromise);
   });
 
-  try {
-    await withTimeout("waitForStatus", runTimeoutMs, () =>
-      Promise.race([waitForReady({ port, readyFile, timeoutMs: runTimeoutMs }), childExit, childError])
-    );
-  } catch (e) {
-    child.kill("SIGTERM");
-    throw e;
-  }
-
-  const exitInfo = await withTimeout("waitForExpire", expireTimeoutMs, async () =>
-    Promise.race([childExit, childError])
-  );
-  if (exitInfo && exitInfo.type === "error") {
-    throw new Error(`spawn failed: ${exitInfo.err && exitInfo.err.message ? exitInfo.err.message : "unknown error"}`);
-  }
   const { code } = exitInfo || {};
   if (expectCode !== undefined && expectCode !== null) {
     assert.strictEqual(code, expectCode);
   } else {
     assert.ok(code !== 0, "Expected non-zero exit code");
-  }
-  if (readyFile) {
-    try { fs.rmSync(readyFile, { force: true }); } catch {}
   }
 }
 

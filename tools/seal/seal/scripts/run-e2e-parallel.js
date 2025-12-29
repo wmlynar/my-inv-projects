@@ -9,6 +9,9 @@ const { spawn } = require("child_process");
 
 const SCRIPT_DIR = __dirname;
 const RUNNER = path.join(SCRIPT_DIR, "run-e2e-suite.sh");
+const { loadManifest } = require("./e2e-manifest");
+const { detectCapabilities } = require("./e2e-capabilities");
+const { resolveJsonSummaryPath, buildPlan, printPlan, buildJsonSummary, writeJsonSummary } = require("./e2e-report");
 
 function log(msg) {
   process.stdout.write(`[seal-e2e-parallel] ${msg}\n`);
@@ -97,38 +100,6 @@ function shortHash(raw) {
 
 function safeName(raw) {
   return `${sanitizeName(raw)}-${shortHash(raw)}`;
-}
-
-function loadManifest(filePath) {
-  const rows = fs.readFileSync(filePath, "utf8").split(/\r?\n/);
-  const tests = [];
-  const order = [];
-  const categories = [];
-  const categorySeen = new Set();
-  for (const row of rows) {
-    if (!row.trim() || row.startsWith("#")) continue;
-    const cols = row.split("\t");
-    if (cols[0] === "name") continue;
-    const [name, category, parallel, description, skipRisk, failHint, script, hostOnly] = cols;
-    if (!name) continue;
-    tests.push({
-      name,
-      category: category || "",
-      parallel: parallel || "0",
-      description: description || "",
-      skipRisk: skipRisk || "",
-      failHint: failHint || "",
-      script: script || "",
-      hostOnly: hostOnly || "0",
-    });
-    order.push(name);
-    const cat = category || "misc";
-    if (!categorySeen.has(cat)) {
-      categorySeen.add(cat);
-      categories.push(cat);
-    }
-  }
-  return { tests, order, categories };
 }
 
 function loadFailedTests(summaryFile) {
@@ -253,11 +224,12 @@ async function main() {
   const env = process.env;
   const runId = env.SEAL_E2E_RUN_ID || makeRunId();
   env.SEAL_E2E_RUN_ID = runId;
+  const runStart = Date.now();
 
   const home = env.HOME || os.homedir();
   const cacheBin = env.SEAL_E2E_CACHE_BIN || path.join(home, ".cache", "seal", "bin");
   const cacheRoot = env.SEAL_E2E_CACHE_DIR || path.dirname(cacheBin);
-  const manifestPath = env.SEAL_E2E_MANIFEST || path.join(SCRIPT_DIR, "e2e-tests.tsv");
+  const manifestPath = env.SEAL_E2E_MANIFEST || path.join(SCRIPT_DIR, "e2e-tests.json5");
   const logRoot = env.SEAL_E2E_LOG_DIR || path.join(cacheRoot, "e2e-logs", runId);
   const summaryPath = env.SEAL_E2E_SUMMARY_PATH || path.join(cacheRoot, "e2e-summary", `run-${runId}.tsv`);
   const summaryLastPath = env.SEAL_E2E_SUMMARY_PATH ? "" : path.join(cacheRoot, "e2e-summary", "last.tsv");
@@ -317,7 +289,7 @@ async function main() {
     const unknown = list.filter((item) => !knownTests.has(item));
     if (unknown.length) {
       log(`ERROR: ${label} contains unknown tests: ${unknown.join(", ")}`);
-      log("       Check tools/seal/seal/scripts/e2e-tests.tsv for valid names.");
+      log("       Check tools/seal/seal/scripts/e2e-tests.json5 for valid names.");
       process.exit(1);
     }
   };
@@ -328,15 +300,13 @@ async function main() {
     validateList("SEAL_E2E_SKIP", skipList);
   }
 
-  const hostLimited = normalizeFlag(env.SEAL_E2E_LIMITED_HOST, "0") === "1";
+  const planMode = normalizeFlag(env.SEAL_E2E_PLAN || env.SEAL_E2E_EXPLAIN, "0") === "1";
+  const capabilities = detectCapabilities(env);
+  const hostLimited = capabilities.limitedHost;
   if (hostLimited) {
-    const hostOnlyList = [];
-    for (const test of tests) {
-      if (test.hostOnly === "1") {
-        skipList.push(test.name);
-        hostOnlyList.push(test.name);
-      }
-    }
+    const hostOnlyList = tests
+      .filter((test) => Array.isArray(test.requirements) && test.requirements.includes("host"))
+      .map((test) => test.name);
     if (hostOnlyList.length) {
       log(`Host-limited mode: skipping host-only tests: ${hostOnlyList.join(" ")}`);
     }
@@ -372,19 +342,24 @@ async function main() {
   const onlySet = new Set(onlyList);
   const skipSet = new Set(skipList);
 
+  const plan = buildPlan(manifestOrder, testByName, onlySet, skipSet, capabilities);
   const shouldRun = (name) => {
-    if (onlySet.size && !onlySet.has(name)) return false;
-    if (skipSet.has(name)) return false;
-    return true;
+    const entry = plan.byName.get(name);
+    return entry ? entry.run : false;
   };
 
-  const selectedTests = manifestOrder.filter((name) => shouldRun(name));
+  const selectedTests = plan.selected;
   if (onlySet.size && !selectedTests.length) {
     log("ERROR: filter resulted in zero tests to run.");
     process.exit(1);
   }
   if (onlyList.length) {
     log(`Selected tests: ${onlyList.join(" ")}`);
+  }
+
+  if (planMode) {
+    printPlan(plan.entries, testByName, capabilities, log);
+    process.exit(0);
   }
 
   log("Effective config:");
@@ -804,8 +779,27 @@ async function main() {
   updateLastSummary(summaryPath, summaryLastPath);
 
   const combinedRows = readSummary(summaryPath);
-  const orderList = manifestOrder.filter((name) => shouldRun(name));
+  const orderList = selectedTests;
   printCombinedSummary(combinedRows, orderList);
+
+  const summaryJsonPath = resolveJsonSummaryPath(summaryPath, env);
+  const runEnd = Date.now();
+  const summaryData = buildJsonSummary({
+    runId,
+    manifestPath,
+    manifestOrder,
+    testByName,
+    planByName: plan.byName,
+    summaryRows: combinedRows,
+    capabilities,
+    summaryPath,
+    runStart,
+    runEnd,
+  });
+  writeJsonSummary(summaryJsonPath, summaryData);
+  if (summaryJsonPath) {
+    log(`Summary json: ${summaryJsonPath}`);
+  }
 
   log("All E2E groups finished.");
   if (failures) {

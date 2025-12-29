@@ -8,16 +8,10 @@ const path = require("path");
 
 const { buildRelease } = require("../src/lib/build");
 const { loadProjectConfig, loadTargetConfig, resolveTargetName, resolveConfigName } = require("../src/lib/project");
+const { createLogger, resolveExampleRoot } = require("./e2e-utils");
 
-const EXAMPLE_ROOT = process.env.SEAL_E2E_EXAMPLE_ROOT || path.resolve(__dirname, "..", "..", "example");
-
-function log(msg) {
-  process.stdout.write(`[decoy-e2e] ${msg}\n`);
-}
-
-function fail(msg) {
-  process.stderr.write(`[decoy-e2e] ERROR: ${msg}\n`);
-}
+const { log, fail, skip } = createLogger("decoy-e2e");
+const EXAMPLE_ROOT = resolveExampleRoot();
 
 function readFileSafe(p) {
   try {
@@ -129,9 +123,7 @@ async function testCollision() {
 
 async function main() {
   if (process.env.SEAL_DECOY_E2E !== "1") {
-    log("SKIP: set SEAL_DECOY_E2E=1 to run decoy E2E");
-    process.exitCode = 77;
-    return;
+    return skip("set SEAL_DECOY_E2E=1 to run decoy E2E");
   }
   await testSoftDecoy();
   await testWrapperDecoy();

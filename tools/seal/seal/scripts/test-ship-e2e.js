@@ -13,13 +13,11 @@ const { uninstallLocal } = require("../src/lib/deploy");
 const { uninstallSsh } = require("../src/lib/deploySsh");
 const { sshExec } = require("../src/lib/ssh");
 const { writeJson5, readJson5 } = require("../src/lib/json5io");
-const { hasCommand } = require("./e2e-utils");
+const { hasCommand, delay, resolveExampleRoot, createLogger } = require("./e2e-utils");
 
-const EXAMPLE_ROOT = process.env.SEAL_E2E_EXAMPLE_ROOT || path.resolve(__dirname, "..", "..", "example");
+const EXAMPLE_ROOT = resolveExampleRoot();
 
-function log(msg) {
-  process.stdout.write(`[ship-e2e] ${msg}\n`);
-}
+const { log } = createLogger("ship-e2e");
 
 function fail(msg) {
   throw new Error(msg);
@@ -199,10 +197,6 @@ function readHttpPort(configName) {
     return null;
   }
   return null;
-}
-
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function buildRemoteHttpCmd(url) {

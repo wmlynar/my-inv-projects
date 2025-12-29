@@ -13,6 +13,7 @@ const { info, warn, err, ok, hr } = require("./ui");
 const { normalizeRetention, filterReleaseNames, computeKeepSet } = require("./retention");
 const { getTarRoot } = require("./tarSafe");
 const { normalizeThinMode } = require("./packagerConfig");
+const { THIN_NATIVE_BOOTSTRAP_FILE } = require("./thinPaths");
 
 function expandHome(p) {
   if (!p) return p;
@@ -295,7 +296,7 @@ function applyThinBootstrapLocal(layout, extractedDir, opts = {}) {
   const codecSrc = path.join(extractedDir, "r", "c");
   const ihSrc = path.join(extractedDir, "r", integrityFile);
   const nvSrc = path.join(extractedDir, "r", THIN_RUNTIME_VERSION_FILE);
-  const nbSrc = path.join(extractedDir, "r", "nb.node");
+  const nbSrc = path.join(extractedDir, "r", THIN_NATIVE_BOOTSTRAP_FILE);
 
   if (!fileExists(launcherSrc)) throw new Error(`Missing thin launcher: ${launcherSrc}`);
   if (!fileExists(rtSrc)) throw new Error(`Missing thin runtime: ${rtSrc}`);
@@ -323,9 +324,9 @@ function applyThinBootstrapLocal(layout, extractedDir, opts = {}) {
   }
   if (!onlyPayload) {
     if (fileExists(nbSrc)) {
-      copyAtomic(nbSrc, path.join(rDir, "nb.node"), 0o755);
+      copyAtomic(nbSrc, path.join(rDir, THIN_NATIVE_BOOTSTRAP_FILE), 0o755);
     } else {
-      rmrf(path.join(rDir, "nb.node"));
+      rmrf(path.join(rDir, THIN_NATIVE_BOOTSTRAP_FILE));
     }
   }
   if (fileExists(ihSrc)) {
@@ -341,7 +342,7 @@ function cleanupThinBootstrapLocal(layout, opts = {}) {
   rmrf(path.join(layout.installDir, "r", "rt"));
   rmrf(path.join(layout.installDir, "r", "pl"));
   rmrf(path.join(layout.installDir, "r", "c"));
-  rmrf(path.join(layout.installDir, "r", "nb.node"));
+  rmrf(path.join(layout.installDir, "r", THIN_NATIVE_BOOTSTRAP_FILE));
   rmrf(path.join(layout.installDir, "r", integrityFile));
   rmrf(path.join(layout.installDir, "r", THIN_RUNTIME_VERSION_FILE));
 }
@@ -419,8 +420,8 @@ function deployLocal({ targetCfg, artifactPath, repoConfigPath, pushConfig, poli
   if (thinMode === "bootstrap") {
     const hasLauncher = fileExists(path.join(layout.installDir, "b", "a"));
     const hasRuntime = fileExists(path.join(layout.installDir, "r", "rt"));
-    const releaseNative = path.join(extractedDir, "r", "nb.node");
-    const installNative = path.join(layout.installDir, "r", "nb.node");
+    const releaseNative = path.join(extractedDir, "r", THIN_NATIVE_BOOTSTRAP_FILE);
+    const installNative = path.join(layout.installDir, "r", THIN_NATIVE_BOOTSTRAP_FILE);
     const needsNative = fileExists(releaseNative);
     let canReuse = false;
     if (!bootstrap && hasLauncher && hasRuntime) {

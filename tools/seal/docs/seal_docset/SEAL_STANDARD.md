@@ -427,6 +427,7 @@ Przykład:
 - STD-087d (SHOULD): jeśli test automatycznie wyłącza funkcję z powodu brakującego narzędzia, musi istnieć osobny test (gated ENV), który **wymusza** tę funkcję i failuje przy braku zależności.
 - STD-087e (SHOULD): funkcje ochronne (anti‑debug/snapshot) musza miec deterministyczne “test hooks” aktywowane tylko w trybie testowym (ENV), aby E2E byly stabilne.
 - STD-087f (SHOULD): testy E2E musza byc bezpieczne dla uruchomien rownoleglych (unikalne serviceName/installDir/outDir i brak wspolnych plikow globalnych).
+- STD-087f.a (SHOULD): nawet sekwencyjne buildy w ramach jednego runu E2E uzywaja unikalnego `outDir` per wariant; `buildRelease` czysci katalog i nadpisze poprzedni build.
 - STD-087g (SHOULD): testy E2E ustawiają deterministyczne locale i strefę czasu (`LC_ALL=C`, `TZ=UTC`), aby uniknąć różnic między środowiskami.
 - STD-087h (SHOULD): testy nie wymagają sieci domyślnie; operacje sieciowe są gated ENV i zawsze mają timeout.
 - STD-088 (SHOULD): testy przywracaja `process.cwd()` po zmianach (snapshot/restore).
@@ -1048,6 +1049,7 @@ Ten moduł dotyczy testów E2E (zwłaszcza po sealingu), które mają potwierdza
 - TEST-002 (MUST): każdy subprocess w testach ma obsługę `error` i **nie może wisieć** (resolve/reject zawsze musi nastąpić).
 - TEST-003 (MUST): procesy uruchamiane w testach muszą mieć drenowane stdout/stderr (`stdio: inherit` lub `data` handlers).
 - TEST-004 (MUST): zasoby UI (browser/page) muszą być zamykane w `finally`, nawet przy błędzie.
+- TEST-004a (SHOULD): helpery testowe, ktore tworza Promise wyjscia procesu, musza je konsumowac (`catch`) nawet gdy wynik nie jest awaitowany, aby uniknac unhandled rejection.
 - TEST-005 (SHOULD): E2E używa **szybkich fixture** (minimalny projekt), nie pełnych buildów produkcyjnych.
 - TEST-006 (SHOULD): zewnętrzne integracje są stubowane lokalnie (brak zależności od internetu).
 - TEST-007 (SHOULD): testy używają losowych portów (brak hardcode `3000`).

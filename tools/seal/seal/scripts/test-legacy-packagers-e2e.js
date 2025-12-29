@@ -3,110 +3,26 @@
 
 const assert = require("assert");
 const fs = require("fs");
-const http = require("http");
-const net = require("net");
 const os = require("os");
 const path = require("path");
-const { spawn } = require("child_process");
 
 const { buildRelease } = require("../src/lib/build");
 const { loadProjectConfig, loadTargetConfig, resolveConfigName } = require("../src/lib/project");
 const { readJson5, writeJson5 } = require("../src/lib/json5io");
 const { resolvePostjectBin } = require("../src/lib/postject");
-const { resolveE2ETimeout, resolveE2ERunTimeout, applyReadyFileEnv, makeReadyFile, waitForReadyFile } = require("./e2e-utils");
+const {
+  resolveE2ETimeout,
+  resolveE2ERunTimeout,
+  withTimeout,
+  getFreePort,
+  resolveExampleRoot,
+  createLogger,
+  withSealedBinary,
+} = require("./e2e-utils");
 
-const EXAMPLE_ROOT = process.env.SEAL_E2E_EXAMPLE_ROOT || path.resolve(__dirname, "..", "..", "example");
+const EXAMPLE_ROOT = resolveExampleRoot();
 
-function log(msg) {
-  process.stdout.write(`[legacy-packagers-e2e] ${msg}\n`);
-}
-
-function fail(msg) {
-  process.stderr.write(`[legacy-packagers-e2e] ERROR: ${msg}\n`);
-}
-
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function withTimeout(name, ms, fn) {
-  let timer;
-  return Promise.race([
-    Promise.resolve().then(fn),
-    new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error(`${name} timed out after ${ms}ms`)), ms);
-    }),
-  ]).finally(() => clearTimeout(timer));
-}
-
-function httpJson({ port, path: urlPath, timeoutMs }) {
-  return new Promise((resolve, reject) => {
-    const req = http.request(
-      {
-        host: "127.0.0.1",
-        port,
-        path: urlPath,
-        method: "GET",
-        timeout: timeoutMs,
-      },
-      (res) => {
-        let body = "";
-        res.setEncoding("utf8");
-        res.on("data", (chunk) => { body += chunk; });
-        res.on("end", () => {
-          try {
-            const json = JSON.parse(body);
-            resolve({ status: res.statusCode, json });
-          } catch {
-            resolve({ status: res.statusCode, json: null });
-          }
-        });
-      }
-    );
-    req.on("error", reject);
-    req.on("timeout", () => {
-      req.destroy(new Error("Request timeout"));
-    });
-    req.end();
-  });
-}
-
-async function waitForStatus(port, timeoutMs = 10_000) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    try {
-      const { status, json } = await httpJson({ port, path: "/api/status", timeoutMs: 800 });
-      if (status === 200 && json && json.ok) return json;
-    } catch {
-      // ignore and retry
-    }
-    await delay(200);
-  }
-  throw new Error(`Timeout waiting for /api/status on port ${port}`);
-}
-
-function getFreePort() {
-  return new Promise((resolve, reject) => {
-    if (process.env.SEAL_E2E_NO_LISTEN === "1") {
-      resolve(null);
-      return;
-    }
-    const srv = net.createServer();
-    srv.on("error", (err) => {
-      if (err && err.code === "EPERM") {
-        process.env.SEAL_E2E_NO_LISTEN = "1";
-        resolve(null);
-        return;
-      }
-      reject(err);
-    });
-    srv.listen(0, "127.0.0.1", () => {
-      const addr = srv.address();
-      const port = typeof addr === "object" && addr ? addr.port : null;
-      srv.close(() => resolve(port));
-    });
-  });
-}
+const { log, fail } = createLogger("legacy-packagers-e2e");
 
 function writeRuntimeConfig(releaseDir, port) {
   const cfgPath = path.join(EXAMPLE_ROOT, "seal-config", "configs", "local.json5");
@@ -117,65 +33,20 @@ function writeRuntimeConfig(releaseDir, port) {
   writeJson5(path.join(releaseDir, "config.runtime.json5"), cfg);
 }
 
-async function waitForReady({ port, readyFile, timeoutMs }) {
-  if (readyFile) return waitForReadyFile(readyFile, timeoutMs);
-  return waitForStatus(port, timeoutMs);
-}
-
 async function runRelease({ releaseDir, runTimeoutMs, appName }) {
-  const port = runRelease.skipListen ? null : await getFreePort();
-  const readyFile = port === null ? makeReadyFile("legacy-packagers") : null;
-  if (readyFile) log("WARN: listen not permitted; using ready-file mode");
-  writeRuntimeConfig(releaseDir, port);
-
   const binPath = path.join(releaseDir, appName);
   assert.ok(fs.existsSync(binPath), `Missing runner: ${binPath}`);
 
-  const childEnv = applyReadyFileEnv(process.env, readyFile);
-  const child = spawn(binPath, [], { cwd: releaseDir, stdio: ["ignore", "pipe", "pipe"], env: childEnv });
-  const maxLog = 16000;
-  const logs = { out: "", err: "" };
-  const append = (prev, chunk) => {
-    const next = prev + chunk.toString("utf8");
-    return next.length > maxLog ? next.slice(-maxLog) : next;
-  };
-  child.stdout.on("data", (c) => { logs.out = append(logs.out, c); });
-  child.stderr.on("data", (c) => { logs.err = append(logs.err, c); });
-  let done = false;
-  const exitPromise = new Promise((_, reject) => {
-    child.on("exit", (code, signal) => {
-      if (done) return;
-      reject(new Error(`app exited (code=${code ?? "null"}, signal=${signal || "none"})`));
-    });
+  await withSealedBinary({
+    label: "legacy-packagers",
+    releaseDir,
+    binPath,
+    runTimeoutMs,
+    skipListen: runRelease.skipListen === true,
+    writeRuntimeConfig,
+    captureOutput: true,
+    log,
   });
-
-  try {
-    await withTimeout("waitForStatus", runTimeoutMs, () => Promise.race([
-      waitForReady({ port, readyFile, timeoutMs: runTimeoutMs }),
-      exitPromise,
-    ]));
-  } catch (err) {
-    const out = logs.out ? `\n--- stdout ---\n${logs.out}` : "";
-    const errOut = logs.err ? `\n--- stderr ---\n${logs.err}` : "";
-    const msg = `${err && err.message ? err.message : err}${out}${errOut}`;
-    throw new Error(msg);
-  } finally {
-    done = true;
-    child.kill("SIGTERM");
-    await new Promise((resolve) => {
-      const t = setTimeout(() => {
-        child.kill("SIGKILL");
-        resolve();
-      }, 4000);
-      child.on("exit", () => {
-        clearTimeout(t);
-        resolve();
-      });
-    });
-    if (readyFile) {
-      try { fs.rmSync(readyFile, { force: true }); } catch {}
-    }
-  }
 }
 
 async function buildWithPackager(packager, buildTimeoutMs) {

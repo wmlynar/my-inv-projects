@@ -6,15 +6,9 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { spawnSync } = require("child_process");
-const { hasCommand } = require("./e2e-utils");
+const { hasCommand, createLogger } = require("./e2e-utils");
 
-function log(msg) {
-  process.stdout.write(`[completion-e2e] ${msg}\n`);
-}
-
-function fail(msg) {
-  process.stderr.write(`[completion-e2e] ERROR: ${msg}\n`);
-}
+const { log, fail, skip } = createLogger("completion-e2e");
 
 function bashQuote(value) {
   const str = String(value);
@@ -96,9 +90,7 @@ function assertNotIncludes(list, value, label) {
 
 function run() {
   if (!hasCommand("bash")) {
-    log("SKIP: bash not found");
-    process.exitCode = 77;
-    return;
+    return skip("bash not found");
   }
   const root = ensureProjectRoot();
   let completionPath = null;

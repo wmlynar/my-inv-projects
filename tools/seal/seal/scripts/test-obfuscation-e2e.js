@@ -4,27 +4,30 @@
 const assert = require("assert");
 const crypto = require("crypto");
 const fs = require("fs");
-const http = require("http");
-const net = require("net");
 const os = require("os");
 const path = require("path");
-const { spawn, spawnSync } = require("child_process");
-const { hasCommand, resolveE2ETimeout, resolveE2ERunTimeout, applyReadyFileEnv, makeReadyFile, waitForReadyFile } = require("./e2e-utils");
+const { spawnSync } = require("child_process");
+const {
+  hasCommand,
+  resolveE2ETimeout,
+  resolveE2ERunTimeout,
+  withTimeout,
+  httpJson,
+  waitForStatus,
+  getFreePort,
+  resolveExampleRoot,
+  createLogger,
+  withSealedBinary,
+} = require("./e2e-utils");
 
 const { buildRelease } = require("../src/lib/build");
 const { loadProjectConfig, loadTargetConfig, resolveConfigName } = require("../src/lib/project");
 const { readJson5, writeJson5 } = require("../src/lib/json5io");
 const { createTiming, formatDuration } = require("../src/lib/timing");
 
-const EXAMPLE_ROOT = process.env.SEAL_E2E_EXAMPLE_ROOT || path.resolve(__dirname, "..", "..", "example");
+const EXAMPLE_ROOT = resolveExampleRoot();
 
-function log(msg) {
-  process.stdout.write(`[obfuscation-e2e] ${msg}\n`);
-}
-
-function fail(msg) {
-  process.stderr.write(`[obfuscation-e2e] ERROR: ${msg}\n`);
-}
+const { log, fail } = createLogger("obfuscation-e2e");
 
 function runCmd(cmd, args, timeoutMs = 5000) {
   return spawnSync(cmd, args, { stdio: "pipe", timeout: timeoutMs });
@@ -82,49 +85,6 @@ function checkPrereqs() {
   return { ok: true, skip: false };
 }
 
-function withTimeout(label, ms, fn) {
-  let timer = null;
-  const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
-  });
-  return Promise.race([fn(), timeout]).finally(() => {
-    if (timer) clearTimeout(timer);
-  });
-}
-
-function httpJson({ port, path: reqPath, method, body, timeoutMs }) {
-  return new Promise((resolve, reject) => {
-    const payload = body ? Buffer.from(JSON.stringify(body)) : null;
-    const req = http.request(
-      {
-        host: "127.0.0.1",
-        port,
-        path: reqPath,
-        method: method || "GET",
-        timeout: timeoutMs,
-        headers: payload ? { "content-type": "application/json", "content-length": payload.length } : undefined,
-      },
-      (res) => {
-        const chunks = [];
-        res.on("data", (chunk) => chunks.push(chunk));
-        res.on("end", () => {
-          const raw = Buffer.concat(chunks).toString("utf8");
-          let json = null;
-          try {
-            json = JSON.parse(raw);
-          } catch {
-            json = { raw };
-          }
-          resolve({ ok: res.statusCode && res.statusCode < 300, status: res.statusCode || 0, json });
-        });
-      }
-    );
-    req.on("error", reject);
-    if (payload) req.write(payload);
-    req.end();
-  });
-}
-
 function formatObfFailures(obf) {
   if (!obf || typeof obf !== "object") return "missing payload";
   const checks = obf.checks;
@@ -133,41 +93,6 @@ function formatObfFailures(obf) {
     .filter((c) => c && c.ok === false)
     .map((c) => `${c.name}:${c.got}!=${c.expected}`);
   return failed.length ? failed.join(", ") : "unknown";
-}
-
-async function waitForStatus(port, timeoutMs = 10000) {
-  const started = Date.now();
-  while (Date.now() - started < timeoutMs) {
-    try {
-      const res = await httpJson({ port, path: "/api/status", timeoutMs: 1000 });
-      if (res.ok && res.json && res.json.ok) return res.json;
-    } catch {}
-    await new Promise((resolve) => setTimeout(resolve, 200));
-  }
-  throw new Error(`Timeout waiting for /api/status on port ${port}`);
-}
-
-function getFreePort() {
-  return new Promise((resolve, reject) => {
-    if (process.env.SEAL_E2E_NO_LISTEN === "1") {
-      resolve(null);
-      return;
-    }
-    const srv = net.createServer();
-    srv.on("error", (err) => {
-      if (err && err.code === "EPERM") {
-        process.env.SEAL_E2E_NO_LISTEN = "1";
-        resolve(null);
-        return;
-      }
-      reject(err);
-    });
-    srv.listen(0, "127.0.0.1", () => {
-      const addr = srv.address();
-      const port = typeof addr === "object" && addr ? addr.port : null;
-      srv.close(() => resolve(port));
-    });
-  });
 }
 
 function writeRuntimeConfig(releaseDir, port) {
@@ -180,35 +105,23 @@ function writeRuntimeConfig(releaseDir, port) {
 }
 
 async function runReleaseAndCheck({ releaseDir, runTimeoutMs }) {
-  const port = await getFreePort();
-  const readyFile = port === null ? makeReadyFile("obfuscation") : null;
-  if (readyFile) log("WARN: listen not permitted; using ready-file mode");
-  writeRuntimeConfig(releaseDir, port);
-
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
 
-  const childEnv = applyReadyFileEnv(process.env, readyFile);
-  const child = spawn(binPath, [], { cwd: releaseDir, stdio: ["ignore", "pipe", "pipe"], env: childEnv });
-  child.stdout.on("data", () => {});
-  child.stderr.on("data", () => {});
-  let exitErr = null;
-  child.on("exit", (code, signal) => {
-    if (code && code !== 0) {
-      exitErr = new Error(`app exited (code=${code}, signal=${signal || "none"})`);
-    }
-  });
-
-  try {
+  await withSealedBinary({
+    label: "obfuscation",
+    releaseDir,
+    binPath,
+    runTimeoutMs,
+    writeRuntimeConfig,
+    log,
+  }, async ({ port, readyFile }) => {
     if (readyFile) {
-      await withTimeout("waitForReadyFile", runTimeoutMs, () => waitForReadyFile(readyFile, runTimeoutMs));
-      if (exitErr) throw exitErr;
       log("SKIP: HTTP obfuscation checks disabled (ready-file mode)");
       return;
     }
 
     const status = await withTimeout("waitForStatus", runTimeoutMs, () => waitForStatus(port, runTimeoutMs));
-    if (exitErr) throw exitErr;
     assert.strictEqual(status.ok, true, "Expected /api/status ok=true");
     assert.ok(status.appName, "Expected appName in status");
     assert.ok(status.features && status.features.notes, "Expected features in status");
@@ -234,22 +147,7 @@ async function runReleaseAndCheck({ releaseDir, runTimeoutMs }) {
     assert.strictEqual(checks.fib?.got, 6765, "Expected fib match");
     assert.strictEqual(checks.class?.got, "6:19", "Expected class check match");
     assert.strictEqual(checks.generator?.got, "1,2", "Expected generator check match");
-  } finally {
-    child.kill("SIGTERM");
-    await new Promise((resolve) => {
-      const t = setTimeout(() => {
-        child.kill("SIGKILL");
-        resolve();
-      }, 4000);
-      child.on("exit", () => {
-        clearTimeout(t);
-        resolve();
-      });
-    });
-    if (readyFile) {
-      try { fs.rmSync(readyFile, { force: true }); } catch {}
-    }
-  }
+  });
 }
 
 async function buildProfile({ profile, passes, outRoot, ctx, backendTerser, frontendObfuscation }) {

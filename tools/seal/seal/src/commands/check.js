@@ -396,7 +396,7 @@ async function cmdCheck(cwd, targetArg, opts) {
 
   // Protection tools (ELF packer is default for thin-split)
   if (hardEnabled && payloadOnly) {
-    info("Protection checks skipped (payload-only build).");
+    info("Protection checks: payload-only reuse (tools required only for bootstrap).");
   } else if (hardEnabled) {
     if (protectionCfg.stripSymbols) {
       if (hasCommand('strip')) ok('strip: OK (symbol stripping)');

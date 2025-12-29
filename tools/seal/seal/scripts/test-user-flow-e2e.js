@@ -3,29 +3,31 @@
 
 const assert = require("assert");
 const fs = require("fs");
-const http = require("http");
-const net = require("net");
 const os = require("os");
 const path = require("path");
 const { spawn, spawnSync } = require("child_process");
 
-const { hasCommand, applyReadyFileEnv, makeReadyFile, waitForReadyFile } = require("./e2e-utils");
+const {
+  hasCommand,
+  applyReadyFileEnv,
+  makeReadyFile,
+  waitForReady,
+  getFreePort,
+  stripAnsi,
+  resolveExampleRoot,
+  createLogger,
+  terminateChild,
+} = require("./e2e-utils");
 const { readJson5, writeJson5 } = require("../src/lib/json5io");
 
-const EXAMPLE_ROOT = process.env.SEAL_E2E_EXAMPLE_ROOT || path.resolve(__dirname, "..", "..", "example");
+const EXAMPLE_ROOT = resolveExampleRoot();
 const SEAL_BIN = path.resolve(__dirname, "..", "bin", "seal.js");
 
-function log(msg) {
-  process.stdout.write(`[user-flow-e2e] ${msg}\n`);
-}
+const { log, error } = createLogger("user-flow-e2e");
 
 function fail(msg) {
-  process.stderr.write(`[user-flow-e2e] ERROR: ${msg}\n`);
+  error(msg);
   process.exit(1);
-}
-
-function stripAnsi(input) {
-  return String(input || "").replace(/\u001b\[[0-9;]*m/g, "");
 }
 
 function truncate(input, max = 2500) {
@@ -132,78 +134,6 @@ function ensureNodeModules(srcRoot, dstRoot) {
   }
 }
 
-function getFreePort() {
-  return new Promise((resolve, reject) => {
-    if (process.env.SEAL_E2E_NO_LISTEN === "1") {
-      resolve(null);
-      return;
-    }
-    const srv = net.createServer();
-    srv.on("error", (err) => {
-      if (err && err.code === "EPERM") {
-        process.env.SEAL_E2E_NO_LISTEN = "1";
-        resolve(null);
-        return;
-      }
-      reject(err);
-    });
-    srv.listen(0, "127.0.0.1", () => {
-      const addr = srv.address();
-      const port = typeof addr === "object" && addr ? addr.port : null;
-      srv.close(() => resolve(port));
-    });
-  });
-}
-
-function httpJson({ port, path: reqPath, timeoutMs }) {
-  return new Promise((resolve, reject) => {
-    const req = http.request(
-      {
-        host: "127.0.0.1",
-        port,
-        path: reqPath,
-        method: "GET",
-        timeout: timeoutMs,
-      },
-      (res) => {
-        const chunks = [];
-        res.on("data", (c) => chunks.push(c));
-        res.on("end", () => {
-          const raw = Buffer.concat(chunks).toString("utf8");
-          try {
-            const json = JSON.parse(raw);
-            resolve({ status: res.statusCode, json });
-          } catch (e) {
-            reject(new Error(`Invalid JSON response: ${raw.slice(0, 200)}`));
-          }
-        });
-      }
-    );
-    req.on("timeout", () => req.destroy(new Error("HTTP timeout")));
-    req.on("error", (err) => reject(err));
-    req.end();
-  });
-}
-
-async function waitForStatus(port, timeoutMs = 12000) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    try {
-      const { status, json } = await httpJson({ port, path: "/api/status", timeoutMs: 800 });
-      if (status === 200 && json && json.ok) return json;
-    } catch {
-      // retry
-    }
-    await new Promise((r) => setTimeout(r, 200));
-  }
-  throw new Error(`Timeout waiting for /api/status on port ${port}`);
-}
-
-async function waitForReady({ port, readyFile, timeoutMs }) {
-  if (readyFile) return waitForReadyFile(readyFile, timeoutMs);
-  return waitForStatus(port, timeoutMs);
-}
-
 function parseReadyPayload(raw) {
   if (!raw) return null;
   try {
@@ -214,14 +144,7 @@ function parseReadyPayload(raw) {
 }
 
 async function stopChild(child, timeoutMs = 5000) {
-  if (!child || child.killed) return;
-  child.kill("SIGTERM");
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    if (child.exitCode !== null || child.killed) return;
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  child.kill("SIGKILL");
+  await terminateChild(child, timeoutMs);
 }
 
 async function runSealed(releaseDir, appName, port, readyFile) {
