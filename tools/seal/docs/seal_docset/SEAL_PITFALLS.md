@@ -51,6 +51,12 @@
 - Blad: merge configu dopuszczal `__proto__`/`constructor`/`prototype`, co pozwalalo na prototype pollution i dziwne bledy runtime.
   - Wymaganie: merge configu ignoruje/odrzuca klucze proto‑pollution na kazdym poziomie; bledne klucze = FAIL lub jawny warning.
 
+- Blad: bardzo gleboko zagniezdzony config powodowal stack overflow lub nadmierny czas walidacji/merge.
+  - Wymaganie: ustaw limit glebokosci/ilosci kluczy oraz max rozmiar configu; przekroczenie = fail‑fast z jasnym komunikatem.
+
+- Blad: `spawn` dostawal ENV z wartosciami `undefined`/non‑string, co dawalo `ERR_INVALID_ARG_TYPE` albo literalny string `undefined` w procesie potomnym.
+  - Wymaganie: przed uruchomieniem child procesow filtruj ENV do stringow; `null/undefined` usuwaj, inne typy serializuj jawnie lub fail‑fast.
+
 - Blad: operacje na sciezkach (rm/rsync/copy) podazaly za symlinkami i mogly wyjsc poza root.
   - Wymaganie: przed operacjami destrukcyjnymi sprawdz `realpath` i czy jest w dozwolonym root.
   - Wymaganie: nie podazaj za symlinkami (`lstat` + blokada) i odrzucaj `..` w identyfikatorach.
