@@ -383,6 +383,30 @@ Lub przez główny installer:
 SEAL_INSTALL_E2E_TOOLS=1 tools/seal/seal/scripts/install-seal-deps.sh
 ```
 
+Zaawansowany developer (pełne, „ostre” checki + dodatkowe narzędzia):
+
+```bash
+sudo -E PIP_BREAK_SYSTEM_PACKAGES=1 tools/seal/seal/scripts/install-e2e-advanced-deps.sh
+tools/seal/seal/scripts/run-e2e-advanced.sh --local
+```
+
+Uwaga: na Ubuntu z PEP 668 (externally-managed Python) instalator używa `pip3`
+do `frida-tools`, więc potrzebne jest `PIP_BREAK_SYSTEM_PACKAGES=1` i `sudo -E`
+(albo ręczna instalacja frida-tools w venv/pipx).
+
+Skrypt `run-e2e-advanced.sh` domyślnie odpala strict anti‑debug
+(`thin-anti-debug,thin-anti-debug-dump`) z ustawionymi flagami `SEAL_E2E_STRICT_*`.
+Jeśli chcesz pełną suitę, ustaw `SEAL_E2E_TESTS=all`.
+
+Uwaga: część „strict” wymaga dodatkowych narzędzi (np. `frida`, `drrun`, `pin`)
+i uprawnień hosta/privileged. Bez nich testy będą zgłaszane jako `SKIP`.
+
+Manual-only narzędzia (Pin, AVML) - instalacja skryptem:
+
+```bash
+tools/seal/seal/scripts/install-e2e-manual-tools.sh
+```
+
 Uruchomienie testu:
 
 ```bash
