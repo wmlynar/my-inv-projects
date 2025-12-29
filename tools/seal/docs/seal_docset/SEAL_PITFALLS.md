@@ -1243,6 +1243,9 @@
 - Blad: SKIP bez jawnego powodu ukrywal realny brak weryfikacji.
   - Wymaganie: kazdy SKIP musi zawierac przyczyne i instrukcje odblokowania; tryb certyfikacyjny zamienia SKIP na FAIL.
 
+- Blad: testy uruchamialy procesy z `stdio: "pipe"` bez drenażu, co moglo blokowac proces i zawieszac E2E.
+  - Wymaganie: zawsze drenowac stdout/stderr (lub uzywac `inherit`/`ignore`) i obslugiwac wczesny exit procesu.
+
 - Blad: testy ekstrakcji opieraly sie tylko na analizie plikow na dysku, pomijajac wycieki w pamieci runtime.
   - Wymaganie: testy obejmuja co najmniej jedna metode runtime (dump/core/ptrace) oraz skan markerow i tokenow podpisu.
 
