@@ -55,23 +55,25 @@ async function main() {
   const origErr = console.error;
   console.log = (...args) => logs.push(args.join(" "));
   console.error = (...args) => errors.push(args.join(" "));
+  let failure = null;
+  let ok = false;
 
   try {
     await cmdCheck(tmpRoot, "local", {});
     const output = `${logs.join("\n")}\n${errors.join("\n")}`;
     const cleanOutput = stripAnsi(output);
     if (!cleanOutput.includes("postject: OK (SEA injection)") && !cleanOutput.includes("postject: OK")) {
-      fail(`postject OK not found in output\n${cleanOutput}`);
-      process.exit(1);
+      throw new Error(`postject OK not found in output\n${cleanOutput}`);
     }
     if (/postject module installed but CLI not found/.test(cleanOutput) || /postject not installed/.test(cleanOutput)) {
-      fail(`postject warning present in output\n${cleanOutput}`);
-      process.exit(1);
+      throw new Error(`postject warning present in output\n${cleanOutput}`);
     }
-    log("OK: postject check output verified");
+    ok = true;
   } catch (e) {
     const output = `${logs.join("\n")}\n${errors.join("\n")}`.trim();
-    fail(`seal check failed\n${output || e.message || e}`);
+    const msg = e && e.message ? e.message : String(e);
+    const detail = output ? `${msg}\n${output}` : msg;
+    failure = new Error(`seal check failed\n${detail}`);
   } finally {
     console.log = origLog;
     console.error = origErr;
@@ -81,6 +83,9 @@ async function main() {
       // ignore
     }
   }
+
+  if (failure) throw failure;
+  if (ok) log("OK: postject check output verified");
 }
 
 main().catch((e) => {
