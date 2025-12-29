@@ -419,6 +419,7 @@ Przykład:
 - STD-089e (SHOULD): testy dockerowe sprzataja kontenery/sieci w `trap` (cleanup na error); `KEEP=1` tylko jawnie wylacza cleanup.
 - STD-089e.a (SHOULD): w CI uzywaj `--progress=plain` (lub `BUILDKIT_PROGRESS=plain`) dla `docker build`, aby logi byly diagnostyczne.
 - STD-089e.b (SHOULD): cleanup docker compose uzywa `--remove-orphans`, aby nie zostawiac osieroconych kontenerow po zmianach w compose.
+- STD-089e.c (SHOULD): docker‑compose uruchamiaj z unikalnym `COMPOSE_PROJECT_NAME`/`--project-name` per‑run, aby uniknac kolizji sieci/wolumenow i cross‑test contamination.
 - STD-089f (SHOULD): test‑workspace nie kopiuje `node_modules/`; zaleznosci instaluje osobno (deterministycznie) i loguje czy instalacja byla fresh.
 - STD-089g (SHOULD): kazdy SKIP w testach musi wypisac powod oraz instrukcje jak wymusic pelny test (ENV/flag).
 - STD-089h (SHOULD): w CI/E2E uzywaj `npm ci` dla deterministycznych zaleznosci; `npm install` tylko lokalnie (bez modyfikacji lockfile).

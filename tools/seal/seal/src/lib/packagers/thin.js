@@ -1495,6 +1495,7 @@ const E2E_REPORT_PATH = E2E_SELFTEST ? process.env.SEAL_E2E_REPORT_PATH : "";
 const E2E_HEAP_PATH = E2E_SELFTEST ? process.env.SEAL_E2E_HEAP_PATH : "";
 const E2E_KEY_MARKER_HEX = E2E_TEST_MODE ? process.env.SEAL_E2E_KEY_MARKER_HEX : "";
 const E2E_KEY_MARKER_HEX_LIST = E2E_TEST_MODE ? process.env.SEAL_E2E_KEY_MARKER_HEX_LIST : "";
+const E2E_HAS_MARKER = E2E_TEST_MODE && (!!E2E_KEY_MARKER_HEX || !!E2E_KEY_MARKER_HEX_LIST);
 const E2E_SELF_SCAN = E2E_TEST_MODE && process.env.SEAL_E2E_BOOTSTRAP_SELF_SCAN === "1";
 const E2E_SELF_SCAN_STAGE = E2E_SELF_SCAN ? String(process.env.SEAL_E2E_BOOTSTRAP_SELF_SCAN_STAGE || "") : "";
 const E2E_SELF_SCAN_EXPECT = E2E_SELF_SCAN ? String(process.env.SEAL_E2E_BOOTSTRAP_SELF_SCAN_EXPECT || "absent") : "";
@@ -3045,6 +3046,9 @@ e2eInspectorSelfTest("post-gc");
 e2eArgvEnvCheck("post-gc");
 e2eMaybeCrash("post-gc");
 wipeKeyBuf();
+if (E2E_HAS_MARKER) {
+  e2eGcPressure();
+}
 if (global.gc) {
   global.gc();
   global.gc();

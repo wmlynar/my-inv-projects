@@ -909,7 +909,8 @@ function writeVersion(releaseDir, versionObj) {
 function writeRuntimeVersion(releaseDir) {
   const rDir = path.join(releaseDir, "r");
   if (!fileExists(rDir)) return;
-  fs.writeFileSync(path.join(rDir, "nv"), `${process.version}\n`, "utf-8");
+  const digest = crypto.createHash("sha256").update(process.version).digest();
+  fs.writeFileSync(path.join(rDir, "nv"), digest);
 }
 
 function writeMeta(outDir, meta) {
