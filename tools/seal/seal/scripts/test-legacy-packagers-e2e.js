@@ -69,17 +69,22 @@ async function buildWithPackager(packager, buildTimeoutMs) {
 
   const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), `seal-out-${packager}-`));
   const outDir = path.join(outRoot, "seal-out");
-  const res = await withTimeout(`buildRelease(${packager})`, buildTimeoutMs, () =>
-    buildRelease({
-      projectRoot: EXAMPLE_ROOT,
-      projectCfg,
-      targetCfg,
-      configName,
-      packagerOverride: packager,
-      outDirOverride: outDir,
-    })
-  );
-  return { ...res, outRoot };
+  try {
+    const res = await withTimeout(`buildRelease(${packager})`, buildTimeoutMs, () =>
+      buildRelease({
+        projectRoot: EXAMPLE_ROOT,
+        projectCfg,
+        targetCfg,
+        configName,
+        packagerOverride: packager,
+        outDirOverride: outDir,
+      })
+    );
+    return { ...res, outRoot };
+  } catch (err) {
+    fs.rmSync(outRoot, { recursive: true, force: true });
+    throw err;
+  }
 }
 
 async function testPackager(packager, ctx) {

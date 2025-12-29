@@ -270,18 +270,25 @@ async function buildReleaseWithSentinel({ baseDir, outRoot, sentinelOverride }) 
   targetCfg.packager = "thin-split";
 
   const outRootFinal = outRoot || fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-"));
+  const createdOutRoot = !outRoot;
   const outDir = path.join(outRootFinal, "seal-out");
 
-  const res = await buildRelease({
-    projectRoot: EXAMPLE_ROOT,
-    projectCfg,
-    targetCfg,
-    configName,
-    packagerOverride: "thin-split",
-    outDirOverride: outDir,
-  });
-
-  return { ...res, outRoot: outRootFinal, outDir, appId };
+  try {
+    const res = await buildRelease({
+      projectRoot: EXAMPLE_ROOT,
+      projectCfg,
+      targetCfg,
+      configName,
+      packagerOverride: "thin-split",
+      outDirOverride: outDir,
+    });
+    return { ...res, outRoot: outRootFinal, outDir, appId };
+  } catch (err) {
+    if (createdOutRoot) {
+      fs.rmSync(outRootFinal, { recursive: true, force: true });
+    }
+    throw err;
+  }
 }
 
 function writeRuntimeConfig(releaseDir, port) {

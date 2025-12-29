@@ -134,6 +134,13 @@ function cleanupServiceArtifacts(targetCfg) {
   fs.rmSync(targetCfg.installDir, { recursive: true, force: true });
 }
 
+function createSafeInstallDir(prefix) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  const installDir = path.join(root, "install");
+  fs.mkdirSync(installDir, { recursive: true });
+  return { root, installDir };
+}
+
 function sshOk(user, host, cmd, sshPort) {
   const res = sshExec({ user, host, args: ["bash", "-lc", cmd], stdio: "pipe", sshPort });
   return { ok: res.ok, out: `${res.stdout || ""}\n${res.stderr || ""}`.trim() };
@@ -265,7 +272,7 @@ async function testShipThinBootstrapReuse() {
   log("Testing seal ship prod (thin SPLIT/BOOTSTRAP reuse)...");
   const targetName = `ship-e2e-boot-${Date.now()}-${process.pid}`;
   const serviceName = `seal-example-ship-boot-${Date.now()}`;
-  const installDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-ship-boot-"));
+  const { root: installRoot, installDir } = createSafeInstallDir("seal-ship-boot-");
   const targetCfg = {
     target: targetName,
     kind: "local",
@@ -308,6 +315,7 @@ async function testShipThinBootstrapReuse() {
       cleanupServiceArtifacts(targetCfg);
     }
     cleanupTargetConfig(targetName, backup);
+    fs.rmSync(installRoot, { recursive: true, force: true });
   }
 }
 
@@ -315,7 +323,7 @@ async function testShipRollbackLocal() {
   log("Testing seal ship rollback on readiness failure (local)...");
   const targetName = `ship-e2e-rollback-${Date.now()}-${process.pid}`;
   const serviceName = `seal-example-ship-rollback-${Date.now()}`;
-  const installDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-ship-rollback-"));
+  const { root: installRoot, installDir } = createSafeInstallDir("seal-ship-rollback-");
   const targetCfg = {
     target: targetName,
     kind: "local",
@@ -364,6 +372,7 @@ async function testShipRollbackLocal() {
       cleanupServiceArtifacts(targetCfg);
     }
     cleanupTargetConfig(targetName, backup);
+    fs.rmSync(installRoot, { recursive: true, force: true });
   }
 }
 

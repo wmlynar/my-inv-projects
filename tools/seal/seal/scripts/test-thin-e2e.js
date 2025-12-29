@@ -171,18 +171,22 @@ async function buildThinRelease(buildTimeoutMs, opts = {}) {
   const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), packager === "thin-single" ? "seal-out-single-" : "seal-out-split-"));
   const outDir = path.join(outRoot, "seal-out");
 
-  const res = await withTimeout(`buildRelease(${packager})`, buildTimeoutMs, () =>
-    buildRelease({
-      projectRoot: EXAMPLE_ROOT,
-      projectCfg,
-      targetCfg,
-      configName,
-      packagerOverride: packager,
-      outDirOverride: outDir,
-    })
-  );
-
-  return { ...res, outRoot, outDir };
+  try {
+    const res = await withTimeout(`buildRelease(${packager})`, buildTimeoutMs, () =>
+      buildRelease({
+        projectRoot: EXAMPLE_ROOT,
+        projectCfg,
+        targetCfg,
+        configName,
+        packagerOverride: packager,
+        outDirOverride: outDir,
+      })
+    );
+    return { ...res, outRoot, outDir };
+  } catch (err) {
+    fs.rmSync(outRoot, { recursive: true, force: true });
+    throw err;
+  }
 }
 
 function writeRuntimeConfig(releaseDir, port) {
@@ -411,10 +415,11 @@ async function testThinSplitNativeBootstrap(ctx) {
 
 async function testThinSplitRandomization(ctx) {
   log("Building thin SPLIT twice (randomness check)...");
-  const resA = await buildThinRelease(ctx.buildTimeoutMs);
-  const resB = await buildThinRelease(ctx.buildTimeoutMs);
-
+  let resA = null;
+  let resB = null;
   try {
+    resA = await buildThinRelease(ctx.buildTimeoutMs);
+    resB = await buildThinRelease(ctx.buildTimeoutMs);
     const aPl = hashFile(path.join(resA.releaseDir, "r", "pl"));
     const bPl = hashFile(path.join(resB.releaseDir, "r", "pl"));
     if (aPl === bPl) {
@@ -427,8 +432,8 @@ async function testThinSplitRandomization(ctx) {
       throw new Error("runtime containers identical across builds (expected per-build randomness)");
     }
   } finally {
-    fs.rmSync(resA.outRoot, { recursive: true, force: true });
-    fs.rmSync(resB.outRoot, { recursive: true, force: true });
+    if (resA && resA.outRoot) fs.rmSync(resA.outRoot, { recursive: true, force: true });
+    if (resB && resB.outRoot) fs.rmSync(resB.outRoot, { recursive: true, force: true });
   }
 }
 

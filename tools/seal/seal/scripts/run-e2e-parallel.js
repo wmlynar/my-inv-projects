@@ -255,6 +255,9 @@ async function main() {
     };
     await new Promise((resolve, reject) => {
       const child = spawn(RUNNER, [], { env: seedEnv, stdio: "inherit" });
+      child.on("error", (err) => {
+        reject(new Error(`Seed preparation spawn failed: ${err && err.message ? err.message : String(err)}`));
+      });
       child.on("close", (code) => {
         if (code === 0) resolve();
         else reject(new Error(`Seed preparation failed (exit=${code})`));

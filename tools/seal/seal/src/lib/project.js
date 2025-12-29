@@ -344,7 +344,7 @@ function loadProjectConfig(projectRoot, opts) {
   const overlayRes = applyProfileOverlay(rawMerged, overlayName);
   const rawWithOverlay = overlayRes.cfg;
   const rawCfg = JSON.parse(JSON.stringify(rawWithOverlay));
-  cfg = JSON.parse(JSON.stringify(rawWithOverlay));
+  const cfg = JSON.parse(JSON.stringify(rawWithOverlay));
 
   // Fill defaults defensively
   cfg.appName = cfg.appName || detectAppName(projectRoot);

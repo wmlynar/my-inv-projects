@@ -132,18 +132,22 @@ async function buildThinRelease(buildTimeoutMs) {
   const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-ui-split-"));
   const outDir = path.join(outRoot, "seal-out");
 
-  const res = await withTimeout("buildRelease(split)", buildTimeoutMs, () =>
-    buildRelease({
-      projectRoot: EXAMPLE_ROOT,
-      projectCfg,
-      targetCfg,
-      configName,
-      packagerOverride: packager,
-      outDirOverride: outDir,
-    })
-  );
-
-  return { ...res, outRoot, outDir };
+  try {
+    const res = await withTimeout("buildRelease(split)", buildTimeoutMs, () =>
+      buildRelease({
+        projectRoot: EXAMPLE_ROOT,
+        projectCfg,
+        targetCfg,
+        configName,
+        packagerOverride: packager,
+        outDirOverride: outDir,
+      })
+    );
+    return { ...res, outRoot, outDir };
+  } catch (err) {
+    fs.rmSync(outRoot, { recursive: true, force: true });
+    throw err;
+  }
 }
 
 function writeRuntimeConfig(releaseDir, port) {
