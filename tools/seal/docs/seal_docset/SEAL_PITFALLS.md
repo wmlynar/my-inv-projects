@@ -2477,6 +2477,13 @@
 - Blad: unit miał `Restart=always` nawet dla `oneshot`, co prowadziło do niekończących się restartów po sukcesie.
   - Wymaganie: `Restart=` dobieraj do typu usługi (np. `on-failure` dla long‑running), a `oneshot` bez restartu.
 
+## Dodatkowe wnioski (batch 311-315)
+
+- Blad: włączone hardeningi systemd (`ProtectSystem=strict`, `ReadOnlyPaths`, `ReadWritePaths`) blokowały zapis do `installDir`/logów/cache, co dawało „Permission denied” mimo poprawnego deployu.
+  - Wymaganie: jeśli używasz `ProtectSystem`, jawnie ustaw `ReadWritePaths` dla katalogów runtime (installDir, shared, logs) i testuj start usługi z tym profilem.
+- Blad: `PrivateTmp=true` izolował `/tmp`, a procesy oczekiwały wspólnego `/tmp` (np. do IPC z innymi narzędziami), co powodowało nieoczekiwane błędy.
+  - Wymaganie: `PrivateTmp` włączaj tylko gdy wiesz, że proces nie potrzebuje współdzielonego `/tmp`, albo ustaw jawny `SEAL_TMPDIR` w `RuntimeDirectory`.
+
 
 ## Dodatkowe wnioski (batch 296-300)
 
@@ -2592,6 +2599,17 @@
   - Wymaganie: kazda zdalna komenda inline zaczyna sie od `set -euo pipefail` (lub `bash -euo pipefail -c ...`) i propaguje exit code; loguj pelna komende.
 - Blad: wartosci w `EnvironmentFile` zawieraly spacje lub `#`, przez co systemd obcinal je lub traktowal reszte jako komentarz.
   - Wymaganie: dla zlozonych wartosci uzywaj `Environment=` w unicie albo zapisuj `EnvironmentFile` z poprawnym quoting/escaping + test odczytu.
+
+## Dodatkowe wnioski (batch 341-345)
+
+- Blad: skrypty parsowaly tekst `systemctl status` (lokalizacja/ANSI/truncation), co dawalo niestabilne wyniki.
+  - Wymaganie: do logiki uzywaj `systemctl show --property=... --value` albo `systemctl is-active/is-enabled`; parsowanie `status` tylko do diagnostyki.
+- Blad: w unitach systemd uzywano `~`/`$HOME` w sciezkach, a systemd ich nie rozwijał, co powodowalo bledne CWD lub brak plikow.
+  - Wymaganie: w unitach podawaj sciezki absolutne; jesli potrzebny `HOME`, ustaw go jawnie w `Environment=` i używaj w kodzie, nie w samym unicie.
+- Blad: oczekiwano ekspansji zmiennych w `EnvironmentFile` (np. `FOO=$BAR`), ale systemd nie wykonuje substytucji, wiec wartosci byly literalne.
+  - Wymaganie: generuj plik env z juz‑rozwinietymi wartosciami albo przeliczaj je w wrapperze aplikacji przed startem.
+- Blad: output `ssh ... | tee` maskowal exit code zdalnej komendy (pipeline zwracal status `tee`), przez co bledy zdalne ginely.
+  - Wymaganie: po pipeline odczytuj `${PIPESTATUS[0]}` albo nie uzywaj pipe do logowania (redirect do pliku + osobny `cat`); w testach assertuj exit code zdalnego polecenia.
 
 ## Dodatkowe wnioski (batch 336-340)
 

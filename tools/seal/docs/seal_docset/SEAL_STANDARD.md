@@ -503,6 +503,8 @@ Przykład:
 - STD-089z.ag (SHOULD): unity mają `TimeoutStopSec` ustawiony jawnie; długie shutdowny są uwzględnione w profilu.
 - STD-089z.ah (SHOULD): unity konfigurują `StartLimitIntervalSec`/`StartLimitBurst` + `RestartSec` (backoff), aby uniknąć pętli restartów.
 - STD-089z.ai (SHOULD): `Restart=` jest dobrany do typu usługi (np. `on-failure` dla long‑running; brak restartu dla `oneshot`).
+- STD-089z.aj (SHOULD): jeśli używasz `ProtectSystem`/`ReadWritePaths`, lista zapisów jest jawna i zawiera wszystkie katalogi runtime; brak = fail‑fast.
+- STD-089z.ak (SHOULD): `PrivateTmp` jest świadomą decyzją; przy włączonym `PrivateTmp` ustaw jawny `SEAL_TMPDIR` lub RuntimeDirectory i testuj start.
 - STD-090c (SHOULD): preflight sprawdza **narzedzia CLI** (np. `postject` w `node_modules/.bin`/PATH), nie tylko obecność modulu.
 - STD-091a (SHOULD): funkcje zalezne od architektury (np. CPUID) musza degradująco dzialac na platformach bez wsparcia (pusty/neutralny ID zamiast twardego bledu).
 - STD-092a (SHOULD): `--skip-check` jest wyraznie oznaczony jako ryzykowny i zawsze wypisuje ostrzezenie; krytyczne braki toolchaina nie powinny byc maskowane.
