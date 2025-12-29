@@ -1287,6 +1287,9 @@
 - Blad: systemd unit uzywal względnych sciezek w `ExecStart`, co psulo start po zmianie CWD.
   - Wymaganie: `ExecStart` zawsze uzywa absolutnych sciezek (lub `WorkingDirectory` + `./bin` tylko jesli jawnie wspierane).
 
+- Blad: unit file mial zle owner/perms (np. world-writable lub root-owned w user scope), przez co systemd go ignorowal albo logowal ostrzezenia.
+  - Wymaganie: waliduj owner/perms unitu (system scope: root:root 0644, user scope: owner=user 0644); bledne = fail‑fast z instrukcja.
+
 - Blad: unit/komendy operowaly na zlej nazwie uslugi (status/stop/restart nie trafialy w odpowiedni unit).
   - Wymaganie: nazwa uslugi jest zapisywana w `<root>/service.name` i uzywana konsekwentnie przez `seal` i `appctl`.
 - Blad: `appName` zawieral spacje/znaki specjalne i byl uzywany w sciezkach/nazwach plikow, co psulo deploy i `scp`.

@@ -138,6 +138,7 @@ Przykład:
 - STD-030d (SHOULD): `serviceName` nie zawiera sufiksu `.service`; normalizuj lub fail‑fast z jasnym bledem.
 - STD-030e (SHOULD): dla `serviceScope=system` logi `journalctl` uruchamiaj przez `sudo` lub wymagaj grupy `systemd-journal`; brak uprawnien = jasny blad.
 - STD-030f (SHOULD): `serviceScope` akceptuje tylko `user`/`system`; inne wartosci = fail‑fast (bez cichego fallbacku).
+- STD-030g (SHOULD): unit file ma poprawny owner/perms (system: root:root 0644, user: owner=user 0644); niepoprawne uprawnienia = fail‑fast z instrukcja.
 - STD-031 (SHOULD): brak sudo domyslnie; eskalacja tylko jawnie. Waliduj owner/perms/umask w punktach krytycznych.
 - STD-031a (SHOULD): komendy wymagajace `sudo` w trybie nieinteraktywnym uzywaja `sudo -n` i fail‑fast z instrukcja (brak wiszenia na promptach).
 - STD-031b (SHOULD): gdy `sudo` jest konieczne, przekazuj wymagane ENV jawnie (`sudo -E` lub `sudo VAR=...`) i loguj kluczowe zmienne, aby uniknac rozjazdow zachowania.
