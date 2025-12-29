@@ -10,11 +10,11 @@ const { spawn, spawnSync } = require("child_process");
 const {
   resolveJsonSummaryPath,
   ensureSummaryFile,
-  parseSummaryRows,
   formatSummaryRow,
   listFailedTests,
   printCategorySummary,
   printStatusList,
+  countStatuses,
   buildJsonSummary,
   writeJsonSummary,
 } = require("./e2e-report");
@@ -775,18 +775,7 @@ async function main() {
 
   const endTs = Date.now();
   const total = Math.floor((endTs - startTs) / 1000);
-  let okCount = 0;
-  let skipCount = 0;
-  let failCount = 0;
-  let abortCount = 0;
   let sumTests = 0;
-  for (const name of Object.keys(testStatus)) {
-    const status = testStatus[name];
-    if (status === "ok") okCount += 1;
-    else if (status === "failed") failCount += 1;
-    else if (status === "aborted") abortCount += 1;
-    else skipCount += 1;
-  }
   for (const name of Object.keys(testDurations)) {
     sumTests += testDurations[name] || 0;
   }
@@ -799,15 +788,15 @@ async function main() {
     const status = testStatus[row.name];
     log(`  - ${row.name}  ${status}  (${formatDuration(row.duration)})`);
   }
-  const totalCount = okCount + skipCount + failCount + abortCount;
-  log(`Stats: total=${totalCount}, ok=${okCount}, skipped=${skipCount}, failed=${failCount}, aborted=${abortCount}`);
+  const totals = countStatuses(summaryOrder, summaryRows);
+  log(`Stats: total=${totals.total}, ok=${totals.ok}, skipped=${totals.skipped}, failed=${totals.failed}, aborted=${totals.aborted}`);
   if (sumTests > 0 && total > sumTests) {
     log(`Non-test time: ${formatDuration(total - sumTests)} (setup/deps/copy)`);
   }
   if (summaryPath) log(`Summary file: ${summaryPath}`);
   if (summaryLastPath) log(`Summary last: ${summaryLastPath}`);
   if (logCapture === "1") log(`Logs: ${logDir}`);
-  if (failCount !== 0 && summaryPath) {
+  if (totals.failed !== 0 && summaryPath) {
     const rerunHint = summaryLastPath || summaryPath;
     log(`Rerun failed only: SEAL_E2E_RERUN_FAILED=1 SEAL_E2E_RERUN_FROM=${rerunHint}`);
   }
@@ -831,7 +820,6 @@ async function main() {
   writeSummaryFile();
   updateLastSummary();
 
-  const summaryRowsFromFile = parseSummaryRows(summaryPath);
   const summaryJsonPath = resolveJsonSummaryPath(summaryPath, env);
   const summaryData = buildJsonSummary({
     runId,
@@ -839,7 +827,7 @@ async function main() {
     manifestOrder,
     testByName,
     planByName: plan.byName,
-    summaryRows: summaryRowsFromFile,
+    summaryRows,
     capabilities,
     summaryPath,
     runStart,
@@ -854,7 +842,7 @@ async function main() {
     log(`E2E failures: ${failures}`);
     process.exit(1);
   }
-  if (abortCount > 0 && failFast === "1") {
+  if (totals.aborted > 0 && failFast === "1") {
     process.exit(1);
   }
 }

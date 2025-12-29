@@ -17,6 +17,7 @@ const {
   listFailedTests,
   printCategorySummary,
   printStatusList,
+  countStatuses,
   buildJsonSummary,
   writeJsonSummary,
 } = require("./e2e-report");
@@ -520,28 +521,13 @@ async function main() {
   }
 
   function printCombinedSummary(summaryRows, orderList) {
-    const statusByTest = {};
-    for (const row of summaryRows) {
-      statusByTest[row.test] = row.status;
-    }
-
-    let ok = 0;
-    let skipped = 0;
-    let failed = 0;
-    let aborted = 0;
-    for (const test of orderList) {
-      const status = statusByTest[test] || "skipped";
-      if (status === "ok") ok += 1;
-      else if (status === "failed") failed += 1;
-      else if (status === "aborted") aborted += 1;
-      else skipped += 1;
-    }
-    log(`Combined stats: total=${orderList.length}, ok=${ok}, skipped=${skipped}, failed=${failed}, aborted=${aborted}`);
+    const totals = countStatuses(orderList, summaryRows);
+    log(`Combined stats: total=${totals.total}, ok=${totals.ok}, skipped=${totals.skipped}, failed=${totals.failed}, aborted=${totals.aborted}`);
     log(`Summary file: ${summaryPath}`);
     if (summaryLastPath) {
       log(`Summary last: ${summaryLastPath}`);
     }
-    if (failed) {
+    if (totals.failed) {
       const rerunHint = summaryLastPath || summaryPath;
       log(`Rerun failed only: SEAL_E2E_RERUN_FAILED=1 SEAL_E2E_RERUN_FROM=${rerunHint}`);
     }

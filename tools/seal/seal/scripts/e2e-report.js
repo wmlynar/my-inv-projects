@@ -231,6 +231,24 @@ function printStatusList(options) {
   }
 }
 
+function countStatuses(orderList, summaryRows) {
+  const list = Array.isArray(orderList)
+    ? orderList
+    : (Array.isArray(summaryRows) ? summaryRows.map((row) => row.test).filter(Boolean) : []);
+  const totals = { total: 0, ok: 0, skipped: 0, failed: 0, aborted: 0 };
+  const index = buildSummaryIndex(summaryRows);
+  for (const name of list) {
+    const row = index.get(name);
+    const status = (row && row.status) || "skipped";
+    totals.total += 1;
+    if (status === "ok") totals.ok += 1;
+    else if (status === "failed") totals.failed += 1;
+    else if (status === "aborted") totals.aborted += 1;
+    else totals.skipped += 1;
+  }
+  return totals;
+}
+
 function listFailedTests(summaryPath) {
   const rows = parseSummaryRows(summaryPath);
   const failed = new Set();
@@ -357,6 +375,7 @@ module.exports = {
   formatSummaryRow,
   printCategorySummary,
   printStatusList,
+  countStatuses,
   listFailedTests,
   buildPlan,
   printPlan,
