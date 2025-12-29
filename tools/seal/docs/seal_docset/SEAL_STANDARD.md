@@ -171,6 +171,7 @@ Przykład:
 - STD-044 (SHOULD): identyfikatory uzywane w sciezkach plikow musza byc sanitizowane do bezpiecznego alfabetu (brak path traversal).
 - STD-044a (SHOULD): `appName`/`serviceName` sa walidowane do bezpiecznego zestawu znakow (bez spacji/slash), zanim trafia do sciezek lub komend deploy.
 - STD-044b (SHOULD): wartosci wstawiane do generowanych skryptow shellowych sa shell‑escapowane (`$`, backtick, newline) albo walidowane do bezpiecznego alfabetu; nie polegaj na samych cudzyslowach.
+- STD-044c (SHOULD): `serviceName` jest walidowany pod katem dozwolonych znakow systemd i limitu dlugosci; w razie przekroczenia stosuj bezpieczny fallback (np. `app-<hash>`).
 - STD-045 (SHOULD): przy wlaczonych zabezpieczeniach/stealth komunikaty bledow musza byc zunifikowane (opaque failure), bez ujawniania sciezek/rolek.
 - STD-045a (SHOULD): endpointy `/health` i `/status` nie zdradzaja obecnosci sentinel/guardow (tresc i timing stabilne); szczegoly tylko w logach instalatora/CLI.
 - STD-046 (SHOULD): idempotentne porownania/zapisy do plikow chronionych musza uzywac tych samych uprawnien co install (sudo lub dedykowana grupa); brak uprawnien = blad z instrukcja.

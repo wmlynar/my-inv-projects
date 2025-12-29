@@ -1279,6 +1279,8 @@
   - Wymaganie: nazwa uslugi jest zapisywana w `<root>/service.name` i uzywana konsekwentnie przez `seal` i `appctl`.
 - Blad: `appName` zawieral spacje/znaki specjalne i byl uzywany w sciezkach/nazwach plikow, co psulo deploy i `scp`.
   - Wymaganie: waliduj `appName/serviceName` do bezpiecznego alfabetu (np. `[a-zA-Z0-9._-]`) i normalizuj przed uzyciem w sciezkach/komendach.
+- Blad: `serviceName` byl zbyt dlugi lub zawieral znaki nieakceptowane przez systemd, co dawalo `Invalid unit name` lub brak startu.
+  - Wymaganie: waliduj `serviceName` pod katem dozwolonych znakow i limitu dlugosci; przy przekroczeniu generuj bezpieczny fallback (np. `app-<hash>`).
 - Blad: generowany `appctl` wstawial `APP_NAME`/`APP_ENTRY` w podwojnych cudzyslowach bez escapingu `$`/`` ``, co powodowalo ekspansje zmiennych lub command substitution przy nietypowych nazwach.
   - Wymaganie: wartosci wstawiane do skryptow shellowych musza byc shell‑escapowane (np. single quotes/`printf %q`) lub walidowane do bezpiecznego alfabetu.
 - Blad: `serviceName` zawieral sufiks `.service`, co dawalo `foo.service.service` w systemctl i mylace logi.
