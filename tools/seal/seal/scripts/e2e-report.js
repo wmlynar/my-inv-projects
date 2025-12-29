@@ -71,6 +71,14 @@ function ensureSummaryFile(summaryPath, options = {}) {
   }
 }
 
+function updateLastSummaryFile(summaryPath, lastPath) {
+  if (!summaryPath || !lastPath || !fs.existsSync(summaryPath)) return;
+  fs.mkdirSync(path.dirname(lastPath), { recursive: true });
+  const tmpPath = `${lastPath}.tmp.${process.pid}`;
+  fs.copyFileSync(summaryPath, tmpPath);
+  fs.renameSync(tmpPath, lastPath);
+}
+
 function parseSummaryRows(summaryPath) {
   if (!summaryPath || !fs.existsSync(summaryPath)) {
     return [];
@@ -116,6 +124,36 @@ function formatSummaryRow(row) {
     row.failHint,
   ].map(sanitizeSummaryField);
   return fields.join("\t");
+}
+
+function buildSummaryRowsFromState(options) {
+  const {
+    order,
+    testByName,
+    statusByTest,
+    durationByTest,
+    logByTest,
+    group,
+  } = options || {};
+  const list = Array.isArray(order) ? order : [];
+  const rows = [];
+  for (const name of list) {
+    if (!name) continue;
+    const test = testByName && typeof testByName.get === "function" ? testByName.get(name) : null;
+    rows.push({
+      group: group || "",
+      test: name,
+      status: statusByTest && statusByTest[name] ? statusByTest[name] : "skipped",
+      duration: durationByTest && durationByTest[name] ? durationByTest[name] : 0,
+      category: (test && test.category) || "",
+      parallel: (test && test.parallel) || "0",
+      skipRisk: (test && test.skipRisk) || "",
+      description: (test && test.description) || "",
+      logPath: logByTest && logByTest[name] ? logByTest[name] : "",
+      failHint: (test && test.failHint) || "",
+    });
+  }
+  return rows;
 }
 
 function buildSummaryIndex(rows) {
@@ -399,8 +437,10 @@ module.exports = {
   SUMMARY_TSV_HEADER,
   resolveJsonSummaryPath,
   ensureSummaryFile,
+  updateLastSummaryFile,
   parseSummaryRows,
   formatSummaryRow,
+  buildSummaryRowsFromState,
   printCategorySummary,
   printStatusList,
   printTimingSummary,

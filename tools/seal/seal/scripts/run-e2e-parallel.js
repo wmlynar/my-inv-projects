@@ -12,6 +12,7 @@ const RUNNER = path.join(SCRIPT_DIR, "run-e2e-suite.sh");
 const {
   resolveJsonSummaryPath,
   ensureSummaryFile,
+  updateLastSummaryFile,
   parseSummaryRows,
   formatSummaryRow,
   printCategorySummary,
@@ -98,14 +99,6 @@ function writeCombinedSummary(summaryPath, groupOrder, groupSummary, syntheticRo
       writtenTests.add(row.test);
     }
   }
-}
-
-function updateLastSummary(summaryPath, lastPath) {
-  if (!summaryPath || !lastPath || !fs.existsSync(summaryPath)) return;
-  fs.mkdirSync(path.dirname(lastPath), { recursive: true });
-  const tmpPath = `${lastPath}.tmp.${process.pid}`;
-  fs.copyFileSync(summaryPath, tmpPath);
-  fs.renameSync(tmpPath, lastPath);
 }
 
 function spawnRunner(env, label) {
@@ -578,7 +571,7 @@ async function main() {
   printDetailedSummary([...filteredGroups, ...serialFiltered]);
 
   writeCombinedSummary(summaryPath, [...filteredGroups, ...serialFiltered], groupSummary, abortedRows);
-  updateLastSummary(summaryPath, summaryLastPath);
+  updateLastSummaryFile(summaryPath, summaryLastPath);
 
   const combinedRows = parseSummaryRows(summaryPath);
   const orderList = selectedTests;

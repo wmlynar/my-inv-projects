@@ -10,7 +10,9 @@ const { spawn, spawnSync } = require("child_process");
 const {
   resolveJsonSummaryPath,
   ensureSummaryFile,
+  updateLastSummaryFile,
   formatSummaryRow,
+  buildSummaryRowsFromState,
   printCategorySummary,
   printStatusList,
   printTimingSummary,
@@ -330,14 +332,6 @@ async function main() {
   const initSummaryFile = () => {
     if (!summaryPath) return;
     ensureSummaryFile(summaryPath, { append: env.SEAL_E2E_SUMMARY_APPEND === "1" });
-  };
-
-  const updateLastSummary = () => {
-    if (!summaryLastPath || !summaryPath || !fs.existsSync(summaryPath)) return;
-    ensureDir(path.dirname(summaryLastPath));
-    const tmpPath = `${summaryLastPath}.tmp.${process.pid}`;
-    fs.copyFileSync(summaryPath, tmpPath);
-    fs.renameSync(tmpPath, summaryLastPath);
   };
 
   const rerunFailed = env.SEAL_E2E_RERUN_FAILED === "1" && !setupOnly;
@@ -748,20 +742,13 @@ async function main() {
     }
   }
 
-  const summaryRows = testOrder.map((name) => {
-    const test = testByName.get(name) || {};
-    return {
-      group: summaryGroup,
-      test: name,
-      status: testStatus[name] || "skipped",
-      duration: testDurations[name] || 0,
-      category: test.category || "",
-      parallel: test.parallel || "0",
-      skipRisk: test.skipRisk || "",
-      description: test.description || "",
-      logPath: testLogs[name] || "",
-      failHint: test.failHint || "",
-    };
+  const summaryRows = buildSummaryRowsFromState({
+    order: testOrder,
+    testByName,
+    statusByTest: testStatus,
+    durationByTest: testDurations,
+    logByTest: testLogs,
+    group: summaryGroup,
   });
   const summaryOrder = summaryScope === "selected" ? testOrder : manifestOrder;
 
@@ -818,7 +805,7 @@ async function main() {
   });
 
   writeSummaryFile();
-  updateLastSummary();
+  updateLastSummaryFile(summaryPath, summaryLastPath);
 
   const summaryJsonPath = resolveJsonSummaryPath(summaryPath, env);
   const summaryData = buildJsonSummary({
