@@ -477,6 +477,10 @@ Przykład:
 - STD-089z.l (SHOULD): odczyt statusu systemd interpretuje exit codes (`is-active`/`is-enabled`) zgodnie z dokumentacją; `inactive/disabled` to stan, nie błąd.
 - STD-089z.m (SHOULD): po ekstrakcji/uploadzie zawsze ustaw `chmod +x` dla runnerów/skryptów i waliduj permsy; brak = fail‑fast.
 - STD-089z.n (SHOULD): waliduj tar pod kątem symlink/hardlink traversal (brak ścieżek wychodzących poza root).
+- STD-089z.o (SHOULD): preflight weryfikuje perms `/tmp` (sticky bit `1777`); w razie braku użyj prywatnego `SEAL_TMPDIR` lub fail‑fast.
+- STD-089z.p (SHOULD): stempel cache bazuje na hashu zawartości + wersjach narzędzi, nie tylko na `mtime`.
+- STD-089z.q (SHOULD): `rsync` exit code 24 jest obsługiwany jawnie (warn albo fail‑fast w strict), zawsze z logiem.
+- STD-089z.r (SHOULD): `tar` warningi (exit code 1) są rozróżniane od fatal i logowane; decyzja wg trybu (strict/warn).
 - STD-090c (SHOULD): preflight sprawdza **narzedzia CLI** (np. `postject` w `node_modules/.bin`/PATH), nie tylko obecność modulu.
 - STD-091a (SHOULD): funkcje zalezne od architektury (np. CPUID) musza degradująco dzialac na platformach bez wsparcia (pusty/neutralny ID zamiast twardego bledu).
 - STD-092a (SHOULD): `--skip-check` jest wyraznie oznaczony jako ryzykowny i zawsze wypisuje ostrzezenie; krytyczne braki toolchaina nie powinny byc maskowane.

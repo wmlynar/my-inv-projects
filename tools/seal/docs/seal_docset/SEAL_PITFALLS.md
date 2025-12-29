@@ -1244,6 +1244,9 @@
 - Blad: lokalne komendy `systemctl` dla `serviceScope=system` uzywaly `sudo` nawet przy UID 0, co na minimalnych hostach bez `sudo` konczylo sie bledem.
   - Wymaganie: gdy proces dziala jako root, uruchamiaj `systemctl` bez `sudo`.
 
+- Blad: `stop/disable/uninstall` failowaly, gdy unit nie istnial (np. po recznym usunieciu), mimo ze stan koncowy byl OK.
+  - Wymaganie: operacje stop/disable sa idempotentne: brak unitu = noop + log, nie twardy FAIL.
+
 - Blad: `installDir` w targetach lokalnych nie byl walidowany (relatywne sciezki/spacje/znaki shellowe), a trafial do `run-current.sh` i unitu systemd, co dawalo bledy lub nieprzewidziane ekspansje.
   - Wymaganie: `installDir` musi byc absolutny i bez whitespace/metaznakow; walidacja dotyczy **takze** targetow lokalnych.
 
@@ -2422,6 +2425,17 @@
   - Wymaganie: przed ekstrakcją odrzuć wpisy będące symlink/hardlink poza root lub ustaw `--no-same-owner` + weryfikuj po ekstrakcji realpath każdego pliku.
 - Blad: po uploadzie plików uruchomieniowych na host docelowy brakowało `+x` (umask/rsync/scp zrzucały uprawnienia), co powodowało „Permission denied”.
   - Wymaganie: po rozpakowaniu/uploadzie jawnie ustaw `chmod +x` dla runnerów/skryptów oraz weryfikuj permsy (fail‑fast).
+
+## Dodatkowe wnioski (batch 276-280)
+
+- Blad: `/tmp` bez sticky bit (brak `1777`) lub zbyt restrykcyjne perms powodowal losowe błędy `mktemp` i ryzyko ataków między userami.
+  - Wymaganie: preflight sprawdza perms `/tmp` (powinno być `drwxrwxrwt`); w razie braku użyj prywatnego `SEAL_TMPDIR` lub fail‑fast z instrukcją.
+- Blad: cache/stempel zależał tylko od `mtime` (lub rozmiaru), co przy clock‑skew lub ręcznych zmianach dawało fałszywe “cache hit”.
+  - Wymaganie: stempel cache opiera się o hash zawartości i kluczowe wersje (toolchain/flags), nie tylko o `mtime`.
+- Blad: `rsync` kończył się kodem 24 (`some files vanished`) i był traktowany jak twardy błąd mimo, że dotyczył plików tymczasowych.
+  - Wymaganie: obsłuż kod 24 jako ostrzeżenie (gdy wyraźnie dopuszczone), loguj listę plików i w trybie strict fail‑fast.
+- Blad: `tar` zwracał exit code 1 dla ostrzeżeń (np. `file changed as we read it`) i skrypt traktował to jak pełen FAIL lub ignorował całkowicie.
+  - Wymaganie: rozróżniaj warning vs fatal dla `tar` (parsing stderr) i podejmuj decyzję wg trybu (strict vs warn); zawsze loguj kontekst.
 
 ## Dodatkowe wnioski (batch 246-250)
 
