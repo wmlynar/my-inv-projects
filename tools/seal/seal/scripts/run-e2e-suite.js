@@ -21,7 +21,7 @@ const {
 } = require("./e2e-report");
 const { hasCommand } = require("./e2e-utils");
 const { loadE2EConfig, resolveSummaryPaths, resolveRerunFrom, isPlanMode } = require("./e2e-runner-config");
-const { assertEscalated, makeRunId, formatDuration, logEffectiveConfig } = require("./e2e-runner-utils");
+const { assertEscalated, makeRunId, formatDuration, logEffectiveConfig, formatConfigLine } = require("./e2e-runner-utils");
 const { applyToolsetDefaults, applyE2EFeatureFlags, applySshDefaults } = require("./e2e-runner-env");
 const { preparePlan, applyRerunFailedFilters } = require("./e2e-runner-plan");
 
@@ -307,17 +307,38 @@ async function main() {
   const manifestStrict = env.SEAL_E2E_MANIFEST_STRICT !== "0";
 
   const effectiveLines = [
-    `  toolset=${toolset} parallel=${env.SEAL_E2E_PARALLEL || "0"} mode=${env.SEAL_E2E_PARALLEL_MODE || ""} jobs=${env.SEAL_E2E_JOBS || ""}`,
-    `  tests=${env.SEAL_E2E_TESTS || "<all>"} skip=${env.SEAL_E2E_SKIP || "<none>"} limited_host=${env.SEAL_E2E_LIMITED_HOST || 0} fail_fast=${failFast}`,
-    `  summary=${summaryPath || "<disabled>"} last=${summaryLastPath || "<none>"}`,
-    `  log_dir=${logDir} capture_logs=${logCapture} log_filtered=${logFiltered}`,
-    `  cache_root=${cacheRoot} npm_cache=${npmCacheDir} node_modules_root=${env.SEAL_E2E_NODE_MODULES_ROOT || "<none>"}`,
-  ];
+    formatConfigLine([
+      { key: "toolset", value: toolset },
+      { key: "parallel", value: env.SEAL_E2E_PARALLEL || "0" },
+      { key: "mode", value: env.SEAL_E2E_PARALLEL_MODE || "" },
+      { key: "jobs", value: env.SEAL_E2E_JOBS || "" },
+    ]),
+    formatConfigLine([
+      { key: "tests", value: env.SEAL_E2E_TESTS || "<all>" },
+      { key: "skip", value: env.SEAL_E2E_SKIP || "<none>" },
+      { key: "limited_host", value: env.SEAL_E2E_LIMITED_HOST || 0 },
+      { key: "fail_fast", value: failFast },
+    ]),
+    formatConfigLine([
+      { key: "summary", value: summaryPath || "<disabled>" },
+      { key: "last", value: summaryLastPath || "<none>" },
+    ]),
+    formatConfigLine([
+      { key: "log_dir", value: logDir },
+      { key: "capture_logs", value: logCapture },
+      { key: "log_filtered", value: logFiltered },
+    ]),
+    formatConfigLine([
+      { key: "cache_root", value: cacheRoot },
+      { key: "npm_cache", value: npmCacheDir },
+      { key: "node_modules_root", value: env.SEAL_E2E_NODE_MODULES_ROOT || "<none>" },
+    ]),
+  ].filter(Boolean);
   if (env.SEAL_E2E_CONFIG) {
-    effectiveLines.push(`  config=${env.SEAL_E2E_CONFIG}`);
+    effectiveLines.push(formatConfigLine([{ key: "config", value: env.SEAL_E2E_CONFIG }]));
   }
   if (e2eHome) {
-    effectiveLines.push(`  home=${e2eHome}`);
+    effectiveLines.push(formatConfigLine([{ key: "home", value: e2eHome }]));
   }
   logEffectiveConfig(log, effectiveLines);
 

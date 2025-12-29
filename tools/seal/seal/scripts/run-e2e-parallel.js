@@ -29,6 +29,7 @@ const {
   normalizeFlag,
   safeName,
   logEffectiveConfig,
+  formatConfigLine,
 } = require("./e2e-runner-utils");
 const { preparePlan, applyRerunFailedFilters } = require("./e2e-runner-plan");
 
@@ -215,12 +216,30 @@ async function main() {
   const hostLimited = capabilities.limitedHost;
 
   const effectiveLines = [
-    `  jobs=${jobs} cgroup_limit=${cgroupLimit || "none"} mode=${parallelMode} fail_fast=${failFast}`,
-    `  tests=${env.SEAL_E2E_TESTS || "<all>"} skip=${env.SEAL_E2E_SKIP || "<none>"} limited_host=${hostLimited ? 1 : 0}`,
-    `  summary=${summaryPath} last=${summaryLastPath || "<none>"}`,
-    `  log_root=${logRoot} seed_root=${seedRoot} tmp_root=${tmpRoot}`,
-    `  node_modules_root=${env.SEAL_E2E_NODE_MODULES_ROOT || "<none>"}`,
-  ];
+    formatConfigLine([
+      { key: "jobs", value: jobs },
+      { key: "cgroup_limit", value: cgroupLimit || "none" },
+      { key: "mode", value: parallelMode },
+      { key: "fail_fast", value: failFast },
+    ]),
+    formatConfigLine([
+      { key: "tests", value: env.SEAL_E2E_TESTS || "<all>" },
+      { key: "skip", value: env.SEAL_E2E_SKIP || "<none>" },
+      { key: "limited_host", value: hostLimited ? 1 : 0 },
+    ]),
+    formatConfigLine([
+      { key: "summary", value: summaryPath },
+      { key: "last", value: summaryLastPath || "<none>" },
+    ]),
+    formatConfigLine([
+      { key: "log_root", value: logRoot },
+      { key: "seed_root", value: seedRoot },
+      { key: "tmp_root", value: tmpRoot },
+    ]),
+    formatConfigLine([
+      { key: "node_modules_root", value: env.SEAL_E2E_NODE_MODULES_ROOT || "<none>" },
+    ]),
+  ].filter(Boolean);
   logEffectiveConfig(log, effectiveLines);
 
   const prepareSeed = normalizeFlag(env.SEAL_E2E_PREPARE_SEED, "1") === "1";

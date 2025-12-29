@@ -73,6 +73,19 @@ function logEffectiveConfig(log, lines) {
   }
 }
 
+function formatConfigLine(entries) {
+  const parts = (entries || [])
+    .filter(Boolean)
+    .map((entry) => {
+      if (!entry || entry.key === undefined) return "";
+      const value = entry.value === undefined || entry.value === null ? "" : String(entry.value);
+      return `${entry.key}=${value}`;
+    })
+    .filter(Boolean);
+  if (!parts.length) return "";
+  return `  ${parts.join(" ")}`;
+}
+
 module.exports = {
   parseList,
   makeRunId,
@@ -83,4 +96,5 @@ module.exports = {
   safeName,
   assertEscalated,
   logEffectiveConfig,
+  formatConfigLine,
 };
