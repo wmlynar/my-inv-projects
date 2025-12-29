@@ -315,7 +315,11 @@ declare -A E2E_SKIP=()
 E2E_ONLY_RAW="$(trim_list "${SEAL_E2E_TESTS:-}")"
 E2E_SKIP_RAW="$(trim_list "${SEAL_E2E_SKIP:-}")"
 RERUN_FAILED="${SEAL_E2E_RERUN_FAILED:-0}"
-RERUN_FROM="${SEAL_E2E_RERUN_FROM:-$SUMMARY_PATH}"
+DEFAULT_RERUN_FROM="$SUMMARY_PATH"
+if [ -n "$SUMMARY_LAST_PATH" ]; then
+  DEFAULT_RERUN_FROM="$SUMMARY_LAST_PATH"
+fi
+RERUN_FROM="${SEAL_E2E_RERUN_FROM:-$DEFAULT_RERUN_FROM}"
 FAILED_ONLY_RAW=""
 if [ "$RERUN_FAILED" = "1" ] && [ "$SETUP_ONLY" != "1" ]; then
   if [ -z "$RERUN_FROM" ]; then
@@ -514,20 +518,36 @@ print_summary() {
   if [ -n "$SUMMARY_PATH" ]; then
     log "Summary file: $SUMMARY_PATH"
   fi
+  if [ -n "$SUMMARY_LAST_PATH" ]; then
+    log "Summary last: $SUMMARY_LAST_PATH"
+  fi
   if [ "$LOG_CAPTURE" = "1" ]; then
     log "Logs: $LOG_DIR"
   fi
   if [ "$fail_count" -ne 0 ] && [ -n "$SUMMARY_PATH" ]; then
-    log "Rerun failed only: SEAL_E2E_RERUN_FAILED=1 SEAL_E2E_RERUN_FROM=$SUMMARY_PATH"
+    local rerun_hint="$SUMMARY_PATH"
+    if [ -n "$SUMMARY_LAST_PATH" ]; then
+      rerun_hint="$SUMMARY_LAST_PATH"
+    fi
+    log "Rerun failed only: SEAL_E2E_RERUN_FAILED=1 SEAL_E2E_RERUN_FROM=$rerun_hint"
   fi
 
   print_category_table
   print_failure_list
 
   write_summary_file
+  if [ -n "$SUMMARY_LAST_PATH" ] && [ -n "$SUMMARY_PATH" ] && [ -f "$SUMMARY_PATH" ]; then
+    cp -f "$SUMMARY_PATH" "$SUMMARY_LAST_PATH"
+  fi
 }
 
-trap print_summary EXIT
+cleanup_home() {
+  if [ -n "$E2E_HOME" ] && [ "${SEAL_E2E_HOME_KEEP:-0}" != "1" ]; then
+    rm -rf "$E2E_HOME"
+  fi
+}
+
+trap 'print_summary; cleanup_home' EXIT
 
 DEPS_SIG="$(make_sig "deps" \
   "$REPO_ROOT/package.json" \
