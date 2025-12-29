@@ -63,6 +63,9 @@
 - Blad: kilka buildow E2E uzywalo tego samego `outDir`, a `buildRelease` czyscil katalog; pozniejsze testy uruchamialy sie na nie tym buildzie (false PASS/FAIL).
   - Wymaganie: kazdy wariant builda w E2E ma osobny `outDir` (unikalny per build/run); nie nadpisuj buildow w tym samym katalogu.
 
+- Blad: testy wymuszajace fail (np. `SEAL_*_FORCE=1`) polegaly na domyslnej konfiguracji, ktora mogla sie zmienic przez profil lub override; test byl wykonywany na buildzie bez aktywnej ochrony.
+  - Wymaganie: testy wymuszajace fail ustawiają **jawnie** opcje ochrony w configu (np. `antiDebug.ptraceGuard.enabled=true`) i logują effective config lub build meta przed asercją.
+
 - Blad: wewnetrzne uruchomienia `node` uzywaly binarki z PATH, co na maszynach z wieloma wersjami Node dawalo niespojne wyniki (inna wersja dla CLI i child procesu).
   - Wymaganie: uruchamiaj child‑node przez `process.execPath` (lub jawnie zweryfikowana sciezke), a w logach wypisz `node -v` i binarke.
 
@@ -2659,8 +2662,8 @@
 
 - Blad: payload-only zakladal obecność launchera/runtime i kopiowal tylko payload; przy usunietym `b/a` lub `r/rt` powstawal niespojny stan.
   - Wymaganie: payload-only weryfikuje obecność launchera i runtime; brak = full upload z logiem powodu.
-- Blad: payload-only reuse nie sprawdzal `r/nb.node` (native bootstrap), co prowadzilo do crashy przy starcie.
-  - Wymaganie: gdy release wymaga native bootstrap, sprawdz `r/nb.node` na target; brak = fallback do pelnego uploadu.
+- Blad: payload-only reuse nie sprawdzal `r/n` (native bootstrap), co prowadzilo do crashy przy starcie.
+  - Wymaganie: gdy release wymaga native bootstrap, sprawdz `r/n` na target; brak = fallback do pelnego uploadu.
 - Blad: bootstrap nie walidowal typu `installDir` (plik/symlink), co dawalo niejasne bledy przy `mkdir/chown`.
   - Wymaganie: preflight sprawdza, ze `installDir` jest katalogiem (bez symlink); inaczej fail‑fast z instrukcja.
 - Blad: bootstrap po `sudo mkdir` nie weryfikowal owner/perms, przez co zostawal root‑owned installDir i kolejne deploye padaly.

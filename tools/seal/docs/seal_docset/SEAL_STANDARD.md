@@ -428,6 +428,7 @@ Przykład:
 - STD-087e (SHOULD): funkcje ochronne (anti‑debug/snapshot) musza miec deterministyczne “test hooks” aktywowane tylko w trybie testowym (ENV), aby E2E byly stabilne.
 - STD-087f (SHOULD): testy E2E musza byc bezpieczne dla uruchomien rownoleglych (unikalne serviceName/installDir/outDir i brak wspolnych plikow globalnych).
 - STD-087f.a (SHOULD): nawet sekwencyjne buildy w ramach jednego runu E2E uzywaja unikalnego `outDir` per wariant; `buildRelease` czysci katalog i nadpisze poprzedni build.
+- STD-087f.b (SHOULD): testy wymuszajace fail (np. `SEAL_*_FORCE=1`) ustawiają jawnie opcje ochrony w configu i logują effective config/build meta, aby potwierdzic, ze guard jest aktywny.
 - STD-087g (SHOULD): testy E2E ustawiają deterministyczne locale i strefę czasu (`LC_ALL=C`, `TZ=UTC`), aby uniknąć różnic między środowiskami.
 - STD-087h (SHOULD): testy nie wymagają sieci domyślnie; operacje sieciowe są gated ENV i zawsze mają timeout.
 - STD-088 (SHOULD): testy przywracaja `process.cwd()` po zmianach (snapshot/restore).
