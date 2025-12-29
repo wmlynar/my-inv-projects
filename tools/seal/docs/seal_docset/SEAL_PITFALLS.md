@@ -942,6 +942,9 @@
 - Blad: `SEAL_E2E_CONFIG` wskazywal na nieistniejacy plik, a runner cicho wracal do defaultow, co mylilo wyniki.
   - Wymaganie: przy jawnym wskazaniu pliku brak = FAIL albo wyrazny warning + log fallback.
 
+- Blad: loader configu wywolywal helper (`fail`) zdefiniowany ponizej, co przy bledzie configu konczylo sie `fail: command not found`.
+  - Wymaganie: helpery uzywane w preflight/config load musza byc zdefiniowane **przed** ich uzyciem; w shell nie zakladaj istnienia funkcji ponizej miejsca wywolania.
+
 - Blad: plik configu E2E byl `source`-owany jako shell, co pozwalalo na wykonanie polecen z pliku.
   - Wymaganie: plik env jest traktowany jako dane (`KEY=VALUE`), albo przed `source` sprawdz ownership/perms (owner-only, bez world-writable) i loguj ostrzezenie.
 
