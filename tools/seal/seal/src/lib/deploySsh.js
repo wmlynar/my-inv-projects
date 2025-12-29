@@ -3,6 +3,7 @@
 const path = require("path");
 const os = require("os");
 const fs = require("fs");
+const crypto = require("crypto");
 
 const {
   sshExec,
@@ -120,6 +121,7 @@ const CODEC_BIN_VERSION = 1;
 const CODEC_BIN_HASH_LEN = 32;
 const CODEC_BIN_LEN = 4 + 1 + 1 + 2 + CODEC_BIN_HASH_LEN;
 const THIN_RUNTIME_VERSION_FILE = "nv";
+const RUNTIME_MARKER_LEN = 32;
 
 function readCodecHashFromBin(buf) {
   if (!Buffer.isBuffer(buf) || buf.length < CODEC_BIN_LEN) return null;
@@ -128,6 +130,18 @@ function readCodecHashFromBin(buf) {
   if (buf[5] !== CODEC_BIN_HASH_LEN) return null;
   const hash = buf.slice(8, 8 + CODEC_BIN_HASH_LEN);
   return hash.toString("hex");
+}
+
+function hashRuntimeVersion(text) {
+  return crypto.createHash("sha256").update(text).digest("hex");
+}
+
+function normalizeRuntimeMarker(buf) {
+  if (!Buffer.isBuffer(buf)) return null;
+  if (buf.length === RUNTIME_MARKER_LEN) return buf.toString("hex");
+  const text = buf.toString("utf-8").trim();
+  if (!text) return null;
+  return hashRuntimeVersion(text);
 }
 
 function readThinCodecHashLocal(releaseDir) {
@@ -158,8 +172,9 @@ function readThinRuntimeVersionLocal(releaseDir) {
   for (const p of candidates) {
     if (!fileExists(p)) continue;
     try {
-      const text = fs.readFileSync(p, "utf-8").trim();
-      if (text) return text;
+      const buf = fs.readFileSync(p);
+      const marker = normalizeRuntimeMarker(buf);
+      if (marker) return marker;
     } catch {
       return null;
     }
@@ -189,12 +204,18 @@ function readThinRuntimeVersionRemote(targetCfg, { user, host, filePath }) {
   const res = sshExecTarget(targetCfg, {
     user,
     host,
-    args: ["bash", "-lc", `if [ -f ${shQuote(filePath)} ]; then cat ${shQuote(filePath)}; fi`],
+    args: ["bash", "-lc", `if [ -f ${shQuote(filePath)} ]; then (base64 -w 0 ${shQuote(filePath)} 2>/dev/null || base64 ${shQuote(filePath)} | tr -d '\\n'); fi`],
     stdio: "pipe",
   });
   if (!res.ok) return null;
   const text = (res.stdout || "").trim();
-  return text || null;
+  if (!text) return null;
+  try {
+    const buf = Buffer.from(text, "base64");
+    return normalizeRuntimeMarker(buf);
+  } catch {
+    return null;
+  }
 }
 
 function assertSafeInstallDir(installDir) {

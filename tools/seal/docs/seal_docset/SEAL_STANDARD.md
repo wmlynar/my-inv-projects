@@ -102,7 +102,7 @@ Przykład:
 - STD-024 (SHOULD): fallbacki obnizajace zabezpieczenia musza byc jawne (flag/config) i zawsze logowac ostrzezenie.
 - STD-036 (SHOULD): ryzykowne opcje sa OFF domyslnie i wymagaja jawnego wlaczenia.
 - STD-036a (SHOULD): payload-only fallback zawsze loguje powod; pelny upload jest dozwolony tylko gdy artefakt jest dostepny, inaczej fail‑fast z instrukcja (`seal ship` bez `--payload-only` lub `--artifact`).
-- STD-036b (SHOULD): thin‑split payload-only/reuse wymaga zgodnosci wersji runtime (np. `r/nv`); brak/mismatch = pelny upload runtime.
+- STD-036b (SHOULD): thin‑split payload-only/reuse wymaga zgodnosci markera runtime (np. `r/nv` = `sha256(process.version)` jako binarny hash); brak/mismatch = pelny upload runtime.
 - STD-036c (SHOULD): gdy `deploy/ship` z restartem i/lub readiness failuje, Seal podejmuje probe rollbacku i loguje wynik.
 - STD-034 (SHOULD): wejscia z CLI/config sa walidowane typami/zakresami; bledne = fail-fast.
 - STD-034a (SHOULD): wartosc podana, ale nieprawidlowa nie moze byc cicho normalizowana do defaultu; musi byc FAIL albo jawny warning + log „effective config”.
@@ -122,6 +122,8 @@ Przykład:
 - STD-025a (SHOULD): cache jest kluczowany po target+config+wersja/format; zmiana schematu wymusza czyszczenie lub nowy namespace cache.
 - STD-028 (SHOULD): zapisy plikow krytycznych sa atomowe (tmp + rename), aby uniknac polowicznych stanow po crashu.
 - STD-028a (SHOULD): aktualizacja `config.json5` jest atomowa (tmp w tym samym katalogu + `rename` + `fsync` katalogu).
+- STD-028b (SHOULD): edycje plikow JSON5 zachowuja komentarze i formatowanie (JSON5-aware writer) albo narzedzie ostrzega o utracie komentarzy i tworzy backup/diff; nie przepisuj cicho do czystego JSON.
+- STD-028c (SHOULD): bledy parsowania JSON/JSON5 musza zawierac sciezke pliku, line/col i krotki hint (BOM/CRLF, duplikaty kluczy); brak = FAIL.
 - STD-029 (SHOULD): operacje bootstrap/deploy/clean sa idempotentne (powtorka nie psuje stanu).
 - STD-029a (SHOULD): szybkie sciezki (payload-only/fast) musza zachowywac parytet walidacji i listy plikow z pelnym deployem; ewentualne roznice musza byc jawnie opisane i testowane.
 - STD-030 (SHOULD): build/deploy/clean uzywaja lockfile; kolizje maja czytelny komunikat i nie niszcza stanu.

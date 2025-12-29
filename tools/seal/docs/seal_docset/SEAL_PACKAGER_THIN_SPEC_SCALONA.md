@@ -743,8 +743,9 @@ Payload-only (BOOTSTRAP) MUSI sprawdzić zgodność `codec_hash`:
 - `release/r/c` vs `<installDir>/r/c`,
 - jeśli brak albo mismatch → **fallback do pełnego bootstrap**.
 
-Payload-only (BOOTSTRAP) MUSI sprawdzić zgodność wersji runtime (Node):
+Payload-only (BOOTSTRAP) MUSI sprawdzić zgodność markera runtime (Node):
 - `release/r/nv` vs `<installDir>/r/nv`,
+- `r/nv` to binarny hash (`sha256(process.version)`), nie plaintext,
 - jeśli brak albo mismatch → **fallback do pełnego uploadu/runtime**.
 
 Przy mismatch:

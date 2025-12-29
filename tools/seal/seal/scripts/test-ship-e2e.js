@@ -2,6 +2,7 @@
 "use strict";
 
 const assert = require("assert");
+const crypto = require("crypto");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -151,6 +152,36 @@ function sshReadFile(user, host, filePath, sshPort) {
   if (!res.ok) return null;
   const out = (res.stdout || "").trim();
   return out || null;
+}
+
+function sshReadFileBase64(user, host, filePath, sshPort) {
+  const cmd = `if [ -f ${shellQuote(filePath)} ]; then (base64 -w 0 ${shellQuote(filePath)} 2>/dev/null || base64 ${shellQuote(filePath)} | tr -d '\\n'); fi`;
+  const res = sshExec({ user, host, args: ["bash", "-lc", cmd], stdio: "pipe", sshPort });
+  if (!res.ok) return null;
+  const out = (res.stdout || "").trim();
+  if (!out) return null;
+  try {
+    return Buffer.from(out, "base64");
+  } catch {
+    return null;
+  }
+}
+
+function hashRuntimeVersion(text) {
+  return crypto.createHash("sha256").update(text).digest("hex");
+}
+
+function normalizeRuntimeMarker(buf) {
+  if (!Buffer.isBuffer(buf)) return null;
+  if (buf.length === 32) return buf.toString("hex");
+  const text = buf.toString("utf-8").trim();
+  if (!text) return null;
+  return hashRuntimeVersion(text);
+}
+
+function sshReadRuntimeMarker(user, host, filePath, sshPort) {
+  const buf = sshReadFileBase64(user, host, filePath, sshPort);
+  return normalizeRuntimeMarker(buf);
 }
 
 function shellQuote(str) {
@@ -368,6 +399,7 @@ async function testShipThinBootstrapSsh() {
 
   log("Testing seal ship prod (thin SPLIT/BOOTSTRAP over SSH, auto bootstrap)...");
   const targetName = `ship-e2e-ssh-${Date.now()}-${process.pid}`;
+  const expectedRuntimeMarker = hashRuntimeVersion(process.version);
   const targetCfg = {
     target: targetName,
     kind: "ssh",
@@ -453,8 +485,8 @@ async function testShipThinBootstrapSsh() {
       fallbackOutput.includes("runtime/launcher missing on target; falling back to full upload"),
       "Expected payload-only fallback log (missing runtime)"
     );
-    const nvAfterFallback = sshReadFile(user, host, `${installDir}/r/nv`, sshPort);
-    assert.strictEqual(nvAfterFallback, process.version, "Expected runtime version to be restored after fallback");
+    const nvAfterFallback = sshReadRuntimeMarker(user, host, `${installDir}/r/nv`, sshPort);
+    assert.strictEqual(nvAfterFallback, expectedRuntimeMarker, "Expected runtime marker to be restored after fallback");
 
     const nvWrite = sshOk(
       user,
@@ -476,8 +508,8 @@ async function testShipThinBootstrapSsh() {
       mismatchOutput.includes("node version mismatch"),
       "Expected payload-only fallback log (node version mismatch)"
     );
-    const nvAfterMismatch = sshReadFile(user, host, `${installDir}/r/nv`, sshPort);
-    assert.strictEqual(nvAfterMismatch, process.version, "Expected runtime version to be refreshed after mismatch");
+    const nvAfterMismatch = sshReadRuntimeMarker(user, host, `${installDir}/r/nv`, sshPort);
+    assert.strictEqual(nvAfterMismatch, expectedRuntimeMarker, "Expected runtime marker to be refreshed after mismatch");
 
     const httpPort = process.env.SEAL_SHIP_SSH_HTTP_PORT
       ? Number(process.env.SEAL_SHIP_SSH_HTTP_PORT)

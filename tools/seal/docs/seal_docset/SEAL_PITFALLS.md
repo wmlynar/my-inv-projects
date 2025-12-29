@@ -42,6 +42,12 @@
 - Blad: JSON5 z BOM/CRLF powodowal bledy parsowania na niektorych systemach.
   - Wymaganie: parser usuwa BOM i akceptuje CRLF (normalizuj `\\r\\n` -> `\\n`).
 
+- Blad: narzedzia zapisywaly JSON5 przez `JSON.stringify`, co usuwalo komentarze, trailing commas i uklad, a uzytkownik tracil notatki.
+  - Wymaganie: edycje JSON5 zachowuja komentarze/format (writer JSON5) albo narzedzie ostrzega o utracie komentarzy i robi backup; zapis nadal musi byc atomowy.
+
+- Blad: bledy parsowania JSON/JSON5 nie zawieraly sciezki ani lokalizacji bledu, co utrudnialo debug w CI.
+  - Wymaganie: parse error zawiera sciezke, line/col i hint (BOM/CRLF, duplikaty kluczy); brak = FAIL.
+
 - Blad: operacje na sciezkach (rm/rsync/copy) podazaly za symlinkami i mogly wyjsc poza root.
   - Wymaganie: przed operacjami destrukcyjnymi sprawdz `realpath` i czy jest w dozwolonym root.
   - Wymaganie: nie podazaj za symlinkami (`lstat` + blokada) i odrzucaj `..` w identyfikatorach.
@@ -600,7 +606,8 @@
   - Wymaganie: mismatch lub brak `c` = **fallback do pelnego bootstrap**.
 
 - Blad: payload-only nie weryfikowal wersji runtime Node, co pozwalalo na reuse po upgrade i mismatch runtime/payload.
-  - Wymaganie: release zapisuje wersje runtime (np. `r/nv`) i porownuje z targetem; brak/mismatch = fallback do pelnego uploadu.
+  - Wymaganie: release zapisuje marker runtime (`sha256(process.version)`) w `r/nv` i porownuje z targetem; brak/mismatch = fallback do pelnego uploadu.
+  - Wymaganie: marker na target jest binarny/obfuskowany (STD-012), nie plaintext.
 
 - Blad: "szybkie sciezki" (payload-only/fast) pomijaly czesc walidacji lub plikow layoutu, co prowadzilo do niespojnego stanu na target.
   - Wymaganie: fast paths musza miec parytet walidacji i listy plikow z pelnym deployem.
