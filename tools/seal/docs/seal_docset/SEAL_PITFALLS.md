@@ -1222,6 +1222,8 @@
 - Blad: Playwright pobieral przegladarki przy kazdym uruchomieniu (brak cache), co wydluzalo E2E i zwiekszalo flakey.
   - Wymaganie: ustaw `PLAYWRIGHT_BROWSERS_PATH` na trwały cache (poza repo) i loguj jego lokalizacje.
   - Wymaganie: cache przegladarek jest kluczowany po wersji Playwright; mismatch = reinstall.
+- Blad: marker instalacji i cache Playwrighta byly w roznych rootach (np. marker w `CACHE_ROOT`, a cache w `/root/.cache`), co dawalo falszywe "installed" albo wymuszalo reinstall przy zmianie usera.
+  - Wymaganie: marker instalacji i cache przegladarek musza uzywac tego samego rootu (`PLAYWRIGHT_BROWSERS_PATH` lub `${XDG_CACHE_HOME:-$HOME/.cache}`); unikaj twardego `/root` poza Dockerem; loguj oba pathy.
 
 - Blad: marker instalacji Playwright istnial, ale binarki przegladarek zostaly usuniete, co powodowalo fail mimo „cache ok”.
   - Wymaganie: przed pominieciem instalacji sprawdzaj realna obecność binarek w `PLAYWRIGHT_BROWSERS_PATH`; brak = reinstall i jawny log.
