@@ -2468,6 +2468,13 @@
 - Blad: `scp/rsync` z IPv6 nie działał, bo adres bez nawiasów był interpretowany jak `host:port`/`path`.
   - Wymaganie: dla IPv6 zawsze używaj nawiasów (`[addr]`) i/lub `-6`, a parser targetu musi to wspierać.
 
+## Dodatkowe wnioski (batch 296-300)
+
+- Blad: w systemd unit pliki z `%` w sciezkach/argumentach powodowaly błędy, bo `%` to escape w unitach (np. `%i`), a nie literal.
+  - Wymaganie: w unitach zawsze escapuj `%` jako `%%`, albo waliduj i fail‑fast gdy `serviceName`/ścieżki zawierają `%`.
+- Blad: `ExecStart` w systemd byl generowany z oczekiwaniem, że zadziałają bash‑izmy (np. `|`, `&&`, `$VAR`), ale systemd nie używa shella.
+  - Wymaganie: jeśli potrzebny jest shell, użyj jawnie `/bin/sh -c` z bezpiecznym quoting; w przeciwnym razie przekazuj args jako czyste tokeny.
+
 ## Dodatkowe wnioski (batch 246-250)
 
 - Blad: marker runtime byl tylko „gołym” hashem bez wersji/algorytmu, co utrudnialo zmiane formatu i migracje w przyszlosci.

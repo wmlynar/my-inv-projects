@@ -491,6 +491,8 @@ Przykład:
 - STD-089z.u (SHOULD): SSH w automatyzacji używa `IdentitiesOnly=yes` + `PreferredAuthentications=publickey` + jawny `-i`, aby uniknąć `Too many authentication failures`.
 - STD-089z.v (SHOULD): preflight zawsze loguje i weryfikuje wersję `node` oraz ścieżkę binarki; brak lub zła wersja = fail‑fast z instrukcją.
 - STD-089z.w (SHOULD): obsługuj IPv6 w SSH/SCP/rsync (nawiasy `[addr]` i/lub `-6`) i waliduj format w target config.
+- STD-089z.x (SHOULD): generowane unity systemd escapują `%` jako `%%` (i walidują brak nieoczekiwanych `%` w ścieżkach/args).
+- STD-089z.y (SHOULD): `ExecStart` nie zakłada shella; jeśli potrzebny shell, użyj jawnie `/bin/sh -c` z bezpiecznym quoting.
 - STD-090c (SHOULD): preflight sprawdza **narzedzia CLI** (np. `postject` w `node_modules/.bin`/PATH), nie tylko obecność modulu.
 - STD-091a (SHOULD): funkcje zalezne od architektury (np. CPUID) musza degradująco dzialac na platformach bez wsparcia (pusty/neutralny ID zamiast twardego bledu).
 - STD-092a (SHOULD): `--skip-check` jest wyraznie oznaczony jako ryzykowny i zawsze wypisuje ostrzezenie; krytyczne braki toolchaina nie powinny byc maskowane.
