@@ -2306,3 +2306,16 @@
   - Wymaganie: log dir E2E jest w stalym cache (poza tmp rootem), per‑grupa/test ma osobny podkatalog, a sciezka jest logowana.
 - Blad: Docker E2E probowal uruchamiac testy wymagajace pelnego hosta (systemd/kernel) bez jawnego opt‑in, co dawalo FAIL/flake.
   - Wymaganie: domyslnie w Docker E2E dziala tryb host‑limited (skip host‑only), a testy wymagajace pelnego hosta sa oznaczone w manifeście i uruchamiane tylko po explicit opt‑in.
+
+## Dodatkowe wnioski (batch 236-240)
+
+- Blad: marker wersji runtime byl zapisywany jako plaintext na target, co lamalo STD-012 i ujawnialo wersje wprost.
+  - Wymaganie: marker runtime jest binarny/obfuskowany (np. `sha256(process.version)`) i traktowany jako opaque bytes.
+- Blad: odczyt binarnych metadanych przez `cat` na SSH byl kruchy (newline/encoding), co dawalo falszywe mismatch.
+  - Wymaganie: binarne markery czytaj przez base64 i dekoduj lokalnie; nie zakladaj UTF‑8.
+- Blad: porownania markerow zakladaly jeden format i nie byly kompatybilne z migracjami (legacy plaintext -> hash).
+  - Wymaganie: normalizuj markery do jednego formatu (np. hash) i wspieraj legacy formaty w okresie przejsciowym.
+- Blad: E2E asercje sprawdzaly plaintext `process.version`, co wprowadzalo regresje po obfuskacji metadanych.
+  - Wymaganie: testy porownuja znormalizowany marker (hash) i obejmuja scenariusz migracji formatu markera.
+- Blad: metadane binarne byly parsowane jako text w kodzie pomocniczym, co dawalo `trim()` na danych binarnych.
+  - Wymaganie: funkcje helper nie konwertuja na text bez potrzeby; binarne pliki sa obslugiwane jako `Buffer`.
