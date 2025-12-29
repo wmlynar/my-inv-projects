@@ -2487,3 +2487,14 @@
   - Wymaganie: preflight sprawdza, ze `installDir` jest katalogiem (bez symlink); inaczej fail‑fast z instrukcja.
 - Blad: bootstrap po `sudo mkdir` nie weryfikowal owner/perms, przez co zostawal root‑owned installDir i kolejne deploye padaly.
   - Wymaganie: po bootstrapie waliduj owner/perms kluczowych katalogow i w razie bledu daj instrukcje naprawy (lub retry `chown`).
+
+## Dodatkowe wnioski (batch 256-260)
+
+- Blad: deploy z `--push-config=false` pomijal konfiguracje nawet gdy `shared/config.json5` nie istnial, co konczylo sie startem bez configu lub crash.
+  - Wymaganie: brak configu na target = seed config niezaleznie od `--push-config` i loguj "config missing -> seeded" (albo fail‑fast z instrukcja w trybie strict).
+- Blad: deploy zaczynal operacje zdalne zanim zweryfikowal lokalny config (brak pliku / brak uprawnien / bledny JSON5), przez co zostawial polowiczny release.
+  - Wymaganie: waliduj, ze config istnieje i jest poprawnym JSON5 przed jakimikolwiek zmianami na target; blad = fail‑fast bez efektow ubocznych.
+- Blad: aktualizacja configu byla wykonywana zawsze, nawet gdy zawartosc identyczna, co prowadzilo do zbednych restartow i rotacji.
+  - Wymaganie: porownuj kanoniczny hash configu i pomijaj update, jesli brak zmian; loguj "config unchanged".
+- Blad: logi nie rozroznialy "config updated" vs "config preserved", przez co uzytkownik nie wiedzial, czy override poszedl.
+  - Wymaganie: loguj jawnie stan: `config seeded` / `config updated` / `config preserved` wraz z powodem (pushConfig/drift/missing).
