@@ -2470,6 +2470,13 @@
 - Blad: `scp/rsync` z IPv6 nie działał, bo adres bez nawiasów był interpretowany jak `host:port`/`path`.
   - Wymaganie: dla IPv6 zawsze używaj nawiasów (`[addr]`) i/lub `-6`, a parser targetu musi to wspierać.
 
+## Dodatkowe wnioski (batch 306-310)
+
+- Blad: `systemctl stop` nie zabijał procesów potomnych (childy zostawały), bo domyślny `KillMode` nie obejmował całej grupy.
+  - Wymaganie: ustaw `KillMode=control-group` oraz jawny `KillSignal=SIGTERM`; po `TimeoutStopSec` systemd może wysłać SIGKILL.
+- Blad: brak `TimeoutStopSec` powodował wiszące zatrzymania usług, co blokowało deploy/restart.
+  - Wymaganie: ustaw jawny `TimeoutStopSec` i loguj wartość; dla długich shutdownów zapewnij hooks lub wydłuż timeout.
+
 ## Dodatkowe wnioski (batch 296-300)
 
 - Blad: w systemd unit pliki z `%` w sciezkach/argumentach powodowaly błędy, bo `%` to escape w unitach (np. `%i`), a nie literal.
