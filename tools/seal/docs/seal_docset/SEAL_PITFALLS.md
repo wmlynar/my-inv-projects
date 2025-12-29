@@ -2334,3 +2334,14 @@
   - Wymaganie: loguj efektywny config i ostrzegaj o „pustych” zmiennych wynikajacych z blednej kontynuacji linii (trailing spacje po `\\`).
 - Blad: uruchamianie skryptow E2E z podfolderu powodowalo zly `cwd` i sciezki względne wskazywaly na nieistniejace pliki (np. `.../example/tools/...`).
   - Wymaganie: skrypty maja auto‑detekcje repo root (`git rev-parse --show-toplevel` lub `realpath`) i uzywaja sciezek absolutnych; w logach wypisuja `repo_root`.
+
+## Dodatkowe wnioski (batch 246-250)
+
+- Blad: marker runtime byl tylko „gołym” hashem bez wersji/algorytmu, co utrudnialo zmiane formatu i migracje w przyszlosci.
+  - Wymaganie: marker ma format z magic/wersja/algId (jak codec), aby przyszle zmiany (np. sha512) byly jednoznaczne.
+- Blad: marker runtime oparty tylko o `process.version` nie wykrywal rozjazdow ABI/build (np. custom build, OpenSSL/ICU), co pozwalalo na niekompatybilny reuse.
+  - Wymaganie: marker uwzglednia ABI/arch/platform (np. `process.versions.modules`, `process.versions.openssl`, `process.arch`, `process.platform`) lub osobne pole kompatybilnosci.
+- Blad: logi mismatchy wypisywaly pelne hashe markerow, co bylo nieczytelne i niepotrzebnie ujawnialo identyfikatory.
+  - Wymaganie: loguj tylko fakt mismatchu + opcjonalnie krotki prefix hasha i/lub czytelna wersje lokalna; nie loguj pelnych markerow.
+- Blad: odczyt markerow przez SSH zakladal istnienie `base64`, co na minimalnych hostach powodowalo ciche bledy.
+  - Wymaganie: preflight sprawdza `base64` (lub fallback `python3`/`openssl`); brak = fail‑fast z instrukcja instalacji.
