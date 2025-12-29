@@ -338,6 +338,10 @@
   - Wymaganie: niezalezne tryby uruchamiaj niezaleznie (osobne testy lub `continue-on-error`), aby awaria lokalna nie blokowala weryfikacji SSH.
   - Wymaganie: E2E zawsze pokrywa oba tryby: auto‑bootstrap ON i OFF.
 
+- Blad: deploy konczyl sie bledem „Missing installDir” zamiast automatycznego bootstrapu na pierwszym uruchomieniu.
+  - Wymaganie: gdy `installDir` nie istnieje i `deploy.autoBootstrap=true`, Seal uruchamia bootstrap i loguje powod; gdy `autoBootstrap=false`, zwraca jasna instrukcje (`--bootstrap` + manualny fallback).
+  - Wymaganie: E2E obejmuje scenariusz „missing installDir” dla auto‑bootstrap ON oraz instrukcje dla OFF.
+
 - Blad: po nieudanym restarcie lub braku gotowosci deploy zostawial target na nowym, niezdrowym release bez rollbacku.
   - Wymaganie: przy failu restart/ready Seal probuje rollback i loguje wynik; E2E pokrywa scenariusz braku gotowosci.
 
