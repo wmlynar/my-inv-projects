@@ -691,7 +691,6 @@ async function main() {
     exampleNodeModulesDir = sharedNodeModulesDir;
   }
 
-  initSummaryFile();
   const exampleSig = makeSig("example", [
     path.join(exampleSrc, "package.json"),
     path.join(exampleSrc, "package-lock.json"),
