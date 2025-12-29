@@ -94,7 +94,27 @@ function parseTestFilters(env, knownTests, log) {
   return { onlyList, skipList };
 }
 
+function resolveSummaryPaths(options) {
+  const env = options.env || process.env;
+  const cacheRoot = options.cacheRoot || "";
+  const runId = options.runId || "";
+  const enabled = options.enabled !== false;
+  if (!enabled) {
+    return { summaryPath: "", summaryLastPath: "" };
+  }
+  const summaryOverride = env.SEAL_E2E_SUMMARY_PATH || "";
+  if (summaryOverride) {
+    return { summaryPath: summaryOverride, summaryLastPath: "" };
+  }
+  const summaryDir = path.join(cacheRoot, "e2e-summary");
+  return {
+    summaryPath: path.join(summaryDir, `run-${runId}.tsv`),
+    summaryLastPath: path.join(summaryDir, "last.tsv"),
+  };
+}
+
 module.exports = {
   loadE2EConfig,
   parseTestFilters,
+  resolveSummaryPaths,
 };

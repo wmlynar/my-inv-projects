@@ -64,6 +64,15 @@ function assertEscalated(log) {
   process.exit(1);
 }
 
+function logEffectiveConfig(log, lines) {
+  const logger = typeof log === "function" ? log : (msg) => process.stdout.write(`${msg}\n`);
+  logger("Effective config:");
+  for (const line of lines || []) {
+    if (!line) continue;
+    logger(line);
+  }
+}
+
 module.exports = {
   parseList,
   makeRunId,
@@ -73,4 +82,5 @@ module.exports = {
   shortHash,
   safeName,
   assertEscalated,
+  logEffectiveConfig,
 };

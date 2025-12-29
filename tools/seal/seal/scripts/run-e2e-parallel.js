@@ -22,13 +22,14 @@ const {
   buildJsonSummary,
   writeJsonSummary,
 } = require("./e2e-report");
-const { loadE2EConfig } = require("./e2e-runner-config");
+const { loadE2EConfig, resolveSummaryPaths } = require("./e2e-runner-config");
 const {
   assertEscalated,
   makeRunId,
   formatDuration,
   normalizeFlag,
   safeName,
+  logEffectiveConfig,
 } = require("./e2e-runner-utils");
 const { preparePlan, applyRerunFailedFilters } = require("./e2e-runner-plan");
 
@@ -139,8 +140,7 @@ async function main() {
   const manifestPath = env.SEAL_E2E_MANIFEST || path.join(SCRIPT_DIR, "e2e-tests.json5");
   const manifestStrict = normalizeFlag(env.SEAL_E2E_MANIFEST_STRICT, "1") === "1";
   const logRoot = env.SEAL_E2E_LOG_DIR || path.join(cacheRoot, "e2e-logs", runId);
-  const summaryPath = env.SEAL_E2E_SUMMARY_PATH || path.join(cacheRoot, "e2e-summary", `run-${runId}.tsv`);
-  const summaryLastPath = env.SEAL_E2E_SUMMARY_PATH ? "" : path.join(cacheRoot, "e2e-summary", "last.tsv");
+  const { summaryPath, summaryLastPath } = resolveSummaryPaths({ env, cacheRoot, runId });
   const failFast = normalizeFlag(env.SEAL_E2E_FAIL_FAST, "0");
   const remoteE2e = normalizeFlag(env.SEAL_E2E_SSH || env.SEAL_SHIP_SSH_E2E, "0");
   const parallelMode = env.SEAL_E2E_PARALLEL_MODE || "groups";
@@ -218,12 +218,14 @@ async function main() {
   });
   const hostLimited = capabilities.limitedHost;
 
-  log("Effective config:");
-  log(`  jobs=${jobs} cgroup_limit=${cgroupLimit || "none"} mode=${parallelMode} fail_fast=${failFast}`);
-  log(`  tests=${env.SEAL_E2E_TESTS || "<all>"} skip=${env.SEAL_E2E_SKIP || "<none>"} limited_host=${hostLimited ? 1 : 0}`);
-  log(`  summary=${summaryPath} last=${summaryLastPath || "<none>"}`);
-  log(`  log_root=${logRoot} seed_root=${seedRoot} tmp_root=${tmpRoot}`);
-  log(`  node_modules_root=${env.SEAL_E2E_NODE_MODULES_ROOT || "<none>"}`);
+  const effectiveLines = [
+    `  jobs=${jobs} cgroup_limit=${cgroupLimit || "none"} mode=${parallelMode} fail_fast=${failFast}`,
+    `  tests=${env.SEAL_E2E_TESTS || "<all>"} skip=${env.SEAL_E2E_SKIP || "<none>"} limited_host=${hostLimited ? 1 : 0}`,
+    `  summary=${summaryPath} last=${summaryLastPath || "<none>"}`,
+    `  log_root=${logRoot} seed_root=${seedRoot} tmp_root=${tmpRoot}`,
+    `  node_modules_root=${env.SEAL_E2E_NODE_MODULES_ROOT || "<none>"}`,
+  ];
+  logEffectiveConfig(log, effectiveLines);
 
   const prepareSeed = normalizeFlag(env.SEAL_E2E_PREPARE_SEED, "1") === "1";
   if (prepareSeed) {

@@ -21,8 +21,8 @@ const {
   writeJsonSummary,
 } = require("./e2e-report");
 const { hasCommand } = require("./e2e-utils");
-const { loadE2EConfig } = require("./e2e-runner-config");
-const { assertEscalated, makeRunId, formatDuration } = require("./e2e-runner-utils");
+const { loadE2EConfig, resolveSummaryPaths } = require("./e2e-runner-config");
+const { assertEscalated, makeRunId, formatDuration, logEffectiveConfig } = require("./e2e-runner-utils");
 const { applyToolsetDefaults, applyE2EFeatureFlags, applySshDefaults } = require("./e2e-runner-env");
 const { preparePlan, applyRerunFailedFilters } = require("./e2e-runner-plan");
 
@@ -264,17 +264,12 @@ async function main() {
   env.NPM_CONFIG_LOGLEVEL = env.NPM_CONFIG_LOGLEVEL || "warn";
   ensureDir(npmCacheDir);
 
-  let summaryPath = "";
-  let summaryLastPath = "";
-  const defaultSummaryDir = path.join(cacheRoot, "e2e-summary");
-  if (!setupOnly) {
-    if (env.SEAL_E2E_SUMMARY_PATH) {
-      summaryPath = env.SEAL_E2E_SUMMARY_PATH;
-    } else {
-      summaryPath = path.join(defaultSummaryDir, `run-${runId}.tsv`);
-      summaryLastPath = path.join(defaultSummaryDir, "last.tsv");
-    }
-  }
+  const { summaryPath, summaryLastPath } = resolveSummaryPaths({
+    env,
+    cacheRoot,
+    runId,
+    enabled: !setupOnly,
+  });
 
   let logCapture = env.SEAL_E2E_CAPTURE_LOGS || "1";
   let logDir = env.SEAL_E2E_LOG_DIR || path.join(cacheRoot, "e2e-logs", runId);
@@ -312,22 +307,20 @@ async function main() {
   const manifestPath = env.SEAL_E2E_MANIFEST || path.join(SCRIPT_DIR, "e2e-tests.json5");
   const manifestStrict = env.SEAL_E2E_MANIFEST_STRICT !== "0";
 
-  const logEffectiveConfig = () => {
-    log("Effective config:");
-    log(`  toolset=${toolset} parallel=${env.SEAL_E2E_PARALLEL || "0"} mode=${env.SEAL_E2E_PARALLEL_MODE || ""} jobs=${env.SEAL_E2E_JOBS || ""}`);
-    log(`  tests=${env.SEAL_E2E_TESTS || "<all>"} skip=${env.SEAL_E2E_SKIP || "<none>"} limited_host=${env.SEAL_E2E_LIMITED_HOST || 0} fail_fast=${failFast}`);
-    log(`  summary=${summaryPath || "<disabled>"} last=${summaryLastPath || "<none>"}`);
-    log(`  log_dir=${logDir} capture_logs=${logCapture} log_filtered=${logFiltered}`);
-    log(`  cache_root=${cacheRoot} npm_cache=${npmCacheDir} node_modules_root=${env.SEAL_E2E_NODE_MODULES_ROOT || "<none>"}`);
-    if (env.SEAL_E2E_CONFIG) {
-      log(`  config=${env.SEAL_E2E_CONFIG}`);
-    }
-    if (e2eHome) {
-      log(`  home=${e2eHome}`);
-    }
-  };
-
-  logEffectiveConfig();
+  const effectiveLines = [
+    `  toolset=${toolset} parallel=${env.SEAL_E2E_PARALLEL || "0"} mode=${env.SEAL_E2E_PARALLEL_MODE || ""} jobs=${env.SEAL_E2E_JOBS || ""}`,
+    `  tests=${env.SEAL_E2E_TESTS || "<all>"} skip=${env.SEAL_E2E_SKIP || "<none>"} limited_host=${env.SEAL_E2E_LIMITED_HOST || 0} fail_fast=${failFast}`,
+    `  summary=${summaryPath || "<disabled>"} last=${summaryLastPath || "<none>"}`,
+    `  log_dir=${logDir} capture_logs=${logCapture} log_filtered=${logFiltered}`,
+    `  cache_root=${cacheRoot} npm_cache=${npmCacheDir} node_modules_root=${env.SEAL_E2E_NODE_MODULES_ROOT || "<none>"}`,
+  ];
+  if (env.SEAL_E2E_CONFIG) {
+    effectiveLines.push(`  config=${env.SEAL_E2E_CONFIG}`);
+  }
+  if (e2eHome) {
+    effectiveLines.push(`  home=${e2eHome}`);
+  }
+  logEffectiveConfig(log, effectiveLines);
 
   const initSummaryFile = () => {
     if (!summaryPath) return;
