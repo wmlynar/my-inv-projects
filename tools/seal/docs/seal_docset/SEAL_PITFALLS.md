@@ -2627,3 +2627,12 @@
   - Wymaganie: przy append zapisuj run_id w summary i filtruj po ostatnim runie, albo ustaw `SUMMARY_APPEND=0` dla rerun.
 - Blad: `SEAL_E2E_RERUN_FROM` wskazywal na sciezke bez aktualnych uprawnien (np. po `sudo`), co dawalo mylace „brak failed tests”.
   - Wymaganie: przed rerun waliduj, ze summary jest czytelny; brak dostepu = fail‑fast z jasnym komunikatem.
+
+## Dodatkowe wnioski (batch 356-360)
+
+- Blad: `SEAL_E2E_LOG_TAIL_LINES` mial wartosc nienumeryczna lub 0, przez co `tail` failowal albo logi byly puste.
+  - Wymaganie: waliduj `LOG_TAIL_LINES` jako dodatnia liczbe i stosuj bezpieczny fallback (np. 40) z ostrzezeniem.
+- Blad: `SEAL_E2E_CAPTURE_LOGS=0` wylaczalo logi nawet przy FAIL, co utrudnialo diagnostyke.
+  - Wymaganie: przy porazkach automatycznie wlacz `capture_logs` (lub wypisz wyrazny hint jak odpalic z logami).
+- Blad: `SEAL_E2E_TIMEOUT_SCALE` ustawione na 0/ujemne/tekst powodowalo zerowe timeouty lub bledy w `awk`.
+  - Wymaganie: waliduj `TIMEOUT_SCALE` jako liczbe > 0; w razie blednej wartosci fail‑fast albo fallback do 1 z ostrzezeniem.
