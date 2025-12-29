@@ -2585,6 +2585,15 @@
 
 ## Dodatkowe wnioski (batch 336-340)
 
+- Blad: porownywanie wersji (Node/OpenSSL/tools) stringowo (`"18" > "9"`) lub przez zwykly `sort` dawalo bledne decyzje (np. zly gate w preflight).
+  - Wymaganie: do porownan uzywaj semver (lib) lub `sort -V` i loguj wartosci we/wy.
+- Blad: zdalne one‑linery przez `ssh "cmd1; cmd2"` ignorowaly bledy pierwszych polecen (brak `set -e`/`pipefail`) i zwracaly exit code tylko ostatniego.
+  - Wymaganie: kazda zdalna komenda inline zaczyna sie od `set -euo pipefail` (lub `bash -euo pipefail -c ...`) i propaguje exit code; loguj pelna komende.
+- Blad: wartosci w `EnvironmentFile` zawieraly spacje lub `#`, przez co systemd obcinal je lub traktowal reszte jako komentarz.
+  - Wymaganie: dla zlozonych wartosci uzywaj `Environment=` w unicie albo zapisuj `EnvironmentFile` z poprawnym quoting/escaping + test odczytu.
+
+## Dodatkowe wnioski (batch 336-340)
+
 - Blad: manifest E2E (`e2e-tests.tsv`) zawieral taby w opisach/hintach, co przesuwalo kolumny i prowadzilo do blednego mapowania (np. zle `parallel`/`script`).
   - Wymaganie: w TSV nie uzywaj tabow w polach opisowych; waliduj liczbe kolumn i fail‑fast, gdy parser widzi nadmiar/za malo pol.
 - Blad: CRLF w `e2e-tests.tsv` zostawial `\\r` w nazwach testow, przez co filtry `SEAL_E2E_TESTS` nie pasowaly.
