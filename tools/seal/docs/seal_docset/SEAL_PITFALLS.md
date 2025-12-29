@@ -2365,6 +2365,13 @@
 - Blad: tryb bez instalacji zaleznosci (`SEAL_E2E_INSTALL_DEPS=0`) uruchamial testy bez weryfikacji prerekwizytow, co dawalo nieczytelne `command not found`.
   - Wymaganie: gdy instalacja jest wylaczona, runner robi preflight `command -v` dla wymaganych narzedzi i daje jasny blad z instrukcja, jaka flaga wlaczyc.
 
+## Dodatkowe wnioski (batch 256-260)
+
+- Blad: logi/summary E2E trafialy do stalych sciezek, przez co rownolegle uruchomienia nadpisywaly sie i gubily artefakty diagnostyczne.
+  - Wymaganie: kazdy run ma unikalny `RUN_ID`, a katalogi logow/summary sa per‑run; skrypt loguje te sciezki na starcie.
+- Blad: keep‑alive `sudo -v` uruchomiony w tle nie byl sprzatany, zostawiajac procesy po zakonczeniu testow.
+  - Wymaganie: background keep‑alive jest zawsze ubijany w `trap` (z zachowaniem exit code), a jego PID jest logowany.
+
 ## Dodatkowe wnioski (batch 246-250)
 
 - Blad: marker runtime byl tylko „gołym” hashem bez wersji/algorytmu, co utrudnialo zmiane formatu i migracje w przyszlosci.

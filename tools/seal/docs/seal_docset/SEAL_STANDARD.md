@@ -460,6 +460,8 @@ Przykład:
 - STD-089z.d (SHOULD): przed startem E2E wykonaj preflight miejsca na dysku (cache/log/tmp) i fail‑fast przy niskim limicie z instrukcja cleanup/limitu.
 - STD-089z.e (SHOULD): Dockerfile uklada warstwy pod cache: najciezsze i rzadko zmieniane kroki sa na poczatku; czesto zmieniane skrypty/testy na koncu.
 - STD-089z.f (SHOULD): gdy `SEAL_E2E_INSTALL_DEPS=0`, runner wykonuje preflight wymaganych binarek i zwraca jasny blad z instrukcja wlaczenia instalacji.
+- STD-089z.g (SHOULD): E2E generuje unikalny `RUN_ID` i izoluje logi/summary per‑run; sciezki sa logowane na starcie.
+- STD-089z.h (SHOULD): keep‑alive `sudo -v` (jesli uzywany) jest uruchamiany w tle i sprzatany w `trap` (PID logowany).
 - STD-090c (SHOULD): preflight sprawdza **narzedzia CLI** (np. `postject` w `node_modules/.bin`/PATH), nie tylko obecność modulu.
 - STD-091a (SHOULD): funkcje zalezne od architektury (np. CPUID) musza degradująco dzialac na platformach bez wsparcia (pusty/neutralny ID zamiast twardego bledu).
 - STD-092a (SHOULD): `--skip-check` jest wyraznie oznaczony jako ryzykowny i zawsze wypisuje ostrzezenie; krytyczne braki toolchaina nie powinny byc maskowane.
