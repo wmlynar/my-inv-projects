@@ -2326,3 +2326,11 @@
   - Wymaganie: testy porownuja znormalizowany marker (hash) i obejmuja scenariusz migracji formatu markera.
 - Blad: metadane binarne byly parsowane jako text w kodzie pomocniczym, co dawalo `trim()` na danych binarnych.
   - Wymaganie: funkcje helper nie konwertuja na text bez potrzeby; binarne pliki sa obslugiwane jako `Buffer`.
+
+## Dodatkowe wnioski (batch 241-245)
+
+- Blad: wielolinijkowe komendy E2E (dziesiatki `SEAL_E2E_*`) byly kopiowane z losowymi backslashami/typo (`\\E=...`, `\\0`), co zlepialo linie z nazwa skryptu i dawalo `MODULE_NOT_FOUND` lub uruchamialo zly zestaw testow.
+  - Wymaganie: preferuj **pliki ENV** (`SEAL_E2E_CONFIG`) lub wrappery (np. `e2e.sh`) zamiast ręcznego paste; waliduj `SEAL_E2E_*` i fail‑fast przy nieznanych/niepoprawnych kluczach.
+  - Wymaganie: loguj efektywny config i ostrzegaj o „pustych” zmiennych wynikajacych z blednej kontynuacji linii (trailing spacje po `\\`).
+- Blad: uruchamianie skryptow E2E z podfolderu powodowalo zly `cwd` i sciezki względne wskazywaly na nieistniejace pliki (np. `.../example/tools/...`).
+  - Wymaganie: skrypty maja auto‑detekcje repo root (`git rev-parse --show-toplevel` lub `realpath`) i uzywaja sciezek absolutnych; w logach wypisuja `repo_root`.

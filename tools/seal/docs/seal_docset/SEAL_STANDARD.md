@@ -450,6 +450,8 @@ Przykład:
 - STD-089w (SHOULD): E2E ma retention/limit dla cache/logow/artefaktow (liczba/rozmiar/TTL) i czytelne instrukcje cleanup przy `ENOSPC`.
 - STD-089x (SHOULD): testy dockerowe raportuja rozmiar cache/obrazow (`docker system df`) i maja jawny tryb cleanup (`docker builder prune`/`docker image prune`); rekomenduj dedykowany `data-root` dla cache obrazow.
 - STD-089y (SHOULD): docker build nie moze kopiowac sekretow do warstw; `.dockerignore` wyklucza `.env`, `.npmrc`, klucze SSH; uzywaj BuildKit secrets/SSH mounts, a build-time kredencjale są sprzątane po uzyciu.
+- STD-089z (SHOULD): runner E2E waliduje nazwy zmiennych `SEAL_E2E_*` (allowlist) i **fail‑fast** przy nieznanych/niepoprawnych kluczach; loguje efektywna konfiguracje i wskazuje zrodlo (ENV vs plik).
+- STD-089z.a (SHOULD): długie konfiguracje uruchomien E2E są dostarczane przez plik ENV (`SEAL_E2E_CONFIG`) lub wrapper, nie przez wielolinijkowe komendy copy‑paste.
 - STD-090c (SHOULD): preflight sprawdza **narzedzia CLI** (np. `postject` w `node_modules/.bin`/PATH), nie tylko obecność modulu.
 - STD-091a (SHOULD): funkcje zalezne od architektury (np. CPUID) musza degradująco dzialac na platformach bez wsparcia (pusty/neutralny ID zamiast twardego bledu).
 - STD-092a (SHOULD): `--skip-check` jest wyraznie oznaczony jako ryzykowny i zawsze wypisuje ostrzezenie; krytyczne braki toolchaina nie powinny byc maskowane.
