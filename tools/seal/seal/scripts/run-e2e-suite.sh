@@ -163,14 +163,32 @@ FAIL_FAST="${SEAL_E2E_FAIL_FAST:-0}"
 SKIP_CODE=77
 SUMMARY_GROUP="${SEAL_E2E_GROUP:-default}"
 SUMMARY_SCOPE="${SEAL_E2E_SUMMARY_SCOPE:-all}"
-DEFAULT_SUMMARY_PATH="$CACHE_ROOT/e2e-summary/last.tsv"
+RUN_ID="${SEAL_E2E_RUN_ID:-$(date +%Y%m%d-%H%M%S)-$$}"
+
+NPM_CACHE_DIR="${NPM_CONFIG_CACHE:-$CACHE_ROOT/npm}"
+export NPM_CONFIG_CACHE="$NPM_CACHE_DIR"
+export NPM_CONFIG_AUDIT="${NPM_CONFIG_AUDIT:-false}"
+export NPM_CONFIG_FUND="${NPM_CONFIG_FUND:-false}"
+export NPM_CONFIG_PROGRESS="${NPM_CONFIG_PROGRESS:-false}"
+export NPM_CONFIG_UPDATE_NOTIFIER="${NPM_CONFIG_UPDATE_NOTIFIER:-false}"
+export NPM_CONFIG_LOGLEVEL="${NPM_CONFIG_LOGLEVEL:-warn}"
+mkdir -p "$NPM_CACHE_DIR"
+
+SUMMARY_LAST_PATH=""
+DEFAULT_SUMMARY_DIR="$CACHE_ROOT/e2e-summary"
 if [ "$SETUP_ONLY" = "1" ]; then
   SUMMARY_PATH="${SEAL_E2E_SUMMARY_PATH:-}"
 else
-  SUMMARY_PATH="${SEAL_E2E_SUMMARY_PATH:-$DEFAULT_SUMMARY_PATH}"
+  if [ -n "${SEAL_E2E_SUMMARY_PATH:-}" ]; then
+    SUMMARY_PATH="$SEAL_E2E_SUMMARY_PATH"
+  else
+    SUMMARY_PATH="$DEFAULT_SUMMARY_DIR/run-$RUN_ID.tsv"
+    SUMMARY_LAST_PATH="$DEFAULT_SUMMARY_DIR/last.tsv"
+  fi
 fi
 LOG_CAPTURE="${SEAL_E2E_CAPTURE_LOGS:-1}"
-LOG_DIR="${SEAL_E2E_LOG_DIR:-$CACHE_ROOT/e2e-logs/$(date +%Y%m%d-%H%M%S)}"
+LOG_DIR="${SEAL_E2E_LOG_DIR:-$CACHE_ROOT/e2e-logs/$RUN_ID}"
+export SEAL_E2E_LOG_DIR="$LOG_DIR"
 LOG_TAIL_LINES="${SEAL_E2E_LOG_TAIL_LINES:-40}"
 LOG_FILTERED="${SEAL_E2E_LOG_FILTERED:-1}"
 if [ "$SETUP_ONLY" = "1" ]; then
@@ -181,6 +199,28 @@ TOOLSET="${SEAL_E2E_TOOLSET:-core}"
 if [ "$TOOLSET" = "core" ]; then
   export SEAL_C_OBF_ALLOW_MISSING=1
   export SEAL_MIDGETPACK_SKIP=1
+fi
+
+E2E_HOME=""
+ISOLATE_HOME="${SEAL_E2E_ISOLATE_HOME:-}"
+if [ -z "$ISOLATE_HOME" ]; then
+  if [ "${SEAL_DOCKER_E2E:-0}" = "1" ]; then
+    ISOLATE_HOME=1
+  else
+    ISOLATE_HOME=0
+  fi
+fi
+if [ "$ISOLATE_HOME" = "1" ]; then
+  E2E_HOME_ROOT="${SEAL_E2E_HOME_ROOT:-$CACHE_ROOT/e2e-home}"
+  mkdir -p "$E2E_HOME_ROOT"
+  E2E_HOME="$(mktemp -d "$E2E_HOME_ROOT/home-XXXXXX")"
+  export HOME="$E2E_HOME"
+  export XDG_CACHE_HOME="$E2E_HOME/.cache"
+  export XDG_CONFIG_HOME="$E2E_HOME/.config"
+  export XDG_DATA_HOME="$E2E_HOME/.local/share"
+  export XDG_STATE_HOME="$E2E_HOME/.local/state"
+  mkdir -p "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_STATE_HOME"
+  log "Isolated HOME for E2E: $E2E_HOME"
 fi
 
 MANIFEST_PATH="${SEAL_E2E_MANIFEST:-$SCRIPT_DIR/e2e-tests.tsv}"
@@ -217,6 +257,23 @@ while IFS=$'\t' read -r name category parallel desc skip_risk hint script host_o
     CATEGORY_ORDER+=("$category")
   fi
 done < "$MANIFEST_PATH"
+
+log_effective_config() {
+  log "Effective config:"
+  log "  toolset=$TOOLSET parallel=${SEAL_E2E_PARALLEL:-0} mode=${SEAL_E2E_PARALLEL_MODE:-} jobs=${SEAL_E2E_JOBS:-}"
+  log "  tests=${SEAL_E2E_TESTS:-<all>} skip=${SEAL_E2E_SKIP:-<none>} limited_host=${SEAL_E2E_LIMITED_HOST:-0} fail_fast=$FAIL_FAST"
+  log "  summary=${SUMMARY_PATH:-<disabled>} last=${SUMMARY_LAST_PATH:-<none>}"
+  log "  log_dir=${LOG_DIR} capture_logs=${LOG_CAPTURE} log_filtered=${LOG_FILTERED}"
+  log "  cache_root=${CACHE_ROOT} node_modules_root=${SEAL_E2E_NODE_MODULES_ROOT:-<none>}"
+  if [ -n "${SEAL_E2E_CONFIG:-}" ]; then
+    log "  config=${SEAL_E2E_CONFIG}"
+  fi
+  if [ -n "$E2E_HOME" ]; then
+    log "  home=${E2E_HOME}"
+  fi
+}
+
+log_effective_config
 
 init_summary_file() {
   if [ -z "$SUMMARY_PATH" ]; then
