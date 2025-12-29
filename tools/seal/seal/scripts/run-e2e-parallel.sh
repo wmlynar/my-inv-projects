@@ -136,6 +136,17 @@ LOG_ROOT="${SEAL_E2E_LOG_DIR:-$CACHE_ROOT/e2e-logs/$RUN_ID}"
 export SEAL_E2E_LOG_DIR="$LOG_ROOT"
 mkdir -p "$LOG_ROOT"
 
+log_effective_config() {
+  log "Effective config:"
+  log "  jobs=$JOBS mode=${SEAL_E2E_PARALLEL_MODE:-groups} fail_fast=$FAIL_FAST"
+  log "  tests=${SEAL_E2E_TESTS:-<all>} skip=${SEAL_E2E_SKIP:-<none>} limited_host=${SEAL_E2E_LIMITED_HOST:-0}"
+  log "  summary=${SUMMARY_PATH} last=${SUMMARY_LAST_PATH:-<none>}"
+  log "  log_root=${LOG_ROOT} seed_root=${SEED_ROOT}"
+  log "  node_modules_root=${SEAL_E2E_NODE_MODULES_ROOT:-<none>}"
+}
+
+log_effective_config
+
 E2E_ONLY_RAW="$(trim_list "${SEAL_E2E_TESTS:-}")"
 E2E_SKIP_RAW="$(trim_list "${SEAL_E2E_SKIP:-}")"
 RERUN_FAILED="${SEAL_E2E_RERUN_FAILED:-0}"
@@ -310,6 +321,7 @@ declare -A GROUP_DURATIONS=()
 declare -A GROUP_STATUS=()
 declare -A GROUP_SUMMARY=()
 failures=0
+skip_serial=0
 
 print_group_summary() {
   if [ "${#GROUP_DURATIONS[@]}" -eq 0 ]; then
@@ -548,6 +560,7 @@ if [ "${#GROUP_ORDER[@]}" -gt 0 ]; then
       PID_START["$pid"]="$start"
       PID_SUMMARY["$pid"]="$summary_path"
     done
+    fail_fast_triggered=0
     for pid in "${pids[@]}"; do
       if wait "$pid"; then
         end="$(date +%s)"
@@ -562,6 +575,18 @@ if [ "${#GROUP_ORDER[@]}" -gt 0 ]; then
         GROUP_DURATIONS["$name"]=$((end - start))
         GROUP_STATUS["$name"]="failed"
         failures=$((failures + 1))
+        if [ "$FAIL_FAST" = "1" ] && [ "$fail_fast_triggered" = "0" ]; then
+          fail_fast_triggered=1
+          log "Fail-fast enabled; stopping remaining groups..."
+          for other in "${pids[@]}"; do
+            if [ "$other" = "$pid" ]; then
+              continue
+            fi
+            if kill -0 "$other" >/dev/null 2>&1; then
+              kill "$other" >/dev/null 2>&1 || true
+            fi
+          done
+        fi
       fi
     done
   fi
@@ -573,9 +598,16 @@ if [ "$failures" -ne 0 ]; then
   log "Parallel groups failed: ${failures}"
   print_group_summary
   print_detailed_summary
+  if [ "$FAIL_FAST" = "1" ]; then
+    log "Fail-fast enabled; skipping serial groups."
+    skip_serial=1
+  fi
 fi
 
 for test in "${SERIAL_TESTS[@]}"; do
+  if [ "$skip_serial" = "1" ]; then
+    break
+  fi
   root="$(mktemp -d "/tmp/seal-example-e2e-${test}-XXXXXX")"
   summary_path="$root/.e2e-summary.tsv"
   GROUP_SUMMARY["$test"]="$summary_path"
