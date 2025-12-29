@@ -344,6 +344,9 @@
 - Blad: `defaultTarget` wskazywal na nieistniejacy target, co dawalo mylace bledy dopiero w trakcie deployu.
   - Wymaganie: `seal check` waliduje, ze `defaultTarget` istnieje w `seal-config/targets`.
 
+- Blad: kilka targetow uzywalo tego samego `serviceName`/`installDir` na tym samym hoscie, co nadpisywalo unit i psulo deploy.
+  - Wymaganie: preflight wykrywa kolizje `serviceName`/`installDir` per host+scope i wymaga jawnego opt‑in lub unikalnych nazw.
+
 - Blad: parsowanie danych z narzedzi systemowych (np. `lsblk`) nie normalizowalo `mountpoints` (null/array/string), co dawalo puste wpisy i bledne wnioski o mountach.
   - Wymaganie: zawsze normalizuj output narzedzi (trim, filtruj puste, obsluguj array) przed decyzjami.
 
