@@ -15,6 +15,7 @@ const {
   resolveExampleRoot,
   createLogger,
   withSealedBinary,
+  readReadyPayload,
 } = require("./e2e-utils");
 
 const { buildRelease } = require("../src/lib/build");
@@ -99,6 +100,12 @@ async function runRelease({ releaseDir, runTimeoutMs }) {
     writeRuntimeConfig,
     captureOutput: true,
     log,
+  }, async ({ readyFile, ready }) => {
+    if (!readyFile) return;
+    const payload = await readReadyPayload(readyFile, ready, 1000);
+    if (!payload) {
+      throw new Error(`ready-file payload invalid (${readyFile})`);
+    }
   });
 }
 
@@ -641,13 +648,15 @@ async function main() {
   if (!prereq.ok) process.exit(prereq.skip ? 77 : 1);
 
   const prevPath = process.env.PATH;
+  let pathEnv = process.env.PATH || "";
   const binCandidates = [
     path.resolve(__dirname, "..", "node_modules", ".bin"),
     path.resolve(__dirname, "..", "..", "node_modules", ".bin"),
   ];
   for (const binPath of binCandidates) {
-    if (fs.existsSync(binPath) && !process.env.PATH.split(path.delimiter).includes(binPath)) {
-      process.env.PATH = `${binPath}${path.delimiter}${process.env.PATH}`;
+    if (fs.existsSync(binPath) && !pathEnv.split(path.delimiter).includes(binPath)) {
+      pathEnv = pathEnv ? `${binPath}${path.delimiter}${pathEnv}` : binPath;
+      process.env.PATH = pathEnv;
     }
   }
 

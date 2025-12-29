@@ -2521,7 +2521,7 @@
 - Blad: logi E2E w trybie rownoleglym trafialy do katalogow tmp sprzatanych po runie, przez co brakowalo artefaktow diagnostycznych.
   - Wymaganie: log dir E2E jest w stalym cache (poza tmp rootem), per‑grupa/test ma osobny podkatalog, a sciezka jest logowana.
 - Blad: Docker E2E probowal uruchamiac testy wymagajace pelnego hosta (systemd/kernel) bez jawnego opt‑in, co dawalo FAIL/flake.
-  - Wymaganie: domyslnie w Docker E2E dziala tryb host‑limited (skip host‑only), a testy wymagajace pelnego hosta sa oznaczone w manifeście i uruchamiane tylko po explicit opt‑in.
+  - Wymaganie: domyslnie w Docker E2E dziala tryb host‑limited (skip host‑only), a testy wymagajace pelnego hosta sa oznaczone w manifeście i uruchamiane tylko po explicit opt‑in (np. `SEAL_DOCKER_E2E_HOST=1`).
 
 ## Dodatkowe wnioski (batch 236-240)
 

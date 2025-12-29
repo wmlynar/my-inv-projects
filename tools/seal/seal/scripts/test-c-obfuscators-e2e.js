@@ -16,6 +16,7 @@ const {
   createLogger,
   withSealedBinary,
   parseArgsEnv,
+  readReadyPayload,
 } = require("./e2e-utils");
 
 const { buildRelease } = require("../src/lib/build");
@@ -78,6 +79,12 @@ async function runRelease({ releaseDir, runTimeoutMs }) {
     skipListen: runRelease.skipListen === true,
     writeRuntimeConfig,
     log,
+  }, async ({ readyFile, ready }) => {
+    if (!readyFile) return;
+    const payload = await readReadyPayload(readyFile, ready, 1000);
+    if (!payload) {
+      throw new Error(`ready-file payload invalid (${readyFile})`);
+    }
   });
 }
 
@@ -179,36 +186,43 @@ async function main() {
   const ctx = { buildTimeoutMs, runTimeoutMs };
 
   const tests = [
-    () => testObfuscator(ctx, {
-      id: "obfuscator-llvm",
+    {
       name: "O-LLVM",
-      cmdEnv: "SEAL_OLLVM_CMD",
-      argsEnv: "SEAL_OLLVM_ARGS",
-      defaultCmd: "ollvm-clang",
-      defaultArgs: ["-mllvm", "-fla", "-mllvm", "-sub"],
-      installHint: "./tools/seal/seal/scripts/install-ollvm.sh",
-    }),
-    () => testObfuscator(ctx, {
-      id: "hikari",
+      run: () => testObfuscator(ctx, {
+        id: "obfuscator-llvm",
+        name: "O-LLVM",
+        cmdEnv: "SEAL_OLLVM_CMD",
+        argsEnv: "SEAL_OLLVM_ARGS",
+        defaultCmd: "ollvm-clang",
+        defaultArgs: ["-mllvm", "-fla", "-mllvm", "-sub"],
+        installHint: "./tools/seal/seal/scripts/install-ollvm.sh",
+      }),
+    },
+    {
       name: "Hikari",
-      cmdEnv: "SEAL_HIKARI_CMD",
-      argsEnv: "SEAL_HIKARI_ARGS",
-      defaultCmd: "hikari-clang",
-      defaultArgs: ["-mllvm", "-enable-allobf"],
-      runtimeSkip: true,
-      runtimeEnv: "SEAL_HIKARI_RUNTIME",
-      installHint: "./tools/seal/seal/scripts/install-hikari-llvm15.sh",
-    }),
+      run: () => testObfuscator(ctx, {
+        id: "hikari",
+        name: "Hikari",
+        cmdEnv: "SEAL_HIKARI_CMD",
+        argsEnv: "SEAL_HIKARI_ARGS",
+        defaultCmd: "hikari-clang",
+        defaultArgs: ["-mllvm", "-enable-allobf"],
+        runtimeSkip: true,
+        runtimeEnv: "SEAL_HIKARI_RUNTIME",
+        installHint: "./tools/seal/seal/scripts/install-hikari-llvm15.sh",
+      }),
+    },
   ];
 
   let failures = 0;
   for (const t of tests) {
+    const name = t.name || "cObfTest";
     try {
-      await withTimeout(t.name || "cObfTest", testTimeoutMs, () => t());
-      log(`OK: ${t.name || "cObfTest"}`);
+      await withTimeout(name, testTimeoutMs, () => t.run());
+      log(`OK: ${name}`);
     } catch (e) {
       failures += 1;
-      fail(`${t.name || "cObfTest"}: ${e.message || e}`);
+      fail(`${name}: ${e.message || e}`);
     }
   }
 

@@ -3,10 +3,27 @@ set -euo pipefail
 
 RUNNER="${SEAL_E2E_RUNNER:-}"
 LOG_PREFIX="${SEAL_E2E_LOG_PREFIX:-seal-e2e}"
+SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 
 log() {
   echo "[${LOG_PREFIX}] $*"
 }
+
+PLAN_ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --plan)
+      export SEAL_E2E_PLAN=1
+      ;;
+    --explain)
+      export SEAL_E2E_EXPLAIN=1
+      ;;
+    *)
+      PLAN_ARGS+=("$arg")
+      ;;
+  esac
+done
+set -- "${PLAN_ARGS[@]}"
 
 if [ -z "$RUNNER" ]; then
   log "ERROR: SEAL_E2E_RUNNER is not set."
@@ -30,7 +47,7 @@ ensure_escalation() {
   fi
   if sudo -n true >/dev/null 2>&1; then
     log "Escalating via sudo..."
-    exec sudo -E env SEAL_E2E_ESCALATED=1 "$0" "$@"
+    exec sudo -E env SEAL_E2E_ESCALATED=1 bash "$SCRIPT_PATH" "$@"
   fi
   if [ ! -t 0 ]; then
     log "ERROR: escalation required but no TTY; re-run with sudo or Codex escalation."
@@ -38,7 +55,7 @@ ensure_escalation() {
   fi
   log "Escalation required; you may be prompted."
   sudo -v || exit 1
-  exec sudo -E env SEAL_E2E_ESCALATED=1 "$0" "$@"
+  exec sudo -E env SEAL_E2E_ESCALATED=1 bash "$SCRIPT_PATH" "$@"
 }
 
 ensure_escalation "$@"

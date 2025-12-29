@@ -13,6 +13,7 @@ const { log, fail } = createLogger("postject-e2e");
 const postjectBin = resolvePostjectBin();
 if (!postjectBin) {
   fail("postject bin not found (expected after npm install in repo root)");
+  process.exit(1);
 }
 log(`postject bin: ${postjectBin}`);
 

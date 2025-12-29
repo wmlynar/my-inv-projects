@@ -31,7 +31,7 @@ function shQuote(value) {
 }
 
 function hasCommand(cmd) {
-  const r = spawnSyncSafe("bash", ["-lc", `command -v ${cmd} >/dev/null 2>&1`], { stdio: "pipe" });
+  const r = spawnSyncSafe("bash", ["-lc", `command -v -- ${shQuote(cmd)} >/dev/null 2>&1`], { stdio: "pipe" });
   return !!r.ok;
 }
 

@@ -16,6 +16,7 @@ const {
   createLogger,
   withSealedBinary,
   parseArgsEnv,
+  readReadyPayload,
 } = require("./e2e-utils");
 
 const { buildRelease } = require("../src/lib/build");
@@ -182,6 +183,12 @@ async function runRelease({ releaseDir, buildId, runTimeoutMs }) {
     skipListen: runRelease.skipListen === true,
     writeRuntimeConfig,
     log,
+  }, async ({ readyFile, ready }) => {
+    if (!readyFile) return;
+    const payload = await readReadyPayload(readyFile, ready, 1000);
+    if (!payload) {
+      throw new Error(`ready-file payload invalid (${readyFile})`);
+    }
   });
 }
 
@@ -369,16 +376,20 @@ async function main() {
     },
   ];
 
-  const tests = packers.map((spec) => () => testElfPacker(ctx, spec));
+  const tests = packers.map((spec) => ({
+    name: spec.name,
+    run: () => testElfPacker(ctx, spec),
+  }));
 
   let failures = 0;
   try {
     for (const t of tests) {
+      const name = t.name || "packerTest";
       try {
-        await withTimeout(t.name || "packerTest", testTimeoutMs, () => t());
+        await withTimeout(name, testTimeoutMs, () => t.run());
       } catch (e) {
         failures += 1;
-        fail(`${t.name || "packerTest"}: ${e.message || e}`);
+        fail(`${name}: ${e.message || e}`);
       }
     }
   } finally {

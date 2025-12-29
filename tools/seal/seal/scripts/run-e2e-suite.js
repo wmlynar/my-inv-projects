@@ -142,11 +142,30 @@ async function sleep(ms) {
 
 async function withDirLock(lockPath, fn) {
   const lockDir = `${lockPath}.d`;
+  const timeoutMs = Number(process.env.SEAL_E2E_LOCK_TIMEOUT_MS || 15 * 60 * 1000);
+  const staleMs = Number(process.env.SEAL_E2E_LOCK_STALE_MS || 30 * 60 * 1000);
+  const start = Date.now();
   while (true) {
     try {
       fs.mkdirSync(lockDir);
       break;
     } catch {
+      const elapsed = Date.now() - start;
+      if (timeoutMs > 0 && elapsed > timeoutMs) {
+        throw new Error(`Timed out waiting for lock: ${lockDir}`);
+      }
+      if (staleMs > 0) {
+        try {
+          const stat = fs.statSync(lockDir);
+          if (Date.now() - stat.mtimeMs > staleMs) {
+            log(`Stale lock detected (${lockDir}); removing.`);
+            fs.rmdirSync(lockDir);
+            continue;
+          }
+        } catch {
+          // ignore stale check errors
+        }
+      }
       await sleep(200);
     }
   }
@@ -473,6 +492,11 @@ async function main() {
   }
 
   const exampleDir = env.SEAL_E2E_EXAMPLE_ROOT || exampleDst;
+  if ((env.SEAL_E2E_COPY_EXAMPLE || "1") !== "1" && !fs.existsSync(exampleDir)) {
+    log(`ERROR: SEAL_E2E_EXAMPLE_ROOT not found (${exampleDir}).`);
+    log("       Set SEAL_E2E_EXAMPLE_ROOT to an existing example or enable SEAL_E2E_COPY_EXAMPLE=1.");
+    process.exit(1);
+  }
   let exampleNodeModulesDir = path.join(exampleDir, "node_modules");
   let sharedNodeModulesDir = "";
   if (env.SEAL_E2E_NODE_MODULES_ROOT) {

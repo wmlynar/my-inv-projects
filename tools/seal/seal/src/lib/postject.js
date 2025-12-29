@@ -5,8 +5,13 @@ const path = require("path");
 const { spawnSyncSafe } = require("./spawn");
 const { fileExists } = require("./fsextra");
 
+function shQuote(value) {
+  const str = String(value);
+  return "'" + str.replace(/'/g, "'\\''") + "'";
+}
+
 function hasCommand(cmd) {
-  const r = spawnSyncSafe("bash", ["-lc", `command -v ${cmd} >/dev/null 2>&1`], { stdio: "pipe" });
+  const r = spawnSyncSafe("bash", ["-lc", `command -v -- ${shQuote(cmd)} >/dev/null 2>&1`], { stdio: "pipe" });
   return !!r.ok;
 }
 

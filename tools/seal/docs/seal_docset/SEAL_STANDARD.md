@@ -349,6 +349,7 @@ Przykład:
 - STD-027i (SHOULD): defaulty E2E sa w pliku wzorcowym w repo, a lokalne override w `.seal/e2e.env` (lub `SEAL_E2E_CONFIG`); runner loguje zrodlo configu, a override jest gitignored.
 - STD-027i.a (SHOULD): jawne ENV użytkownika (np. `SEAL_E2E_TESTS`) ma wyższy priorytet niż plik configu; jeśli chcesz pominąć config, użyj `SEAL_E2E_CONFIG=/dev/null`.
 - STD-027j (SHOULD): instalatory narzedzi E2E uzywaja locka per‑tool/cache i atomowego swapu (tmp + rename), a stamp jest zapisywany po sukcesie.
+- STD-027j.a (SHOULD): locki katalogowe (`mkdir` lock) mają timeout oraz detekcję „stale lock” (mtime/TTL), z czytelnym logiem i opcjami ENV do konfiguracji.
 - STD-027k (SHOULD): lockfile narzedzi E2E jest walidowany schematem; brakujace pola (url/rev/bin) = fail‑fast z lista brakow.
 - STD-027l (SHOULD): lokalne patche do narzedzi sa jawnie logowane i sterowane ENV, a wersja patcha/flag wchodzi do stempla cache.
 - STD-027m (SHOULD): testy zalezne od funkcji kernela (cgroup/perf/ptrace) maja tryb strict (ENV), ktory zamienia SKIP na FAIL; w trybie domyslnym SKIP zawsze podaje instrukcje jak wymusic strict.
@@ -364,7 +365,7 @@ Przykład:
 - STD-027x (SHOULD): pola summary (group/test) sa sanitizowane (bez `\\t`/`\\n`) lub escapowane w stabilny sposob.
 - STD-027y (SHOULD): preflight zaleznosci E2E weryfikuje **dokladny** binarny plik uzywany w runtime (np. `chrome-headless-shell`), a brakujace biblioteki oznacza reinstall lub SKIP z jasnym logiem.
 - STD-027z (SHOULD): log capture w E2E (zwl. tryb rownolegly) zapisuje logi w stalym cache poza tmp rootem; per‑grupa/test ma osobny podkatalog, a sciezka jest logowana.
-- STD-027aa (SHOULD): Docker E2E domyslnie uruchamia tryb host‑limited (skip host‑only), a testy wymagajace pelnego hosta sa oznaczone w manifeście i wymagaja jawnego opt‑in.
+- STD-027aa (SHOULD): Docker E2E domyslnie uruchamia tryb host‑limited (skip host‑only), a testy wymagajace pelnego hosta sa oznaczone w manifeście i wymagaja jawnego opt‑in (np. `SEAL_DOCKER_E2E_HOST=1`).
 - STD-027o (SHOULD): jesli `SEAL_E2E_CONFIG` jest ustawiony i plik nie istnieje lub nie jest czytelny, runner daje FAIL albo wyrazny warning + log fallback.
 - STD-027p (SHOULD): plik configu E2E jest parsowany jako `KEY=VALUE` (bez wykonywania kodu); jesli uzywasz `source`, sprawdz ownership/perms i blokuj world‑writable pliki.
 - STD-027q (SHOULD): cache narzedzi E2E ma bezpieczne perms/ownership (nie world‑writable); wykrycie niebezpiecznych perms = fail‑fast.

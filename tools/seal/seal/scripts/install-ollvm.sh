@@ -44,6 +44,35 @@ else
   git -C "$ROOT" checkout -q -b "$BRANCH" "origin/$BRANCH"
 fi
 
+has_legacy_clang=0
+has_monorepo_clang=0
+if [ -d "$ROOT/tools/clang" ]; then
+  has_legacy_clang=1
+fi
+if [ -d "$ROOT/../clang" ]; then
+  has_monorepo_clang=1
+fi
+
+if [ "$has_legacy_clang" -eq 0 ] && [ "$has_monorepo_clang" -eq 0 ] && [ -f "$ROOT/.gitmodules" ]; then
+  if grep -qE 'path *= *tools/clang' "$ROOT/.gitmodules"; then
+    echo "[install-ollvm] Initializing clang submodule..."
+    git -C "$ROOT" submodule update --init --recursive
+  fi
+fi
+
+if [ -d "$ROOT/tools/clang" ]; then
+  has_legacy_clang=1
+fi
+if [ -d "$ROOT/../clang" ]; then
+  has_monorepo_clang=1
+fi
+
+if [ "$has_legacy_clang" -eq 0 ] && [ "$has_monorepo_clang" -eq 0 ]; then
+  echo "[install-ollvm] ERROR: clang sources not found (tools/clang or ../clang missing)."
+  echo "[install-ollvm]        Ensure submodules are initialized or use a monorepo layout."
+  exit 4
+fi
+
 if [ "$BUILD" != "1" ]; then
   echo "[install-ollvm] Sources ready. Set SEAL_OLLVM_BUILD=1 to build."
   exit 0
@@ -83,15 +112,15 @@ patch_lambda_capture "$ROOT/tools/clang/lib/CodeGen/CGOpenMPRuntime.cpp"
 echo "[install-ollvm] Building O-LLVM (LLVM 4.0)..."
 mkdir -p "$BUILD_DIR"
 LLVM_PROJECTS_FLAG=()
-if [ ! -d "$ROOT/tools/clang" ]; then
-  # Newer monorepo layout (clang beside llvm)
-  LLVM_PROJECTS_FLAG=(-DLLVM_ENABLE_PROJECTS=clang)
-else
+if [ "$has_legacy_clang" -eq 1 ]; then
   # Legacy LLVM 4.0 layout: clang lives under tools/clang; LLVM_ENABLE_PROJECTS is not supported.
   LLVM_PROJECTS_FLAG=()
+else
+  # Newer monorepo layout (clang beside llvm)
+  LLVM_PROJECTS_FLAG=(-DLLVM_ENABLE_PROJECTS=clang)
 fi
 
-if [ -d "$BUILD_DIR" ] && [ -f "$BUILD_DIR/CMakeCache.txt" ] && [ -d "$ROOT/tools/clang" ]; then
+if [ -d "$BUILD_DIR" ] && [ -f "$BUILD_DIR/CMakeCache.txt" ] && [ "$has_legacy_clang" -eq 1 ]; then
   if grep -q "^LLVM_ENABLE_PROJECTS:STRING=" "$BUILD_DIR/CMakeCache.txt"; then
     echo "[install-ollvm] Removing stale build dir (LLVM_ENABLE_PROJECTS cached in legacy layout)..."
     rm -rf "$BUILD_DIR"

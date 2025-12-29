@@ -77,6 +77,17 @@ function readFileTrim(p) {
   }
 }
 
+async function waitForReadyVerified({ port, readyFile, timeoutMs }) {
+  if (!readyFile) {
+    return waitForReady({ port, readyFile, timeoutMs });
+  }
+  const payload = await readReadyPayload(readyFile, null, timeoutMs);
+  if (!payload) {
+    throw new Error(`Timeout waiting for ready file: ${readyFile}`);
+  }
+  return payload;
+}
+
 function readCpuInfoValue(key) {
   const content = readFileTrim("/proc/cpuinfo");
   if (!content) return "";
@@ -396,9 +407,10 @@ async function runReleaseExpectFail({ releaseDir, runTimeoutMs, expectCode }) {
     failOnExit: false,
     captureOutput: true,
   }, async ({ port, readyFile, exitInfo: exitPromise }) => {
+    const readyPromise = waitForReadyVerified({ port, readyFile, timeoutMs: runTimeoutMs });
     const winner = await withTimeout("waitForExit", runTimeoutMs, () => Promise.race([
       exitPromise.then((info) => ({ type: "exit", info })),
-      waitForReady({ port, readyFile, timeoutMs: runTimeoutMs }).then(() => ({ type: "ready" })),
+      readyPromise.then(() => ({ type: "ready" })),
     ]));
     if (winner && winner.type === "ready") {
       throw new Error("process reached /api/status (expected failure)");
@@ -414,7 +426,14 @@ async function runReleaseExpectFail({ releaseDir, runTimeoutMs, expectCode }) {
   }
 }
 
-async function runReleaseExpectExpire({ releaseDir, buildId, runTimeoutMs, expectCode, expireTimeoutMs }) {
+async function runReleaseExpectExpire({
+  releaseDir,
+  buildId,
+  runTimeoutMs,
+  expectCode,
+  expireTimeoutMs,
+  requireReady = true,
+}) {
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
 
@@ -425,6 +444,7 @@ async function runReleaseExpectExpire({ releaseDir, buildId, runTimeoutMs, expec
     runTimeoutMs,
     writeRuntimeConfig,
     log,
+    waitForReady: requireReady,
     failOnExit: false,
     captureOutput: true,
   }, async ({ exitInfo: exitPromise }) => {
@@ -437,6 +457,13 @@ async function runReleaseExpectExpire({ releaseDir, buildId, runTimeoutMs, expec
   } else {
     assert.ok(code !== 0, "Expected non-zero exit code");
   }
+}
+
+function resolveSentinelExpiry() {
+  const windowMs = resolveE2ETimeout("SEAL_SENTINEL_E2E_EXPIRE_WINDOW_MS", 3000);
+  const windowSec = Math.max(3, Math.ceil(windowMs / 1000));
+  const timeoutMs = resolveE2ETimeout("SEAL_SENTINEL_E2E_EXPIRE_TIMEOUT_MS", 8000);
+  return { windowSec, timeoutMs };
 }
 
 async function testSentinelBasics(ctx) {
@@ -554,6 +581,7 @@ async function testSentinelRehostRid(ctx) {
 
 async function testSentinelExpiry(ctx) {
   log("Building thin-split with sentinel expiry...");
+  const { windowSec, timeoutMs } = resolveSentinelExpiry();
   const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-exp-"));
   const namespaceId = "00112233445566778899aabbccddeeff";
   let outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-"));
@@ -568,7 +596,7 @@ async function testSentinelExpiry(ctx) {
         outRoot,
         sentinelOverride: {
           checkIntervalMs: 200,
-          timeLimit: { validForSeconds: 3 },
+          timeLimit: { validForSeconds: windowSec },
         },
       })
     );
@@ -578,14 +606,19 @@ async function testSentinelExpiry(ctx) {
     appId = res.appId;
 
     const cpuid = computeCpuIdBoth();
+    const nowOkSec = Math.floor(Date.now() / 1000);
+    installSentinelBlob({ baseDir, namespaceId, appId, cpuid, expiresAtSec: nowOkSec + windowSec * 3 });
+    await runReleaseExpectOk({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs });
+
     const nowSec = Math.floor(Date.now() / 1000);
-    installSentinelBlob({ baseDir, namespaceId, appId, cpuid, expiresAtSec: nowSec + 3 });
+    installSentinelBlob({ baseDir, namespaceId, appId, cpuid, expiresAtSec: nowSec + windowSec });
     await runReleaseExpectExpire({
       releaseDir,
       buildId,
       runTimeoutMs: ctx.runTimeoutMs,
       expectCode: 222,
-      expireTimeoutMs: 8000,
+      expireTimeoutMs: timeoutMs,
+      requireReady: false,
     });
   } finally {
     if (outRoot) fs.rmSync(outRoot, { recursive: true, force: true });
@@ -595,6 +628,7 @@ async function testSentinelExpiry(ctx) {
 
 async function testSentinelMismatchDeferred(ctx) {
   log("Building thin-split with sentinel mismatch deferral...");
+  const { windowSec, timeoutMs } = resolveSentinelExpiry();
   const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-def-"));
   const namespaceId = "00112233445566778899aabbccddeeff";
   let outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-"));
@@ -609,7 +643,7 @@ async function testSentinelMismatchDeferred(ctx) {
         outRoot,
         sentinelOverride: {
           checkIntervalMs: 200,
-          timeLimit: { validForSeconds: 3, enforce: "mismatch" },
+          timeLimit: { validForSeconds: windowSec, enforce: "mismatch" },
         },
       })
     );
@@ -622,13 +656,13 @@ async function testSentinelMismatchDeferred(ctx) {
     const cpuid = computeCpuIdBoth();
     const nowSec = Math.floor(Date.now() / 1000);
     const badMid = mid ? `${mid}-bad` : "deadbeef";
-    installSentinelBlob({ baseDir, namespaceId, appId, level: 1, mid: badMid, cpuid, expiresAtSec: nowSec + 3 });
+    installSentinelBlob({ baseDir, namespaceId, appId, level: 1, mid: badMid, cpuid, expiresAtSec: nowSec + windowSec });
     await runReleaseExpectExpire({
       releaseDir,
       buildId,
       runTimeoutMs: ctx.runTimeoutMs,
       expectCode: 222,
-      expireTimeoutMs: 8000,
+      expireTimeoutMs: timeoutMs,
     });
   } finally {
     if (outRoot) fs.rmSync(outRoot, { recursive: true, force: true });
@@ -638,6 +672,7 @@ async function testSentinelMismatchDeferred(ctx) {
 
 async function testSentinelMissingDeferred(ctx) {
   log("Building thin-split with sentinel missing deferral...");
+  const { windowSec, timeoutMs } = resolveSentinelExpiry();
   const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-miss-"));
   let outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-"));
   let releaseDir = null;
@@ -650,7 +685,7 @@ async function testSentinelMissingDeferred(ctx) {
         outRoot,
         sentinelOverride: {
           checkIntervalMs: 200,
-          timeLimit: { validForSeconds: 3, enforce: "mismatch" },
+          timeLimit: { validForSeconds: windowSec, enforce: "mismatch" },
         },
       })
     );
@@ -664,7 +699,7 @@ async function testSentinelMissingDeferred(ctx) {
       buildId,
       runTimeoutMs: ctx.runTimeoutMs,
       expectCode: 222,
-      expireTimeoutMs: 8000,
+      expireTimeoutMs: timeoutMs,
     });
   } finally {
     if (outRoot) fs.rmSync(outRoot, { recursive: true, force: true });
@@ -674,6 +709,7 @@ async function testSentinelMissingDeferred(ctx) {
 
 async function testSentinelExpiredBlob(ctx) {
   log("Building thin-split with sentinel expired blob...");
+  const { windowSec } = resolveSentinelExpiry();
   const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-expired-"));
   const namespaceId = "00112233445566778899aabbccddeeff";
   let outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-"));
@@ -697,7 +733,8 @@ async function testSentinelExpiredBlob(ctx) {
     const mid = readFileTrim("/etc/machine-id");
     const cpuid = computeCpuIdBoth();
     const nowSec = Math.floor(Date.now() / 1000);
-    installSentinelBlob({ baseDir, namespaceId, appId, level: 1, mid, cpuid, expiresAtSec: nowSec - 5 });
+    const drift = Math.max(5, windowSec + 2);
+    installSentinelBlob({ baseDir, namespaceId, appId, level: 1, mid, cpuid, expiresAtSec: nowSec - drift });
     await runReleaseExpectFail({ releaseDir, runTimeoutMs: ctx.runTimeoutMs, expectCode: 222 });
   } finally {
     if (outRoot) fs.rmSync(outRoot, { recursive: true, force: true });

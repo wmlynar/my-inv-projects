@@ -56,46 +56,48 @@ function run() {
   }
 
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "seal-install-e2e-"));
-  const env = { ...process.env };
-  env.HOME = home;
-  env.XDG_CACHE_HOME = path.join(home, ".cache");
-  env.XDG_CONFIG_HOME = path.join(home, ".config");
-  env.XDG_DATA_HOME = path.join(home, ".local", "share");
-  env.XDG_STATE_HOME = path.join(home, ".local", "state");
-  env.BASH_COMPLETION_USER_DIR = path.join(env.XDG_DATA_HOME, "bash-completion");
-  env.NPM_CONFIG_PREFIX = path.join(home, ".npm-global");
-  env.SEAL_INSTALL_EXTRAS = "0";
-  env.SEAL_INSTALL_E2E_TOOLS = "0";
-  env.SEAL_INSTALL_ANTIDEBUG = "0";
-  env.SEAL_INSTALL_DOCKER = "0";
-  env.SEAL_INSTALL_PLAYWRIGHT = "0";
-  env.SEAL_INSTALL_PACKERS = "1";
-  env.SEAL_INSTALL_C_OBFUSCATOR = "1";
-  env.SEAL_INSTALL_LINK = "1";
-  env.SEAL_INSTALL_COMPLETION = "1";
-  env.SEAL_INSTALL_BASH_COMPLETION_PKG = "1";
+  const keepHome = process.env.SEAL_INSTALL_E2E_KEEP === "1";
+  try {
+    const env = { ...process.env };
+    env.HOME = home;
+    env.XDG_CACHE_HOME = path.join(home, ".cache");
+    env.XDG_CONFIG_HOME = path.join(home, ".config");
+    env.XDG_DATA_HOME = path.join(home, ".local", "share");
+    env.XDG_STATE_HOME = path.join(home, ".local", "state");
+    env.BASH_COMPLETION_USER_DIR = path.join(env.XDG_DATA_HOME, "bash-completion");
+    env.NPM_CONFIG_PREFIX = path.join(home, ".npm-global");
+    env.SEAL_INSTALL_EXTRAS = "0";
+    env.SEAL_INSTALL_E2E_TOOLS = "0";
+    env.SEAL_INSTALL_ANTIDEBUG = "0";
+    env.SEAL_INSTALL_DOCKER = "0";
+    env.SEAL_INSTALL_PLAYWRIGHT = "0";
+    env.SEAL_INSTALL_PACKERS = "1";
+    env.SEAL_INSTALL_C_OBFUSCATOR = "1";
+    env.SEAL_INSTALL_LINK = "1";
+    env.SEAL_INSTALL_COMPLETION = "1";
+    env.SEAL_INSTALL_BASH_COMPLETION_PKG = "1";
 
-  ensureDir(env.XDG_CACHE_HOME);
-  ensureDir(env.XDG_CONFIG_HOME);
-  ensureDir(env.XDG_DATA_HOME);
-  ensureDir(env.XDG_STATE_HOME);
+    ensureDir(env.XDG_CACHE_HOME);
+    ensureDir(env.XDG_CONFIG_HOME);
+    ensureDir(env.XDG_DATA_HOME);
+    ensureDir(env.XDG_STATE_HOME);
 
-  const cwd = path.join(repoRoot, "tools", "seal");
-  runBash(`cd ${bashQuote(cwd)}\n./install.sh`, env, cwd);
+    const cwd = path.join(repoRoot, "tools", "seal");
+    runBash(`cd ${bashQuote(cwd)}\n./install.sh`, env, cwd);
 
-  const bashrcPath = path.join(home, ".bashrc");
-  const profilePath = path.join(home, ".profile");
-  const bashrcFirst = readFileOrEmpty(bashrcPath);
-  const profileFirst = readFileOrEmpty(profilePath);
+    const bashrcPath = path.join(home, ".bashrc");
+    const profilePath = path.join(home, ".profile");
+    const bashrcFirst = readFileOrEmpty(bashrcPath);
+    const profileFirst = readFileOrEmpty(profilePath);
 
-  runBash(`cd ${bashQuote(cwd)}\n./install.sh`, env, cwd);
+    runBash(`cd ${bashQuote(cwd)}\n./install.sh`, env, cwd);
 
-  const bashrcSecond = readFileOrEmpty(bashrcPath);
-  const profileSecond = readFileOrEmpty(profilePath);
-  assert.strictEqual(bashrcSecond, bashrcFirst, "install.sh should not append duplicate bashrc entries");
-  assert.strictEqual(profileSecond, profileFirst, "install.sh should not append duplicate profile entries");
+    const bashrcSecond = readFileOrEmpty(bashrcPath);
+    const profileSecond = readFileOrEmpty(profilePath);
+    assert.strictEqual(bashrcSecond, bashrcFirst, "install.sh should not append duplicate bashrc entries");
+    assert.strictEqual(profileSecond, profileFirst, "install.sh should not append duplicate profile entries");
 
-  runBash(`
+    runBash(`
 set -euo pipefail
 source ~/.profile >/dev/null 2>&1 || true
 source ~/.bashrc >/dev/null 2>&1 || true
@@ -103,23 +105,34 @@ command -v seal >/dev/null
 seal --help >/dev/null
 `, env, cwd);
 
-  const completionPath = path.join(env.BASH_COMPLETION_USER_DIR, "completions", "seal");
-  if (!fs.existsSync(completionPath)) {
-    throw new Error(`completion file missing: ${completionPath}`);
-  }
-  const completionScript = readFileOrEmpty(completionPath);
-  if (!completionScript.trim()) {
-    throw new Error("completion file is empty");
-  }
+    const completionPath = path.join(env.BASH_COMPLETION_USER_DIR, "completions", "seal");
+    if (!fs.existsSync(completionPath)) {
+      throw new Error(`completion file missing: ${completionPath}`);
+    }
+    const completionScript = readFileOrEmpty(completionPath);
+    if (!completionScript.trim()) {
+      throw new Error("completion file is empty");
+    }
 
-  runBash(`
+    runBash(`
 set -euo pipefail
 source ${bashQuote(completionPath)}
 declare -F _seal_complete >/dev/null 2>&1
 complete -p seal | grep -q "_seal_complete"
 `, env, cwd);
 
-  log("OK");
+    log("OK");
+  } finally {
+    if (!keepHome) {
+      try {
+        fs.rmSync(home, { recursive: true, force: true });
+      } catch {
+        // ignore
+      }
+    } else {
+      log(`WARN: keeping install e2e home at ${home}`);
+    }
+  }
 }
 
 try {

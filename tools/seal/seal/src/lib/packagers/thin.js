@@ -229,7 +229,8 @@ function writeCodecBin(dir, codecState) {
 }
 
 function hasCommand(cmd) {
-  const res = spawnSyncSafe("bash", ["-lc", `command -v ${cmd} >/dev/null 2>&1`], { stdio: "pipe" });
+  const quoted = "'" + String(cmd).replace(/'/g, "'\\''") + "'";
+  const res = spawnSyncSafe("bash", ["-lc", `command -v -- ${quoted} >/dev/null 2>&1`], { stdio: "pipe" });
   return !!res.ok;
 }
 

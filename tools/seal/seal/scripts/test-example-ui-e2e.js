@@ -15,6 +15,7 @@ const {
   resolveExampleRoot,
   createLogger,
   withSealedBinary,
+  readReadyPayload,
 } = require("./e2e-utils");
 
 const { buildRelease } = require("../src/lib/build");
@@ -297,7 +298,13 @@ async function testUi(ctx) {
       writeRuntimeConfig,
       log,
       captureOutput: true,
-    }, async ({ port, readyFile }) => {
+    }, async ({ port, readyFile, ready }) => {
+      if (readyFile) {
+        const payload = await readReadyPayload(readyFile, ready, 1000);
+        if (!payload) {
+          throw new Error(`ready-file payload invalid (${readyFile})`);
+        }
+      }
       if (readyFile || port === null) {
         log("SKIP: UI runtime check disabled (ready-file mode)");
         return;

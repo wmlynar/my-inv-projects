@@ -26,10 +26,11 @@ function isDockerEnv() {
 
 function detectCapabilities(env) {
   const caps = {};
+  const dockerHost = env.SEAL_E2E_DOCKER_HOST === "1";
   caps.root = typeof process.getuid === "function" && process.getuid() === 0;
   caps.docker = isDockerEnv();
-  caps.limitedHost = env.SEAL_E2E_LIMITED_HOST === "1";
-  caps.host = !caps.limitedHost && !caps.docker;
+  caps.limitedHost = env.SEAL_E2E_LIMITED_HOST === "1" && !dockerHost;
+  caps.host = !caps.limitedHost && (!caps.docker || dockerHost);
 
   const allow = parseList(env.SEAL_E2E_CAPS_ALLOW);
   const deny = parseList(env.SEAL_E2E_CAPS_DENY);

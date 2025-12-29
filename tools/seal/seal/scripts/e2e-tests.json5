@@ -42,10 +42,8 @@
       "skipRisk": "high",
       "failHint": "Check ptrace/perf/bpf tooling and strict env flags.",
       "script": "tools/seal/seal/scripts/test-thin-anti-debug-e2e.js",
-      "hostOnly": true,
-      "requirements": [
-        "host"
-      ]
+      "hostOnly": false,
+      "requirements": []
     },
     {
       "name": "thin-anti-debug-dump",
@@ -55,10 +53,8 @@
       "skipRisk": "high",
       "failHint": "Check gcore/gdb or SEAL_E2E_DUMP_CMD and SEAL_E2E_REAL_DUMP.",
       "script": "tools/seal/seal/scripts/test-thin-anti-debug-dump-e2e.js",
-      "hostOnly": true,
-      "requirements": [
-        "host"
-      ]
+      "hostOnly": false,
+      "requirements": []
     },
     {
       "name": "legacy-packagers",
@@ -115,10 +111,8 @@
       "skipRisk": "high",
       "failHint": "Check SSH/systemd readiness and example workspace.",
       "script": "tools/seal/seal/scripts/test-user-flow-e2e.js",
-      "hostOnly": true,
-      "requirements": [
-        "host"
-      ]
+      "hostOnly": false,
+      "requirements": []
     },
     {
       "name": "sentinel",
@@ -128,9 +122,9 @@
       "skipRisk": "high",
       "failHint": "Check root access, /etc/machine-id, and host device IDs.",
       "script": "tools/seal/seal/scripts/test-sentinel-e2e.js",
-      "hostOnly": true,
+      "hostOnly": false,
       "requirements": [
-        "host"
+        "root"
       ]
     },
     {
@@ -229,10 +223,8 @@
       "skipRisk": "high",
       "failHint": "Check SSH, sudo, and target config.",
       "script": "tools/seal/seal/scripts/test-ship-e2e.js",
-      "hostOnly": true,
-      "requirements": [
-        "host"
-      ]
+      "hostOnly": false,
+      "requirements": []
     }
   ]
 }

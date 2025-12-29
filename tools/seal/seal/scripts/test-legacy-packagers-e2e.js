@@ -18,6 +18,7 @@ const {
   resolveExampleRoot,
   createLogger,
   withSealedBinary,
+  readReadyPayload,
 } = require("./e2e-utils");
 
 const EXAMPLE_ROOT = resolveExampleRoot();
@@ -46,6 +47,12 @@ async function runRelease({ releaseDir, runTimeoutMs, appName }) {
     writeRuntimeConfig,
     captureOutput: true,
     log,
+  }, async ({ readyFile, ready }) => {
+    if (!readyFile) return;
+    const payload = await readReadyPayload(readyFile, ready, 1000);
+    if (!payload) {
+      throw new Error(`ready-file payload invalid (${readyFile})`);
+    }
   });
 }
 

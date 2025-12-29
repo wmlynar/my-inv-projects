@@ -16,6 +16,7 @@ const {
   resolveExampleRoot,
   createLogger,
   withSealedBinary,
+  readReadyPayload,
 } = require("./e2e-utils");
 
 const { buildRelease } = require("../src/lib/build");
@@ -191,6 +192,12 @@ async function runRelease({ releaseDir, buildId, runTimeoutMs }) {
     skipListen: runRelease.skipListen === true,
     writeRuntimeConfig,
     log,
+  }, async ({ readyFile, ready }) => {
+    if (!readyFile) return;
+    const payload = await readReadyPayload(readyFile, ready, 1000);
+    if (!payload) {
+      throw new Error(`ready-file payload invalid (${readyFile})`);
+    }
   });
 }
 
