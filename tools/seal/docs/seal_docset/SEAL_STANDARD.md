@@ -222,6 +222,7 @@ Przykład:
 - STD-106f (SHOULD): gdy `git` uzywa SSH, ustaw `GIT_SSH_COMMAND` z `BatchMode=yes`, `UserKnownHostsFile=...`, `StrictHostKeyChecking=...`; git nie dziedziczy opcji ssh z innych wywolan, więc brak tego moze blokowac CI.
 - STD-106g (SHOULD): preferuj ED25519/ECDSA; `ssh-rsa` jest dozwolone tylko jawnie (opcja `HostKeyAlgorithms`/`PubkeyAcceptedAlgorithms`) i musi byc logowane jako legacy.
 - STD-106h (SHOULD): ogranicz liczbe kluczy prezentowanych serwerowi (`IdentitiesOnly=yes` + `IdentityFile`), aby uniknac `Too many authentication failures`.
+- STD-106ab (SHOULD): gdy ustawiasz `IdentityFile`, waliduj ze plik istnieje i ma bezpieczne perms (0600); brak = fail‑fast z instrukcja.
 - STD-106i (SHOULD): nie polegaj na `~/.ssh/config` uzytkownika w automacji; uzywaj `ssh -F /dev/null` lub jawnie nadpisuj opcje, i loguj kluczowe ustawienia.
 - STD-106j (SHOULD): wspieraj wymuszenie IPv4/IPv6 (`AddressFamily`/`-4`/`-6`) i loguj wybrana rodzine adresu.
 - STD-106k (SHOULD): transfery `scp/rsync` wymagaja „czystego” non‑interactive SSH; uzywaj `-T` i zapewnij brak bannerow/MOTD w shellu non‑interactive.

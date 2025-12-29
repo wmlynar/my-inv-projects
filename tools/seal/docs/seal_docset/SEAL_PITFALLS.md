@@ -178,6 +178,9 @@
 - Blad: agent SSH mial wiele kluczy i serwer odrzucal polaczenie (`Too many authentication failures`).
   - Wymaganie: wymusz `IdentitiesOnly=yes` i jawny `IdentityFile`; w razie potrzeby czysc `SSH_AUTH_SOCK`.
 
+- Blad: `IdentityFile` wskazywal na brakujacy plik lub zle uprawnienia, a SSH zwracal nieczytelny błąd.
+  - Wymaganie: waliduj istnienie `IdentityFile` i perms (0600) przed polaczeniem; brak = fail‑fast z instrukcja.
+
 - Blad: rownolegle polaczenia SSH byly zrywane przez limity serwera (`MaxStartups`/`MaxSessions`), co dawalo flakey deploy.
   - Wymaganie: limituj rownoleglosc polaczen lub dodaj retry/backoff; w srodowiskach kontrolowanych zwieksz limity w `sshd_config`.
 - Blad: timeouts SSH byly zakodowane na sztywno (ConnectTimeout/ServerAlive), co failowalo na wolnych sieciach lub dalekich hostach.
