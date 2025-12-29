@@ -36,6 +36,9 @@
 - Blad: parsery polegaly na outputach narzedzi zaleznych od locale (np. `df`, `lsblk`) i rozjezdzaly sie na innych systemach.
   - Wymaganie: ustaw `LC_ALL=C` (lub `LANG=C`) dla komend parsowanych tekstowo, albo uzywaj trybu `--json`/`--output`.
 
+- Blad: brakujace narzedzie (`ENOENT` z `spawnSync`) bylo raportowane jako ogolny blad, bez informacji o tym, co zainstalowac.
+  - Wymaganie: wykrywaj `ENOENT` i wypisuj jasny komunikat "command not found" + instrukcje instalacji lub hint (check/preflight).
+
 - Blad: sciezki zaczynajace sie od `-` byly interpretowane jako opcje (rm/cp/rsync/scp).
   - Wymaganie: zawsze wstaw `--` przed listą sciezek i waliduj, ze sciezka nie jest pusta.
 
