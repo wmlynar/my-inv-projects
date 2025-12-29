@@ -265,7 +265,7 @@ log_effective_config() {
   log "  tests=${SEAL_E2E_TESTS:-<all>} skip=${SEAL_E2E_SKIP:-<none>} limited_host=${SEAL_E2E_LIMITED_HOST:-0} fail_fast=$FAIL_FAST"
   log "  summary=${SUMMARY_PATH:-<disabled>} last=${SUMMARY_LAST_PATH:-<none>}"
   log "  log_dir=${LOG_DIR} capture_logs=${LOG_CAPTURE} log_filtered=${LOG_FILTERED}"
-  log "  cache_root=${CACHE_ROOT} node_modules_root=${SEAL_E2E_NODE_MODULES_ROOT:-<none>}"
+  log "  cache_root=${CACHE_ROOT} npm_cache=${NPM_CONFIG_CACHE} node_modules_root=${SEAL_E2E_NODE_MODULES_ROOT:-<none>}"
   if [ -n "${SEAL_E2E_CONFIG:-}" ]; then
     log "  config=${SEAL_E2E_CONFIG}"
   fi
