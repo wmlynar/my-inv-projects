@@ -8,6 +8,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 CACHE_BIN="${SEAL_E2E_CACHE_BIN:-${HOME}/.cache/seal/bin}"
 CACHE_ROOT="${SEAL_E2E_CACHE_DIR:-$(dirname "$CACHE_BIN")}"
 MANIFEST_PATH="${SEAL_E2E_MANIFEST:-$SCRIPT_DIR/e2e-tests.tsv}"
+RUN_ID="${SEAL_E2E_RUN_ID:-$(date +%Y%m%d-%H%M%S)-$$}"
+FAIL_FAST="${SEAL_E2E_FAIL_FAST:-0}"
 
 log() {
   echo "[seal-e2e-parallel] $*"
@@ -122,17 +124,26 @@ while IFS=$'\t' read -r name category parallel desc skip_risk hint script host_o
   fi
 done < "$MANIFEST_PATH"
 
-DEFAULT_SUMMARY_PATH="$CACHE_ROOT/e2e-summary/last.tsv"
-SUMMARY_PATH="${SEAL_E2E_SUMMARY_PATH:-$DEFAULT_SUMMARY_PATH}"
-LOG_ROOT="${SEAL_E2E_LOG_DIR:-}"
-if [ -n "$LOG_ROOT" ]; then
-  mkdir -p "$LOG_ROOT"
+SUMMARY_LAST_PATH=""
+DEFAULT_SUMMARY_DIR="$CACHE_ROOT/e2e-summary"
+if [ -n "${SEAL_E2E_SUMMARY_PATH:-}" ]; then
+  SUMMARY_PATH="$SEAL_E2E_SUMMARY_PATH"
+else
+  SUMMARY_PATH="$DEFAULT_SUMMARY_DIR/run-$RUN_ID.tsv"
+  SUMMARY_LAST_PATH="$DEFAULT_SUMMARY_DIR/last.tsv"
 fi
+LOG_ROOT="${SEAL_E2E_LOG_DIR:-$CACHE_ROOT/e2e-logs/$RUN_ID}"
+export SEAL_E2E_LOG_DIR="$LOG_ROOT"
+mkdir -p "$LOG_ROOT"
 
 E2E_ONLY_RAW="$(trim_list "${SEAL_E2E_TESTS:-}")"
 E2E_SKIP_RAW="$(trim_list "${SEAL_E2E_SKIP:-}")"
 RERUN_FAILED="${SEAL_E2E_RERUN_FAILED:-0}"
-RERUN_FROM="${SEAL_E2E_RERUN_FROM:-$SUMMARY_PATH}"
+DEFAULT_RERUN_FROM="$SUMMARY_PATH"
+if [ -n "$SUMMARY_LAST_PATH" ]; then
+  DEFAULT_RERUN_FROM="$SUMMARY_LAST_PATH"
+fi
+RERUN_FROM="${SEAL_E2E_RERUN_FROM:-$DEFAULT_RERUN_FROM}"
 FAILED_ONLY_RAW=""
 if [ "$RERUN_FAILED" = "1" ]; then
   if [ -z "$RERUN_FROM" ]; then
@@ -420,8 +431,15 @@ print_combined_summary() {
   done
   log "Combined stats: total=${total_count}, ok=${ok_count}, skipped=${skip_count}, failed=${fail_count}"
   log "Summary file: $SUMMARY_PATH"
+  if [ -n "$SUMMARY_LAST_PATH" ]; then
+    log "Summary last: $SUMMARY_LAST_PATH"
+  fi
   if [ "$fail_count" -ne 0 ]; then
-    log "Rerun failed only: SEAL_E2E_RERUN_FAILED=1 SEAL_E2E_RERUN_FROM=$SUMMARY_PATH"
+    local rerun_hint="$SUMMARY_PATH"
+    if [ -n "$SUMMARY_LAST_PATH" ]; then
+      rerun_hint="$SUMMARY_LAST_PATH"
+    fi
+    log "Rerun failed only: SEAL_E2E_RERUN_FAILED=1 SEAL_E2E_RERUN_FROM=$rerun_hint"
   fi
 
   log "Combined category summary:"
