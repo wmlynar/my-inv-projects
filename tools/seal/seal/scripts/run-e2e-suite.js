@@ -20,7 +20,7 @@ const {
   writeJsonSummaryReport,
 } = require("./e2e-report");
 const { hasCommand } = require("./e2e-utils");
-const { loadE2EConfig, resolveSummaryPaths } = require("./e2e-runner-config");
+const { loadE2EConfig, resolveSummaryPaths, resolveRerunFrom, isPlanMode } = require("./e2e-runner-config");
 const { assertEscalated, makeRunId, formatDuration, logEffectiveConfig } = require("./e2e-runner-utils");
 const { applyToolsetDefaults, applyE2EFeatureFlags, applySshDefaults } = require("./e2e-runner-env");
 const { preparePlan, applyRerunFailedFilters } = require("./e2e-runner-plan");
@@ -327,8 +327,8 @@ async function main() {
   };
 
   const rerunFailed = env.SEAL_E2E_RERUN_FAILED === "1" && !setupOnly;
-  const rerunFrom = env.SEAL_E2E_RERUN_FROM || summaryLastPath || summaryPath;
-  const planMode = env.SEAL_E2E_PLAN === "1" || env.SEAL_E2E_EXPLAIN === "1";
+  const rerunFrom = resolveRerunFrom(env, summaryPath, summaryLastPath);
+  const planMode = isPlanMode(env);
   const adjustFilters = ({ onlyList, skipList }) => {
     return applyRerunFailedFilters({
       onlyList,

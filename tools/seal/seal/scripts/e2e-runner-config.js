@@ -3,7 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
-const { parseList } = require("./e2e-runner-utils");
+const { parseList, normalizeFlag } = require("./e2e-runner-utils");
 const { hasCommand } = require("./e2e-utils");
 
 function shellQuote(value) {
@@ -113,8 +113,21 @@ function resolveSummaryPaths(options) {
   };
 }
 
+function resolveRerunFrom(env, summaryPath, summaryLastPath) {
+  const rerunOverride = env.SEAL_E2E_RERUN_FROM || "";
+  if (rerunOverride) return rerunOverride;
+  if (summaryLastPath) return summaryLastPath;
+  return summaryPath || "";
+}
+
+function isPlanMode(env) {
+  return normalizeFlag(env.SEAL_E2E_PLAN || env.SEAL_E2E_EXPLAIN, "0") === "1";
+}
+
 module.exports = {
   loadE2EConfig,
   parseTestFilters,
   resolveSummaryPaths,
+  resolveRerunFrom,
+  isPlanMode,
 };

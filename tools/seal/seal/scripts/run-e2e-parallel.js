@@ -21,7 +21,7 @@ const {
   logRerunHint,
   writeJsonSummaryReport,
 } = require("./e2e-report");
-const { loadE2EConfig, resolveSummaryPaths } = require("./e2e-runner-config");
+const { loadE2EConfig, resolveSummaryPaths, resolveRerunFrom, isPlanMode } = require("./e2e-runner-config");
 const {
   assertEscalated,
   makeRunId,
@@ -181,12 +181,9 @@ async function main() {
   }
   if (jobs < 1) jobs = 1;
 
-  const planMode = normalizeFlag(env.SEAL_E2E_PLAN || env.SEAL_E2E_EXPLAIN, "0") === "1";
+  const planMode = isPlanMode(env);
   const rerunFailed = normalizeFlag(env.SEAL_E2E_RERUN_FAILED, "0") === "1";
-  let rerunFrom = env.SEAL_E2E_RERUN_FROM || summaryPath;
-  if (summaryLastPath) {
-    rerunFrom = env.SEAL_E2E_RERUN_FROM || summaryLastPath;
-  }
+  const rerunFrom = resolveRerunFrom(env, summaryPath, summaryLastPath);
   const adjustFilters = ({ onlyList, skipList }) => {
     return applyRerunFailedFilters({
       onlyList,
