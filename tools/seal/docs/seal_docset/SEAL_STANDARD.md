@@ -452,6 +452,8 @@ Przykład:
 - STD-089y (SHOULD): docker build nie moze kopiowac sekretow do warstw; `.dockerignore` wyklucza `.env`, `.npmrc`, klucze SSH; uzywaj BuildKit secrets/SSH mounts, a build-time kredencjale są sprzątane po uzyciu.
 - STD-089z (SHOULD): runner E2E waliduje nazwy zmiennych `SEAL_E2E_*` (allowlist) i **fail‑fast** przy nieznanych/niepoprawnych kluczach; loguje efektywna konfiguracje i wskazuje zrodlo (ENV vs plik).
 - STD-089z.a (SHOULD): długie konfiguracje uruchomien E2E są dostarczane przez plik ENV (`SEAL_E2E_CONFIG`) lub wrapper, nie przez wielolinijkowe komendy copy‑paste.
+- STD-089z.b (SHOULD): cleanup E2E/Docker jest scoped do zasobow oznaczonych (`label=seal-e2e`, `COMPOSE_PROJECT_NAME`); globalne `prune` tylko po explicit opt‑in.
+- STD-089z.c (SHOULD): E2E waliduje poziom rownoleglosci vs zasoby (CPU/RAM/cgroup) i ostrzega lub ogranicza jobs; parametry zasobowe sa logowane.
 - STD-090c (SHOULD): preflight sprawdza **narzedzia CLI** (np. `postject` w `node_modules/.bin`/PATH), nie tylko obecność modulu.
 - STD-091a (SHOULD): funkcje zalezne od architektury (np. CPUID) musza degradująco dzialac na platformach bez wsparcia (pusty/neutralny ID zamiast twardego bledu).
 - STD-092a (SHOULD): `--skip-check` jest wyraznie oznaczony jako ryzykowny i zawsze wypisuje ostrzezenie; krytyczne braki toolchaina nie powinny byc maskowane.
@@ -463,6 +465,7 @@ Przykład:
 - STD-097a (SHOULD): preflight/deploy sprawdza mount options `installDir` i failuje, gdy wykryje `noexec` (z instrukcja wyboru innej sciezki).
 - STD-098 (SHOULD): testy E2E uzywaja sandbox `installDir` i unikalnych nazw uslug; operacje systemowe sa gated env‑flaga i domyslnie SKIP.
 - STD-099 (SHOULD): testy E2E izolują cache (osobny temp project root lub `SEAL_THIN_CACHE_LIMIT=0`), aby uniknac cross‑test contamination.
+- STD-099a (SHOULD): operacje cleanup typu `rm -rf` maja helper `safe_rm` i walidacje sciezki (absolutna, nie `/`, nie pusta) + `find -mindepth 1`.
 - STD-100 (SHOULD): testy E2E zawsze binduja do `127.0.0.1` (nie `localhost`), aby uniknac problemow IPv6/DNS.
 - STD-101 (SHOULD): testy E2E ustawiają `HOME`/`XDG_*` na temp, by nie brudzic profilu uzytkownika.
 - STD-101a (SHOULD): testy ustawiają `NPM_CONFIG_CACHE` na temp (per run) lub czyszcza cache npm deterministycznie.

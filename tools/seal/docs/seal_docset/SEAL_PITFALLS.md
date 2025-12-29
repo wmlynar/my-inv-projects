@@ -2337,6 +2337,17 @@
 
 ## Dodatkowe wnioski (batch 246-250)
 
+- Blad: cleanup `rm -rf "$VAR"` byl wykonywany przy pustym lub blednym `$VAR`, co grozilo skasowaniem niepoprawnej sciezki.
+  - Wymaganie: przed `rm -rf` zawsze waliduj, ze sciezka jest absolutna, nie jest `/` ani `.` i nie jest pusta; stosuj helper `safe_rm`.
+  - Wymaganie: `find ... -delete` uzywa `-mindepth 1` i sprawdza root katalogu, aby nie usunac katalogu glownego.
+- Blad: parallel E2E uruchamialo zbyt wiele jobow (np. `SEAL_E2E_JOBS=32`) bez uwzglednienia CPU/RAM/cgroup, co powodowalo timeouts i `ENOSPC`.
+  - Wymaganie: domyslny poziom rownoleglosci jest ograniczony do `min(nproc, limit_cgroup)` oraz loguje ostrzezenie, gdy jobs > CPU lub RAM < limit.
+  - Wymaganie: skrypty E2E maja jawny limit zasobow (np. `SEAL_E2E_MAX_RAM_MB`) i fail‑fast/skalowanie timeoutow przy niskich zasobach.
+- Blad: agresywne cleanupy Dockera (`docker system prune`, `builder prune`) niszczyly cudze obrazy/cache.
+  - Wymaganie: cleanup jest ograniczony do zasobow z labela `seal-e2e` lub unikalnego `COMPOSE_PROJECT_NAME`; globalny prune tylko przy explicit opt‑in.
+
+## Dodatkowe wnioski (batch 246-250)
+
 - Blad: marker runtime byl tylko „gołym” hashem bez wersji/algorytmu, co utrudnialo zmiane formatu i migracje w przyszlosci.
   - Wymaganie: marker ma format z magic/wersja/algId (jak codec), aby przyszle zmiany (np. sha512) byly jednoznaczne.
 - Blad: marker runtime oparty tylko o `process.version` nie wykrywal rozjazdow ABI/build (np. custom build, OpenSSL/ICU), co pozwalalo na niekompatybilny reuse.
