@@ -4,19 +4,38 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
-CACHE_BIN="${SEAL_E2E_CACHE_BIN:-${HOME}/.cache/seal/bin}"
-CACHE_ROOT="${SEAL_E2E_CACHE_DIR:-$(dirname "$CACHE_BIN")}"
-STAMPS_DIR="$CACHE_ROOT/stamps"
-mkdir -p "$CACHE_BIN" "$STAMPS_DIR"
-export PATH="$CACHE_BIN:$PATH"
-export SEAL_OLLVM_BIN_DIR="$CACHE_BIN"
-export SEAL_HIKARI_BIN_DIR="$CACHE_BIN"
-export SEAL_KITESHIELD_BIN_DIR="$CACHE_BIN"
-export SEAL_MIDGETPACK_BIN_DIR="$CACHE_BIN"
 unset BASH_ENV ENV CDPATH GLOBIGNORE
 
 log() {
   echo "[seal-e2e] $*"
+}
+
+ensure_escalation() {
+  if [ "${SEAL_E2E_REQUIRE_ESCALATION:-1}" != "1" ]; then
+    return
+  fi
+  if [ "${SEAL_E2E_ESCALATED:-0}" = "1" ]; then
+    return
+  fi
+  if [ "$(id -u)" -eq 0 ]; then
+    export SEAL_E2E_ESCALATED=1
+    return
+  fi
+  if ! command -v sudo >/dev/null 2>&1; then
+    log "ERROR: escalation required but sudo not found."
+    exit 1
+  fi
+  if sudo -n true >/dev/null 2>&1; then
+    log "Escalating via sudo..."
+    exec sudo -E env SEAL_E2E_ESCALATED=1 "$0" "$@"
+  fi
+  if [ ! -t 0 ]; then
+    log "ERROR: escalation required but no TTY; re-run with sudo or Codex escalation."
+    exit 1
+  fi
+  log "Escalation required; you may be prompted."
+  sudo -v || exit 1
+  exec sudo -E env SEAL_E2E_ESCALATED=1 "$0" "$@"
 }
 
 format_duration() {
@@ -157,6 +176,18 @@ load_e2e_config() {
 }
 
 load_e2e_config
+
+ensure_escalation "$@"
+
+CACHE_BIN="${SEAL_E2E_CACHE_BIN:-${HOME}/.cache/seal/bin}"
+CACHE_ROOT="${SEAL_E2E_CACHE_DIR:-$(dirname "$CACHE_BIN")}"
+STAMPS_DIR="$CACHE_ROOT/stamps"
+mkdir -p "$CACHE_BIN" "$STAMPS_DIR"
+export PATH="$CACHE_BIN:$PATH"
+export SEAL_OLLVM_BIN_DIR="$CACHE_BIN"
+export SEAL_HIKARI_BIN_DIR="$CACHE_BIN"
+export SEAL_KITESHIELD_BIN_DIR="$CACHE_BIN"
+export SEAL_MIDGETPACK_BIN_DIR="$CACHE_BIN"
 
 SETUP_ONLY="${SEAL_E2E_SETUP_ONLY:-0}"
 FAIL_FAST="${SEAL_E2E_FAIL_FAST:-0}"

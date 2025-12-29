@@ -16,6 +16,36 @@ log() {
   echo "[seal-e2e-parallel] $*"
 }
 
+ensure_escalation() {
+  if [ "${SEAL_E2E_REQUIRE_ESCALATION:-1}" != "1" ]; then
+    return
+  fi
+  if [ "${SEAL_E2E_ESCALATED:-0}" = "1" ]; then
+    return
+  fi
+  if [ "$(id -u)" -eq 0 ]; then
+    export SEAL_E2E_ESCALATED=1
+    return
+  fi
+  if ! command -v sudo >/dev/null 2>&1; then
+    log "ERROR: escalation required but sudo not found."
+    exit 1
+  fi
+  if sudo -n true >/dev/null 2>&1; then
+    log "Escalating via sudo..."
+    exec sudo -E env SEAL_E2E_ESCALATED=1 "$0" "$@"
+  fi
+  if [ ! -t 0 ]; then
+    log "ERROR: escalation required but no TTY; re-run with sudo or Codex escalation."
+    exit 1
+  fi
+  log "Escalation required; you may be prompted."
+  sudo -v || exit 1
+  exec sudo -E env SEAL_E2E_ESCALATED=1 "$0" "$@"
+}
+
+ensure_escalation "$@"
+
 format_duration() {
   local total="$1"
   local h=$((total / 3600))
