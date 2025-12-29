@@ -8,7 +8,6 @@ const crypto = require("crypto");
 const { spawn, spawnSync } = require("child_process");
 
 const {
-  resolveJsonSummaryPath,
   ensureSummaryFile,
   updateLastSummaryFile,
   formatSummaryRow,
@@ -17,8 +16,8 @@ const {
   printStatusList,
   printTimingSummary,
   countStatuses,
-  buildJsonSummary,
-  writeJsonSummary,
+  logRerunHint,
+  writeJsonSummaryReport,
 } = require("./e2e-report");
 const { hasCommand } = require("./e2e-utils");
 const { loadE2EConfig, resolveSummaryPaths } = require("./e2e-runner-config");
@@ -776,10 +775,12 @@ async function main() {
   if (summaryPath) log(`Summary file: ${summaryPath}`);
   if (summaryLastPath) log(`Summary last: ${summaryLastPath}`);
   if (logCapture === "1") log(`Logs: ${logDir}`);
-  if (totals.failed !== 0 && summaryPath) {
-    const rerunHint = summaryLastPath || summaryPath;
-    log(`Rerun failed only: SEAL_E2E_RERUN_FAILED=1 SEAL_E2E_RERUN_FROM=${rerunHint}`);
-  }
+  logRerunHint({
+    failedCount: totals.failed,
+    summaryPath,
+    summaryLastPath,
+    log,
+  });
 
   printCategorySummary({
     orderList: summaryOrder,
@@ -800,8 +801,8 @@ async function main() {
   writeSummaryFile();
   updateLastSummaryFile(summaryPath, summaryLastPath);
 
-  const summaryJsonPath = resolveJsonSummaryPath(summaryPath, env);
-  const summaryData = buildJsonSummary({
+  writeJsonSummaryReport({
+    env,
     runId,
     manifestPath,
     manifestOrder,
@@ -812,11 +813,8 @@ async function main() {
     summaryPath,
     runStart,
     runEnd: Date.now(),
+    log,
   });
-  writeJsonSummary(summaryJsonPath, summaryData);
-  if (summaryJsonPath) {
-    log(`Summary json: ${summaryJsonPath}`);
-  }
 
   if (failures > 0) {
     log(`E2E failures: ${failures}`);

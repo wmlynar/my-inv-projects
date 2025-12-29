@@ -308,6 +308,39 @@ function countStatuses(orderList, summaryRows) {
   return totals;
 }
 
+function logRerunHint(options) {
+  const failedCount = options && typeof options.failedCount === "number" ? options.failedCount : 0;
+  const summaryPath = options ? options.summaryPath : "";
+  if (!failedCount || !summaryPath) return;
+  const summaryLastPath = options ? options.summaryLastPath : "";
+  const logger = typeof options.log === "function" ? options.log : (msg) => process.stdout.write(`${msg}\n`);
+  const rerunHint = summaryLastPath || summaryPath;
+  logger(`Rerun failed only: SEAL_E2E_RERUN_FAILED=1 SEAL_E2E_RERUN_FROM=${rerunHint}`);
+}
+
+function writeJsonSummaryReport(options) {
+  const env = options && options.env ? options.env : process.env;
+  const summaryPath = options ? options.summaryPath : "";
+  const summaryJsonPath = resolveJsonSummaryPath(summaryPath, env);
+  const summaryData = buildJsonSummary({
+    runId: options.runId,
+    manifestPath: options.manifestPath,
+    manifestOrder: options.manifestOrder,
+    testByName: options.testByName,
+    planByName: options.planByName,
+    summaryRows: options.summaryRows,
+    capabilities: options.capabilities,
+    summaryPath,
+    runStart: options.runStart,
+    runEnd: options.runEnd,
+  });
+  writeJsonSummary(summaryJsonPath, summaryData);
+  if (summaryJsonPath && typeof options.log === "function") {
+    options.log(`Summary json: ${summaryJsonPath}`);
+  }
+  return summaryJsonPath;
+}
+
 function listFailedTests(summaryPath) {
   const rows = parseSummaryRows(summaryPath);
   const failed = new Set();
@@ -445,7 +478,9 @@ module.exports = {
   printStatusList,
   printTimingSummary,
   countStatuses,
+  logRerunHint,
   listFailedTests,
+  writeJsonSummaryReport,
   buildPlan,
   printPlan,
   buildJsonSummary,

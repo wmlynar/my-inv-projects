@@ -10,7 +10,6 @@ const SCRIPT_DIR = __dirname;
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "../../../..");
 const RUNNER = path.join(SCRIPT_DIR, "run-e2e-suite.sh");
 const {
-  resolveJsonSummaryPath,
   ensureSummaryFile,
   updateLastSummaryFile,
   parseSummaryRows,
@@ -19,8 +18,8 @@ const {
   printStatusList,
   printTimingSummary,
   countStatuses,
-  buildJsonSummary,
-  writeJsonSummary,
+  logRerunHint,
+  writeJsonSummaryReport,
 } = require("./e2e-report");
 const { loadE2EConfig, resolveSummaryPaths } = require("./e2e-runner-config");
 const {
@@ -507,10 +506,12 @@ async function main() {
     if (summaryLastPath) {
       log(`Summary last: ${summaryLastPath}`);
     }
-    if (totals.failed) {
-      const rerunHint = summaryLastPath || summaryPath;
-      log(`Rerun failed only: SEAL_E2E_RERUN_FAILED=1 SEAL_E2E_RERUN_FROM=${rerunHint}`);
-    }
+    logRerunHint({
+      failedCount: totals.failed,
+      summaryPath,
+      summaryLastPath,
+      log,
+    });
 
     printCategorySummary({
       orderList,
@@ -579,9 +580,9 @@ async function main() {
   const orderList = selectedTests;
   printCombinedSummary(combinedRows, orderList);
 
-  const summaryJsonPath = resolveJsonSummaryPath(summaryPath, env);
   const runEnd = Date.now();
-  const summaryData = buildJsonSummary({
+  writeJsonSummaryReport({
+    env,
     runId,
     manifestPath,
     manifestOrder,
@@ -592,11 +593,8 @@ async function main() {
     summaryPath,
     runStart,
     runEnd,
+    log,
   });
-  writeJsonSummary(summaryJsonPath, summaryData);
-  if (summaryJsonPath) {
-    log(`Summary json: ${summaryJsonPath}`);
-  }
 
   log("All E2E groups finished.");
   if (failures) {
