@@ -9,7 +9,16 @@ const { spawn, spawnSync } = require("child_process");
 
 const { loadManifest } = require("./e2e-manifest");
 const { detectCapabilities } = require("./e2e-capabilities");
-const { resolveJsonSummaryPath, buildPlan, printPlan, buildJsonSummary, writeJsonSummary } = require("./e2e-report");
+const {
+  resolveJsonSummaryPath,
+  ensureSummaryFile,
+  parseSummaryRows,
+  listFailedTests,
+  buildPlan,
+  printPlan,
+  buildJsonSummary,
+  writeJsonSummary,
+} = require("./e2e-report");
 const { hasCommand } = require("./e2e-utils");
 const { parseList, makeRunId, formatDuration } = require("./e2e-runner-utils");
 
@@ -287,24 +296,6 @@ function requireSafeExampleRoot(exampleRoot, safeRoots, env) {
   }
 }
 
-function loadFailedTests(summaryFile) {
-  if (!summaryFile || !fs.existsSync(summaryFile)) {
-    return [];
-  }
-  const lines = fs.readFileSync(summaryFile, "utf8").split(/\r?\n/);
-  const out = [];
-  for (const line of lines) {
-    if (!line || line.startsWith("group\t")) continue;
-    const cols = line.split("\t");
-    if (cols.length < 3) continue;
-    const status = cols[2];
-    if (status === "failed" || status === "aborted") {
-      out.push(cols[1]);
-    }
-  }
-  return out;
-}
-
 async function runCommand(cmd, args, options) {
   if (!options.logFile) {
     const res = spawnSync(cmd, args, { env: options.env, cwd: options.cwd, stdio: "inherit" });
@@ -448,12 +439,7 @@ async function main() {
 
   const initSummaryFile = () => {
     if (!summaryPath) return;
-    ensureDir(path.dirname(summaryPath));
-    if (env.SEAL_E2E_SUMMARY_APPEND !== "1") {
-      fs.writeFileSync(summaryPath, "group\ttest\tstatus\tduration_s\tcategory\tparallel\tskip_risk\tdescription\tlog_path\tfail_hint\n", "utf8");
-    } else if (!fs.existsSync(summaryPath)) {
-      fs.writeFileSync(summaryPath, "group\ttest\tstatus\tduration_s\tcategory\tparallel\tskip_risk\tdescription\tlog_path\tfail_hint\n", "utf8");
-    }
+    ensureSummaryFile(summaryPath, { append: env.SEAL_E2E_SUMMARY_APPEND === "1" });
   };
 
   const updateLastSummary = () => {
@@ -484,7 +470,7 @@ async function main() {
     if (!rerunFrom) {
       log("WARN: SEAL_E2E_RERUN_FAILED=1 but no summary path is set.");
     } else {
-      const failed = loadFailedTests(rerunFrom);
+      const failed = listFailedTests(rerunFrom);
       if (!failed.length) {
         log(`No failed tests in ${rerunFrom}; nothing to rerun.`);
         process.exit(0);
@@ -1116,17 +1102,7 @@ async function main() {
   writeSummaryFile();
   updateLastSummary();
 
-  const summaryRows = summaryPath && fs.existsSync(summaryPath)
-    ? fs.readFileSync(summaryPath, "utf8").split(/\r?\n/).filter(Boolean).slice(1).map((line) => {
-        const cols = line.split("\t");
-        return {
-          test: cols[1],
-          status: cols[2],
-          duration: Number(cols[3] || 0),
-          logPath: cols[8] || "",
-        };
-      })
-    : [];
+  const summaryRows = parseSummaryRows(summaryPath);
   const summaryJsonPath = resolveJsonSummaryPath(summaryPath, env);
   const summaryData = buildJsonSummary({
     runId,

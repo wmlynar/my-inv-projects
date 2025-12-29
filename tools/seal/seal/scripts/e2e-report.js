@@ -3,6 +3,8 @@
 const fs = require("fs");
 const path = require("path");
 
+const SUMMARY_TSV_HEADER = "group\ttest\tstatus\tduration_s\tcategory\tparallel\tskip_risk\tdescription\tlog_path\tfail_hint\n";
+
 function resolveJsonSummaryPath(summaryPath, env) {
   if (env.SEAL_E2E_SUMMARY_JSON_PATH) {
     return env.SEAL_E2E_SUMMARY_JSON_PATH;
@@ -58,6 +60,52 @@ function printPlan(entries, testByName, capabilities, log) {
     const reason = entry.reason || "selected";
     logger(`  - ${entry.name} | ${status} | ${category} | ${reason}`);
   }
+}
+
+function ensureSummaryFile(summaryPath, options = {}) {
+  if (!summaryPath) return;
+  const append = options.append === true;
+  fs.mkdirSync(path.dirname(summaryPath), { recursive: true });
+  if (!append || !fs.existsSync(summaryPath)) {
+    fs.writeFileSync(summaryPath, SUMMARY_TSV_HEADER, "utf8");
+  }
+}
+
+function parseSummaryRows(summaryPath) {
+  if (!summaryPath || !fs.existsSync(summaryPath)) {
+    return [];
+  }
+  const lines = fs.readFileSync(summaryPath, "utf8").split(/\r?\n/);
+  const rows = [];
+  for (const line of lines) {
+    if (!line || line.startsWith("group\t")) continue;
+    const cols = line.split("\t");
+    if (cols.length < 10) continue;
+    rows.push({
+      group: cols[0],
+      test: cols[1],
+      status: cols[2],
+      duration: Number(cols[3] || 0),
+      category: cols[4],
+      parallel: cols[5],
+      skipRisk: cols[6],
+      description: cols[7],
+      logPath: cols[8],
+      failHint: cols[9],
+    });
+  }
+  return rows;
+}
+
+function listFailedTests(summaryPath) {
+  const rows = parseSummaryRows(summaryPath);
+  const failed = new Set();
+  for (const row of rows) {
+    if (row.status === "failed" || row.status === "aborted") {
+      failed.add(row.test);
+    }
+  }
+  return Array.from(failed);
 }
 
 function buildJsonSummary(options) {
@@ -168,7 +216,11 @@ function writeJsonSummary(summaryPath, data) {
 }
 
 module.exports = {
+  SUMMARY_TSV_HEADER,
   resolveJsonSummaryPath,
+  ensureSummaryFile,
+  parseSummaryRows,
+  listFailedTests,
   buildPlan,
   printPlan,
   buildJsonSummary,

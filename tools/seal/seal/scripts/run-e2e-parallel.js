@@ -11,7 +11,16 @@ const REPO_ROOT = path.resolve(SCRIPT_DIR, "../../../..");
 const RUNNER = path.join(SCRIPT_DIR, "run-e2e-suite.sh");
 const { loadManifest } = require("./e2e-manifest");
 const { detectCapabilities } = require("./e2e-capabilities");
-const { resolveJsonSummaryPath, buildPlan, printPlan, buildJsonSummary, writeJsonSummary } = require("./e2e-report");
+const {
+  resolveJsonSummaryPath,
+  ensureSummaryFile,
+  parseSummaryRows,
+  listFailedTests,
+  buildPlan,
+  printPlan,
+  buildJsonSummary,
+  writeJsonSummary,
+} = require("./e2e-report");
 const { hasCommand } = require("./e2e-utils");
 const {
   parseList,
@@ -95,55 +104,9 @@ function detectCgroupCpuLimit() {
 }
 
 
-function loadFailedTests(summaryFile) {
-  if (!summaryFile || !fs.existsSync(summaryFile)) {
-    return [];
-  }
-  const lines = fs.readFileSync(summaryFile, "utf8").split(/\r?\n/);
-  const out = [];
-  for (const line of lines) {
-    if (!line || line.startsWith("group\t")) continue;
-    const cols = line.split("\t");
-    if (cols.length < 3) continue;
-    const status = cols[2];
-    if (status === "failed" || status === "aborted") {
-      out.push(cols[1]);
-    }
-  }
-  return out;
-}
-
-function readSummary(summaryPath) {
-  if (!summaryPath || !fs.existsSync(summaryPath)) {
-    return [];
-  }
-  const lines = fs.readFileSync(summaryPath, "utf8").split(/\r?\n/);
-  const rows = [];
-  for (const line of lines) {
-    if (!line || line.startsWith("group\t")) continue;
-    const cols = line.split("\t");
-    if (cols.length < 10) continue;
-    rows.push({
-      group: cols[0],
-      test: cols[1],
-      status: cols[2],
-      duration: Number(cols[3] || 0),
-      category: cols[4],
-      parallel: cols[5],
-      skipRisk: cols[6],
-      description: cols[7],
-      logPath: cols[8],
-      failHint: cols[9],
-    });
-  }
-  return rows;
-}
-
 function writeCombinedSummary(summaryPath, groupOrder, groupSummary, syntheticRows) {
   if (!summaryPath) return;
-  fs.mkdirSync(path.dirname(summaryPath), { recursive: true });
-  const header = "group\ttest\tstatus\tduration_s\tcategory\tparallel\tskip_risk\tdescription\tlog_path\tfail_hint\n";
-  fs.writeFileSync(summaryPath, header, "utf8");
+  ensureSummaryFile(summaryPath, { append: false });
   const writtenTests = new Set();
   for (const group of groupOrder) {
     const file = groupSummary[group];
@@ -325,7 +288,7 @@ async function main() {
     if (!rerunFrom) {
       log("WARN: SEAL_E2E_RERUN_FAILED=1 but no summary path is set.");
     } else {
-      const failed = loadFailedTests(rerunFrom);
+      const failed = listFailedTests(rerunFrom);
       if (!failed.length) {
         log(`No failed tests in ${rerunFrom}; nothing to rerun.`);
         process.exit(0);
@@ -652,7 +615,7 @@ async function main() {
       const wallTime = groupDurations[group] || 0;
       let testSum = 0;
       let hasTests = false;
-      const rows = readSummary(summaryFile);
+      const rows = parseSummaryRows(summaryFile);
       for (const row of rows) {
         hasTests = true;
         testSum += row.duration || 0;
@@ -809,7 +772,7 @@ async function main() {
   writeCombinedSummary(summaryPath, [...filteredGroups, ...serialFiltered], groupSummary, abortedRows);
   updateLastSummary(summaryPath, summaryLastPath);
 
-  const combinedRows = readSummary(summaryPath);
+  const combinedRows = parseSummaryRows(summaryPath);
   const orderList = selectedTests;
   printCombinedSummary(combinedRows, orderList);
 
