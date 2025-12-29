@@ -501,6 +501,8 @@ Przykład:
 - STD-089z.ae (SHOULD): użycie `scp` vs `sftp` jest jawne; dla legacy scp stosuj `-O` lub preferuj `rsync`/`sftp` z testem kompatybilności.
 - STD-089z.af (SHOULD): unity ustawiają `KillMode=control-group` i jawny `KillSignal` (domyślnie SIGTERM), aby stop usuwał child‑processy.
 - STD-089z.ag (SHOULD): unity mają `TimeoutStopSec` ustawiony jawnie; długie shutdowny są uwzględnione w profilu.
+- STD-089z.ah (SHOULD): unity konfigurują `StartLimitIntervalSec`/`StartLimitBurst` + `RestartSec` (backoff), aby uniknąć pętli restartów.
+- STD-089z.ai (SHOULD): `Restart=` jest dobrany do typu usługi (np. `on-failure` dla long‑running; brak restartu dla `oneshot`).
 - STD-090c (SHOULD): preflight sprawdza **narzedzia CLI** (np. `postject` w `node_modules/.bin`/PATH), nie tylko obecność modulu.
 - STD-091a (SHOULD): funkcje zalezne od architektury (np. CPUID) musza degradująco dzialac na platformach bez wsparcia (pusty/neutralny ID zamiast twardego bledu).
 - STD-092a (SHOULD): `--skip-check` jest wyraznie oznaczony jako ryzykowny i zawsze wypisuje ostrzezenie; krytyczne braki toolchaina nie powinny byc maskowane.

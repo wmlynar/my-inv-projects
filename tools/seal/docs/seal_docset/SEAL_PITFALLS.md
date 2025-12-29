@@ -2472,10 +2472,11 @@
 
 ## Dodatkowe wnioski (batch 306-310)
 
-- Blad: `systemctl stop` nie zabijał procesów potomnych (childy zostawały), bo domyślny `KillMode` nie obejmował całej grupy.
-  - Wymaganie: ustaw `KillMode=control-group` oraz jawny `KillSignal=SIGTERM`; po `TimeoutStopSec` systemd może wysłać SIGKILL.
-- Blad: brak `TimeoutStopSec` powodował wiszące zatrzymania usług, co blokowało deploy/restart.
-  - Wymaganie: ustaw jawny `TimeoutStopSec` i loguj wartość; dla długich shutdownów zapewnij hooks lub wydłuż timeout.
+- Blad: `systemd` restartował usługę zbyt agresywnie (brak `StartLimit*`), powodując pętle restartów i zalewanie logów.
+  - Wymaganie: ustaw `StartLimitIntervalSec` + `StartLimitBurst` oraz `RestartSec` dla backoff; loguj politykę restartu.
+- Blad: unit miał `Restart=always` nawet dla `oneshot`, co prowadziło do niekończących się restartów po sukcesie.
+  - Wymaganie: `Restart=` dobieraj do typu usługi (np. `on-failure` dla long‑running), a `oneshot` bez restartu.
+
 
 ## Dodatkowe wnioski (batch 296-300)
 
@@ -2600,6 +2601,8 @@
   - Wymaganie: normalizuj newline do LF przy odczycie manifestu i trimuj `\\r`.
 - Blad: duplikaty nazw testow w manifeście powodowaly nadpisanie metadanych (ostatnia linia wygrywa), co ukrywalo brakujace testy.
   - Wymaganie: wykrywaj duplikaty nazw testow w manifeście i fail‑fast z lista konfliktow.
+- Zmiana: manifest E2E jest teraz w `e2e-tests.json5` (JSON/JSON5), a TSV zostaje jako legacy/fallback.
+  - Wymaganie: traktuj JSON5 jako źródło prawdy; TSV utrzymuj tylko jeśli potrzebny.
 
 ## Dodatkowe wnioski (batch 341-345)
 
