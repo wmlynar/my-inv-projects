@@ -1062,6 +1062,10 @@ Ten moduł dotyczy testów E2E (zwłaszcza po sealingu), które mają potwierdza
 - TEST-013 (SHOULD): runner respektuje per-test `parallel` (serial/exclusive) i loguje wymuszone uruchomienia sekwencyjne.
 - TEST-014 (SHOULD): summary zawiera fingerprint manifestu i konfiguracji (hash pliku E2E + kluczowe ENV), a rerun weryfikuje zgodnosc (mismatch = FAIL lub `--force`).
 - TEST-015 (SHOULD): dla testow budujacych artefakty loguj buildId/outDir/variant i zapisuj te metadane w summary.
+- TEST-016 (SHOULD): `requirements` w manifeście E2E są walidowane against allowlista; nieznane tokeny = FAIL (strict) lub warning + lista znanych wartości.
+- TEST-017 (SHOULD): `category`/`skipRisk` są normalizowane i walidowane (np. `low|medium|high`); nieznane wartości = warning + fallback do `misc/unknown`.
+- TEST-018 (SHOULD): runner wykonuje preflight `script` (istnienie i uruchamialność); brak pliku lub brak uprawnień = fail‑fast z pełną ścieżką.
+- TEST-019 (SHOULD): summary jest samowystarczalne: zawiera metadane testu oraz reason SKIP/planu, aby dało się zdiagnozować i rerunować bez dodatkowego kontekstu.
 
 ## 11. Minimalny „kontrakt dla AI” (wersja promptable)
 

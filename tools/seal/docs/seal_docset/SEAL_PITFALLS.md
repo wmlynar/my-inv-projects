@@ -2811,3 +2811,14 @@
   - Wymaganie: summary zapisuje fingerprint manifestu i konfiguracji (hash pliku E2E + kluczowe ENV), a rerun sprawdza zgodnosc; mismatch = FAIL lub wymaga `--force`.
 - Blad: raport z E2E nie zawieral informacji o buildzie (buildId/outDir/variant), przez co diagnoza trafiala w nie ten artefakt.
   - Wymaganie: testy loguja buildId/outDir/variant dla kazdego builda, a summary przechowuje te metadane per test.
+
+## Dodatkowe wnioski (batch 366-370)
+
+- Blad: manifest E2E zawieral nieznane `requirements` (literowki lub nieudokumentowane tokeny), co skutkowalo cichym SKIP bez jasnego powodu.
+  - Wymaganie: `requirements` jest walidowane against allowlista; nieznane wartosci = FAIL (strict) lub warning + lista znanych tokenow.
+- Blad: `category` i `skipRisk` mialy literowki/rozne formaty (`Security`, `security `), co rozbijalo raporty na wiele pseudo‑kategorii i utrudnialo ocene ryzyka.
+  - Wymaganie: `category`/`skipRisk` sa normalizowane i walidowane (allowlista, np. `low|medium|high`); nieznane = warning + fallback do `misc/unknown`.
+- Blad: `script` w manifeście wskazywal nieistniejacy plik lub niewykonywalny skrypt, a błąd pojawial sie dopiero w trakcie runu.
+  - Wymaganie: preflight sprawdza istnienie i uruchamialnosc `script` (file + perms); brak = fail‑fast z pełną ścieżką.
+- Blad: summary zawieral tylko statusy/czasy, bez metadanych testu (category/description/skipRisk/failHint/requirements), co utrudnialo szybka diagnoze i rerun.
+  - Wymaganie: summary zawsze zawiera metadane testu i reason SKIP/planu, tak aby raport byl samowystarczalny.
