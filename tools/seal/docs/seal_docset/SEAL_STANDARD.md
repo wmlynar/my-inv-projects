@@ -337,6 +337,7 @@ Przykład:
 - STD-027d (SHOULD): testy funkcji wielomodalnych (np. kilka trybow bootstrapa) pokrywaja kazdy tryb co najmniej raz i loguja aktywny wariant.
 - STD-027ab (SHOULD): E2E obejmuje rollback po failu restart/ready oraz payload-only fallback (brak runtime lub mismatch wersji).
 - STD-027ac (SHOULD): runner E2E wykrywa potrzebe eskalacji (np. `EPERM` na spawn/priv ops) i re‑execuje sie **przed** tworzeniem cache/log/tmp; brak eskalacji = fail‑fast z instrukcja, bez czesciowego runu.
+- STD-027ad (SHOULD): UI E2E trzyma cache przegladarek i marker instalacji w tym samym root (`PLAYWRIGHT_BROWSERS_PATH`/`XDG_CACHE_HOME`); unikaj twardego `/root` poza Dockerem i loguj effective sciezki.
 - STD-027e (SHOULD): prereq check (narzedzia/feature) jest per‑test/per‑tryb; brak = SKIP z powodem, nie blokuje reszty suite.
 - STD-027f (SHOULD): override timeoutow jest warunkowy i wlacza sie tylko, gdy dana funkcja/artefakt jest aktywna.
 - STD-027g (SHOULD): runner E2E auto‑discoveruje testy lub uzywa manifestu z CI checkiem, aby zadny test nie byl „zapomniany”.
