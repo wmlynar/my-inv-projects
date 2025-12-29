@@ -2527,3 +2527,12 @@
   - Wymaganie: wrappery przekazuja **pelny** zestaw zmiennych cache/safe‑roots; gdy dodajesz nowe ENV, aktualizuj wszystkie miejsca uruchomien.
 - Blad: seed cache byl kluczowany przez `SUDO_USER/USER`, ktore w kontenerze bywa puste; skutkiem byly nieczytelne sciezki typu `.../unknown` i kolizje cache.
   - Wymaganie: wyznacz seed user stabilnie (`id -un` lub `id -u`) i pozwol na jawne override `SEAL_E2E_SEED_ROOT`; zawsze loguj efektywna sciezke.
+
+## Dodatkowe wnioski (batch 311-315)
+
+- Blad: wrapper uruchamiajacy testy nie czyscil `BASH_ENV/ENV/CDPATH/GLOBIGNORE`, przez co **jeszcze przed** startem runnera wykonywaly sie obce hooki i pojawialy sie losowe bledy skladni.
+  - Wymaganie: kazdy entrypoint/wrapper (nie tylko runner) czyści ryzykowne ENV albo używa `env -i` z allowlista, zanim uruchomi kolejne skrypty.
+- Blad: `SEAL_E2E_SAFE_ROOTS` zawieral spacje lub trailing separator, a parser traktowal je jako osobne tokeny, przez co bezpieczny katalog byl odrzucany.
+  - Wymaganie: safe‑roots podawaj jako sciezki bez spacji (lub jawnie escapowane) i bez trailing separatorow; loguj znormalizowana liste.
+- Blad: `mktemp` failowal przez brak inode w `/tmp` przy bardzo rownoleglych runach (duzo malych katalogow/plikow), mimo ze wolne miejsce było OK.
+  - Wymaganie: preflight sprawdza wolne inodes (np. `df -Pi`) dla temp/cache i sugeruje inny `SEAL_E2E_TMP_ROOT` przy niskich wartościach.
