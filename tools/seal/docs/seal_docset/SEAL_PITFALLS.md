@@ -2382,3 +2382,14 @@
   - Wymaganie: loguj tylko fakt mismatchu + opcjonalnie krotki prefix hasha i/lub czytelna wersje lokalna; nie loguj pelnych markerow.
 - Blad: odczyt markerow przez SSH zakladal istnienie `base64`, co na minimalnych hostach powodowalo ciche bledy.
   - Wymaganie: preflight sprawdza `base64` (lub fallback `python3`/`openssl`); brak = fail‑fast z instrukcja instalacji.
+
+## Dodatkowe wnioski (batch 251-255)
+
+- Blad: payload-only zakladal obecność launchera/runtime i kopiowal tylko payload; przy usunietym `b/a` lub `r/rt` powstawal niespojny stan.
+  - Wymaganie: payload-only weryfikuje obecność launchera i runtime; brak = full upload z logiem powodu.
+- Blad: payload-only reuse nie sprawdzal `r/nb.node` (native bootstrap), co prowadzilo do crashy przy starcie.
+  - Wymaganie: gdy release wymaga native bootstrap, sprawdz `r/nb.node` na target; brak = fallback do pelnego uploadu.
+- Blad: bootstrap nie walidowal typu `installDir` (plik/symlink), co dawalo niejasne bledy przy `mkdir/chown`.
+  - Wymaganie: preflight sprawdza, ze `installDir` jest katalogiem (bez symlink); inaczej fail‑fast z instrukcja.
+- Blad: bootstrap po `sudo mkdir` nie weryfikowal owner/perms, przez co zostawal root‑owned installDir i kolejne deploye padaly.
+  - Wymaganie: po bootstrapie waliduj owner/perms kluczowych katalogow i w razie bledu daj instrukcje naprawy (lub retry `chown`).
