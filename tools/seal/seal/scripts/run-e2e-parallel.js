@@ -21,7 +21,7 @@ const {
   logRerunHint,
   writeJsonSummaryReport,
 } = require("./e2e-report");
-const { loadE2EConfig, resolveSummaryPaths, resolveRerunFrom, isPlanMode } = require("./e2e-runner-config");
+const { loadE2EConfig, resolveSummaryPaths, resolveLogDir, resolveRerunFrom, isPlanMode } = require("./e2e-runner-config");
 const {
   assertEscalated,
   makeRunId,
@@ -30,6 +30,7 @@ const {
   safeName,
   logEffectiveConfig,
   formatConfigLine,
+  buildTimingRows,
 } = require("./e2e-runner-utils");
 const { preparePlan, applyRerunFailedFilters } = require("./e2e-runner-plan");
 
@@ -139,7 +140,7 @@ async function main() {
   const cacheRoot = env.SEAL_E2E_CACHE_DIR || path.dirname(cacheBin);
   const manifestPath = env.SEAL_E2E_MANIFEST || path.join(SCRIPT_DIR, "e2e-tests.json5");
   const manifestStrict = normalizeFlag(env.SEAL_E2E_MANIFEST_STRICT, "1") === "1";
-  const logRoot = env.SEAL_E2E_LOG_DIR || path.join(cacheRoot, "e2e-logs", runId);
+  const logRoot = resolveLogDir({ env, cacheRoot, runId });
   const { summaryPath, summaryLastPath } = resolveSummaryPaths({ env, cacheRoot, runId });
   const failFast = normalizeFlag(env.SEAL_E2E_FAIL_FAST, "0");
   const remoteE2e = normalizeFlag(env.SEAL_E2E_SSH || env.SEAL_SHIP_SSH_E2E, "0");
@@ -472,11 +473,7 @@ async function main() {
   }
 
   function printGroupSummary() {
-    const entries = Object.keys(groupDurations).map((name) => ({
-      name,
-      duration: groupDurations[name],
-      status: groupStatus[name],
-    }));
+    const entries = buildTimingRows(groupDurations, groupStatus);
     printTimingSummary({
       label: "Group timing summary:",
       entries,

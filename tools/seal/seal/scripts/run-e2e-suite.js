@@ -20,7 +20,7 @@ const {
   writeJsonSummaryReport,
 } = require("./e2e-report");
 const { hasCommand } = require("./e2e-utils");
-const { loadE2EConfig, resolveSummaryPaths, resolveRerunFrom, isPlanMode } = require("./e2e-runner-config");
+const { loadE2EConfig, resolveSummaryPaths, resolveLogDir, resolveRerunFrom, isPlanMode } = require("./e2e-runner-config");
 const { assertEscalated, makeRunId, formatDuration, logEffectiveConfig, formatConfigLine, buildTimingRows } = require("./e2e-runner-utils");
 const { applyToolsetDefaults, applyE2EFeatureFlags, applySshDefaults } = require("./e2e-runner-env");
 const { preparePlan, applyRerunFailedFilters } = require("./e2e-runner-plan");
@@ -271,7 +271,7 @@ async function main() {
   });
 
   let logCapture = env.SEAL_E2E_CAPTURE_LOGS || "1";
-  let logDir = env.SEAL_E2E_LOG_DIR || path.join(cacheRoot, "e2e-logs", runId);
+  let logDir = resolveLogDir({ env, cacheRoot, runId });
   env.SEAL_E2E_LOG_DIR = logDir;
   const logTailLines = Number(env.SEAL_E2E_LOG_TAIL_LINES || "40");
   const logFiltered = env.SEAL_E2E_LOG_FILTERED || "1";

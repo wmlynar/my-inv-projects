@@ -113,6 +113,13 @@ function resolveSummaryPaths(options) {
   };
 }
 
+function resolveLogDir(options) {
+  const env = options.env || process.env;
+  const cacheRoot = options.cacheRoot || "";
+  const runId = options.runId || "";
+  return env.SEAL_E2E_LOG_DIR || path.join(cacheRoot, "e2e-logs", runId);
+}
+
 function resolveRerunFrom(env, summaryPath, summaryLastPath) {
   const rerunOverride = env.SEAL_E2E_RERUN_FROM || "";
   if (rerunOverride) return rerunOverride;
@@ -128,6 +135,7 @@ module.exports = {
   loadE2EConfig,
   parseTestFilters,
   resolveSummaryPaths,
+  resolveLogDir,
   resolveRerunFrom,
   isPlanMode,
 };
