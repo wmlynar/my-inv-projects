@@ -469,6 +469,9 @@ Przykład:
 - STD-089z.i (SHOULD): skrypty automatyzacji SSH ustawiają jawnie `ControlMaster`/`ControlPath` (np. `no` albo krótki hashed path), aby uniknąć zależności od `~/.ssh/config`.
 - STD-089z.j (SHOULD): przed ekstrakcją `tar` waliduj listę plików (`tar -tf`) i odrzuć ścieżki z `..` lub absolutne; po ekstrakcji weryfikuj root.
 - STD-089z.k (SHOULD): preflight SSH weryfikuje perms `~/.ssh` (700) i kluczy (600) oraz normalizuje CRLF w kluczach; brak = fail‑fast z instrukcją.
+- STD-089z.l (SHOULD): odczyt statusu systemd interpretuje exit codes (`is-active`/`is-enabled`) zgodnie z dokumentacją; `inactive/disabled` to stan, nie błąd.
+- STD-089z.m (SHOULD): po ekstrakcji/uploadzie zawsze ustaw `chmod +x` dla runnerów/skryptów i waliduj permsy; brak = fail‑fast.
+- STD-089z.n (SHOULD): waliduj tar pod kątem symlink/hardlink traversal (brak ścieżek wychodzących poza root).
 - STD-090c (SHOULD): preflight sprawdza **narzedzia CLI** (np. `postject` w `node_modules/.bin`/PATH), nie tylko obecność modulu.
 - STD-091a (SHOULD): funkcje zalezne od architektury (np. CPUID) musza degradująco dzialac na platformach bez wsparcia (pusty/neutralny ID zamiast twardego bledu).
 - STD-092a (SHOULD): `--skip-check` jest wyraznie oznaczony jako ryzykowny i zawsze wypisuje ostrzezenie; krytyczne braki toolchaina nie powinny byc maskowane.

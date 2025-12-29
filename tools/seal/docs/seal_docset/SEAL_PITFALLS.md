@@ -2399,6 +2399,15 @@
 - Blad: klucze SSH w repo miały CRLF/BOM i ssh zwracał „invalid format”.
   - Wymaganie: normalizuj newline do LF (`dos2unix`) i sprawdzaj `ssh-keygen -y -f key` w preflight; brak = fail‑fast z instrukcją.
 
+## Dodatkowe wnioski (batch 271-275)
+
+- Blad: `systemctl is-active`/`is-enabled` zwracaly nie‑zero dla stanów prawidłowych (np. `inactive`), a skrypty traktowały to jako błąd.
+  - Wymaganie: interpretuj exit code `systemctl` zgodnie z dokumentacją; statusy `inactive`/`disabled` nie są błędem przy odczycie stanu.
+- Blad: ekstrakcja `tar` pozwalała na symlinki/hardlinki prowadzące poza katalog docelowy (po ekstrakcji można było odczytać/napisać pliki spoza root).
+  - Wymaganie: przed ekstrakcją odrzuć wpisy będące symlink/hardlink poza root lub ustaw `--no-same-owner` + weryfikuj po ekstrakcji realpath każdego pliku.
+- Blad: po uploadzie plików uruchomieniowych na host docelowy brakowało `+x` (umask/rsync/scp zrzucały uprawnienia), co powodowało „Permission denied”.
+  - Wymaganie: po rozpakowaniu/uploadzie jawnie ustaw `chmod +x` dla runnerów/skryptów oraz weryfikuj permsy (fail‑fast).
+
 ## Dodatkowe wnioski (batch 246-250)
 
 - Blad: marker runtime byl tylko „gołym” hashem bez wersji/algorytmu, co utrudnialo zmiane formatu i migracje w przyszlosci.
