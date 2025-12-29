@@ -43,7 +43,13 @@ load_e2e_config() {
       cfg="$sample_cfg"
     fi
   fi
-  if [ -n "$cfg" ] && [ -f "$cfg" ]; then
+  if [ -n "$cfg" ]; then
+    if [ ! -f "$cfg" ]; then
+      fail "SEAL_E2E_CONFIG points to missing file: $cfg"
+    fi
+    if [ ! -r "$cfg" ]; then
+      fail "SEAL_E2E_CONFIG is not readable: $cfg"
+    fi
     log "Loading E2E config: $cfg"
     set -a
     # shellcheck disable=SC1090
@@ -482,12 +488,18 @@ $DOCKER run --rm \
   -e SEAL_E2E_SSH="${REMOTE_E2E}" \
   -e SEAL_E2E_CONFIG="${SEAL_E2E_CONFIG:-}" \
   -e SEAL_E2E_TOOLSET="${TOOLSET}" \
+  -e SEAL_E2E_RUN_ID="${SEAL_E2E_RUN_ID:-}" \
   -e SEAL_E2E_PARALLEL="${SEAL_E2E_PARALLEL:-0}" \
   -e SEAL_E2E_PARALLEL_MODE="${SEAL_E2E_PARALLEL_MODE:-}" \
   -e SEAL_E2E_JOBS="${SEAL_E2E_JOBS:-}" \
   -e SEAL_E2E_TESTS="${SEAL_E2E_TESTS:-}" \
   -e SEAL_E2E_SKIP="${SEAL_E2E_SKIP:-}" \
   -e SEAL_E2E_LIMITED_HOST="${SEAL_E2E_LIMITED_HOST:-}" \
+  -e SEAL_E2E_ISOLATE_HOME="${SEAL_E2E_ISOLATE_HOME:-}" \
+  -e SEAL_E2E_HOME_ROOT="${SEAL_E2E_HOME_ROOT:-}" \
+  -e SEAL_E2E_HOME_KEEP="${SEAL_E2E_HOME_KEEP:-}" \
+  -e SEAL_E2E_SAFE_ROOTS="${SEAL_E2E_SAFE_ROOTS:-}" \
+  -e SEAL_E2E_UNSAFE_EXAMPLE_ROOT="${SEAL_E2E_UNSAFE_EXAMPLE_ROOT:-}" \
   -e SEAL_E2E_RERUN_FAILED="${SEAL_E2E_RERUN_FAILED:-}" \
   -e SEAL_E2E_RERUN_FROM="${SEAL_E2E_RERUN_FROM:-}" \
   -e SEAL_E2E_SUMMARY_PATH="${SEAL_E2E_SUMMARY_PATH:-}" \
