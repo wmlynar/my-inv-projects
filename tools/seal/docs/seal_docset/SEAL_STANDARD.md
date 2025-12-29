@@ -96,6 +96,7 @@ Przykład:
 - STD-040 (SHOULD): preflight uzywa tych samych argumentow i srodowiska co runtime.
 - STD-040a (SHOULD): runtime/serwis uruchamia aplikacje z `NODE_ENV=production` (jesli nie ustawiono inaczej), a testy E2E sprawdzaja ten tryb.
 - STD-040b (SHOULD): runtime sanitizuje ryzykowne ENV (`NODE_OPTIONS`, `NODE_PATH`, `NODE_EXTRA_CA_CERTS`, `NODE_V8_COVERAGE`, `NODE_DEBUG`) aby nie wstrzykiwac hookow/inspect z hosta; debug uruchamiaj jawnie przez flagi runtime.
+- STD-040c (SHOULD): wewnetrzne uruchomienia Node korzystaja z `process.execPath` (nie z PATH), aby uniknac rozjazdow wersji; loguj użyta binarke.
 - STD-041 (SHOULD): release nie moze polegac na toolchainie builda na serwerze.
 
 #### Operacje / niezawodnosc

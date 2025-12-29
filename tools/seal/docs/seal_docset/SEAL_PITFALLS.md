@@ -57,6 +57,9 @@
 - Blad: `spawn` dostawal ENV z wartosciami `undefined`/non‑string, co dawalo `ERR_INVALID_ARG_TYPE` albo literalny string `undefined` w procesie potomnym.
   - Wymaganie: przed uruchomieniem child procesow filtruj ENV do stringow; `null/undefined` usuwaj, inne typy serializuj jawnie lub fail‑fast.
 
+- Blad: wewnetrzne uruchomienia `node` uzywaly binarki z PATH, co na maszynach z wieloma wersjami Node dawalo niespojne wyniki (inna wersja dla CLI i child procesu).
+  - Wymaganie: uruchamiaj child‑node przez `process.execPath` (lub jawnie zweryfikowana sciezke), a w logach wypisz `node -v` i binarke.
+
 - Blad: operacje na sciezkach (rm/rsync/copy) podazaly za symlinkami i mogly wyjsc poza root.
   - Wymaganie: przed operacjami destrukcyjnymi sprawdz `realpath` i czy jest w dozwolonym root.
   - Wymaganie: nie podazaj za symlinkami (`lstat` + blokada) i odrzucaj `..` w identyfikatorach.
