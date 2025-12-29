@@ -135,6 +135,7 @@ Przykład:
 - STD-030 (SHOULD): build/deploy/clean uzywaja lockfile; kolizje maja czytelny komunikat i nie niszcza stanu.
 - STD-030a (SHOULD): systemd `ExecStart` uzywa absolutnych sciezek; brak `WorkingDirectory` wymaga pelnych sciezek do binarki i configu.
 - STD-030b (SHOULD): po aktualizacji pliku unit zawsze wykonaj `systemctl daemon-reload` (lub `--user`), aby uniknac starej konfiguracji.
+- STD-030b.a (SHOULD): unit file zapisuj atomowo (tmp + `fsync` + `rename` + `fsync` katalogu), aby systemd nie odczytal polowicznego pliku; dopiero potem `daemon-reload`.
 - STD-030c (SHOULD): wywolania `systemctl` maja timeout i obsługę braku systemd/DBus (SKIP z powodem w testach).
 - STD-030d (SHOULD): dla `systemctl --user` w trybie non‑interactive ustaw `XDG_RUNTIME_DIR`/`DBUS_SESSION_BUS_ADDRESS` lub fail‑fast z instrukcja; brak tych zmiennych nie moze dawac niejasnego bledu.
 - STD-030d (SHOULD): `serviceName` nie zawiera sufiksu `.service`; normalizuj lub fail‑fast z jasnym bledem.
@@ -289,6 +290,7 @@ Przykład:
 - STD-130 (SHOULD): jesli format bloba ma wiele wersji, runtime akceptuje znane wersje i waliduje spojnosc `version ↔ length`; nie toleruj cichych rozjazdow.
 - STD-129a (SHOULD): rozpakowanie artefaktu odbywa sie w katalogu stagingowym; `current.buildId` aktualizuj dopiero po walidacji.
 - STD-129b (SHOULD): dla sentinela z opoznionym wygasaniem uruchamiaj `sentinel verify` tym samym kodem co runtime przed release/deploy; pomijanie weryfikacji tylko jawnie (flaga/ENV) z ostrzezeniem; testy uzywaja krotszych okresow lub hooka czasu.
+- STD-129c (SHOULD): okresowe kontrole sentinela maja minimalny interwal + jitter i cache’owanie kosztownych odczytów (np. xattr/machine‑id), aby uniknac spike I/O/CPU.
 - STD-130b (SHOULD): dla krytycznych binarek nie polegaj na niekontrolowanym `PATH`; uzywaj `command -v` + whitelisty lub absolutnych sciezek, szczegolnie przy `sudo`.
 - STD-130a (SHOULD): wykrywanie narzedzi z `node_modules/.bin` musi uwzgledniac monorepo/workspaces (sprawdzaj kilka poziomow lub uzyj `npm bin -w`/`npm exec`), inaczej CLI/testy beda false‑negative.
 - STD-131 (SHOULD): przy ekstrakcji archiwow w deploy ustaw `--no-same-owner` i `--no-same-permissions` oraz ustaw jawne perm po rozpakowaniu.
@@ -317,6 +319,7 @@ Przykład:
 - STD-149b (SHOULD): `host` nie zaczyna sie od `-`; odrzucaj znaki kontrolne i inne, ktore moglyby zostac zinterpretowane jako opcje CLI.
 - STD-150 (SHOULD): zanim uruchomisz `strip`/packer na pliku, zweryfikuj typ (ELF magic/`file`) i w razie braku zgodnosci wykonaj SKIP z powodem.
 - STD-150a (SHOULD): po `strip`/packerze wykonaj szybki smoke test (np. `--version`/`--help` lub krótki run z timeoutem), aby wykryć uszkodzone binarki.
+- STD-150b (SHOULD): loguj rozmiar binarki przed/po hardeningu i weryfikuj minimalny rozmiar (brak zero‑length/nieprawdopodobnie małych plików).
 - STD-151 (SHOULD): gdy operacja wymaga uprawnien/sandbox escape, komunikat musi jasno prosic o zgode; brak cichych fallbackow.
 - STD-152 (SHOULD): dla `thin-split` hardening (strip/packer) musi targetowac **launcher** (`b/a`), a nie wrapper `./<app>`; zapisuj w metadanych/logach, ktory plik byl celem.
 - STD-153 (SHOULD): dla packagerów AIO (SEA/thin-single) hardening (strip/packer) jest ignorowany (auto-disabled) z jasnym ostrzeżeniem i rekomendacją `thin-split`; nie próbuj modyfikować AIO.
@@ -386,6 +389,7 @@ Przykład:
 - STD-105 (SHOULD): semantyka multi‑project jest jawna (domyslnie fail‑fast); `--continue-on-error` musi byc wyraznie wskazany.
 - STD-105a (SHOULD): kolejnosc projektow w workspace jest deterministyczna (sort po `name`/`path`) i jawnie logowana.
 - STD-019 (SHOULD): shell completion nie moze maskowac opcji (gdy token zaczyna sie od `-`, podpowiada opcje). Aktualizuj completion po kazdej zmianie CLI.
+- STD-019a (SHOULD): completion respektuje `--` (koniec opcji) i po nim nie podpowiada flag, tylko argumenty pozycyjne.
 - STD-020 (SHOULD): wizard CLI powinien podawac krotkie opisy komend i rekomendowana akcje na teraz; w trybie TTY dziala krok-po-kroku (petla).
 - STD-021 (SHOULD): output CLI ma byc jednoznaczny i akcjonowalny (bledy/warningi z konkretnym "co dalej" i bez duplikatow).
 - STD-022 (SHOULD): `seal check` podaje dokladne kroki naprawcze (np. nazwy pakietow apt-get) i wskazuje brakujace narzedzia wprost.
@@ -443,6 +447,7 @@ Przykład:
 - STD-089e.a (SHOULD): w CI uzywaj `--progress=plain` (lub `BUILDKIT_PROGRESS=plain`) dla `docker build`, aby logi byly diagnostyczne.
 - STD-089e.b (SHOULD): cleanup docker compose uzywa `--remove-orphans`, aby nie zostawiac osieroconych kontenerow po zmianach w compose.
 - STD-089e.c (SHOULD): docker‑compose uruchamiaj z unikalnym `COMPOSE_PROJECT_NAME`/`--project-name` per‑run, aby uniknac kolizji sieci/wolumenow i cross‑test contamination.
+- STD-089e.d (SHOULD): w Dockerfile lacz `apt-get update` i `apt-get install` w jednym `RUN`, aby cache nie prowadził do 404/starych indeksow.
 - STD-089f (SHOULD): test‑workspace nie kopiuje `node_modules/`; zaleznosci instaluje osobno (deterministycznie) i loguje czy instalacja byla fresh.
 - STD-089g (SHOULD): kazdy SKIP w testach musi wypisac powod oraz instrukcje jak wymusic pelny test (ENV/flag).
 - STD-089h (SHOULD): w CI/E2E uzywaj `npm ci` dla deterministycznych zaleznosci; `npm install` tylko lokalnie (bez modyfikacji lockfile).
@@ -1070,6 +1075,7 @@ Ten moduł dotyczy testów E2E (zwłaszcza po sealingu), które mają potwierdza
 - TEST-017 (SHOULD): `category`/`skipRisk` są normalizowane i walidowane (np. `low|medium|high`); nieznane wartości = warning + fallback do `misc/unknown`.
 - TEST-018 (SHOULD): runner wykonuje preflight `script` (istnienie i uruchamialność); brak pliku lub brak uprawnień = fail‑fast z pełną ścieżką.
 - TEST-019 (SHOULD): summary jest samowystarczalne: zawiera metadane testu oraz reason SKIP/planu, aby dało się zdiagnozować i rerunować bez dodatkowego kontekstu.
+- TEST-022 (SHOULD): summary zawiera agregaty per‑kategoria (PASS/FAIL/SKIP) oraz czas per‑kategoria, aby łatwo identyfikować najdroższe obszary.
 - TEST-020 (SHOULD): `e2e-tests.json5` jest jedynym źródłem prawdy; runner nie używa TSV jako manifestu (TSV tylko jako export).
 - TEST-021 (SHOULD): manifest zawiera sekcję `meta` z allowlistami (`categories`, `skipRisk`, `requirements`) używanymi do walidacji.
 

@@ -823,6 +823,9 @@
 - Blad: docker build wciagal ogromny kontekst (`node_modules`, `seal-out`, `.git`), co spowalnialo buildy i wprowadzalo stale artefakty.
   - Wymaganie: utrzymuj `.dockerignore` (min. `node_modules`, `seal-out`, `.git`) i loguj rozmiar kontekstu z ostrzezeniem przy duzych wartosciach.
 
+- Blad: Dockerfile mial `apt-get update` w osobnej warstwie niz `apt-get install`, co prowadzilo do 404/starych indeksow po uzyciu cache.
+  - Wymaganie: lacz `apt-get update` i `apt-get install` w jednym `RUN`, aby cache nie psul instalacji pakietow.
+
 - Blad: obraz testowego serwera byl reuse’owany mimo zmian w Dockerfile/entrypoincie (tag bez zmiany), co uruchamialo stary build.
   - Wymaganie: obraz ma label z hashem wejsc (Dockerfile/entrypoint); mismatch = wymuszenie rebuild.
 
@@ -925,6 +928,7 @@
 
 - Blad: brak metryk czasu ukrywal najwolniejsze testy i utrudnial planowanie rownoległości.
   - Wymaganie: testy E2E logują czas per‑test/per‑grupa oraz sumaryczny czas, zeby mozna było priorytetyzowac optymalizacje.
+  - Wymaganie: summary E2E zawiera zestawienie per‑kategoria (PASS/FAIL/SKIP) oraz czas na kategorie, aby latwo wykryc najwolniejsze obszary.
 
 - Blad: E2E uruchamiane na nielinuxowych systemach dawaly false‑negative (testy packer/obfuscation są linux‑only).
   - Wymaganie: pelny zestaw E2E uruchamiaj na Linux; inne OS powinny jawnie SKIP z powodem.
@@ -1452,6 +1456,8 @@
 
 - Blad: unit file mial zle owner/perms (np. world-writable lub root-owned w user scope), przez co systemd go ignorowal albo logowal ostrzezenia.
   - Wymaganie: waliduj owner/perms unitu (system scope: root:root 0644, user scope: owner=user 0644); bledne = fail‑fast z instrukcja.
+- Blad: unit file byl nadpisywany "w miejscu", a systemd zaczytywal go w trakcie zapisu, co powodowalo bledne parsowanie lub cache starej konfiguracji.
+  - Wymaganie: zapisuj unit atomowo (tmp + `fsync` + `rename` + `fsync` katalogu), a dopiero potem wykonuj `systemctl daemon-reload`.
 
 - Blad: wartosci w pliku unit zawieraly `%` i byly interpretowane jako specifiers, co zmienialo sciezki lub zmienne.
   - Wymaganie: escapuj `%` jako `%%` (lub uzyj `systemd-escape`) i waliduj wartosci przed zapisem unitu.
@@ -1534,6 +1540,8 @@
   - Wymaganie: przed uruchomieniem `strip` sprawdz typ pliku (ELF magic lub `file`) i w razie niezgodnosci SKIP z powodem.
 
 - Blad: ELF packer/strip zwracał sukces, ale binarka byla uszkodzona i crashowala w runtime.
+  - Wymaganie: po hardeningu wykonaj smoke‑test (np. uruchomienie `--help`/`--version` z timeoutem) albo minimalny self‑check, aby wykryc uszkodzone binarki przed deployem.
+  - Wymaganie: waliduj rozmiar wyjsciowy (min size / brak zero‑length) i loguj rozmiar przed/po dla kazdego kroku hardeningu.
   - Wymaganie: po packerze/stripie wykonaj szybki smoke test (np. uruchomienie z `--version`/`--health` lub `file` + krótki run z timeoutem).
 
 - Blad: w `thin-split` `strip`/ELF packer byl uruchamiany na wrapperze (`<app>`), a nie na faktycznym launcherze (`b/a`), przez co ochrona nie dzialala lub dawla falszywe wyniki.
@@ -1610,8 +1618,8 @@
 - Blad: `seal run` nie sprawdzal czy port jest wolny, a `EADDRINUSE` byl niejasny dla operatora.
   - Wymaganie: przed uruchomieniem sprawdz czy port jest zajety i wypisz PID/komende procesu lub jasne “co dalej”.
 
-- Blad: rollback wybieral release `*-fast-*` albo release innej aplikacji.
-  - Wymaganie: rollback filtruje releasy po `appName` i **pomija** `*-fast-*`.
+- Blad: rollback wybieral release innej aplikacji.
+  - Wymaganie: rollback filtruje releasy po `appName`.
 
 - Blad: `status` nie wykrywal procesu uruchomionego przez BOOTSTRAP (`$ROOT/b/a`) przy braku unitu.
   - Wymaganie: fallback `status` uwzglednia `$ROOT/b/a` w detekcji procesu.
@@ -1643,7 +1651,7 @@
   - Wymaganie: waliduj `current.buildId` przy odczycie (bez `/` i `..`, tylko bezpieczny alfabet, limit dlugosci).
   - Wymaganie: po zlozeniu sciezki wymusz, by `realpath` byl w `releasesDir`; niezgodnosc = fail‑fast z komunikatem.
 
-- Blad: `buildId` przekazywany z CLI (np. `--buildId` w FAST/payload) byl uzywany w nazwach plikow i sciezkach bez walidacji, co prowadzilo do zlych sciezek (spacje, `/`, `..`) i problemow ze scp/rsync.
+- Blad: `buildId` przekazywany z CLI (np. `--buildId` przy payload-only) byl uzywany w nazwach plikow i sciezkach bez walidacji, co prowadzilo do zlych sciezek (spacje, `/`, `..`) i problemow ze scp/rsync.
   - Wymaganie: waliduj `buildId` do bezpiecznego alfabetu (`[a-zA-Z0-9._-]`), limit dlugosci, brak `/`/`..`/znakow kontrolnych; w razie potrzeby normalizuj.
 
 - Blad: pliki wskaznikowe (`current.buildId`, `service.name`, `service.scope`) byly czytane bez sprawdzenia typu/rozmiaru; symlink do urzadzenia lub bardzo duzy plik mogl spowodowac hang/DoS.
@@ -1663,6 +1671,7 @@
   - Wymaganie: weryfikacja expiry w `sentinel verify` uzywa czasu hosta (nie lokalnego).
 
 - Blad: sentinel weryfikowany tylko przed startem, brak okresowej kontroli.
+  - Wymaganie: kontrole okresowe maja minimalny interwal + jitter, a kosztowne checki sa cache’owane (np. min. co N sekund), aby uniknac spike I/O/CPU na flocie.
   - Wymaganie: przy `checkIntervalMs>0` okresowo weryfikuj blob i expiry (setInterval + unref).
   - Wymaganie: test E2E musi sprawdzac “start OK → po czasie exitCodeBlock”.
 
@@ -1760,6 +1769,7 @@
 
 - Blad: TAB completion podpowiadal targety i blokowal opcje (np. `seal deploy --`).
   - Wymaganie: gdy biezacy token zaczyna sie od `-`, completion **zawsze** podpowiada opcje.
+  - Wymaganie: po napotkaniu `--` completion traktuje kolejne tokeny jako argumenty pozycyjne (bez podpowiedzi opcji), aby nie psuc oczekiwanych argumentow plikow.
   - Wymaganie: podpowiedzi targetow nie moga maskowac opcji (opcje maja priorytet).
   - Wymaganie: completion musi byc aktualizowany po kazdej zmianie CLI (komendy/opcje).
 
@@ -1896,7 +1906,6 @@
 - UI: optimistic toggle nie miga (grace 300-500 ms).
 - UI (tablet): klik/long-press dziala na `.btn/.tab` i scroll nie blokuje sie po ruchu w bok.
 - Logi nie zawieraja `JSESSIONID` ani danych auth.
-- FAST: `seal ship --fast` ostrzega, nie tworzy `.tgz`, zapisuje do `*-fast`, a cleanup usuwa stare fast releasy.
 - CLI: `appctl` i `seal remote` maja te same komendy/semantyke; `seal ship` dziala jako 1 krok.
 - CLI: `seal` jest dostepny globalnie (link lub `npx --prefix`) i `config diff` uzywa nazwy targetu.
 - Cache/retention: brak niczego, co rosnie bez limitu (cache, tmp, logi, releasy).
