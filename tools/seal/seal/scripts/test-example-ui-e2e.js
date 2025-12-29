@@ -407,7 +407,13 @@ async function testUi(ctx) {
 
   try {
     await withTimeout("uiSmoke", ctx.uiTimeoutMs, () =>
-      runUiTest({ url, buildId, headless: ctx.headless })
+      runUiTest({
+        url,
+        buildId,
+        headless: ctx.headless,
+        artifactsDir: ctx.artifactsDir,
+        captureTrace: ctx.captureTrace,
+      })
     );
   } finally {
     child.kill("SIGTERM");
@@ -453,7 +459,9 @@ async function main() {
   const testTimeoutMs = resolveE2ETimeout("SEAL_UI_E2E_TIMEOUT_MS", 240000);
   const headless = process.env.SEAL_UI_E2E_HEADLESS !== "0";
   const keepArtifacts = process.env.SEAL_UI_E2E_KEEP === "1";
-  const ctx = { buildTimeoutMs, runTimeoutMs, uiTimeoutMs, headless, keepArtifacts };
+  const artifactsDir = resolveArtifactsDir();
+  const captureTrace = process.env.SEAL_UI_E2E_TRACE !== "0";
+  const ctx = { buildTimeoutMs, runTimeoutMs, uiTimeoutMs, headless, keepArtifacts, artifactsDir, captureTrace };
 
   await withTimeout("testUi", testTimeoutMs, () => testUi(ctx));
   log("OK: ui-e2e");
