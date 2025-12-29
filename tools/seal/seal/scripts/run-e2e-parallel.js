@@ -4,15 +4,22 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const crypto = require("crypto");
 const { spawn, spawnSync } = require("child_process");
 
 const SCRIPT_DIR = __dirname;
+const REPO_ROOT = path.resolve(SCRIPT_DIR, "../../../..");
 const RUNNER = path.join(SCRIPT_DIR, "run-e2e-suite.sh");
 const { loadManifest } = require("./e2e-manifest");
 const { detectCapabilities } = require("./e2e-capabilities");
 const { resolveJsonSummaryPath, buildPlan, printPlan, buildJsonSummary, writeJsonSummary } = require("./e2e-report");
 const { hasCommand } = require("./e2e-utils");
+const {
+  parseList,
+  makeRunId,
+  formatDuration,
+  normalizeFlag,
+  safeName,
+} = require("./e2e-runner-utils");
 
 function log(msg) {
   process.stdout.write(`[seal-e2e-parallel] ${msg}\n`);
@@ -51,40 +58,9 @@ function ensureEscalation() {
   process.exit(res.status === null ? 1 : res.status);
 }
 
-function formatDuration(total) {
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  if (h > 0) {
-    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-  }
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
-
-function normalizeFlag(value, fallback = "0") {
-  if (value === undefined || value === null || value === "") {
-    return fallback;
-  }
-  return value === "1" ? "1" : "0";
-}
-
-function parseList(raw) {
-  return String(raw || "")
-    .split(/[\s,;]+/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
 function intersectLists(left, right) {
   const set = new Set(left);
   return right.filter((item) => set.has(item));
-}
-
-function makeRunId() {
-  const now = new Date();
-  const pad = (num) => String(num).padStart(2, "0");
-  const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-  return `${stamp}-${process.pid}`;
 }
 
 function isNumber(value) {
@@ -118,23 +94,6 @@ function detectCgroupCpuLimit() {
   return null;
 }
 
-function sanitizeName(raw) {
-  const cleaned = String(raw || "")
-    .replace(/[^A-Za-z0-9._-]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-  if (!cleaned) {
-    return "group";
-  }
-  return cleaned.slice(0, 32);
-}
-
-function shortHash(raw) {
-  return crypto.createHash("sha256").update(String(raw || "")).digest("hex").slice(0, 8);
-}
-
-function safeName(raw) {
-  return `${sanitizeName(raw)}-${shortHash(raw)}`;
-}
 
 function loadFailedTests(summaryFile) {
   if (!summaryFile || !fs.existsSync(summaryFile)) {

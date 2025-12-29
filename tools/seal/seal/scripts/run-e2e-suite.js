@@ -11,6 +11,7 @@ const { loadManifest } = require("./e2e-manifest");
 const { detectCapabilities } = require("./e2e-capabilities");
 const { resolveJsonSummaryPath, buildPlan, printPlan, buildJsonSummary, writeJsonSummary } = require("./e2e-report");
 const { hasCommand } = require("./e2e-utils");
+const { parseList, makeRunId, formatDuration } = require("./e2e-runner-utils");
 
 const SCRIPT_DIR = __dirname;
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "../../../..");
@@ -53,23 +54,6 @@ function ensureEscalation() {
   process.exit(res.status === null ? 1 : res.status);
 }
 
-function formatDuration(total) {
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  if (h > 0) {
-    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-  }
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
-
-function parseList(raw) {
-  return String(raw || "")
-    .split(/[\s,;]+/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
 function shellQuote(value) {
   return `'${String(value).replace(/'/g, "'\\''")}'`;
 }
@@ -80,13 +64,6 @@ function dirHasFiles(dir) {
   } catch {
     return false;
   }
-}
-
-function makeRunId() {
-  const now = new Date();
-  const pad = (num) => String(num).padStart(2, "0");
-  const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-  return `${stamp}-${process.pid}`;
 }
 
 function setEnvDefault(env, key, value) {
