@@ -107,6 +107,9 @@
   - Wymaganie: dla komend nieinteraktywnych używaj `ssh -n` albo `</dev/null`, aby odciąć stdin.
   - Wymaganie: wylacz `KbdInteractiveAuthentication`/`PasswordAuthentication` lub wymus `PreferredAuthentications=publickey`, aby unikac ukrytych promptow.
 
+- Blad: globalny `~/.ssh/config` wlaczal `ForwardAgent`/`ForwardX11`, co w automacji dawało niepotrzebne forwarding lub ryzyko wycieku kluczy.
+  - Wymaganie: w automacji jawnie wylacz forwarding (`-o ForwardAgent=no -o ForwardX11=no -o ForwardX11Trusted=no` lub `-o ClearAllForwardings=yes`).
+
 - Blad: bardzo długie komendy `ssh` (wiele `VAR=...` i `&&`) przekraczaly limit dlugosci lub gubily quoting.
   - Wymaganie: dla wieloetapowych operacji uzywaj skryptu (upload + `bash`, lub `ssh host 'bash -s' < script`), zamiast ogromnego one-linera.
 
