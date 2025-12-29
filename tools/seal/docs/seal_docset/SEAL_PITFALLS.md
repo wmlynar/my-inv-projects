@@ -2591,3 +2591,12 @@
   - Wymaganie: normalizuj newline do LF przy odczycie manifestu i trimuj `\\r`.
 - Blad: duplikaty nazw testow w manifeście powodowaly nadpisanie metadanych (ostatnia linia wygrywa), co ukrywalo brakujace testy.
   - Wymaganie: wykrywaj duplikaty nazw testow w manifeście i fail‑fast z lista konfliktow.
+
+## Dodatkowe wnioski (batch 341-345)
+
+- Blad: listy testow (`SEAL_E2E_TESTS`/`SEAL_E2E_SKIP`) byly parsowane z wlaczonym globbingiem, a znaki `*`/`?` rozwijaly sie do nazw plikow z CWD.
+  - Wymaganie: przy parsowaniu list wylacz globbing (`set -f`) lub uzyj bezpiecznego splitu po separatorach; w dokumentacji zaznacz, ze wildcardy nie sa wspierane.
+- Blad: `SEAL_E2E_RUN_ID` ustawiony przez uzytkownika zawieral spacje lub znaki `/`, co psulo sciezki logow/summary.
+  - Wymaganie: waliduj/sanitizuj `RUN_ID` (np. `[a-zA-Z0-9._-]`) i w razie potrzeby dodaj hash; loguj efektowny `RUN_ID`.
+- Blad: nazwy testow/grup zawieraly znaki `/` lub `..`, co moglo tworzyc katalogi poza log rootem albo psuc `mktemp`.
+  - Wymaganie: waliduj nazwy testow/grup do bezpiecznego alfabetu i uzywaj `safe_name` + hash dla sciezek na dysku.
