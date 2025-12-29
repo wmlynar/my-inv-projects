@@ -131,6 +131,7 @@ Przykład:
 - STD-028c (SHOULD): bledy parsowania JSON/JSON5 musza zawierac sciezke pliku, line/col i krotki hint (BOM/CRLF, duplikaty kluczy); brak = FAIL.
 - STD-029 (SHOULD): operacje bootstrap/deploy/clean sa idempotentne (powtorka nie psuje stanu).
 - STD-029a (SHOULD): szybkie sciezki (payload-only/fast) musza zachowywac parytet walidacji i listy plikow z pelnym deployem; ewentualne roznice musza byc jawnie opisane i testowane.
+- STD-029b (SHOULD): stop/disable/uninstall sa idempotentne; brak unitu = noop z logiem, nie twardy FAIL.
 - STD-030 (SHOULD): build/deploy/clean uzywaja lockfile; kolizje maja czytelny komunikat i nie niszcza stanu.
 - STD-030a (SHOULD): systemd `ExecStart` uzywa absolutnych sciezek; brak `WorkingDirectory` wymaga pelnych sciezek do binarki i configu.
 - STD-030b (SHOULD): po aktualizacji pliku unit zawsze wykonaj `systemctl daemon-reload` (lub `--user`), aby uniknac starej konfiguracji.
