@@ -2475,6 +2475,17 @@
 - Blad: `ExecStart` w systemd byl generowany z oczekiwaniem, że zadziałają bash‑izmy (np. `|`, `&&`, `$VAR`), ale systemd nie używa shella.
   - Wymaganie: jeśli potrzebny jest shell, użyj jawnie `/bin/sh -c` z bezpiecznym quoting; w przeciwnym razie przekazuj args jako czyste tokeny.
 
+## Dodatkowe wnioski (batch 301-305)
+
+- Blad: `WorkingDirectory` w unicie wskazywał na nieistniejący katalog lub był względny, co powodowało natychmiastowy FAIL startu.
+  - Wymaganie: `WorkingDirectory` jest absolutne i katalog jest tworzony przed startem; brak = fail‑fast z instrukcją.
+- Blad: `EnvironmentFile=` w unicie wskazywał na brakujący plik, przez co systemd odmawiał startu.
+  - Wymaganie: używaj prefiksu `-` (`EnvironmentFile=-/path`) jeśli plik jest opcjonalny, albo preflight/instalator tworzy plik przed startem.
+- Blad: domyślny `TimeoutStartSec` był zbyt krótki dla wolnych initów (obfuskacja/IO), więc systemd zabijał proces w trakcie startu.
+  - Wymaganie: ustaw jawny `TimeoutStartSec` adekwatny do profilu (lub loguj ostrzeżenie i rekomendację).
+- Blad: unit `Type` nie odpowiadał zachowaniu procesu (np. forking/daemonizing), co kończyło się fałszywym „start ok” lub restart loop.
+  - Wymaganie: procesy uruchamiane przez Seala nie daemonizują się; ustaw `Type=simple`/`exec` i testuj rzeczywisty stan procesu.
+
 ## Dodatkowe wnioski (batch 246-250)
 
 - Blad: marker runtime byl tylko „gołym” hashem bez wersji/algorytmu, co utrudnialo zmiane formatu i migracje w przyszlosci.

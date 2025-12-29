@@ -493,6 +493,10 @@ Przykład:
 - STD-089z.w (SHOULD): obsługuj IPv6 w SSH/SCP/rsync (nawiasy `[addr]` i/lub `-6`) i waliduj format w target config.
 - STD-089z.x (SHOULD): generowane unity systemd escapują `%` jako `%%` (i walidują brak nieoczekiwanych `%` w ścieżkach/args).
 - STD-089z.y (SHOULD): `ExecStart` nie zakłada shella; jeśli potrzebny shell, użyj jawnie `/bin/sh -c` z bezpiecznym quoting.
+- STD-089z.z (SHOULD): `WorkingDirectory` w unicie jest absolutne i istnieje przed startem; brak = fail‑fast.
+- STD-089z.aa (SHOULD): `EnvironmentFile` jest tworzony w instalacji albo oznaczony jako opcjonalny (`-`), aby brak nie blokował startu.
+- STD-089z.ab (SHOULD): ustawiaj jawny `TimeoutStartSec` dla usług o długim starcie i loguj wartość.
+- STD-089z.ac (SHOULD): `Type=` w unicie odpowiada realnemu zachowaniu procesu (brak daemonize); domyślnie `simple/exec`.
 - STD-090c (SHOULD): preflight sprawdza **narzedzia CLI** (np. `postject` w `node_modules/.bin`/PATH), nie tylko obecność modulu.
 - STD-091a (SHOULD): funkcje zalezne od architektury (np. CPUID) musza degradująco dzialac na platformach bez wsparcia (pusty/neutralny ID zamiast twardego bledu).
 - STD-092a (SHOULD): `--skip-check` jest wyraznie oznaczony jako ryzykowny i zawsze wypisuje ostrzezenie; krytyczne braki toolchaina nie powinny byc maskowane.
