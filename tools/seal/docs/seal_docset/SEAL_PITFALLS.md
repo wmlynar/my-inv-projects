@@ -104,9 +104,6 @@
   - Wymaganie: dla komend nieinteraktywnych używaj `ssh -n` albo `</dev/null`, aby odciąć stdin.
   - Wymaganie: wylacz `KbdInteractiveAuthentication`/`PasswordAuthentication` lub wymus `PreferredAuthentications=publickey`, aby unikac ukrytych promptow.
 
-- Blad: `ssh/scp/rsync` dziedziczyly ustawienia z `~/.ssh/config` (ProxyCommand, IdentityFile, HostKeyAlgorithms), co zmienialo zachowanie w CI lub na stacjach dev.
-  - Wymaganie: w trybie deterministycznym/CI uzywaj jawnego configu (`-F /dev/null` lub dedicated config) i loguj efektywne opcje; nie polegaj na globalnym `~/.ssh/config`.
-
 - Blad: bardzo długie komendy `ssh` (wiele `VAR=...` i `&&`) przekraczaly limit dlugosci lub gubily quoting.
   - Wymaganie: dla wieloetapowych operacji uzywaj skryptu (upload + `bash`, lub `ssh host 'bash -s' < script`), zamiast ogromnego one-linera.
 
