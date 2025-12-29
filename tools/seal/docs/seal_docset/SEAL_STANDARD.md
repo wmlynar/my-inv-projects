@@ -170,6 +170,7 @@ Przykład:
 - STD-033j (SHOULD): preflight dla deployu SSH sprawdza obecność `tar`/`gzip` (wsparcie `-z`/`-tzf`) na hoście zdalnym; brak = fail‑fast z instrukcja.
 - STD-033k (SHOULD): instalatory narzedzi z `pip` uzywaja `python3 -m pip` (nie `pip` z PATH), preferuja venv/pipx, ustawiają `PIP_NO_INPUT=1` i `PIP_DISABLE_PIP_VERSION_CHECK=1`; jeśli używasz `--user`, dodaj `~/.local/bin` do PATH.
 - STD-033l (SHOULD): narzedzia budowane ze zrodel instaluja sie do lokalnego prefixu (`$SEAL_CACHE/tools/...`) przez `DESTDIR`/`CMAKE_INSTALL_PREFIX` bez `sudo`; globalny `make install` do `/usr/local` jest zabroniony w E2E/CI.
+- STD-033l.a (SHOULD): instalatory narzedzi waliduja layout repo po clone (np. `llvm/`, `tools/clang`, `CMakeLists.txt`); brak = fail‑fast z instrukcja zmiany repo/branchu.
 - STD-033m (SHOULD): buildy narzedzi ze zrodel ustawiają jawny limit równoległości (`-j`, `CMAKE_BUILD_PARALLEL_LEVEL`, `MAKEFLAGS`) na podstawie wykrytych limitów CPU/pamięci (cgroup), aby uniknąć OOM.
 - STD-033n (SHOULD): przy `spawn`/`exec` wykrywaj `ENOENT` i raportuj brakujace narzedzie z instrukcja instalacji; nie maskuj tego jako ogolny blad.
 - STD-038 (SHOULD): operacje destrukcyjne oferuja `--dry-run`.

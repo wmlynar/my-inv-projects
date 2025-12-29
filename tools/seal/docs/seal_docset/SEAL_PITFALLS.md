@@ -245,6 +245,9 @@
 - Blad: pakiet z repo APT nie istnial w danej dystrybucji (np. `criu` na niektorych Ubuntu), co przerywalo instalacje i blokowalo E2E.
   - Wymaganie: instalatory narzedzi musza obslugiwac brak pakietu (source build lub SKIP z instrukcja), a preflight/diagnostyka jasno wypisuje, ze pakiet nie ma kandydata w APT.
 
+- Blad: instalator narzedzia zewnetrznego klonowal repo, ale struktura projektu byla inna niz oczekiwano (np. brak `llvm/` lub `tools/clang`), co konczylo sie nieczytelnym bledem w cmake.
+  - Wymaganie: po clone **waliduj layout** repo (wymagane katalogi/plik `CMakeLists.txt`), a przy braku dawaj jasny blad z instrukcja zmiany repo/branchu.
+
 - Blad: `pip install` failowal na nowych Ubuntu przez `externally-managed-environment`, albo instalowal narzedzia poza PATH (np. `~/.local/bin`), przez co testy nie widzialy binarek.
   - Wymaganie: instalacje pip rob w venv/pipx albo jawnie uzyj `python3 -m pip install --user` + dodaj `~/.local/bin` do PATH; w kontrolowanych obrazach dopuszczalne `PIP_BREAK_SYSTEM_PACKAGES=1`.
   - Wymaganie: ustaw `PIP_NO_INPUT=1` i `PIP_DISABLE_PIP_VERSION_CHECK=1`, zeby uniknac promptow i wiszenia.
@@ -649,9 +652,9 @@
   - Wymaganie: release zapisuje marker runtime (`sha256(process.version)`) w `r/nv` i porownuje z targetem; brak/mismatch = fallback do pelnego uploadu.
   - Wymaganie: marker na target jest binarny/obfuskowany (STD-012), nie plaintext.
 
-- Blad: "szybkie sciezki" (payload-only/fast) pomijaly czesc walidacji lub plikow layoutu, co prowadzilo do niespojnego stanu na target.
-  - Wymaganie: fast paths musza miec parytet walidacji i listy plikow z pelnym deployem.
-  - Wymaganie: kazda optymalizacja ma test parytetu (full vs fast) dla plikow i walidacji.
+- Blad: "szybkie sciezki" (payload-only) pomijaly czesc walidacji lub plikow layoutu, co prowadzilo do niespojnego stanu na target.
+  - Wymaganie: sciezki payload-only musza miec parytet walidacji i listy plikow z pelnym deployem.
+  - Wymaganie: kazda optymalizacja ma test parytetu (full vs payload-only) dla plikow i walidacji.
 
 - Blad: fallback z payload-only do pelnego uploadu nie logowal powodu lub probowal pelnego uploadu bez artefaktu.
   - Wymaganie: fallback zawsze loguje powod; pelny upload tylko gdy artefakt jest dostepny, inaczej fail‑fast z instrukcja (np. `seal ship` bez `--payload-only` lub `--artifact`).
@@ -686,7 +689,7 @@
 - Blad: deploy/rollback zakladal na sztywno nazwe `ih`, ignorujac `thin.integrity.file`.
   - Wymaganie: nazwa sidecara pochodzi zawsze z configu (fail‑fast przy niedozwolonej nazwie).
 
-- Blad: nowy plik w layout (np. sidecar) nie byl uwzgledniony w deploy/rollback/fast/cleanup, przez co stan na target byl niespojny.
+- Blad: nowy plik w layout (np. sidecar) nie byl uwzgledniony w deploy/rollback/cleanup, przez co stan na target byl niespojny.
   - Wymaganie: kazdy nowy plik w layout musi byc dodany do wszystkich sciezek deployu, rollbacku i cleanupu oraz pokryty testem.
 
 - Blad: test UI E2E uruchamial AIO z wlaczonym `strip`/`elfPacker`, co jest ignorowane (auto-disabled) i zaciemnia intencje testu.
@@ -1483,13 +1486,6 @@
 
 - Blad: stare releasy rosly bez limitu (brak cleanup).
   - Wymaganie: retention (np. ostatnie N release) + usuwanie starych katalogow.
-  - Wymaganie: cleanup dotyczy takze `*-fast`.
-
-- Blad: tryb FAST byl uruchamiany niejawnie lub zostawial niebezpieczne artefakty.
-  - Wymaganie: FAST jest **jawny** (`--fast`) i zawsze ostrzega o ryzyku.
-  - Wymaganie: FAST nie tworzy SEA ani `.tgz`, uzywa osobnego katalogu `*-fast`.
-  - Wymaganie: zwykly deploy usuwa poprzedni `*-fast` (zeby nie zostawiac zrodel na dysku).
-  - Wymaganie: FAST usuwa `b/a` + `r/rt` + `r/pl`, zeby nie uruchamiac starego BOOTSTRAP runtime.
 
 - Blad: `sshPort` w target config byl ignorowany (SSH/SCP/rsync uzywaly domyslnego portu).
   - Wymaganie: `sshPort` musi byc uwzgledniany we wszystkich polaczeniach (ssh/scp/rsync).
