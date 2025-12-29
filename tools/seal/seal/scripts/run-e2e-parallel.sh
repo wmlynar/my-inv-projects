@@ -379,6 +379,9 @@ write_combined_summary() {
     fi
     awk 'NR == 1 && $0 ~ /^group\t/ {next} {print}' "$summary_file" >> "$SUMMARY_PATH"
   done
+  if [ -n "$SUMMARY_LAST_PATH" ] && [ -f "$SUMMARY_PATH" ]; then
+    cp -f "$SUMMARY_PATH" "$SUMMARY_LAST_PATH"
+  fi
 }
 
 print_combined_summary() {
