@@ -419,7 +419,9 @@ async function testShipThinBootstrapSsh() {
     const plPath = `${installDir}/r/pl`;
     const rtStat1 = sshStat(user, host, rtPath, sshPort);
     const plStat1 = sshStat(user, host, plPath, sshPort);
+    const nbStat1 = sshStat(user, host, `${installDir}/r/nb.node`, sshPort);
     assert.ok(rtStat1 && plStat1, "Missing r/rt or r/pl after bootstrap ship (ssh)");
+    assert.ok(nbStat1, "Missing native bootstrap addon (r/nb.node) after bootstrap ship (ssh)");
 
     await shipOnce(targetCfg, { bootstrap: false, pushConfig: false, skipCheck: true, packager: "thin-split" });
     const rtStat2 = sshStat(user, host, rtPath, sshPort);

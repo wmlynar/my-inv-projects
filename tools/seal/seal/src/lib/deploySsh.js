@@ -585,6 +585,8 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
   let reuseBootstrap = thinMode === "bootstrap" && !effectiveBootstrap;
 
   const payloadLocal = releaseDir ? path.join(releaseDir, "r", "pl") : null;
+  const nativeBootstrapLocal = releaseDir ? path.join(releaseDir, "r", "nb.node") : null;
+  const nativeBootstrapPresent = !!(nativeBootstrapLocal && fileExists(nativeBootstrapLocal));
   let payloadOnly = thinMode === "bootstrap" && !effectiveBootstrap && payloadLocal && fileExists(payloadLocal);
   let payloadOnlyReason = null;
   if (!payloadOnly) {
@@ -619,6 +621,20 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       warn("Thin bootstrap: runtime/launcher missing on target; falling back to full upload.");
       payloadOnly = false;
       payloadOnlyReason = "runtime/launcher missing on target";
+      payloadOnlyFallbackLogged = true;
+    }
+  }
+  if (payloadOnly && nativeBootstrapPresent) {
+    const nbCheck = timeSync("deploy.ssh.check_native_bootstrap", () => sshExecTarget(targetCfg, {
+      user,
+      host,
+      args: ["bash", "-lc", `if [ -f ${shQuote(`${layout.installDir}/r/nb.node`)} ]; then echo __SEAL_THIN_NB_OK__; else echo __SEAL_THIN_NB_MISSING__; fi`],
+      stdio: "pipe",
+    }));
+    if (!nbCheck.ok || !(nbCheck.stdout || "").includes("__SEAL_THIN_NB_OK__")) {
+      warn("Thin bootstrap: native bootstrap missing on target; falling back to full upload.");
+      payloadOnly = false;
+      payloadOnlyReason = "native bootstrap missing on target";
       payloadOnlyFallbackLogged = true;
     }
   }
@@ -716,6 +732,18 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
         }
       }
     }
+    if (reuseBootstrap && nativeBootstrapPresent) {
+      const nbCheck = timeSync("deploy.ssh.check_native_bootstrap_reuse", () => sshExecTarget(targetCfg, {
+        user,
+        host,
+        args: ["bash", "-lc", `if [ -f ${shQuote(`${layout.installDir}/r/nb.node`)} ]; then echo __SEAL_THIN_NB_OK__; else echo __SEAL_THIN_NB_MISSING__; fi`],
+        stdio: "pipe",
+      }));
+      if (!nbCheck.ok || !(nbCheck.stdout || "").includes("__SEAL_THIN_NB_OK__")) {
+        warn("Thin bootstrap: native bootstrap missing on target; copying full bootstrap.");
+        reuseBootstrap = false;
+      }
+    }
   }
 
   let shouldPushConfig = !!pushConfig;
@@ -789,12 +817,15 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
     const rDirQ = shQuote(rDir);
     const ihSrcQ = shQuote(`${rDir}/${thinIntegrityFile}`);
     const ihDstQ = shQuote(`${relDir}/r/${thinIntegrityFile}`);
+    const nbSrcQ = shQuote(`${rDir}/nb.node`);
+    const nbDstQ = shQuote(`${relDir}/r/nb.node`);
     const nvSrcQ = shQuote(`${rDir}/${THIN_RUNTIME_VERSION_FILE}`);
     const nvDstQ = shQuote(`${relDir}/r/${THIN_RUNTIME_VERSION_FILE}`);
     cmdParts.push(`mkdir -p ${relDirQ}/b ${relDirQ}/r`);
     cmdParts.push(`cp ${bDirQ}/a ${relDirQ}/b/a`);
     cmdParts.push(`cp ${rDirQ}/rt ${relDirQ}/r/rt`);
     cmdParts.push(`if [ -f ${rDirQ}/c ]; then cp ${rDirQ}/c ${relDirQ}/r/c; fi`);
+    cmdParts.push(`if [ -f ${nbSrcQ} ]; then cp ${nbSrcQ} ${nbDstQ}; fi`);
     cmdParts.push(`if [ -f ${nvSrcQ} ]; then cp ${nvSrcQ} ${nvDstQ}; fi`);
     if (thinIntegritySidecar) {
       cmdParts.push(`if [ -f ${ihSrcQ} ]; then cp ${ihSrcQ} ${ihDstQ}; fi`);
@@ -855,6 +886,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       const plSrc = `${relDir}/r/pl`;
       const codecSrc = `${relDir}/r/c`;
       const ihSrc = `${relDir}/r/${thinIntegrityFile}`;
+      const nbSrc = `${relDir}/r/nb.node`;
       const nvSrc = `${relDir}/r/${THIN_RUNTIME_VERSION_FILE}`;
       const bDirQ = shQuote(bDir);
       const rDirQ = shQuote(rDir);
@@ -864,6 +896,8 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       const codecSrcQ = shQuote(codecSrc);
       const ihSrcQ = shQuote(ihSrc);
       const ihDstQ = shQuote(`${rDir}/${thinIntegrityFile}`);
+      const nbSrcQ = shQuote(nbSrc);
+      const nbDstQ = shQuote(`${rDir}/nb.node`);
       const nvSrcQ = shQuote(nvSrc);
       const nvDstQ = shQuote(`${rDir}/${THIN_RUNTIME_VERSION_FILE}`);
       cmdParts.push(`test -f ${launcherSrcQ}`);
@@ -878,6 +912,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       }
       cmdParts.push(`cp ${plSrcQ} ${rDirQ}/pl.tmp && mv ${rDirQ}/pl.tmp ${rDirQ}/pl && chmod 644 ${rDirQ}/pl`);
       cmdParts.push(`if [ -f ${codecSrcQ} ]; then cp ${codecSrcQ} ${rDirQ}/c.tmp && mv ${rDirQ}/c.tmp ${rDirQ}/c && chmod 644 ${rDirQ}/c; fi`);
+      cmdParts.push(`if [ -f ${nbSrcQ} ]; then cp ${nbSrcQ} ${nbDstQ}.tmp && mv ${nbDstQ}.tmp ${nbDstQ} && chmod 644 ${nbDstQ}; fi`);
       cmdParts.push(`if [ -f ${nvSrcQ} ]; then cp ${nvSrcQ} ${nvDstQ}.tmp && mv ${nvDstQ}.tmp ${nvDstQ} && chmod 644 ${nvDstQ}; fi`);
       if (thinIntegritySidecar) {
         cmdParts.push(`if [ -f ${ihSrcQ} ]; then cp ${ihSrcQ} ${ihDstQ}.tmp && mv ${ihDstQ}.tmp ${ihDstQ} && chmod 644 ${ihDstQ}; fi`);
@@ -888,8 +923,9 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       const plFileQ = shQuote(`${layout.installDir}/r/pl`);
       const codecFileQ = shQuote(`${layout.installDir}/r/c`);
       const ihFileQ = shQuote(`${layout.installDir}/r/${thinIntegrityFile}`);
+      const nbFileQ = shQuote(`${layout.installDir}/r/nb.node`);
       const nvFileQ = shQuote(`${layout.installDir}/r/${THIN_RUNTIME_VERSION_FILE}`);
-      cmdParts.push(`rm -f ${bFileQ} ${rtFileQ} ${plFileQ} ${codecFileQ} ${ihFileQ} ${nvFileQ}`);
+      cmdParts.push(`rm -f ${bFileQ} ${rtFileQ} ${plFileQ} ${codecFileQ} ${ihFileQ} ${nbFileQ} ${nvFileQ}`);
     }
     cmdParts.push(`echo ${shQuote(folderName)} > ${currentFileQ}`);
     cmdParts.push(`rm -f ${remoteArtifactTmpQ}`);
@@ -931,12 +967,15 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       const launcherSrc = `${relDir}/b/a`;
       const rtSrc = `${relDir}/r/rt`;
       const plSrc = `${relDir}/r/pl`;
+      const nbSrc = `${relDir}/r/nb.node`;
       const nvSrc = `${relDir}/r/${THIN_RUNTIME_VERSION_FILE}`;
       const bDirQ = shQuote(bDir);
       const rDirQ = shQuote(rDir);
       const launcherSrcQ = shQuote(launcherSrc);
       const rtSrcQ = shQuote(rtSrc);
       const plSrcQ = shQuote(plSrc);
+      const nbSrcQ = shQuote(nbSrc);
+      const nbDstQ = shQuote(`${rDir}/nb.node`);
       const nvSrcQ = shQuote(nvSrc);
       const nvDstQ = shQuote(`${rDir}/${THIN_RUNTIME_VERSION_FILE}`);
       retryParts.push(`test -f ${launcherSrcQ}`);
@@ -950,13 +989,15 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
         retryParts.push(`cp ${rtSrcQ} ${rDirQ}/rt.tmp && mv ${rDirQ}/rt.tmp ${rDirQ}/rt && chmod 644 ${rDirQ}/rt`);
       }
       retryParts.push(`cp ${plSrcQ} ${rDirQ}/pl.tmp && mv ${rDirQ}/pl.tmp ${rDirQ}/pl && chmod 644 ${rDirQ}/pl`);
+      retryParts.push(`if [ -f ${nbSrcQ} ]; then cp ${nbSrcQ} ${nbDstQ}.tmp && mv ${nbDstQ}.tmp ${nbDstQ} && chmod 644 ${nbDstQ}; fi`);
       retryParts.push(`if [ -f ${nvSrcQ} ]; then cp ${nvSrcQ} ${nvDstQ}.tmp && mv ${nvDstQ}.tmp ${nvDstQ} && chmod 644 ${nvDstQ}; fi`);
     } else {
       const bFileQ = shQuote(`${layout.installDir}/b/a`);
       const rtFileQ = shQuote(`${layout.installDir}/r/rt`);
       const plFileQ = shQuote(`${layout.installDir}/r/pl`);
+      const nbFileQ = shQuote(`${layout.installDir}/r/nb.node`);
       const nvFileQ = shQuote(`${layout.installDir}/r/${THIN_RUNTIME_VERSION_FILE}`);
-      retryParts.push(`rm -f ${bFileQ} ${rtFileQ} ${plFileQ} ${nvFileQ}`);
+      retryParts.push(`rm -f ${bFileQ} ${rtFileQ} ${plFileQ} ${nbFileQ} ${nvFileQ}`);
     }
     retryParts.push(`echo ${shQuote(folderName)} > ${currentFileQ}`);
     retryParts.push(`rm -f ${remoteArtifactTmpQ}`);

@@ -2389,29 +2389,47 @@ let e2eMarkerTokens = [];
 function e2eAddMarker(hex) {
   if (!hex) return;
   try {
-    const marker = Buffer.from(String(hex).trim(), "hex");
-    if (!marker.length) return;
-    const buf = Buffer.alloc(marker.length);
-    marker.copy(buf);
+    const str = String(hex).trim();
+    if (!str) return;
+    if (str.length % 2 !== 0) return;
+    const len = Math.floor(str.length / 2);
+    if (len <= 0) return;
+    const buf = Buffer.alloc(len);
+    let ok = true;
+    for (let i = 0; i < len; i += 1) {
+      const byte = Number.parseInt(str.slice(i * 2, i * 2 + 2), 16);
+      if (!Number.isFinite(byte)) {
+        ok = false;
+        break;
+      }
+      buf[i] = byte;
+    }
+    if (!ok) {
+      try { buf.fill(0); } catch {}
+      return;
+    }
     e2eKeyBufs.push(buf);
     if (!e2eKeyBuf) e2eKeyBuf = buf;
-    const masked = e2eMaskToken(marker);
+    const masked = e2eMaskToken(buf);
     if (masked) {
       masked.name = "marker";
       e2eMarkerTokens.push(masked);
     }
-    try { marker.fill(0); } catch {}
   } catch {}
 }
 
 if (E2E_TEST_MODE) {
-  if (E2E_KEY_MARKER_HEX) e2eAddMarker(E2E_KEY_MARKER_HEX);
+  if (E2E_KEY_MARKER_HEX) {
+    e2eAddMarker(E2E_KEY_MARKER_HEX);
+    try { delete process.env.SEAL_E2E_KEY_MARKER_HEX; } catch {}
+  }
   if (E2E_KEY_MARKER_HEX_LIST) {
     const list = String(E2E_KEY_MARKER_HEX_LIST)
       .split(/[,\s]+/)
       .map((v) => v.trim())
       .filter(Boolean);
     for (const item of list) e2eAddMarker(item);
+    try { delete process.env.SEAL_E2E_KEY_MARKER_HEX_LIST; } catch {}
   }
 }
 

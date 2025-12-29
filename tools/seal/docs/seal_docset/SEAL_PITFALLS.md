@@ -2274,6 +2274,8 @@
   - Wymaganie: kopiuj najpierw `package*.json`, uruchamiaj `npm ci`, a dopiero potem `COPY .`; opcjonalnie uzywaj BuildKit cache dla npm.
 - Blad: docker-compose zostawial wolumeny po testach, co z czasem zapychalo dysk i wprowadzalo flakey stany.
   - Wymaganie: cleanup obejmuje `docker compose down -v` lub usuwanie wolumenow per-run; loguj nazwy wolumenow.
+- Blad: `docker compose down` bez `--remove-orphans` zostawial osierocone kontenery z poprzednich uruchomien.
+  - Wymaganie: cleanup E2E uzywa `docker compose down --remove-orphans` (lub jawnie sprzata orphans) i loguje co zostalo usuniete.
 - Blad: unit systemd zostawal w stanie `failed` i kolejne starty byly blokowane mimo naprawy.
   - Wymaganie: po naprawie/deploy wykonuj `systemctl reset-failed <svc>` (lub `--user`) i loguj wynik.
 

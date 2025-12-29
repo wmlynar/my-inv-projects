@@ -418,6 +418,7 @@ Przykład:
 - STD-089d.a (SHOULD): dla dlugich krokow uzywaj niebuforowanego outputu (np. `PYTHONUNBUFFERED=1`, `stdbuf -oL -eL`), aby logi pojawialy sie na biezaco i nie wygladalo to na zwis.
 - STD-089e (SHOULD): testy dockerowe sprzataja kontenery/sieci w `trap` (cleanup na error); `KEEP=1` tylko jawnie wylacza cleanup.
 - STD-089e.a (SHOULD): w CI uzywaj `--progress=plain` (lub `BUILDKIT_PROGRESS=plain`) dla `docker build`, aby logi byly diagnostyczne.
+- STD-089e.b (SHOULD): cleanup docker compose uzywa `--remove-orphans`, aby nie zostawiac osieroconych kontenerow po zmianach w compose.
 - STD-089f (SHOULD): test‑workspace nie kopiuje `node_modules/`; zaleznosci instaluje osobno (deterministycznie) i loguje czy instalacja byla fresh.
 - STD-089g (SHOULD): kazdy SKIP w testach musi wypisac powod oraz instrukcje jak wymusic pelny test (ENV/flag).
 - STD-089h (SHOULD): w CI/E2E uzywaj `npm ci` dla deterministycznych zaleznosci; `npm install` tylko lokalnie (bez modyfikacji lockfile).

@@ -280,6 +280,7 @@ function applyThinBootstrapLocal(layout, extractedDir, opts = {}) {
   const codecSrc = path.join(extractedDir, "r", "c");
   const ihSrc = path.join(extractedDir, "r", integrityFile);
   const nvSrc = path.join(extractedDir, "r", THIN_RUNTIME_VERSION_FILE);
+  const nbSrc = path.join(extractedDir, "r", "nb.node");
 
   if (!fileExists(launcherSrc)) throw new Error(`Missing thin launcher: ${launcherSrc}`);
   if (!fileExists(rtSrc)) throw new Error(`Missing thin runtime: ${rtSrc}`);
@@ -305,6 +306,13 @@ function applyThinBootstrapLocal(layout, extractedDir, opts = {}) {
   } else if (!onlyPayload) {
     rmrf(path.join(rDir, "c"));
   }
+  if (!onlyPayload) {
+    if (fileExists(nbSrc)) {
+      copyAtomic(nbSrc, path.join(rDir, "nb.node"), 0o755);
+    } else {
+      rmrf(path.join(rDir, "nb.node"));
+    }
+  }
   if (fileExists(ihSrc)) {
     copyAtomic(ihSrc, path.join(rDir, integrityFile), 0o644);
   } else if (!onlyPayload) {
@@ -318,6 +326,7 @@ function cleanupThinBootstrapLocal(layout, opts = {}) {
   rmrf(path.join(layout.installDir, "r", "rt"));
   rmrf(path.join(layout.installDir, "r", "pl"));
   rmrf(path.join(layout.installDir, "r", "c"));
+  rmrf(path.join(layout.installDir, "r", "nb.node"));
   rmrf(path.join(layout.installDir, "r", integrityFile));
   rmrf(path.join(layout.installDir, "r", THIN_RUNTIME_VERSION_FILE));
 }
@@ -395,6 +404,9 @@ function deployLocal({ targetCfg, artifactPath, repoConfigPath, pushConfig, poli
   if (thinMode === "bootstrap") {
     const hasLauncher = fileExists(path.join(layout.installDir, "b", "a"));
     const hasRuntime = fileExists(path.join(layout.installDir, "r", "rt"));
+    const releaseNative = path.join(extractedDir, "r", "nb.node");
+    const installNative = path.join(layout.installDir, "r", "nb.node");
+    const needsNative = fileExists(releaseNative);
     let canReuse = false;
     if (!bootstrap && hasLauncher && hasRuntime) {
       const releaseCodec = readThinCodecHash(extractedDir);
@@ -421,6 +433,10 @@ function deployLocal({ targetCfg, artifactPath, repoConfigPath, pushConfig, poli
       }
     } else if (!bootstrap) {
       warn("Thin bootstrap: launcher/runtime missing; copying full bootstrap.");
+    }
+    if (canReuse && needsNative && !fileExists(installNative)) {
+      warn("Thin bootstrap: native bootstrap missing on target; copying full bootstrap.");
+      canReuse = false;
     }
     applyThinBootstrapLocal(layout, extractedDir, { onlyPayload: canReuse, integrityFile });
   } else {
