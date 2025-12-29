@@ -522,6 +522,6 @@ $DOCKER run --rm \
   "${NODE_MODULES_ENV[@]}" \
   "${SHIP_ENV_ARGS[@]}" \
   "$BUILDER_IMAGE" \
-  bash -lc 'if [ "${SEAL_E2E_PARALLEL:-0}" = "1" ]; then tools/seal/seal/scripts/run-e2e-parallel.sh; else tools/seal/seal/scripts/run-e2e-suite.sh; fi'
+  bash -lc 'if [ "${SEAL_E2E_PARALLEL:-0}" = "1" ]; then bash tools/seal/seal/scripts/run-e2e-parallel.sh; else bash tools/seal/seal/scripts/run-e2e-suite.sh; fi'
 
 log "Docker E2E suite completed."
