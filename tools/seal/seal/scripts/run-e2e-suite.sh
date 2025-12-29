@@ -342,6 +342,18 @@ write_summary_file() {
   done
 }
 
+update_last_summary() {
+  if [ -z "$SUMMARY_LAST_PATH" ] || [ -z "$SUMMARY_PATH" ] || [ ! -f "$SUMMARY_PATH" ]; then
+    return
+  fi
+  local last_dir tmp_path
+  last_dir="$(dirname "$SUMMARY_LAST_PATH")"
+  mkdir -p "$last_dir"
+  tmp_path="${SUMMARY_LAST_PATH}.tmp.$$"
+  cp -f "$SUMMARY_PATH" "$tmp_path"
+  mv -f "$tmp_path" "$SUMMARY_LAST_PATH"
+}
+
 declare -A E2E_ONLY=()
 declare -A E2E_SKIP=()
 E2E_ONLY_RAW="$(trim_list "${SEAL_E2E_TESTS:-}")"
@@ -568,9 +580,7 @@ print_summary() {
   print_failure_list
 
   write_summary_file
-  if [ -n "$SUMMARY_LAST_PATH" ] && [ -n "$SUMMARY_PATH" ] && [ -f "$SUMMARY_PATH" ]; then
-    cp -f "$SUMMARY_PATH" "$SUMMARY_LAST_PATH"
-  fi
+  update_last_summary
 }
 
 cleanup_home() {

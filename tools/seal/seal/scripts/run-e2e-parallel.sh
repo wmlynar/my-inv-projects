@@ -16,6 +16,54 @@ log() {
   echo "[seal-e2e-parallel] $*"
 }
 
+is_number() {
+  [[ "${1:-}" =~ ^[0-9]+$ ]]
+}
+
+detect_cgroup_cpu_limit() {
+  local quota period limit
+  if [ -f /sys/fs/cgroup/cpu.max ]; then
+    read -r quota period < /sys/fs/cgroup/cpu.max || return 0
+    if [ "$quota" != "max" ] && is_number "$quota" && is_number "$period" && [ "$period" -gt 0 ]; then
+      limit="$(awk -v q="$quota" -v p="$period" 'BEGIN{v=q/p; if(v<1) v=1; printf "%d", v}')"
+      echo "$limit"
+      return 0
+    fi
+  fi
+  if [ -f /sys/fs/cgroup/cpu/cpu.cfs_quota_us ] && [ -f /sys/fs/cgroup/cpu/cpu.cfs_period_us ]; then
+    quota="$(cat /sys/fs/cgroup/cpu/cpu.cfs_quota_us)"
+    period="$(cat /sys/fs/cgroup/cpu/cpu.cfs_period_us)"
+    if [ "$quota" != "-1" ] && is_number "$quota" && is_number "$period" && [ "$period" -gt 0 ]; then
+      limit="$(awk -v q="$quota" -v p="$period" 'BEGIN{v=q/p; if(v<1) v=1; printf "%d", v}')"
+      echo "$limit"
+      return 0
+    fi
+  fi
+  return 0
+}
+
+sanitize_name() {
+  local raw="$1"
+  local cleaned
+  cleaned="$(printf '%s' "$raw" | tr -cs 'A-Za-z0-9._-' '_' | sed 's/^_\\+//;s/_\\+$//')"
+  if [ -z "$cleaned" ]; then
+    cleaned="group"
+  fi
+  cleaned="${cleaned:0:32}"
+  echo "$cleaned"
+}
+
+short_hash() {
+  printf '%s' "$1" | sha256sum | awk '{print substr($1,1,8)}'
+}
+
+safe_name() {
+  local raw="$1"
+  local base
+  base="$(sanitize_name "$raw")"
+  printf "%s-%s" "$base" "$(short_hash "$raw")"
+}
+
 ensure_escalation() {
   if [ "${SEAL_E2E_REQUIRE_ESCALATION:-1}" != "1" ]; then
     return
@@ -101,15 +149,48 @@ DEFAULT_JOBS="4"
 if command -v nproc >/dev/null 2>&1; then
   DEFAULT_JOBS="$(nproc)"
 fi
+CGROUP_CPU_LIMIT="$(detect_cgroup_cpu_limit || true)"
+if [ -n "$CGROUP_CPU_LIMIT" ] && is_number "$CGROUP_CPU_LIMIT" && [ "$DEFAULT_JOBS" -gt "$CGROUP_CPU_LIMIT" ]; then
+  DEFAULT_JOBS="$CGROUP_CPU_LIMIT"
+fi
 JOBS="${SEAL_E2E_JOBS:-$DEFAULT_JOBS}"
+if [ -n "$CGROUP_CPU_LIMIT" ] && is_number "$CGROUP_CPU_LIMIT" && [ "$JOBS" -gt "$CGROUP_CPU_LIMIT" ]; then
+  log "Capping jobs to cgroup limit: ${JOBS} -> ${CGROUP_CPU_LIMIT}"
+  JOBS="$CGROUP_CPU_LIMIT"
+fi
+if [ "$JOBS" -lt 1 ]; then
+  JOBS=1
+fi
 
-SEED_ROOT="${SEAL_E2E_SEED_ROOT:-/tmp/seal-example-e2e-seed}"
+TMP_ROOT="${SEAL_E2E_TMP_ROOT:-${TMPDIR:-/tmp}}"
+SEED_USER="${SUDO_USER:-${USER:-unknown}}"
+SEED_ROOT_DEFAULT="$CACHE_ROOT/e2e-seed/$SEED_USER"
+SEED_ROOT="${SEAL_E2E_SEED_ROOT:-$SEED_ROOT_DEFAULT}"
+if [ -n "$TMP_ROOT" ]; then
+  mkdir -p "$TMP_ROOT"
+fi
+SAFE_ROOTS_ENV="${SEAL_E2E_SAFE_ROOTS:-}"
+if [ -n "$CACHE_ROOT" ]; then
+  if [ -n "$SAFE_ROOTS_ENV" ]; then
+    SAFE_ROOTS_ENV="$SAFE_ROOTS_ENV:$CACHE_ROOT"
+  else
+    SAFE_ROOTS_ENV="$CACHE_ROOT"
+  fi
+fi
+if [ -n "$TMP_ROOT" ]; then
+  if [ -n "$SAFE_ROOTS_ENV" ]; then
+    SAFE_ROOTS_ENV="$SAFE_ROOTS_ENV:$TMP_ROOT"
+  else
+    SAFE_ROOTS_ENV="$TMP_ROOT"
+  fi
+fi
 if [ "${SEAL_E2E_PREPARE_SEED:-1}" = "1" ]; then
   log "Preparing shared example seed..."
   env \
     SEAL_E2E_SETUP_ONLY=1 \
     SEAL_E2E_EXAMPLE_ROOT="$SEED_ROOT" \
     SEAL_E2E_COPY_EXAMPLE=1 \
+    SEAL_E2E_SAFE_ROOTS="$SAFE_ROOTS_ENV" \
     "$RUNNER"
 fi
 
@@ -169,10 +250,10 @@ mkdir -p "$LOG_ROOT"
 
 log_effective_config() {
   log "Effective config:"
-  log "  jobs=$JOBS mode=${SEAL_E2E_PARALLEL_MODE:-groups} fail_fast=$FAIL_FAST"
+  log "  jobs=$JOBS cgroup_limit=${CGROUP_CPU_LIMIT:-none} mode=${SEAL_E2E_PARALLEL_MODE:-groups} fail_fast=$FAIL_FAST"
   log "  tests=${SEAL_E2E_TESTS:-<all>} skip=${SEAL_E2E_SKIP:-<none>} limited_host=${SEAL_E2E_LIMITED_HOST:-0}"
   log "  summary=${SUMMARY_PATH} last=${SUMMARY_LAST_PATH:-<none>}"
-  log "  log_root=${LOG_ROOT} seed_root=${SEED_ROOT}"
+  log "  log_root=${LOG_ROOT} seed_root=${SEED_ROOT} tmp_root=${TMP_ROOT}"
   log "  node_modules_root=${SEAL_E2E_NODE_MODULES_ROOT:-<none>}"
 }
 
@@ -315,8 +396,10 @@ run_group() {
   local root="$3"
   local summary_path="$root/.e2e-summary.tsv"
   local log_dir="$root/.e2e-logs"
+  local group_safe
+  group_safe="$(safe_name "$group")"
   if [ -n "$LOG_ROOT" ]; then
-    log_dir="$LOG_ROOT/$group"
+    log_dir="$LOG_ROOT/$group_safe"
   fi
   local example_deps="0"
   if [ -z "$NODE_MODULES_ROOT" ]; then
@@ -342,6 +425,7 @@ run_group() {
     SEAL_E2E_LOG_DIR="$log_dir"
     SEAL_E2E_RERUN_FAILED=0
     SEAL_E2E_FAIL_FAST="${SEAL_E2E_FAIL_FAST:-0}"
+    SEAL_E2E_SAFE_ROOTS="$SAFE_ROOTS_ENV"
   )
   if [ -n "$NODE_MODULES_ROOT" ]; then
     env_args+=(SEAL_E2E_NODE_MODULES_ROOT="$NODE_MODULES_ROOT")
@@ -424,9 +508,19 @@ write_combined_summary() {
     fi
     awk 'NR == 1 && $0 ~ /^group\t/ {next} {print}' "$summary_file" >> "$SUMMARY_PATH"
   done
-  if [ -n "$SUMMARY_LAST_PATH" ] && [ -f "$SUMMARY_PATH" ]; then
-    cp -f "$SUMMARY_PATH" "$SUMMARY_LAST_PATH"
+  update_last_summary
+}
+
+update_last_summary() {
+  if [ -z "$SUMMARY_LAST_PATH" ] || [ -z "$SUMMARY_PATH" ] || [ ! -f "$SUMMARY_PATH" ]; then
+    return
   fi
+  local last_dir tmp_path
+  last_dir="$(dirname "$SUMMARY_LAST_PATH")"
+  mkdir -p "$last_dir"
+  tmp_path="${SUMMARY_LAST_PATH}.tmp.$$"
+  cp -f "$SUMMARY_PATH" "$tmp_path"
+  mv -f "$tmp_path" "$SUMMARY_LAST_PATH"
 }
 
 print_combined_summary() {
@@ -560,7 +654,8 @@ if [ "${#GROUP_ORDER[@]}" -gt 0 ]; then
   if [ "$JOBS" -le 1 ]; then
     for name in "${GROUP_ORDER[@]}"; do
       tests="${GROUP_FILTERED[$name]}"
-      root="$(mktemp -d "/tmp/seal-example-e2e-${name}-XXXXXX")"
+      name_safe="$(safe_name "$name")"
+      root="$(mktemp -d "$TMP_ROOT/seal-example-e2e-${name_safe}-XXXXXX")"
       summary_path="$root/.e2e-summary.tsv"
       GROUP_SUMMARY["$name"]="$summary_path"
       start="$(date +%s)"
@@ -582,7 +677,8 @@ if [ "${#GROUP_ORDER[@]}" -gt 0 ]; then
     declare -A PID_SUMMARY=()
     for name in "${GROUP_ORDER[@]}"; do
       tests="${GROUP_FILTERED[$name]}"
-      root="$(mktemp -d "/tmp/seal-example-e2e-${name}-XXXXXX")"
+      name_safe="$(safe_name "$name")"
+      root="$(mktemp -d "$TMP_ROOT/seal-example-e2e-${name_safe}-XXXXXX")"
       summary_path="$root/.e2e-summary.tsv"
       GROUP_SUMMARY["$name"]="$summary_path"
       start="$(date +%s)"
@@ -641,7 +737,8 @@ for test in "${SERIAL_TESTS[@]}"; do
   if [ "$skip_serial" = "1" ]; then
     break
   fi
-  root="$(mktemp -d "/tmp/seal-example-e2e-${test}-XXXXXX")"
+  test_safe="$(safe_name "$test")"
+  root="$(mktemp -d "$TMP_ROOT/seal-example-e2e-${test_safe}-XXXXXX")"
   summary_path="$root/.e2e-summary.tsv"
   GROUP_SUMMARY["$test"]="$summary_path"
   GROUP_ORDER+=("$test")
