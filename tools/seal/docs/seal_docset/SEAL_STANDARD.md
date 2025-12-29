@@ -118,6 +118,7 @@ Przykład:
 - STD-034k (SHOULD): `appName`/`serviceName` maja spójne zasady override we wszystkich komendach; gdy override niedozwolony = fail‑fast z instrukcja.
 - STD-034l (SHOULD): `target.kind` akceptuje tylko `local|ssh`; inne wartosci = fail‑fast.
 - STD-034m (SHOULD): `defaultTarget` wskazuje istniejacy target; brak = fail‑fast w `seal check`.
+- STD-034n (SHOULD): merge configu blokuje `__proto__`/`constructor`/`prototype` (prototype pollution); wykryte klucze = FAIL lub jawny warning.
 - STD-025 (SHOULD): wszystkie generowane katalogi (cache/release/tmp) maja retention/pruning i loguja przyczyny czyszczenia.
 - STD-025a (SHOULD): cache jest kluczowany po target+config+wersja/format; zmiana schematu wymusza czyszczenie lub nowy namespace cache.
 - STD-028 (SHOULD): zapisy plikow krytycznych sa atomowe (tmp + rename), aby uniknac polowicznych stanow po crashu.
