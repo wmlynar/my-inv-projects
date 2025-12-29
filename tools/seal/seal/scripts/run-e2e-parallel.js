@@ -9,20 +9,18 @@ const { spawn, spawnSync } = require("child_process");
 const SCRIPT_DIR = __dirname;
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "../../../..");
 const RUNNER = path.join(SCRIPT_DIR, "run-e2e-suite.sh");
-const { loadManifest } = require("./e2e-manifest");
-const { detectCapabilities } = require("./e2e-capabilities");
 const {
   resolveJsonSummaryPath,
   ensureSummaryFile,
   parseSummaryRows,
   formatSummaryRow,
   listFailedTests,
-  buildPlan,
-  printPlan,
+  printCategorySummary,
+  printStatusList,
   buildJsonSummary,
   writeJsonSummary,
 } = require("./e2e-report");
-const { loadE2EConfig, parseTestFilters } = require("./e2e-runner-config");
+const { loadE2EConfig } = require("./e2e-runner-config");
 const {
   assertEscalated,
   makeRunId,
@@ -30,6 +28,7 @@ const {
   normalizeFlag,
   safeName,
 } = require("./e2e-runner-utils");
+const { preparePlan } = require("./e2e-runner-plan");
 
 function log(msg) {
   process.stdout.write(`[seal-e2e-parallel] ${msg}\n`);
@@ -189,113 +188,56 @@ async function main() {
   }
   if (jobs < 1) jobs = 1;
 
-  if (!fs.existsSync(manifestPath)) {
-    log(`ERROR: missing E2E manifest: ${manifestPath}`);
-    process.exit(1);
-  }
-  if (!manifestStrict) {
-    log("WARN: SEAL_E2E_MANIFEST_STRICT=0; manifest validation warnings are non-fatal.");
-  }
-  let manifestData;
-  try {
-    manifestData = loadManifest(manifestPath, { strict: manifestStrict, log });
-  } catch (err) {
-    log(`ERROR: ${err.message}`);
-    process.exit(1);
-  }
-  const { tests, order: manifestOrder } = manifestData;
-  const testByName = new Map(tests.map((item) => [item.name, item]));
-
-  let { onlyList, skipList } = parseTestFilters(env, manifestOrder, log);
-
   const planMode = normalizeFlag(env.SEAL_E2E_PLAN || env.SEAL_E2E_EXPLAIN, "0") === "1";
-  const capabilities = detectCapabilities(env);
-  const hostLimited = capabilities.limitedHost;
-  if (hostLimited) {
-    const hostOnlyList = tests
-      .filter((test) => Array.isArray(test.requirements) && test.requirements.includes("host"))
-      .map((test) => test.name);
-    if (hostOnlyList.length) {
-      log(`Host-limited mode: skipping host-only tests: ${hostOnlyList.join(" ")}`);
-    }
-  }
-
   const rerunFailed = normalizeFlag(env.SEAL_E2E_RERUN_FAILED, "0") === "1";
   let rerunFrom = env.SEAL_E2E_RERUN_FROM || summaryPath;
   if (summaryLastPath) {
     rerunFrom = env.SEAL_E2E_RERUN_FROM || summaryLastPath;
   }
-  if (rerunFailed) {
+  const adjustFilters = ({ onlyList, skipList }) => {
+    if (!rerunFailed) {
+      return { onlyList, skipList };
+    }
     if (!rerunFrom) {
       log("WARN: SEAL_E2E_RERUN_FAILED=1 but no summary path is set.");
-    } else {
-      const failed = listFailedTests(rerunFrom);
-      if (!failed.length) {
-        log(`No failed tests in ${rerunFrom}; nothing to rerun.`);
-        process.exit(0);
-      }
-      if (onlyList.length) {
-        onlyList = intersectLists(onlyList, failed);
-      } else {
-        onlyList = failed;
-      }
-      if (!onlyList.length) {
-        log("No tests left after rerun/filters.");
-        process.exit(1);
-      }
-      log(`Rerun failed tests only: ${onlyList.join(" ")}`);
+      return { onlyList, skipList };
     }
-  }
-
-  const onlySet = new Set(onlyList);
-  const skipSet = new Set(skipList);
-
-  const plan = buildPlan(manifestOrder, testByName, onlySet, skipSet, capabilities);
-  const shouldRun = (name) => {
-    const entry = plan.byName.get(name);
-    return entry ? entry.run : false;
+    const failed = listFailedTests(rerunFrom);
+    if (!failed.length) {
+      log(`No failed tests in ${rerunFrom}; nothing to rerun.`);
+      process.exit(0);
+    }
+    let nextOnly = onlyList;
+    if (nextOnly.length) {
+      nextOnly = intersectLists(nextOnly, failed);
+    } else {
+      nextOnly = failed;
+    }
+    if (!nextOnly.length) {
+      log("No tests left after rerun/filters.");
+      process.exit(1);
+    }
+    log(`Rerun failed tests only: ${nextOnly.join(" ")}`);
+    return { onlyList: nextOnly, skipList };
   };
 
-  const selectedTests = plan.selected;
-  if (onlySet.size && !selectedTests.length) {
-    log("ERROR: filter resulted in zero tests to run.");
-    process.exit(1);
-  }
-  if (onlyList.length) {
-    log(`Selected tests: ${onlyList.join(" ")}`);
-  }
-
-  if (planMode) {
-    printPlan(plan.entries, testByName, capabilities, log);
-    process.exit(0);
-  }
-
-  const missingScripts = [];
-  for (const name of selectedTests) {
-    const test = testByName.get(name);
-    const scriptPath = test ? test.script : "";
-    if (!scriptPath) {
-      missingScripts.push(`${name}: <missing script>`);
-      continue;
-    }
-    const resolved = path.isAbsolute(scriptPath) ? scriptPath : path.join(REPO_ROOT, scriptPath);
-    let stat = null;
-    try {
-      stat = fs.statSync(resolved);
-    } catch {
-      stat = null;
-    }
-    if (!stat || !stat.isFile()) {
-      missingScripts.push(`${name}: ${resolved}`);
-    }
-  }
-  if (missingScripts.length) {
-    log("ERROR: missing E2E test scripts:");
-    for (const entry of missingScripts) {
-      log(`  - ${entry}`);
-    }
-    process.exit(1);
-  }
+  const {
+    manifestOrder,
+    testByName,
+    capabilities,
+    plan,
+    selectedTests,
+    shouldRun,
+  } = preparePlan({
+    env,
+    repoRoot: REPO_ROOT,
+    manifestPath,
+    manifestStrict,
+    planMode,
+    log,
+    adjustFilters,
+  });
+  const hostLimited = capabilities.limitedHost;
 
   log("Effective config:");
   log(`  jobs=${jobs} cgroup_limit=${cgroupLimit || "none"} mode=${parallelMode} fail_fast=${failFast}`);
@@ -579,18 +521,8 @@ async function main() {
 
   function printCombinedSummary(summaryRows, orderList) {
     const statusByTest = {};
-    const durationByTest = {};
-    const descByTest = {};
-    const skipRiskByTest = {};
-    const hintByTest = {};
-    const logPathByTest = {};
     for (const row of summaryRows) {
       statusByTest[row.test] = row.status;
-      durationByTest[row.test] = row.duration;
-      descByTest[row.test] = row.description;
-      skipRiskByTest[row.test] = row.skipRisk;
-      hintByTest[row.test] = row.failHint;
-      logPathByTest[row.test] = row.logPath;
     }
 
     let ok = 0;
@@ -614,66 +546,30 @@ async function main() {
       log(`Rerun failed only: SEAL_E2E_RERUN_FAILED=1 SEAL_E2E_RERUN_FROM=${rerunHint}`);
     }
 
-    const categories = [];
-    const seen = new Set();
-    for (const test of orderList) {
-      const category = (testByName.get(test) || {}).category || "misc";
-      if (!seen.has(category)) {
-        seen.add(category);
-        categories.push(category);
-      }
-    }
-    log("Combined category summary:");
-    for (const category of categories) {
-      let total = 0;
-      let catOk = 0;
-      let catSkipped = 0;
-      let catFailed = 0;
-      let catAborted = 0;
-      for (const test of orderList) {
-        const testCategory = (testByName.get(test) || {}).category || "misc";
-        if (testCategory !== category) continue;
-        const status = statusByTest[test] || "skipped";
-        total += 1;
-        if (status === "ok") catOk += 1;
-        else if (status === "failed") catFailed += 1;
-        else if (status === "aborted") catAborted += 1;
-        else catSkipped += 1;
-      }
-      log(`Category ${category}: total=${total} ok=${catOk} skipped=${catSkipped} failed=${catFailed} aborted=${catAborted}`);
-      log("  Test | Status | Time | Parallel | SkipRisk | Description");
-      for (const test of orderList) {
-        const testCategory = (testByName.get(test) || {}).category || "misc";
-        if (testCategory !== category) continue;
-        const status = statusByTest[test] || "skipped";
-        const par = (testByName.get(test) || {}).parallel === "1" ? "yes" : "no";
-        log(`  - ${test} | ${status} | ${formatDuration(durationByTest[test] || 0)} | ${par} | ${skipRiskByTest[test] || ""} | ${descByTest[test] || ""}`);
-      }
-    }
-
-    if (failed) {
-      log("Failures:");
-      for (const test of orderList) {
-        if (statusByTest[test] !== "failed") continue;
-        log(`  - ${test}: ${descByTest[test] || ""}`);
-        if (hintByTest[test]) {
-          log(`    hint: ${hintByTest[test]}`);
-        }
-        if (logPathByTest[test]) {
-          log(`    log: ${logPathByTest[test]}`);
-        }
-      }
-    }
-    if (aborted) {
-      log("Aborted:");
-      for (const test of orderList) {
-        if (statusByTest[test] !== "aborted") continue;
-        log(`  - ${test}: ${descByTest[test] || ""}`);
-        if (hintByTest[test]) {
-          log(`    hint: ${hintByTest[test]}`);
-        }
-      }
-    }
+    printCategorySummary({
+      orderList,
+      testByName,
+      summaryRows,
+      log,
+      formatDuration,
+      label: "Combined category summary:",
+    });
+    printStatusList({
+      orderList,
+      testByName,
+      summaryRows,
+      status: "failed",
+      label: "Failures:",
+      log,
+    });
+    printStatusList({
+      orderList,
+      testByName,
+      summaryRows,
+      status: "aborted",
+      label: "Aborted:",
+      log,
+    });
   }
 
   await runGroupsParallel(filteredGroups);

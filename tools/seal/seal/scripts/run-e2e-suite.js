@@ -7,22 +7,22 @@ const os = require("os");
 const crypto = require("crypto");
 const { spawn, spawnSync } = require("child_process");
 
-const { loadManifest } = require("./e2e-manifest");
-const { detectCapabilities } = require("./e2e-capabilities");
 const {
   resolveJsonSummaryPath,
   ensureSummaryFile,
   parseSummaryRows,
   formatSummaryRow,
   listFailedTests,
-  buildPlan,
-  printPlan,
+  printCategorySummary,
+  printStatusList,
   buildJsonSummary,
   writeJsonSummary,
 } = require("./e2e-report");
 const { hasCommand } = require("./e2e-utils");
-const { loadE2EConfig, parseTestFilters } = require("./e2e-runner-config");
+const { loadE2EConfig } = require("./e2e-runner-config");
 const { assertEscalated, makeRunId, formatDuration } = require("./e2e-runner-utils");
+const { applyToolsetDefaults, applyE2EFeatureFlags, applySshDefaults } = require("./e2e-runner-env");
+const { preparePlan } = require("./e2e-runner-plan");
 
 const SCRIPT_DIR = __dirname;
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "../../../..");
@@ -37,12 +37,6 @@ function dirHasFiles(dir) {
     return fs.existsSync(dir) && fs.readdirSync(dir).length > 0;
   } catch {
     return false;
-  }
-}
-
-function setEnvDefault(env, key, value) {
-  if (env[key] === undefined || env[key] === null || env[key] === "") {
-    env[key] = value;
   }
 }
 
@@ -276,10 +270,7 @@ async function main() {
   }
 
   const toolset = env.SEAL_E2E_TOOLSET || "core";
-  if (toolset === "core") {
-    env.SEAL_C_OBF_ALLOW_MISSING = "1";
-    env.SEAL_MIDGETPACK_SKIP = "1";
-  }
+  applyToolsetDefaults(env, toolset);
 
   let isolateHome = env.SEAL_E2E_ISOLATE_HOME || "";
   if (!isolateHome) {
@@ -304,22 +295,6 @@ async function main() {
 
   const manifestPath = env.SEAL_E2E_MANIFEST || path.join(SCRIPT_DIR, "e2e-tests.json5");
   const manifestStrict = env.SEAL_E2E_MANIFEST_STRICT !== "0";
-  if (!fs.existsSync(manifestPath)) {
-    log(`ERROR: missing E2E manifest: ${manifestPath}`);
-    process.exit(1);
-  }
-  if (!manifestStrict) {
-    log("WARN: SEAL_E2E_MANIFEST_STRICT=0; manifest validation warnings are non-fatal.");
-  }
-  let manifestData;
-  try {
-    manifestData = loadManifest(manifestPath, { strict: manifestStrict, log });
-  } catch (err) {
-    log(`ERROR: ${err.message}`);
-    process.exit(1);
-  }
-  const { tests, order: manifestOrder } = manifestData;
-  const testByName = new Map(tests.map((item) => [item.name, item]));
 
   const logEffectiveConfig = () => {
     log("Effective config:");
@@ -351,94 +326,53 @@ async function main() {
     fs.renameSync(tmpPath, summaryLastPath);
   };
 
-  let { onlyList, skipList } = parseTestFilters(env, manifestOrder, log);
-
   const rerunFailed = env.SEAL_E2E_RERUN_FAILED === "1";
   const rerunFrom = env.SEAL_E2E_RERUN_FROM || summaryLastPath || summaryPath;
-  if (rerunFailed && !setupOnly) {
+  const planMode = env.SEAL_E2E_PLAN === "1" || env.SEAL_E2E_EXPLAIN === "1";
+  const adjustFilters = ({ onlyList, skipList }) => {
+    if (!rerunFailed || setupOnly) {
+      return { onlyList, skipList };
+    }
     if (!rerunFrom) {
       log("WARN: SEAL_E2E_RERUN_FAILED=1 but no summary path is set.");
+      return { onlyList, skipList };
+    }
+    const failed = listFailedTests(rerunFrom);
+    if (!failed.length) {
+      log(`No failed tests in ${rerunFrom}; nothing to rerun.`);
+      process.exit(0);
+    }
+    let nextOnly = onlyList;
+    if (nextOnly.length) {
+      nextOnly = nextOnly.filter((item) => failed.includes(item));
     } else {
-      const failed = listFailedTests(rerunFrom);
-      if (!failed.length) {
-        log(`No failed tests in ${rerunFrom}; nothing to rerun.`);
-        process.exit(0);
-      }
-      if (onlyList.length) {
-        onlyList = onlyList.filter((item) => failed.includes(item));
-      } else {
-        onlyList = failed;
-      }
-      if (!onlyList.length) {
-        log("No tests left after rerun/filters.");
-        process.exit(0);
-      }
-      if (!env.SEAL_E2E_SUMMARY_SCOPE) {
-        summaryScope = "selected";
-      }
-      log(`Rerun failed tests only: ${onlyList.join(" ")}`);
+      nextOnly = failed;
     }
-  }
-
-  const onlySet = new Set(onlyList);
-  const skipSet = new Set(skipList);
-  const capabilities = detectCapabilities(env);
-  const plan = buildPlan(manifestOrder, testByName, onlySet, skipSet, capabilities);
-  const planMode = env.SEAL_E2E_PLAN === "1" || env.SEAL_E2E_EXPLAIN === "1";
-
-  if (capabilities.limitedHost) {
-    const hostOnlyList = tests
-      .filter((test) => Array.isArray(test.requirements) && test.requirements.includes("host"))
-      .map((test) => test.name);
-    if (hostOnlyList.length) {
-      log(`Host-limited mode: skipping host-only tests: ${hostOnlyList.join(" ")}`);
+    if (!nextOnly.length) {
+      log("No tests left after rerun/filters.");
+      process.exit(0);
     }
-  }
-
-  if (planMode) {
-    printPlan(plan.entries, testByName, capabilities, log);
-    process.exit(0);
-  }
-
-  const missingScripts = [];
-  for (const name of plan.selected) {
-    const test = testByName.get(name);
-    const scriptPath = test ? test.script : "";
-    if (!scriptPath) {
-      missingScripts.push(`${name}: <missing script>`);
-      continue;
+    if (!env.SEAL_E2E_SUMMARY_SCOPE) {
+      summaryScope = "selected";
     }
-    const resolved = path.isAbsolute(scriptPath) ? scriptPath : path.join(REPO_ROOT, scriptPath);
-    let stat = null;
-    try {
-      stat = fs.statSync(resolved);
-    } catch {
-      stat = null;
-    }
-    if (!stat || !stat.isFile()) {
-      missingScripts.push(`${name}: ${resolved}`);
-    }
-  }
-  if (missingScripts.length) {
-    log("ERROR: missing E2E test scripts:");
-    for (const entry of missingScripts) {
-      log(`  - ${entry}`);
-    }
-    process.exit(1);
-  }
-
-  const shouldRun = (name) => {
-    const entry = plan.byName.get(name);
-    return entry ? entry.run : false;
+    log(`Rerun failed tests only: ${nextOnly.join(" ")}`);
+    return { onlyList: nextOnly, skipList };
   };
-
-  if (onlySet.size && !plan.selected.length) {
-    log("ERROR: filter resulted in zero tests to run.");
-    process.exit(1);
-  }
-  if (onlyList.length) {
-    log(`Selected tests: ${onlyList.join(" ")}`);
-  }
+  const {
+    manifestOrder,
+    testByName,
+    capabilities,
+    plan,
+    shouldRun,
+  } = preparePlan({
+    env,
+    repoRoot: REPO_ROOT,
+    manifestPath,
+    manifestStrict,
+    planMode,
+    log,
+    adjustFilters,
+  });
 
   initSummaryFile();
 
@@ -621,53 +555,8 @@ async function main() {
     }
   }
 
-  env.SEAL_THIN_E2E = "1";
-  env.SEAL_THIN_ANTI_DEBUG_E2E = "1";
-  env.SEAL_LEGACY_PACKAGERS_E2E = "1";
-  env.SEAL_USER_FLOW_E2E = "1";
-  setEnvDefault(env, "SEAL_E2E_STRICT_PROC_MEM", "1");
-  setEnvDefault(env, "SEAL_E2E_STRICT_PTRACE", "1");
-  setEnvDefault(env, "SEAL_E2E_STRICT_DENY_ENV", "0");
-  env.SEAL_SENTINEL_E2E = "1";
-  env.SEAL_PROTECTION_E2E = "1";
-  env.SEAL_OBFUSCATION_E2E = "1";
-  env.SEAL_STRIP_E2E = "1";
-  env.SEAL_STRIP_E2E_STRINGS_TIMEOUT_MS = env.SEAL_STRIP_E2E_STRINGS_TIMEOUT_MS || "60000";
-  env.SEAL_STRIP_E2E_STRINGS_MAX_BUFFER = env.SEAL_STRIP_E2E_STRINGS_MAX_BUFFER || "50000000";
-  env.SEAL_ELF_PACKERS_E2E = "1";
-  const defaultCObf = toolset === "full" ? "1" : "0";
-  env.SEAL_C_OBF_E2E = env.SEAL_C_OBF_E2E || defaultCObf;
-  env.SEAL_UI_E2E = "1";
-  env.SEAL_POSTJECT_E2E = "1";
-  env.SEAL_SHIP_E2E = "1";
-  env.SEAL_DECOY_E2E = "1";
-
-  let e2eSsh = env.SEAL_E2E_SSH || "";
-  if (!e2eSsh) {
-    e2eSsh = env.SEAL_SHIP_SSH_E2E || "0";
-  }
-  if (e2eSsh === "1") {
-    env.SEAL_E2E_SSH = "1";
-    env.SEAL_SHIP_SSH_E2E = "1";
-    env.SEAL_USER_FLOW_SSH_E2E = "1";
-    env.SEAL_SHIP_SSH_HOST = env.SEAL_SHIP_SSH_HOST || "seal-server";
-    env.SEAL_SHIP_SSH_USER = env.SEAL_SHIP_SSH_USER || "admin";
-    env.SEAL_SHIP_SSH_PORT = env.SEAL_SHIP_SSH_PORT || "22";
-    env.SEAL_SHIP_SSH_INSTALL_DIR = env.SEAL_SHIP_SSH_INSTALL_DIR || "/home/admin/apps/seal-example";
-    env.SEAL_SHIP_SSH_SERVICE_NAME = env.SEAL_SHIP_SSH_SERVICE_NAME || "seal-example";
-    env.SEAL_SHIP_SSH_HTTP_PORT = env.SEAL_SHIP_SSH_HTTP_PORT || "3333";
-  } else {
-    env.SEAL_E2E_SSH = "0";
-    env.SEAL_SHIP_SSH_E2E = "0";
-    env.SEAL_USER_FLOW_SSH_E2E = "0";
-  }
-
-  env.SEAL_THIN_CHUNK_SIZE = env.SEAL_THIN_CHUNK_SIZE || "8388608";
-  env.SEAL_THIN_ZSTD_LEVEL = env.SEAL_THIN_ZSTD_LEVEL || "1";
-  if (!env.SEAL_E2E_TIMEOUT_SCALE && env.SEAL_DOCKER_E2E === "1") {
-    env.SEAL_E2E_TIMEOUT_SCALE = "2";
-  }
-  env.SEAL_UI_E2E_HEADLESS = env.SEAL_UI_E2E_HEADLESS || "1";
+  applyE2EFeatureFlags(env, toolset);
+  applySshDefaults(env);
 
   const disableUiE2E = (reason) => {
     log(`WARN: ${reason}`);
@@ -859,89 +748,27 @@ async function main() {
     }
   }
 
-  const printCategoryTable = () => {
-    const orderList = summaryScope === "selected" ? testOrder : manifestOrder;
-    if (!orderList.length) return;
-    log("Category summary:");
-    const categories = [];
-    const seen = new Set();
-    for (const name of orderList) {
-      const category = (testByName.get(name) || {}).category || "misc";
-      if (!seen.has(category)) {
-        seen.add(category);
-        categories.push(category);
-      }
-    }
-    for (const category of categories) {
-      let total = 0;
-      let okCount = 0;
-      let skipCount = 0;
-      let failCount = 0;
-      let abortCount = 0;
-      for (const name of orderList) {
-        if (((testByName.get(name) || {}).category || "misc") !== category) continue;
-        const status = testStatus[name] || "skipped";
-        total += 1;
-        if (status === "ok") okCount += 1;
-        else if (status === "failed") failCount += 1;
-        else if (status === "aborted") abortCount += 1;
-        else skipCount += 1;
-      }
-      log(`Category ${category}: total=${total} ok=${okCount} skipped=${skipCount} failed=${failCount} aborted=${abortCount}`);
-      log("  Test | Status | Time | Parallel | SkipRisk | Description");
-      for (const name of orderList) {
-        if (((testByName.get(name) || {}).category || "misc") !== category) continue;
-        const status = testStatus[name] || "skipped";
-        const dur = testDurations[name] || 0;
-        const par = (testByName.get(name) || {}).parallel === "1" ? "yes" : "no";
-        const skipRisk = (testByName.get(name) || {}).skipRisk || "";
-        const desc = (testByName.get(name) || {}).description || "";
-        log(`  - ${name} | ${status} | ${formatDuration(dur)} | ${par} | ${skipRisk} | ${desc}`);
-      }
-    }
-  };
-
-  const printFailureList = () => {
-    if (failures === 0) return;
-    log("Failures:");
-    for (const name of manifestOrder) {
-      if (testStatus[name] !== "failed") continue;
-      const desc = (testByName.get(name) || {}).description || "";
-      const hint = (testByName.get(name) || {}).failHint || "";
-      const logPath = testLogs[name] || "";
-      log(`  - ${name}: ${desc}`);
-      if (hint) {
-        log(`    hint: ${hint}`);
-      }
-      if (logPath) {
-        log(`    log: ${logPath}`);
-      }
-    }
-  };
+  const summaryRows = testOrder.map((name) => {
+    const test = testByName.get(name) || {};
+    return {
+      group: summaryGroup,
+      test: name,
+      status: testStatus[name] || "skipped",
+      duration: testDurations[name] || 0,
+      category: test.category || "",
+      parallel: test.parallel || "0",
+      skipRisk: test.skipRisk || "",
+      description: test.description || "",
+      logPath: testLogs[name] || "",
+      failHint: test.failHint || "",
+    };
+  });
+  const summaryOrder = summaryScope === "selected" ? testOrder : manifestOrder;
 
   const writeSummaryFile = () => {
     if (!summaryPath) return;
-    for (const name of testOrder) {
-      const status = testStatus[name];
-      const dur = testDurations[name] || 0;
-      const category = (testByName.get(name) || {}).category || "";
-      const parallel = (testByName.get(name) || {}).parallel || "0";
-      const skipRisk = (testByName.get(name) || {}).skipRisk || "";
-      const desc = (testByName.get(name) || {}).description || "";
-      const hint = (testByName.get(name) || {}).failHint || "";
-      const logPath = testLogs[name] || "";
-      const line = formatSummaryRow({
-        group: summaryGroup,
-        test: name,
-        status,
-        duration: dur,
-        category,
-        parallel,
-        skipRisk,
-        description: desc,
-        logPath,
-        failHint: hint,
-      });
+    for (const row of summaryRows) {
+      const line = formatSummaryRow(row);
       fs.appendFileSync(summaryPath, `${line}\n`, "utf8");
     }
   };
@@ -985,13 +812,26 @@ async function main() {
     log(`Rerun failed only: SEAL_E2E_RERUN_FAILED=1 SEAL_E2E_RERUN_FROM=${rerunHint}`);
   }
 
-  printCategoryTable();
-  printFailureList();
+  printCategorySummary({
+    orderList: summaryOrder,
+    testByName,
+    summaryRows,
+    log,
+    formatDuration,
+  });
+  printStatusList({
+    orderList: summaryOrder,
+    testByName,
+    summaryRows,
+    status: "failed",
+    label: "Failures:",
+    log,
+  });
 
   writeSummaryFile();
   updateLastSummary();
 
-  const summaryRows = parseSummaryRows(summaryPath);
+  const summaryRowsFromFile = parseSummaryRows(summaryPath);
   const summaryJsonPath = resolveJsonSummaryPath(summaryPath, env);
   const summaryData = buildJsonSummary({
     runId,
@@ -999,7 +839,7 @@ async function main() {
     manifestOrder,
     testByName,
     planByName: plan.byName,
-    summaryRows,
+    summaryRows: summaryRowsFromFile,
     capabilities,
     summaryPath,
     runStart,

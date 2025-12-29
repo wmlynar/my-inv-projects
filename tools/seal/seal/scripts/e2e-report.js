@@ -118,6 +118,119 @@ function formatSummaryRow(row) {
   return fields.join("\t");
 }
 
+function buildSummaryIndex(rows) {
+  const index = new Map();
+  if (!Array.isArray(rows)) return index;
+  for (const row of rows) {
+    if (row && row.test) {
+      index.set(row.test, row);
+    }
+  }
+  return index;
+}
+
+function pickTestMeta(testByName, name, row) {
+  const test = testByName && typeof testByName.get === "function" ? testByName.get(name) : null;
+  return {
+    category: (test && test.category) || (row && row.category) || "misc",
+    parallel: (test && test.parallel) || (row && row.parallel) || "0",
+    skipRisk: (test && test.skipRisk) || (row && row.skipRisk) || "",
+    description: (test && test.description) || (row && row.description) || "",
+    failHint: (test && test.failHint) || (row && row.failHint) || "",
+  };
+}
+
+function printCategorySummary(options) {
+  const {
+    orderList,
+    testByName,
+    summaryRows,
+    log,
+    formatDuration,
+    label,
+  } = options || {};
+  if (!Array.isArray(orderList) || orderList.length === 0) return;
+  const logger = typeof log === "function" ? log : (msg) => process.stdout.write(`${msg}\n`);
+  const fmt = typeof formatDuration === "function" ? formatDuration : (value) => String(value);
+  const index = buildSummaryIndex(summaryRows);
+  const categories = [];
+  const seen = new Set();
+  for (const name of orderList) {
+    const row = index.get(name);
+    const meta = pickTestMeta(testByName, name, row);
+    if (!seen.has(meta.category)) {
+      seen.add(meta.category);
+      categories.push(meta.category);
+    }
+  }
+  logger(label || "Category summary:");
+  for (const category of categories) {
+    let total = 0;
+    let okCount = 0;
+    let skipCount = 0;
+    let failCount = 0;
+    let abortCount = 0;
+    for (const name of orderList) {
+      const row = index.get(name);
+      const meta = pickTestMeta(testByName, name, row);
+      if (meta.category !== category) continue;
+      const status = (row && row.status) || "skipped";
+      total += 1;
+      if (status === "ok") okCount += 1;
+      else if (status === "failed") failCount += 1;
+      else if (status === "aborted") abortCount += 1;
+      else skipCount += 1;
+    }
+    logger(`Category ${category}: total=${total} ok=${okCount} skipped=${skipCount} failed=${failCount} aborted=${abortCount}`);
+    logger("  Test | Status | Time | Parallel | SkipRisk | Description");
+    for (const name of orderList) {
+      const row = index.get(name);
+      const meta = pickTestMeta(testByName, name, row);
+      if (meta.category !== category) continue;
+      const status = (row && row.status) || "skipped";
+      const duration = row ? Number(row.duration || 0) : 0;
+      const parallel = meta.parallel === "1" ? "yes" : "no";
+      logger(`  - ${name} | ${status} | ${fmt(duration)} | ${parallel} | ${meta.skipRisk} | ${meta.description}`);
+    }
+  }
+}
+
+function printStatusList(options) {
+  const {
+    orderList,
+    testByName,
+    summaryRows,
+    status,
+    label,
+    log,
+  } = options || {};
+  if (!Array.isArray(orderList) || orderList.length === 0) return;
+  const logger = typeof log === "function" ? log : (msg) => process.stdout.write(`${msg}\n`);
+  const index = buildSummaryIndex(summaryRows);
+  const matched = [];
+  for (const name of orderList) {
+    const row = index.get(name);
+    const rowStatus = (row && row.status) || "skipped";
+    if (rowStatus === status) {
+      matched.push(name);
+    }
+  }
+  if (!matched.length) return;
+  logger(label || "Results:");
+  for (const name of matched) {
+    const row = index.get(name);
+    const meta = pickTestMeta(testByName, name, row);
+    const desc = meta.description || "";
+    logger(`  - ${name}: ${desc}`);
+    if (meta.failHint) {
+      logger(`    hint: ${meta.failHint}`);
+    }
+    if (row && row.logPath) {
+      logger(`    log: ${row.logPath}`);
+    }
+  }
+}
+
 function listFailedTests(summaryPath) {
   const rows = parseSummaryRows(summaryPath);
   const failed = new Set();
@@ -242,6 +355,8 @@ module.exports = {
   ensureSummaryFile,
   parseSummaryRows,
   formatSummaryRow,
+  printCategorySummary,
+  printStatusList,
   listFailedTests,
   buildPlan,
   printPlan,
