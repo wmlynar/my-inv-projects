@@ -86,6 +86,16 @@ function formatConfigLine(entries) {
   return `  ${parts.join(" ")}`;
 }
 
+function buildTimingRows(durationByTest, statusByTest) {
+  const durations = durationByTest || {};
+  const statuses = statusByTest || {};
+  return Object.keys(durations).map((name) => ({
+    name,
+    duration: durations[name] || 0,
+    status: statuses[name],
+  }));
+}
+
 module.exports = {
   parseList,
   makeRunId,
@@ -97,4 +107,5 @@ module.exports = {
   assertEscalated,
   logEffectiveConfig,
   formatConfigLine,
+  buildTimingRows,
 };

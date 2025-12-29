@@ -21,7 +21,7 @@ const {
 } = require("./e2e-report");
 const { hasCommand } = require("./e2e-utils");
 const { loadE2EConfig, resolveSummaryPaths, resolveRerunFrom, isPlanMode } = require("./e2e-runner-config");
-const { assertEscalated, makeRunId, formatDuration, logEffectiveConfig, formatConfigLine } = require("./e2e-runner-utils");
+const { assertEscalated, makeRunId, formatDuration, logEffectiveConfig, formatConfigLine, buildTimingRows } = require("./e2e-runner-utils");
 const { applyToolsetDefaults, applyE2EFeatureFlags, applySshDefaults } = require("./e2e-runner-env");
 const { preparePlan, applyRerunFailedFilters } = require("./e2e-runner-plan");
 
@@ -780,8 +780,7 @@ async function main() {
     sumTests += testDurations[name] || 0;
   }
 
-  const timingRows = Object.keys(testDurations)
-    .map((name) => ({ name, duration: testDurations[name] || 0, status: testStatus[name] }));
+  const timingRows = buildTimingRows(testDurations, testStatus);
   printTimingSummary({
     label: `Timing summary (total ${formatDuration(total)}):`,
     entries: timingRows,
