@@ -142,7 +142,7 @@ function loadFailedTests(summaryFile) {
     const cols = line.split("\t");
     if (cols.length < 3) continue;
     const status = cols[2];
-    if (status === "failed") {
+    if (status === "failed" || status === "aborted") {
       out.push(cols[1]);
     }
   }
@@ -175,18 +175,44 @@ function readSummary(summaryPath) {
   return rows;
 }
 
-function writeCombinedSummary(summaryPath, groupOrder, groupSummary) {
+function writeCombinedSummary(summaryPath, groupOrder, groupSummary, syntheticRows) {
   if (!summaryPath) return;
   fs.mkdirSync(path.dirname(summaryPath), { recursive: true });
   const header = "group\ttest\tstatus\tduration_s\tcategory\tparallel\tskip_risk\tdescription\tlog_path\tfail_hint\n";
   fs.writeFileSync(summaryPath, header, "utf8");
+  const writtenTests = new Set();
   for (const group of groupOrder) {
     const file = groupSummary[group];
     if (!file || !fs.existsSync(file)) continue;
     const lines = fs.readFileSync(file, "utf8").split(/\r?\n/);
     for (const line of lines) {
       if (!line || line.startsWith("group\t")) continue;
+      const cols = line.split("\t");
+      if (cols[1]) {
+        writtenTests.add(cols[1]);
+      }
       fs.appendFileSync(summaryPath, `${line}\n`, "utf8");
+    }
+  }
+  if (Array.isArray(syntheticRows) && syntheticRows.length) {
+    for (const row of syntheticRows) {
+      if (!row || !row.test || writtenTests.has(row.test)) {
+        continue;
+      }
+      const line = [
+        row.group,
+        row.test,
+        row.status,
+        row.duration,
+        row.category,
+        row.parallel,
+        row.skipRisk,
+        row.description,
+        row.logPath,
+        row.failHint,
+      ].join("\t");
+      fs.appendFileSync(summaryPath, `${line}\n`, "utf8");
+      writtenTests.add(row.test);
     }
   }
 }
@@ -238,6 +264,11 @@ async function main() {
   const failFast = normalizeFlag(env.SEAL_E2E_FAIL_FAST, "0");
   const remoteE2e = normalizeFlag(env.SEAL_E2E_SSH || env.SEAL_SHIP_SSH_E2E, "0");
   const parallelMode = env.SEAL_E2E_PARALLEL_MODE || "groups";
+  const allowedModes = new Set(["groups", "per-test"]);
+  if (!allowedModes.has(parallelMode)) {
+    log(`ERROR: invalid SEAL_E2E_PARALLEL_MODE=${parallelMode}. Allowed: groups, per-test.`);
+    process.exit(1);
+  }
   const tmpRoot = env.SEAL_E2E_TMP_ROOT || env.TMPDIR || "/tmp";
   fs.mkdirSync(tmpRoot, { recursive: true });
 
@@ -281,6 +312,21 @@ async function main() {
 
   let onlyList = parseList(env.SEAL_E2E_TESTS);
   let skipList = parseList(env.SEAL_E2E_SKIP);
+  const knownTests = new Set(manifestOrder);
+  const validateList = (label, list) => {
+    const unknown = list.filter((item) => !knownTests.has(item));
+    if (unknown.length) {
+      log(`ERROR: ${label} contains unknown tests: ${unknown.join(", ")}`);
+      log("       Check tools/seal/seal/scripts/e2e-tests.tsv for valid names.");
+      process.exit(1);
+    }
+  };
+  if (onlyList.length) {
+    validateList("SEAL_E2E_TESTS", onlyList);
+  }
+  if (skipList.length) {
+    validateList("SEAL_E2E_SKIP", skipList);
+  }
 
   const hostLimited = normalizeFlag(env.SEAL_E2E_LIMITED_HOST, "0") === "1";
   if (hostLimited) {
@@ -317,7 +363,7 @@ async function main() {
       }
       if (!onlyList.length) {
         log("No tests left after rerun/filters.");
-        process.exit(0);
+        process.exit(1);
       }
       log(`Rerun failed tests only: ${onlyList.join(" ")}`);
     }
@@ -331,6 +377,15 @@ async function main() {
     if (skipSet.has(name)) return false;
     return true;
   };
+
+  const selectedTests = manifestOrder.filter((name) => shouldRun(name));
+  if (onlySet.size && !selectedTests.length) {
+    log("ERROR: filter resulted in zero tests to run.");
+    process.exit(1);
+  }
+  if (onlyList.length) {
+    log(`Selected tests: ${onlyList.join(" ")}`);
+  }
 
   log("Effective config:");
   log(`  jobs=${jobs} cgroup_limit=${cgroupLimit || "none"} mode=${parallelMode} fail_fast=${failFast}`);
@@ -361,8 +416,9 @@ async function main() {
     });
   }
 
+  const useSharedNodeModules = normalizeFlag(env.SEAL_E2E_USE_SHARED_NODE_MODULES, "1") === "1";
   let nodeModulesRoot = env.SEAL_E2E_NODE_MODULES_ROOT || "";
-  if (!nodeModulesRoot && fs.existsSync(path.join(seedRoot, "node_modules"))) {
+  if (!nodeModulesRoot && useSharedNodeModules && fs.existsSync(path.join(seedRoot, "node_modules"))) {
     nodeModulesRoot = path.join(seedRoot, "node_modules");
   }
   if (nodeModulesRoot) {
@@ -419,8 +475,39 @@ async function main() {
   const groupSummary = {};
   const groupDurations = {};
   const groupStatus = {};
+  const abortedRows = [];
+  const abortedTests = new Set();
   let failures = 0;
   let skipSerial = false;
+
+  const addAbortedRow = (group, testName) => {
+    if (!testName || abortedTests.has(testName)) return;
+    const test = testByName.get(testName);
+    if (!test) return;
+    abortedTests.add(testName);
+    abortedRows.push({
+      group,
+      test: testName,
+      status: "aborted",
+      duration: 0,
+      category: test.category || "misc",
+      parallel: test.parallel || "0",
+      skipRisk: test.skipRisk || "",
+      description: test.description || "",
+      logPath: "",
+      failHint: "aborted by fail-fast",
+    });
+  };
+
+  const markGroupAborted = (group) => {
+    if (groupStatus[group]) return;
+    groupStatus[group] = "aborted";
+    groupDurations[group] = 0;
+    const testsList = groupTestsFiltered.get(group) || [];
+    for (const testName of testsList) {
+      addAbortedRow(group, testName);
+    }
+  };
 
   function runGroup(group, testsList, root) {
     const summaryFile = path.join(root, ".e2e-summary.tsv");
@@ -503,6 +590,9 @@ async function main() {
                     child.kill("SIGTERM");
                   }
                 }
+                while (queue.length) {
+                  markGroupAborted(queue.shift());
+                }
               }
             }
           })
@@ -562,16 +652,20 @@ async function main() {
         testSum += row.duration || 0;
       }
       log(`Group ${group}  ${status}  (tests=${formatDuration(testSum)}, wall=${formatDuration(wallTime)})`);
-      if (rows.length) {
-        log("  Test | Status | Time | Category | SkipRisk | Description");
-        for (const row of rows) {
-          log(`  - ${row.test} | ${row.status} | ${formatDuration(row.duration || 0)} | ${row.category} | ${row.skipRisk} | ${row.description}`);
-        }
-      } else if (!hasTests) {
+    if (rows.length) {
+      log("  Test | Status | Time | Category | SkipRisk | Description");
+      for (const row of rows) {
+        log(`  - ${row.test} | ${row.status} | ${formatDuration(row.duration || 0)} | ${row.category} | ${row.skipRisk} | ${row.description}`);
+      }
+    } else if (!hasTests) {
+      if (status === "aborted") {
+        log("  - aborted (fail-fast)");
+      } else {
         log("  - no summary data");
       }
     }
   }
+}
 
   function printCombinedSummary(summaryRows, orderList) {
     const statusByTest = {};
@@ -592,13 +686,15 @@ async function main() {
     let ok = 0;
     let skipped = 0;
     let failed = 0;
+    let aborted = 0;
     for (const test of orderList) {
       const status = statusByTest[test] || "skipped";
       if (status === "ok") ok += 1;
       else if (status === "failed") failed += 1;
+      else if (status === "aborted") aborted += 1;
       else skipped += 1;
     }
-    log(`Combined stats: total=${orderList.length}, ok=${ok}, skipped=${skipped}, failed=${failed}`);
+    log(`Combined stats: total=${orderList.length}, ok=${ok}, skipped=${skipped}, failed=${failed}, aborted=${aborted}`);
     log(`Summary file: ${summaryPath}`);
     if (summaryLastPath) {
       log(`Summary last: ${summaryLastPath}`);
@@ -623,6 +719,7 @@ async function main() {
       let catOk = 0;
       let catSkipped = 0;
       let catFailed = 0;
+      let catAborted = 0;
       for (const test of orderList) {
         const testCategory = (testByName.get(test) || {}).category || "misc";
         if (testCategory !== category) continue;
@@ -630,9 +727,10 @@ async function main() {
         total += 1;
         if (status === "ok") catOk += 1;
         else if (status === "failed") catFailed += 1;
+        else if (status === "aborted") catAborted += 1;
         else catSkipped += 1;
       }
-      log(`Category ${category}: total=${total} ok=${catOk} skipped=${catSkipped} failed=${catFailed}`);
+      log(`Category ${category}: total=${total} ok=${catOk} skipped=${catSkipped} failed=${catFailed} aborted=${catAborted}`);
       log("  Test | Status | Time | Parallel | SkipRisk | Description");
       for (const test of orderList) {
         const testCategory = (testByName.get(test) || {}).category || "misc";
@@ -656,6 +754,16 @@ async function main() {
         }
       }
     }
+    if (aborted) {
+      log("Aborted:");
+      for (const test of orderList) {
+        if (statusByTest[test] !== "aborted") continue;
+        log(`  - ${test}: ${descByTest[test] || ""}`);
+        if (hintByTest[test]) {
+          log(`    hint: ${hintByTest[test]}`);
+        }
+      }
+    }
   }
 
   await runGroupsParallel(filteredGroups);
@@ -665,17 +773,22 @@ async function main() {
     printDetailedSummary(filteredGroups);
   }
 
-  for (const test of serialFiltered) {
-    if (skipSerial) break;
-    const root = fs.mkdtempSync(path.join(tmpRoot, `seal-example-e2e-${safeName(test)}-`));
-    const start = Date.now();
-    const task = runGroup(test, [test], root);
-    const result = await task.promise;
-    const duration = Math.floor((Date.now() - start) / 1000);
-    groupDurations[test] = duration;
-    groupStatus[test] = result.code === 0 ? "ok" : "failed";
-    groupSummary[test] = path.join(root, ".e2e-summary.tsv");
-    if (result.code !== 0) failures += 1;
+  if (skipSerial) {
+    for (const testName of serialFiltered) {
+      markGroupAborted(testName);
+    }
+  } else {
+    for (const test of serialFiltered) {
+      const root = fs.mkdtempSync(path.join(tmpRoot, `seal-example-e2e-${safeName(test)}-`));
+      const start = Date.now();
+      const task = runGroup(test, [test], root);
+      const result = await task.promise;
+      const duration = Math.floor((Date.now() - start) / 1000);
+      groupDurations[test] = duration;
+      groupStatus[test] = result.code === 0 ? "ok" : "failed";
+      groupSummary[test] = path.join(root, ".e2e-summary.tsv");
+      if (result.code !== 0) failures += 1;
+    }
   }
 
   if (failures) {
@@ -687,7 +800,7 @@ async function main() {
   printGroupSummary();
   printDetailedSummary([...filteredGroups, ...serialFiltered]);
 
-  writeCombinedSummary(summaryPath, [...filteredGroups, ...serialFiltered], groupSummary);
+  writeCombinedSummary(summaryPath, [...filteredGroups, ...serialFiltered], groupSummary, abortedRows);
   updateLastSummary(summaryPath, summaryLastPath);
 
   const combinedRows = readSummary(summaryPath);
