@@ -796,7 +796,8 @@
   - Wymaganie: skrypty maja flage/ENV do wymuszenia reinstall/flush cache i loguja aktywne ustawienia.
 
 - Blad: skrypt E2E uruchamiany w Dockerze nie mial bitu wykonywalnosci, co konczylo sie `Permission denied` (np. `run-e2e-parallel.sh`).
-  - Wymaganie: wszystkie skrypty uruchamiane bezposrednio maja `chmod +x` w repo i test walidujacy `git ls-files -m`/`stat`; alternatywnie uruchamiaj je jawnie jako `bash /path/script.sh`.
+  - Wymaganie: wszystkie skrypty uruchamiane bezposrednio maja `chmod +x` w repo i test walidujacy `git ls-files -m`/`stat`.
+  - Wymaganie: w Docker E2E uruchamiaj skrypty przez `bash /path/script.sh` (nie polegaj tylko na `+x`), bo bind‑mount moze byc `noexec` mimo poprawnych uprawnien.
 
 - Blad: obraz buildera nie mial `node`/`npm`, a uruchomienie z `SEAL_E2E_INSTALL_DEPS=0` konczylo sie `npm: command not found`.
   - Wymaganie: E2E robi preflight i fail‑fast z jasna instrukcja, jesli `node`/`npm` nie sa dostepne; w trybie "install deps=0" obraz musi miec minimalny runtime (`node`, `npm`) lub runner sam instaluje te narzedzia.

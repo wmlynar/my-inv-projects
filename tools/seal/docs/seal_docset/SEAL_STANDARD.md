@@ -462,6 +462,7 @@ Przykład:
 - STD-089q (SHOULD): narzedzia E2E maja pinowane wersje w repo (lockfile) i wspolny installer korzystajacy z locka; ten sam lock obowiazuje lokalnie i w CI/Dockerze.
 - STD-089r (SHOULD): obrazy E2E budowane z Dockerfile maja label z hashem wejsc (Dockerfile/entrypoint); mismatch wymusza rebuild.
 - STD-089s (SHOULD): E2E w Dockerze robi preflight na `node`/`npm` i fail‑fast, gdy brak (z jasna instrukcja), zwlaszcza gdy instalacja zaleznosci jest wylaczona; obraz buildera powinien zawierac minimalny runtime JS.
+- STD-089s.a (SHOULD): w Docker E2E uruchamiaj skrypty przez `bash /path/script.sh` (lub jawny interpreter), bo bind‑mount repo moze byc `noexec` mimo poprawnych uprawnien `+x`.
 - STD-089t (SHOULD): E2E ma jeden kanoniczny wrapper (skrypt/komenda), ktory laduje config z pliku `.env` i loguje **effective config**; dokumentacja nie wymaga kopiowania dlugich, wielolinijkowych komend z dziesiatkami ENV.
 - STD-089t.a (SHOULD): duze konfiguracje przekazuj przez plik `.env`/config (nie przez jedna linie shell), aby uniknac limitu `ARG_MAX`.
 - STD-089u (SHOULD): instalatory narzedzi E2E obsluguja brak pakietu w APT (np. `criu` bez kandydata) przez build ze zrodel lub jawny SKIP z instrukcja; brak pakietu nie moze konczyc sie nieczytelnym `apt-get` error.
