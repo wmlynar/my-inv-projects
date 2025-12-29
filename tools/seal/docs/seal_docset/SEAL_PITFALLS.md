@@ -2609,3 +2609,12 @@
   - Wymaganie: waliduj/sanitizuj `RUN_ID` (np. `[a-zA-Z0-9._-]`) i w razie potrzeby dodaj hash; loguj efektowny `RUN_ID`.
 - Blad: nazwy testow/grup zawieraly znaki `/` lub `..`, co moglo tworzyc katalogi poza log rootem albo psuc `mktemp`.
   - Wymaganie: waliduj nazwy testow/grup do bezpiecznego alfabetu i uzywaj `safe_name` + hash dla sciezek na dysku.
+
+## Dodatkowe wnioski (batch 346-350)
+
+- Blad: `SEAL_E2E_TOOLSET=full` bylo uruchamiane na obrazie buildera bez toolchaina (core), co powodowalo masowe SKIPy i fałszywe “green”.
+  - Wymaganie: weryfikuj zgodnosc toolsetu z obrazem/instalacjami i fail‑fast (lub automatycznie przełącz obraz), loguj wykryty toolset + builder image.
+- Blad: `SEAL_E2E_LOG_DIR`/`SEAL_E2E_SUMMARY_PATH` ustawione jako sciezki relatywne ladowaly w innym CWD (np. po `sudo`), zostawiajac artefakty w repo lub w `/root`.
+  - Wymaganie: wymagaj sciezek absolutnych lub normalizuj przez `realpath`, a wynik loguj na starcie.
+- Blad: bardzo dlugie nazwy testow/grup powodowaly przekroczenie limitu dlugosci sciezek (`ENAMETOOLONG`) przy tworzeniu katalogow logow/tmp.
+  - Wymaganie: skracaj nazwy katalogow (prefix + hash) i loguj mapowanie `name -> dir`.
