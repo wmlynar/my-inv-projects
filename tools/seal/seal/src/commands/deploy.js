@@ -316,7 +316,7 @@ async function cmdDeploy(cwd, targetArg, opts) {
   ok("Done.");
   console.log("Next:");
   if (!opts.bootstrap && !autoBootstrap) {
-    console.log(`  seal deploy ${targetName} --bootstrap   # (once) install systemd service (explicit)`);
+    console.log(`  seal ship ${targetName} --bootstrap   # (once) install systemd service (explicit)`);
   }
   console.log(`  seal remote ${targetName} restart      # start/restart service (explicit)`);
   console.log(`  seal remote ${targetName} status`);
@@ -362,27 +362,6 @@ async function cmdShip(cwd, targetArg, opts) {
   };
   await timing.timeAsync("ship.deploy", async () => cmdDeploy(cwd, targetArg, deployOpts));
   if (report) timing.report({ title: "Ship timing" });
-}
-
-async function cmdStatus(cwd, targetArg) {
-  const projectRoot = findProjectRoot(cwd);
-  const { targetCfg, targetName } = resolveTarget(projectRoot, targetArg);
-  if ((targetCfg.kind || "local").toLowerCase() === "ssh") statusSsh(targetCfg);
-  else statusLocal(targetCfg);
-}
-
-async function cmdLogs(cwd, targetArg) {
-  const projectRoot = findProjectRoot(cwd);
-  const { targetCfg } = resolveTarget(projectRoot, targetArg);
-  if ((targetCfg.kind || "local").toLowerCase() === "ssh") logsSsh(targetCfg);
-  else logsLocal(targetCfg);
-}
-
-async function cmdRestart(cwd, targetArg) {
-  const projectRoot = findProjectRoot(cwd);
-  const { targetCfg } = resolveTarget(projectRoot, targetArg);
-  if ((targetCfg.kind || "local").toLowerCase() === "ssh") restartSsh(targetCfg);
-  else restartLocal(targetCfg);
 }
 
 async function cmdDisable(cwd, targetArg) {
@@ -529,9 +508,6 @@ async function cmdRemote(cwd, targetArg, action, opts) {
 module.exports = {
   cmdDeploy,
   cmdShip,
-  cmdStatus,
-  cmdLogs,
-  cmdRestart,
   cmdDisable,
   cmdRollback,
   cmdUninstall,

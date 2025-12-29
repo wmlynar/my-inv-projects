@@ -31,7 +31,12 @@ const EXAMPLE_ROOT = resolveExampleRoot();
 const { log, fail } = createLogger("obfuscation-e2e");
 
 function runCmd(cmd, args, timeoutMs = 5000) {
-  return spawnSync(cmd, args, { stdio: "pipe", timeout: timeoutMs });
+  const res = spawnSync(cmd, args, { stdio: "pipe", timeout: timeoutMs });
+  if (res.error) {
+    const msg = res.error.message || String(res.error);
+    throw new Error(`${cmd} failed: ${msg}`);
+  }
+  return res;
 }
 
 function sumTiming(entries, label) {

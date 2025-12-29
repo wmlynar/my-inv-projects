@@ -62,6 +62,11 @@ function systemctlUserReady() {
     log("SKIP: systemctl --user timed out");
     return false;
   }
+  if (res.error) {
+    const msg = res.error.message || String(res.error);
+    log(`SKIP: systemctl --user unavailable (${msg})`);
+    return false;
+  }
   if (res.status === 0) return true;
   const out = `${res.stdout || ""}\n${res.stderr || ""}`.trim();
   log(`SKIP: systemctl --user unavailable (${out || "status=" + res.status})`);
@@ -82,11 +87,16 @@ function sshExec(user, host, cmd, sshPort) {
     "-o", "ServerAliveCountMax=2",
   ];
   if (sshPort) args.push("-p", String(sshPort));
-  args.push(`${user}@${host}`, `bash -lc ${shellQuote(cmd)}`);
+  args.push(`${user}@${host}`, `bash -c ${shellQuote(cmd)}`);
   const res = spawnSyncWithTimeout("ssh", args, { stdio: "pipe", encoding: "utf-8", timeout: 20000 });
   const out = `${res.stdout || ""}\n${res.stderr || ""}`.trim();
   if (res.error && res.error.code === "ETIMEDOUT") {
     return { ok: false, status: null, out: "ssh timed out" };
+  }
+  if (res.error) {
+    const msg = res.error.message || String(res.error);
+    const detail = out ? `${out}\n${msg}` : msg;
+    return { ok: false, status: null, out: detail };
   }
   return { ok: res.status === 0, status: res.status, out };
 }
@@ -107,6 +117,10 @@ function runSeal(cwd, args, opts = {}) {
   const stderr = res.stderr || "";
   if (res.error && res.error.code === "ETIMEDOUT") {
     throw new Error(`seal ${args.join(" ")} timed out`);
+  }
+  if (res.error) {
+    const msg = res.error.message || String(res.error);
+    throw new Error(`seal ${args.join(" ")} failed to spawn: ${msg}`);
   }
   if (res.status !== 0) {
     const out = stripAnsi(`${stdout}\n${stderr}`.trim());
@@ -277,10 +291,17 @@ async function runRemoteFlow({ tmpRoot, appName }) {
 
   const waitUrl = `http://127.0.0.1:${httpPort}/healthz`;
   log(`Remote ship -> ${user}@${host} (${installDir})`);
-  runSeal(tmpRoot, ["ship", "remote", "--bootstrap", "--skip-check", "--push-config", "--wait-mode", "both", "--wait-url", waitUrl], {
-    timeoutMs: 240000,
-  });
-  runSeal(tmpRoot, ["uninstall", "remote"]);
+  try {
+    runSeal(tmpRoot, ["ship", "remote", "--bootstrap", "--skip-check", "--push-config", "--wait-mode", "both", "--wait-url", waitUrl], {
+      timeoutMs: 240000,
+    });
+  } finally {
+    try {
+      runSeal(tmpRoot, ["uninstall", "remote"]);
+    } catch (e) {
+      log(`WARN: remote uninstall failed (${e && e.message ? e.message : e})`);
+    }
+  }
 }
 
 async function main() {

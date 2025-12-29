@@ -4,23 +4,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 E2E_DIR="$REPO_ROOT/tools/seal/seal/docker/e2e"
-CACHE_DIR="${SEAL_DOCKER_E2E_CACHE_DIR:-/var/tmp/seal-e2e-cache}"
-NODE_MODULES_CACHE="$CACHE_DIR/node_modules"
-EXAMPLE_NODE_MODULES_CACHE="$CACHE_DIR/example-node_modules"
-NPM_CACHE_DIR="$CACHE_DIR/npm"
-SSH_DIR="${SEAL_DOCKER_E2E_SSH_DIR:-$CACHE_DIR/ssh}"
-IMAGE_CACHE_DIR="$CACHE_DIR/images"
-PLAYWRIGHT_CACHE_DIR="$CACHE_DIR/playwright"
 NETWORK_NAME="seal-e2e"
 SERVER_NAME="seal-e2e-server"
-BUILDER_VARIANT="${SEAL_DOCKER_E2E_BUILDER:-full}"
 BUILDER_IMAGE_BASE="e2e-seal-builder:latest"
 BUILDER_IMAGE_FULL="e2e-seal-builder-full:latest"
 SERVER_IMAGE="e2e-seal-server:latest"
-REMOTE_E2E="${SEAL_DOCKER_E2E_REMOTE:-1}"
-REMOTE_FALLBACK="${SEAL_DOCKER_E2E_REMOTE_FALLBACK:-1}"
-REMOTE_E2E_REQUESTED="$REMOTE_E2E"
-TOOLSET="${SEAL_E2E_TOOLSET:-core}"
 SERVER_DOCKERFILE="$E2E_DIR/Dockerfile.server"
 SERVER_ENTRYPOINT="$E2E_DIR/server-entrypoint.sh"
 
@@ -31,34 +19,6 @@ log() {
 dir_has_files() {
   [ -d "$1" ] && [ -n "$(ls -A "$1" 2>/dev/null)" ]
 }
-
-if [ -z "${SEAL_DOCKER_E2E_HOST:-}" ]; then
-  SEAL_DOCKER_E2E_HOST=0
-fi
-
-if [ -z "${SEAL_E2E_DOCKER_HOST:-}" ]; then
-  SEAL_E2E_DOCKER_HOST="$SEAL_DOCKER_E2E_HOST"
-fi
-
-if [ -z "${SEAL_E2E_LIMITED_HOST:-}" ]; then
-  if [ "$SEAL_E2E_DOCKER_HOST" = "1" ]; then
-    SEAL_E2E_LIMITED_HOST=0
-  else
-    SEAL_E2E_LIMITED_HOST=1
-  fi
-fi
-
-if [ "$SEAL_E2E_DOCKER_HOST" = "1" ]; then
-  log "Docker host-capable mode enabled; host-only tests will run."
-fi
-
-if [ -z "${SEAL_E2E_LOG_DIR:-}" ]; then
-  SEAL_E2E_LOG_DIR="/root/.cache/seal/e2e-logs/$(date +%Y%m%d-%H%M%S)-$$"
-fi
-
-if [ -z "${SEAL_E2E_LOG_FILTERED:-}" ]; then
-  SEAL_E2E_LOG_FILTERED=0
-fi
 
 fail() {
   echo "[docker-e2e] ERROR: $*" >&2
@@ -77,21 +37,66 @@ load_e2e_config() {
     fi
   fi
   if [ -n "$cfg" ]; then
-    if [ ! -f "$cfg" ]; then
-      fail "SEAL_E2E_CONFIG points to missing file: $cfg"
+    if [ "$cfg" = "/dev/null" ]; then
+      return
     fi
     if [ ! -r "$cfg" ]; then
       fail "SEAL_E2E_CONFIG is not readable: $cfg"
     fi
     log "Loading E2E config: $cfg"
     set -a
+    set +u
     # shellcheck disable=SC1090
-    . "$cfg"
+    source "$cfg"
+    set -u
     set +a
+    export SEAL_E2E_CONFIG_LOADED=1
   fi
 }
 
 load_e2e_config
+
+# Re-derive defaults after loading config, so .env overrides are honored.
+CACHE_DIR="${SEAL_DOCKER_E2E_CACHE_DIR:-/var/tmp/seal-e2e-cache}"
+NODE_MODULES_CACHE="$CACHE_DIR/node_modules"
+EXAMPLE_NODE_MODULES_CACHE="$CACHE_DIR/example-node_modules"
+NPM_CACHE_DIR="$CACHE_DIR/npm"
+SSH_DIR="${SEAL_DOCKER_E2E_SSH_DIR:-$CACHE_DIR/ssh}"
+IMAGE_CACHE_DIR="$CACHE_DIR/images"
+PLAYWRIGHT_CACHE_DIR="$CACHE_DIR/playwright"
+BUILDER_VARIANT="${SEAL_DOCKER_E2E_BUILDER:-full}"
+REMOTE_E2E="${SEAL_DOCKER_E2E_REMOTE:-1}"
+REMOTE_FALLBACK="${SEAL_DOCKER_E2E_REMOTE_FALLBACK:-1}"
+REMOTE_E2E_REQUESTED="$REMOTE_E2E"
+TOOLSET="${SEAL_E2E_TOOLSET:-core}"
+
+if [ -z "${SEAL_DOCKER_E2E_HOST:-}" ]; then
+  SEAL_DOCKER_E2E_HOST=0
+fi
+
+if [ -z "${SEAL_E2E_DOCKER_HOST:-}" ]; then
+  SEAL_E2E_DOCKER_HOST="$SEAL_DOCKER_E2E_HOST"
+fi
+
+if [ -z "${SEAL_E2E_LIMITED_HOST:-}" ]; then
+  if [ "$SEAL_E2E_DOCKER_HOST" = "1" ]; then
+    SEAL_E2E_LIMITED_HOST=0
+  else
+    SEAL_E2E_LIMITED_HOST=1
+  fi
+fi
+
+if [ -z "${SEAL_E2E_LOG_DIR:-}" ]; then
+  SEAL_E2E_LOG_DIR="/root/.cache/seal/e2e-logs/$(date +%Y%m%d-%H%M%S)-$$"
+fi
+
+if [ -z "${SEAL_E2E_LOG_FILTERED:-}" ]; then
+  SEAL_E2E_LOG_FILTERED=0
+fi
+
+if [ "$SEAL_E2E_DOCKER_HOST" = "1" ]; then
+  log "Docker host-capable mode enabled; host-only tests will run."
+fi
 
 SUDO_KEEPALIVE_PID=""
 
@@ -494,6 +499,10 @@ if [ -n "$CONFIG_ENV" ]; then
     CONFIG_ENV=""
   fi
 fi
+RUNNER_SCRIPT="tools/seal/seal/scripts/run-e2e-suite.sh"
+if [ "${SEAL_E2E_PARALLEL:-0}" = "1" ]; then
+  RUNNER_SCRIPT="tools/seal/seal/scripts/run-e2e-parallel.sh"
+fi
 $DOCKER run --rm \
   --init \
   --privileged \
@@ -580,6 +589,6 @@ $DOCKER run --rm \
   "${NODE_MODULES_ENV[@]}" \
   "${SHIP_ENV_ARGS[@]}" \
   "$BUILDER_IMAGE" \
-  bash -lc 'if [ "${SEAL_E2E_PARALLEL:-0}" = "1" ]; then bash tools/seal/seal/scripts/run-e2e-parallel.sh; else bash tools/seal/seal/scripts/run-e2e-suite.sh; fi'
+  bash "$RUNNER_SCRIPT"
 
 log "Docker E2E suite completed."

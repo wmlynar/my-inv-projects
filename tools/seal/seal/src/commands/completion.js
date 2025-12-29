@@ -137,11 +137,11 @@ _seal_complete() {
     run-local) opts="--sealed --config" ;;
     verify) opts="--explain" ;;
     sentinel) opts="--force --insecure --skip-verify --json" ;;
-    deploy) opts="--bootstrap --push-config --skip-sentinel-verify --restart --wait --wait-timeout --wait-interval --wait-url --wait-mode --wait-http-timeout --accept-drift --allow-drift --warn-drift --artifact --profile-overlay --fast --timing" ;;
-    ship) opts="--bootstrap --push-config --skip-sentinel-verify --no-wait --wait-timeout --wait-interval --wait-url --wait-mode --wait-http-timeout --accept-drift --allow-drift --warn-drift --skip-check --check-verbose --check-cc --packager --payload-only --profile-overlay --fast --timing" ;;
-    run) opts="--kill --sudo --accept-drift --allow-drift" ;;
-    rollback) opts="--accept-drift --allow-drift" ;;
-    remote) opts="--accept-drift --allow-drift --skip-sentinel-verify" ;;
+    deploy) opts="--bootstrap --push-config --skip-sentinel-verify --restart --wait --wait-timeout --wait-interval --wait-url --wait-mode --wait-http-timeout --accept-drift --warn-drift --artifact --profile-overlay --fast --timing" ;;
+    ship) opts="--bootstrap --push-config --skip-sentinel-verify --no-wait --wait-timeout --wait-interval --wait-url --wait-mode --wait-http-timeout --accept-drift --warn-drift --skip-check --check-verbose --check-cc --packager --payload-only --profile-overlay --fast --timing" ;;
+    run) opts="--kill --sudo --accept-drift" ;;
+    rollback) opts="--accept-drift" ;;
+    remote) opts="--accept-drift --skip-sentinel-verify" ;;
     completion) opts="bash" ;;
   esac
   if [[ "$cmd" == "config" && "\${words[2]}" == "pull" ]]; then

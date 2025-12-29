@@ -4,7 +4,6 @@
   "defaultTarget": "local",
   "build": {
     "packager": "thin-split",
-    "packagerFallback": false,
     "securityProfile": "strict",
     "thin": {
       "mode": "split",

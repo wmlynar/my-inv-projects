@@ -211,7 +211,7 @@ sudo seal completion bash > /etc/bash_completion.d/seal
 
 - `seal.json5` – konfiguracja projektu + polityka (commitowane w repo).
 - `seal-config/` – runtime configi (`configs/`) i targety deployu (`targets/`) (commitowane w repo).
-- `seal-out/` – artefakty generowane (jak `target/`); przy `seal release`/`seal verify`/`seal deploy` czyszczone są katalogi robocze, ale `seal-out/cache/` (thin cache) jest zachowywany; dodaj do `.gitignore`.
+- `seal-out/` – artefakty generowane (jak `target/`); przy `seal release`/`seal verify`/`seal ship` czyszczone są katalogi robocze, ale `seal-out/cache/` (thin cache) jest zachowywany; dodaj do `.gitignore`.
 - `seal clean` – usuwa `seal-out/` dla projektu (w monorepo uruchom w root, zadziała dla wszystkich podprojektów).
 
 ## Profile i szybkie wyjaśnienia
@@ -252,7 +252,7 @@ seal ship prod --fast
 Jeśli w katalogu znajduje się `seal.json5` z sekcją `projects`, **każde polecenie SEAL** uruchomione w tym katalogu wykona się dla wszystkich projektów z listy:
 
 ```bash
-seal deploy prod
+seal ship prod
 ```
 
 Aby wykonać komendę tylko dla jednego projektu, przejdź do katalogu projektu i uruchom ją tam.
@@ -526,7 +526,6 @@ Możesz też sterować szczegółami:
 
 ```json5
 build: {
-  packagerFallback: false, // ustaw true jeśli chcesz jawnie zezwolić na bundle fallback
   protection: {
     enabled: true,
     seaMain: { pack: true, method: "brotli", chunkSize: 8000 },
@@ -555,7 +554,7 @@ Domyślnie używamy `-n` (bez runtime engine) dla kompatybilności z anti‑debu
 
 1) `thin-split` – **najbardziej rekomendowany** (BOOTSTRAP: stały runtime + payload), szybkie aktualizacje.
 2) `sea` – klasyczny SEA (single executable).
-3) `bundle` – obfuskowany bundle JS (fallback bez SEA).
+3) `bundle` – obfuskowany bundle JS (jawny wybór).
 4) `none` – raw bundle + wrapper (bez protection/bundle.pack; tylko do diagnostyki).
 
 `auto` oznacza obecnie `thin-split` i jest polecany, jeśli chcesz automatycznie przechodzić na lepszy packager w przyszłości.
@@ -582,7 +581,7 @@ Gdzie są artefakty:
 
 - Deploy zdalny przez SSH jest dodany jako „baseline”, ale nie jest jeszcze „battle tested”.
 - SEA w Node jest funkcją eksperymentalną (Node wypisze warning). To normalne.
-- Jeśli SEA nie zadziała, build kończy się błędem, chyba że bundle fallback jest jawnie włączony (`build.packagerFallback=true` lub `--packager bundle`).
+- Jeśli SEA nie zadziała, build kończy się błędem; użyj `--packager bundle`, jeśli potrzebujesz bundle.
 
 ---
 

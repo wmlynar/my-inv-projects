@@ -293,6 +293,7 @@ function bootstrapHint(targetCfg, layout, user, host, issues) {
     ...header,
     `Run: seal deploy ${targetName} --bootstrap`,
     "Bootstrap uses sudo to create install dirs and chown them to the SSH user, then installs runner+unit after deploy.",
+    `Or (build + deploy): seal ship ${targetName} --bootstrap`,
     "If you cannot use passwordless sudo, run manually:",
     manualLine,
   ].join("\n");
@@ -453,7 +454,7 @@ WantedBy=multi-user.target
     const msg = [
       "Service install requires passwordless sudo on the server (BatchMode).",
       `sudo -n true failed: ${sudoLine || "no output"}`,
-      `Fix: configure NOPASSWD for ${sshUser} and rerun: seal deploy ${targetLabel(targetCfg)} --bootstrap`,
+      `Fix: configure NOPASSWD for ${sshUser} and rerun: seal ship ${targetLabel(targetCfg)} --bootstrap`,
     ].join("\n");
     throw new Error(msg);
   }

@@ -19,7 +19,8 @@
     "requirements": [
       "host",
       "docker",
-      "root"
+      "root",
+      "toolset_full"
     ]
   },
   "tests": [
@@ -66,6 +67,19 @@
       "script": "tools/seal/seal/scripts/test-legacy-packagers-e2e.js",
       "hostOnly": false,
       "requirements": []
+    },
+    {
+      "name": "full-packagers",
+      "category": "packagers",
+      "parallel": true,
+      "description": "Builds bundle/SEA with protection enabled to validate packager compatibility.",
+      "skipRisk": "medium",
+      "failHint": "Check protection compatibility and packager tooling (postject/SEA).",
+      "script": "tools/seal/seal/scripts/test-full-packagers-e2e.js",
+      "hostOnly": false,
+      "requirements": [
+        "toolset_full"
+      ]
     },
     {
       "name": "compat",
@@ -137,6 +151,20 @@
       "script": "tools/seal/seal/scripts/test-protection-e2e.js",
       "hostOnly": false,
       "requirements": []
+    },
+    {
+      "name": "full-protection",
+      "category": "hardening",
+      "parallel": false,
+      "description": "Runs full protection stack (thin-split + sentinel + obfuscation + packers).",
+      "skipRisk": "high",
+      "failHint": "Check root, toolset full, and kiteshield/strip/ollvm-clang availability.",
+      "script": "tools/seal/seal/scripts/test-full-protection-e2e.js",
+      "hostOnly": false,
+      "requirements": [
+        "root",
+        "toolset_full"
+      ]
     },
     {
       "name": "obfuscation",

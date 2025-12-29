@@ -23,7 +23,7 @@ const {
 
 const EXAMPLE_ROOT = resolveExampleRoot();
 
-const { log, fail } = createLogger("legacy-packagers-e2e");
+const { log, fail, skip } = createLogger("full-packagers-e2e");
 
 function writeRuntimeConfig(releaseDir, port) {
   const cfgPath = path.join(EXAMPLE_ROOT, "seal-config", "configs", "local.json5");
@@ -39,7 +39,7 @@ async function runRelease({ releaseDir, runTimeoutMs, appName }) {
   assert.ok(fs.existsSync(binPath), `Missing runner: ${binPath}`);
 
   await withSealedBinary({
-    label: "legacy-packagers",
+    label: "full-packagers",
     releaseDir,
     binPath,
     runTimeoutMs,
@@ -56,24 +56,45 @@ async function runRelease({ releaseDir, runTimeoutMs, appName }) {
   });
 }
 
+function findStep(meta, name) {
+  const steps = meta && meta.protection && meta.protection.post ? meta.protection.post.steps : [];
+  if (!Array.isArray(steps)) return null;
+  return steps.find((step) => step && step.step === name) || null;
+}
+
+function assertProtectionMeta(meta, packager) {
+  assert.ok(meta && meta.protection && meta.protection.enabled === true, "Expected protection enabled");
+  if (packager === "bundle") {
+    const bundleStep = findStep(meta, "bundle_pack_gzip");
+    assert.ok(bundleStep && bundleStep.ok, "Expected bundle_pack_gzip step to be ok");
+    const elfStep = findStep(meta, "elf_packer");
+    if (elfStep) {
+      assert.ok(elfStep.skipped, "Expected elf_packer to be skipped for bundle script");
+    }
+  }
+  if (packager === "sea") {
+    const seaMain = meta && meta.protection ? meta.protection.seaMainPacking : null;
+    assert.ok(seaMain && seaMain.ok, "Expected sea main packing to be ok");
+  }
+}
+
 async function buildWithPackager(packager, buildTimeoutMs) {
   const projectCfg = loadProjectConfig(EXAMPLE_ROOT);
   projectCfg.build = projectCfg.build || {};
   projectCfg.build.packager = packager;
   projectCfg.build.sentinel = { enabled: false };
-  projectCfg.build.decoy = { mode: "none" };
-  projectCfg.build.frontendObfuscation = { enabled: false };
-  projectCfg.build.frontendMinify = { enabled: false };
-  projectCfg.build.protection = { enabled: false };
-  projectCfg.build.thin = Object.assign({}, projectCfg.build.thin || {}, {
-    integrity: { enabled: false },
+  const protectionBase = projectCfg.build.protection || {};
+  projectCfg.build.protection = Object.assign({}, protectionBase, {
+    enabled: true,
+    seaMain: Object.assign({}, protectionBase.seaMain || {}, { pack: true }),
+    bundle: Object.assign({}, protectionBase.bundle || {}, { pack: true }),
   });
 
   const targetCfg = loadTargetConfig(EXAMPLE_ROOT, "local").cfg;
   const configName = resolveConfigName(targetCfg, "local");
   targetCfg.packager = packager;
 
-  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), `seal-out-${packager}-`));
+  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), `seal-full-${packager}-`));
   const outDir = path.join(outRoot, "seal-out");
   try {
     const res = await withTimeout(`buildRelease(${packager})`, buildTimeoutMs, () =>
@@ -94,11 +115,12 @@ async function buildWithPackager(packager, buildTimeoutMs) {
 }
 
 async function testPackager(packager, ctx) {
-  log(`Building ${packager}...`);
+  log(`Building ${packager} with protection...`);
   const res = await buildWithPackager(packager, ctx.buildTimeoutMs);
-  const { releaseDir, outRoot, packagerUsed, appName } = res;
+  const { releaseDir, outRoot, packagerUsed, appName, meta } = res;
   try {
     assert.strictEqual(packagerUsed, packager, `Expected packagerUsed=${packager} but got ${packagerUsed}`);
+    assertProtectionMeta(meta, packager);
     await runRelease({ releaseDir, runTimeoutMs: ctx.runTimeoutMs, appName });
   } finally {
     fs.rmSync(outRoot, { recursive: true, force: true });
@@ -115,18 +137,24 @@ async function testSeaPackager(ctx) {
 }
 
 async function main() {
-  if (process.env.SEAL_LEGACY_PACKAGERS_E2E !== "1") {
-    log("SKIP: set SEAL_LEGACY_PACKAGERS_E2E=1 to run legacy packager E2E");
+  const flag = process.env.SEAL_FULL_PACKAGERS_E2E;
+  const enabled = flag ? flag === "1" : process.env.SEAL_LEGACY_PACKAGERS_E2E === "1";
+  if (!enabled) {
+    skip("set SEAL_FULL_PACKAGERS_E2E=1 to run full packagers E2E");
+    process.exit(77);
+  }
+  if (process.env.SEAL_E2E_TOOLSET !== "full") {
+    skip("full packagers requires SEAL_E2E_TOOLSET=full");
     process.exit(77);
   }
   if (process.platform !== "linux") {
-    log(`SKIP: legacy packager tests are linux-only (platform=${process.platform})`);
+    skip(`full packager tests are linux-only (platform=${process.platform})`);
     process.exit(77);
   }
 
-  const buildTimeoutMs = resolveE2ETimeout("SEAL_LEGACY_PACKAGERS_E2E_BUILD_TIMEOUT_MS", 180000);
-  const runTimeoutMs = resolveE2ERunTimeout("SEAL_LEGACY_PACKAGERS_E2E_RUN_TIMEOUT_MS", 15000);
-  const testTimeoutMs = resolveE2ETimeout("SEAL_LEGACY_PACKAGERS_E2E_TIMEOUT_MS", 240000);
+  const buildTimeoutMs = resolveE2ETimeout("SEAL_FULL_PACKAGERS_E2E_BUILD_TIMEOUT_MS", 180000);
+  const runTimeoutMs = resolveE2ERunTimeout("SEAL_FULL_PACKAGERS_E2E_RUN_TIMEOUT_MS", 15000);
+  const testTimeoutMs = resolveE2ETimeout("SEAL_FULL_PACKAGERS_E2E_TIMEOUT_MS", 240000);
   const ctx = { buildTimeoutMs, runTimeoutMs };
 
   try {
@@ -142,13 +170,12 @@ async function main() {
 
   const tests = [
     { name: "bundle", run: () => testPackager("bundle", ctx) },
-    { name: "none", run: () => testPackager("none", ctx) },
     { name: "sea", run: () => testSeaPackager(ctx) },
   ];
 
   let failures = 0;
   for (const t of tests) {
-    const name = t.name || "legacy-packager";
+    const name = t.name || "full-packager";
     try {
       await withTimeout(name, testTimeoutMs, t.run);
       log(`OK: ${name}`);

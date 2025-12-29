@@ -53,6 +53,11 @@ function systemctlUserReady() {
     log("SKIP: systemctl --user timed out");
     return false;
   }
+  if (res.error) {
+    const msg = res.error.message || String(res.error);
+    log(`SKIP: systemctl --user unavailable (${msg})`);
+    return false;
+  }
   if (res.status === 0) return true;
   const out = `${res.stdout || ""}\n${res.stderr || ""}`.trim();
   log(`SKIP: systemctl --user unavailable (${out || "status=" + res.status})`);
@@ -67,7 +72,7 @@ function writeTargetConfig(targetName, cfg) {
 
 function cleanupTargetConfig(targetName, backup) {
   const targetPath = path.join(EXAMPLE_ROOT, "seal-config", "targets", `${targetName}.json5`);
-  if (backup) {
+  if (backup !== null && backup !== undefined) {
     fs.writeFileSync(targetPath, backup, "utf-8");
     return;
   }
@@ -239,7 +244,7 @@ async function waitForRemoteHealth({ user, host, sshPort, port, timeoutMs = 20_0
   while (Date.now() - start < timeoutMs) {
     const res = sshExec({ user, host, args: ["bash", "-lc", cmd], stdio: "pipe", sshPort });
     const out = (res.stdout || "").trim();
-    if (!res.ok && (out.includes("__SEAL_NO_HTTP_CLIENT__") || res.code === 127)) {
+    if (!res.ok && (out.includes("__SEAL_NO_HTTP_CLIENT__") || res.status === 127)) {
       sawNoClient = true;
       break;
     }

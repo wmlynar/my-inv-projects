@@ -8,7 +8,7 @@ const { findProjectRoot } = require("../lib/paths");
 const { getSealPaths, loadProjectConfig, loadTargetConfig, resolveTargetName, resolveConfigName, getConfigFile } = require("../lib/project");
 const {
   normalizePackager,
-  resolveBundleFallback,
+  assertNoPackagerFallback,
   resolveThinConfig,
   resolveProtectionConfig,
   applyThinCompatibility,
@@ -234,7 +234,7 @@ async function cmdCheck(cwd, targetArg, opts) {
   // Toolchain checks
   const thinCfgRaw = resolveThinConfig(targetCfg, proj);
   const packagerSpec = normalizePackager(opts.packager || targetCfg?.packager || proj?.build?.packager || "auto");
-  const allowBundleFallback = resolveBundleFallback(targetCfg, proj);
+  assertNoPackagerFallback(targetCfg, proj);
   if (packagerSpec.kind === "unknown") {
     errors.push(`Unknown packager: ${packagerSpec.label}. Allowed: thin-split, sea, bundle, none, auto.`);
   }
@@ -253,7 +253,7 @@ async function cmdCheck(cwd, targetArg, opts) {
   const major = nodeMajor();
   if (major < 18) errors.push(`Node too old: ${process.version} (need >= 18; SEA needs >= 20)`);
   if (seaNeeded && major < 20) {
-    warnings.push(`Node < 20: SEA may not work. ${allowBundleFallback ? "Bundle fallback is enabled." : "Build will fail unless bundle fallback is explicitly enabled (build.packagerFallback=true or packager=bundle)."} Node=${process.version}`);
+    errors.push(`Node < 20: SEA requires >= 20. Node=${process.version}`);
   }
 
   // Dependencies present?
@@ -279,19 +279,9 @@ async function cmdCheck(cwd, targetArg, opts) {
     } else {
       try {
         require("postject");
-        const msg = "postject module installed but CLI not found in node_modules/.bin or PATH – SEA may fail.";
-        if (allowBundleFallback) {
-          warnings.push(`${msg} Bundle fallback is enabled.`);
-        } else {
-          errors.push(`${msg} Build will fail unless bundle fallback is explicitly enabled (build.packagerFallback=true or packager=bundle).`);
-        }
+        errors.push("postject module installed but CLI not found in node_modules/.bin or PATH – SEA will fail.");
       } catch {
-        const msg = "postject not installed – SEA may fail.";
-        if (allowBundleFallback) {
-          warnings.push(`${msg} Bundle fallback is enabled.`);
-        } else {
-          errors.push(`${msg} Build will fail unless bundle fallback is explicitly enabled (build.packagerFallback=true or packager=bundle).`);
-        }
+        errors.push("postject not installed – SEA will fail.");
       }
     }
   }

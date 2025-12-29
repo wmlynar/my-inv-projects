@@ -16,7 +16,12 @@ function bashQuote(value) {
 }
 
 function runBash(script, cwd) {
-  return spawnSync("bash", ["-lc", script], { cwd, encoding: "utf8", timeout: 15000 });
+  const res = spawnSync("bash", ["-lc", script], { cwd, encoding: "utf8", timeout: 15000 });
+  if (res.error) {
+    const msg = res.error.message || String(res.error);
+    throw new Error(`bash failed: ${msg}`);
+  }
+  return res;
 }
 
 function writeFile(filePath, content) {

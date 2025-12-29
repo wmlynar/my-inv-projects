@@ -420,21 +420,17 @@ function normalizePackager(rawPackager) {
   return { kind: "unknown", label: name };
 }
 
-function resolveBundleFallback(targetCfg, projectCfg) {
-  if (targetCfg?.bundleFallback !== undefined || targetCfg?.allowFallback !== undefined) {
-    throw new Error("Unsupported target config bundleFallback/allowFallback. Use target.packagerFallback.");
+function assertNoPackagerFallback(targetCfg, projectCfg) {
+  const invalid = [];
+  if (targetCfg?.bundleFallback !== undefined) invalid.push("target.bundleFallback");
+  if (targetCfg?.allowFallback !== undefined) invalid.push("target.allowFallback");
+  if (targetCfg?.packagerFallback !== undefined) invalid.push("target.packagerFallback");
+  if (projectCfg?.build?.bundleFallback !== undefined) invalid.push("build.bundleFallback");
+  if (projectCfg?.build?.allowFallback !== undefined) invalid.push("build.allowFallback");
+  if (projectCfg?.build?.packagerFallback !== undefined) invalid.push("build.packagerFallback");
+  if (invalid.length) {
+    throw new Error(`Unsupported config: ${invalid.join(", ")}. Bundle fallback has been removed; use packager=bundle explicitly.`);
   }
-  if (projectCfg?.build?.bundleFallback !== undefined || projectCfg?.build?.allowFallback !== undefined) {
-    throw new Error("Unsupported build config bundleFallback/allowFallback. Use build.packagerFallback.");
-  }
-  const raw =
-    targetCfg?.packagerFallback ??
-    projectCfg?.build?.packagerFallback ??
-    false;
-  if (typeof raw !== "boolean") {
-    throw new Error(`Invalid packagerFallback: ${raw} (expected boolean)`);
-  }
-  return raw;
 }
 
 function resolveProtectionConfig(projectCfg) {
@@ -670,7 +666,7 @@ module.exports = {
   normalizeThinRuntimeStore,
   resolveThinConfig,
   normalizePackager,
-  resolveBundleFallback,
+  assertNoPackagerFallback,
   resolveProtectionConfig,
   normalizeStringObfuscation,
   normalizeCObfuscator,

@@ -43,6 +43,10 @@ function dirHasFiles(dir) {
 
 function runScript(scriptPath, env, args = []) {
   const res = spawnSync("bash", [scriptPath, ...args], { env, stdio: "inherit" });
+  if (res.error) {
+    const msg = res.error.message || String(res.error);
+    throw new Error(`Script failed (${path.basename(scriptPath)}): ${msg}`);
+  }
   if (res.status !== 0) {
     throw new Error(`Script failed (${path.basename(scriptPath)}): exit=${res.status}`);
   }
@@ -54,6 +58,10 @@ function npmInstall(dir, env) {
   }
   const args = fs.existsSync(path.join(dir, "package-lock.json")) ? ["ci"] : ["install"];
   const res = spawnSync("npm", args, { cwd: dir, env, stdio: "inherit" });
+  if (res.error) {
+    const msg = res.error.message || String(res.error);
+    throw new Error(`npm ${args.join(" ")} failed in ${dir}: ${msg}`);
+  }
   if (res.status !== 0) {
     throw new Error(`npm ${args.join(" ")} failed in ${dir}`);
   }
@@ -140,31 +148,141 @@ async function sleep(ms) {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function readProcStartTime(pid) {
+  try {
+    const stat = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
+    const end = stat.lastIndexOf(")");
+    if (end === -1) return null;
+    const rest = stat.slice(end + 2).trim();
+    const fields = rest.split(/\s+/);
+    return fields[19] || null;
+  } catch {
+    return null;
+  }
+}
+
+function isProcessAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    if (err && err.code === "EPERM") return true;
+    return false;
+  }
+}
+
+function readLockOwner(lockDir) {
+  const ownerPath = path.join(lockDir, "owner.json");
+  try {
+    const data = JSON.parse(fs.readFileSync(ownerPath, "utf8"));
+    if (data && typeof data.pid === "number") return data;
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+function writeLockOwner(lockDir) {
+  const ownerPath = path.join(lockDir, "owner.json");
+  const data = {
+    pid: process.pid,
+    ppid: process.ppid,
+    host: os.hostname(),
+    startTime: readProcStartTime(process.pid),
+    createdAt: Date.now(),
+  };
+  fs.writeFileSync(ownerPath, JSON.stringify(data, null, 2), { mode: 0o600 });
+  return data;
+}
+
+function lockActivityMs(lockDir) {
+  const files = [lockDir, path.join(lockDir, "owner.json"), path.join(lockDir, "heartbeat")];
+  let newest = 0;
+  for (const file of files) {
+    try {
+      const stat = fs.statSync(file);
+      if (stat.mtimeMs > newest) newest = stat.mtimeMs;
+    } catch {
+      // ignore
+    }
+  }
+  return newest;
+}
+
+function isLockStale(lockDir, staleMs) {
+  if (!staleMs || staleMs <= 0) return false;
+  const lastActivity = lockActivityMs(lockDir);
+  if (!lastActivity || Date.now() - lastActivity <= staleMs) return false;
+  const owner = readLockOwner(lockDir);
+  if (!owner || typeof owner.pid !== "number") return true;
+  if (!isProcessAlive(owner.pid)) return true;
+  if (owner.startTime) {
+    const currentStart = readProcStartTime(owner.pid);
+    if (currentStart && currentStart !== owner.startTime) return true;
+  }
+  return false;
+}
+
+function removeLockDir(lockDir) {
+  try {
+    fs.rmSync(path.join(lockDir, "owner.json"), { force: true });
+  } catch {
+    // ignore
+  }
+  try {
+    fs.rmSync(path.join(lockDir, "heartbeat"), { force: true });
+  } catch {
+    // ignore
+  }
+  try {
+    fs.rmdirSync(lockDir);
+  } catch {
+    // ignore
+  }
+}
+
 async function withDirLock(lockPath, fn) {
   const lockDir = `${lockPath}.d`;
   const timeoutMs = Number(process.env.SEAL_E2E_LOCK_TIMEOUT_MS || 15 * 60 * 1000);
   const staleMs = Number(process.env.SEAL_E2E_LOCK_STALE_MS || 30 * 60 * 1000);
   const start = Date.now();
+  let heartbeatTimer = null;
+  // Lock-dir + owner.json + heartbeat avoids false-stale on long builds while
+  // still clearing crashed locks deterministically.
   while (true) {
     try {
       fs.mkdirSync(lockDir);
+      try {
+        writeLockOwner(lockDir);
+        if (staleMs > 0) {
+          const interval = Math.max(1000, Math.min(30_000, Math.floor(staleMs / 2)));
+          heartbeatTimer = setInterval(() => {
+            try {
+              fs.writeFileSync(path.join(lockDir, "heartbeat"), `${Date.now()}\n`, { mode: 0o600 });
+            } catch {
+              // ignore heartbeat errors
+            }
+          }, interval);
+          heartbeatTimer.unref();
+        }
+      } catch (err) {
+        removeLockDir(lockDir);
+        throw new Error(`Failed to initialize lock metadata: ${err && err.message ? err.message : String(err)}`);
+      }
       break;
     } catch {
       const elapsed = Date.now() - start;
       if (timeoutMs > 0 && elapsed > timeoutMs) {
         throw new Error(`Timed out waiting for lock: ${lockDir}`);
       }
-      if (staleMs > 0) {
-        try {
-          const stat = fs.statSync(lockDir);
-          if (Date.now() - stat.mtimeMs > staleMs) {
-            log(`Stale lock detected (${lockDir}); removing.`);
-            fs.rmdirSync(lockDir);
-            continue;
-          }
-        } catch {
-          // ignore stale check errors
+      try {
+        if (isLockStale(lockDir, staleMs)) {
+          log(`Stale lock detected (${lockDir}); removing.`);
+          removeLockDir(lockDir);
+          continue;
         }
+      } catch {
+        // ignore stale check errors
       }
       await sleep(200);
     }
@@ -173,7 +291,8 @@ async function withDirLock(lockPath, fn) {
     return await fn();
   } finally {
     try {
-      fs.rmdirSync(lockDir);
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      removeLockDir(lockDir);
     } catch {
       // ignore
     }
@@ -214,6 +333,11 @@ function requireSafeExampleRoot(exampleRoot, safeRoots, env) {
 async function runCommand(cmd, args, options) {
   if (!options.logFile) {
     const res = spawnSync(cmd, args, { env: options.env, cwd: options.cwd, stdio: "inherit" });
+    if (res.error) {
+      const msg = res.error.message || String(res.error);
+      log(`ERROR: failed to spawn ${cmd}: ${msg}`);
+      return 1;
+    }
     return res.status === null ? 1 : res.status;
   }
   return new Promise((resolve) => {
@@ -450,13 +574,16 @@ async function main() {
     log("ELF packers already installed (skip).");
   }
 
+  const wantCObf = env.SEAL_C_OBF_E2E === "1" || (!env.SEAL_C_OBF_E2E && process.platform === "linux");
   let needObf = env.SEAL_E2E_INSTALL_OBFUSCATORS || "";
   if (!needObf) {
     needObf = "0";
     if (env.SEAL_E2E_REINSTALL_OBFUSCATORS === "1") {
       needObf = "1";
-    } else if (toolset === "full") {
-      if (!hasCommand("ollvm-clang") || !hasCommand("hikari-clang")) {
+    } else if (toolset === "full" || wantCObf) {
+      const needsOllvm = !hasCommand("ollvm-clang");
+      const needsHikari = toolset === "full" && !hasCommand("hikari-clang");
+      if (needsOllvm || needsHikari) {
         needObf = "1";
       }
     }
@@ -468,10 +595,10 @@ async function main() {
       runScript(path.join(SCRIPT_DIR, "install-hikari-llvm15.sh"), env);
     }
   } else {
-    if (toolset === "full") {
+    if (toolset === "full" || wantCObf) {
       log("C obfuscators already installed (skip).");
     } else {
-      log("Skipping C obfuscator install for core toolset (set SEAL_E2E_INSTALL_OBFUSCATORS=1 to enable).");
+      log("Skipping C obfuscator install for core toolset (set SEAL_C_OBF_E2E=1 to enable).");
     }
   }
 
@@ -549,6 +676,10 @@ async function main() {
             npmInstall(exampleDir, env);
             if (hasCommand("rsync")) {
               const res = spawnSync("rsync", ["-a", "--delete", `${nmLink}/`, sharedNodeModulesDir], { env, stdio: "inherit" });
+              if (res.error) {
+                const msg = res.error.message || String(res.error);
+                throw new Error(`rsync failed while syncing node_modules: ${msg}`);
+              }
               if (res.status !== 0) {
                 throw new Error("rsync failed while syncing node_modules");
               }
@@ -578,7 +709,13 @@ async function main() {
   if (!fs.existsSync("/etc/machine-id") || fs.readFileSync("/etc/machine-id", "utf8").trim().length === 0) {
     log("Generating /etc/machine-id for sentinel E2E...");
     if (hasCommand("systemd-machine-id-setup")) {
-      spawnSync("systemd-machine-id-setup", [], { stdio: "ignore" });
+      const res = spawnSync("systemd-machine-id-setup", [], { stdio: "ignore" });
+      if (res.error) {
+        const msg = res.error.message || String(res.error);
+        log(`WARN: systemd-machine-id-setup failed: ${msg}`);
+      } else if (res.status !== 0) {
+        log(`WARN: systemd-machine-id-setup exited with status ${res.status}`);
+      }
     }
     if (!fs.existsSync("/etc/machine-id") || fs.readFileSync("/etc/machine-id", "utf8").trim().length === 0) {
       const uuid = fs.readFileSync("/proc/sys/kernel/random/uuid", "utf8").trim().replace(/-/g, "");
@@ -610,7 +747,11 @@ async function main() {
     }
     if (pwHasBrowser && hasCommand("ldd")) {
       const res = spawnSync("ldd", [pwBrowserPath], { encoding: "utf8" });
-      if (res.status === 0 && /not found/.test(res.stdout || "")) {
+      if (res.error) {
+        const msg = res.error.message || String(res.error);
+        log(`WARN: ldd failed (${msg}); forcing Playwright reinstall.`);
+        pwDepsOk = false;
+      } else if (res.status === 0 && /not found/.test(res.stdout || "")) {
         pwDepsOk = false;
       }
     }
@@ -643,7 +784,14 @@ async function main() {
       if (env.SEAL_UI_E2E === "1") {
         log("Installing Playwright browsers for UI E2E...");
         const res = spawnSync("npx", ["playwright", "install", "--with-deps", "chromium"], { cwd: REPO_ROOT, env, stdio: "inherit" });
-        if (res.status !== 0) {
+        if (res.error) {
+          const msg = res.error.message || String(res.error);
+          if (env.SEAL_DOCKER_E2E === "1") {
+            disableUiE2E(`Playwright browser install failed (${msg}); disabling UI E2E in docker`);
+          } else {
+            throw new Error(`Playwright browser install failed: ${msg}`);
+          }
+        } else if (res.status !== 0) {
           if (env.SEAL_DOCKER_E2E === "1") {
             disableUiE2E("Playwright browser install failed; disabling UI E2E in docker");
           } else {

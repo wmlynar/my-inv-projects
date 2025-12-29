@@ -28,7 +28,7 @@ function applyE2EFeatureFlags(env, toolset) {
   env.SEAL_STRIP_E2E_STRINGS_TIMEOUT_MS = env.SEAL_STRIP_E2E_STRINGS_TIMEOUT_MS || "60000";
   env.SEAL_STRIP_E2E_STRINGS_MAX_BUFFER = env.SEAL_STRIP_E2E_STRINGS_MAX_BUFFER || "50000000";
   env.SEAL_ELF_PACKERS_E2E = "1";
-  const defaultCObf = toolset === "full" ? "1" : "0";
+  const defaultCObf = process.platform === "linux" ? "1" : "0";
   env.SEAL_C_OBF_E2E = env.SEAL_C_OBF_E2E || defaultCObf;
   env.SEAL_UI_E2E = "1";
   env.SEAL_POSTJECT_E2E = "1";

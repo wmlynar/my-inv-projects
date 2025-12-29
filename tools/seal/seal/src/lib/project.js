@@ -355,7 +355,6 @@ function loadProjectConfig(projectRoot, opts) {
     cfg.build.securityProfile = "strict";
   }
   cfg.build.packager = cfg.build.packager || "auto"; // auto|sea|bundle|none|thin-split
-  if (cfg.build.packagerFallback === undefined) cfg.build.packagerFallback = false;
   cfg.build.thin = cfg.build.thin || {};
   if (cfg.build.thin.mode === undefined) cfg.build.thin.mode = "split";
   if (cfg.build.thin.level === undefined) cfg.build.thin.level = "low";

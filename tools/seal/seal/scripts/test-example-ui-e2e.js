@@ -42,7 +42,12 @@ function resolveArtifactsDir() {
 }
 
 function runCmd(cmd, args, timeoutMs = 5000) {
-  return spawnSync(cmd, args, { stdio: "pipe", timeout: timeoutMs });
+  const res = spawnSync(cmd, args, { stdio: "pipe", timeout: timeoutMs });
+  if (res.error) {
+    const msg = res.error.message || String(res.error);
+    throw new Error(`${cmd} failed: ${msg}`);
+  }
+  return res;
 }
 
 function probeCompilerFlag(cmd, flag) {
@@ -50,9 +55,11 @@ function probeCompilerFlag(cmd, flag) {
   const srcPath = path.join(tmpDir, "flag-test.c");
   const outPath = path.join(tmpDir, "flag-test.o");
   fs.writeFileSync(srcPath, "int main(void){return 0;}\n", "utf-8");
-  const res = runCmd(cmd, [flag, "-c", srcPath, "-o", outPath], 8000);
-  fs.rmSync(tmpDir, { recursive: true, force: true });
-  return res;
+  try {
+    return runCmd(cmd, [flag, "-c", srcPath, "-o", outPath], 8000);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 }
 
 function checkPrereqs() {

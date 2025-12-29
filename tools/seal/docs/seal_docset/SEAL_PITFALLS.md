@@ -394,9 +394,9 @@
 
 ## Build / packaging
 
-- Blad: SEA bundle fallback uruchomil build bez postject (cichy spadek poziomu zabezpieczen).
+- Blad: build przechodzil mimo braku `postject` (SEA nie failowal).
   - Wymaganie: brak `postject` to **blad builda**.
-- Bundle fallback do pakowania JS jest dozwolony **tylko jawnie** (`build.packagerFallback=true` lub `--packager bundle`).
+- Packager `bundle` jest **jawny wybór** (`--packager bundle`); brak automatycznego fallbacku z SEA.
 
 - Blad: pakowanie artefaktu uzywalo stalego katalogu tmp w `outDir` (np. `artifact-tmp`) i kasowalo go przed buildem, co przy rownoleglych buildach uszkadzalo artefakty.
   - Wymaganie: temp katalog dla artefaktu jest unikalny per build (mkdtemp/buildId), a cleanup jest w `finally`.
@@ -442,7 +442,7 @@
   - Wymaganie: **jedno zrodlo prawdy** dla packerow (tylko `protection.elfPacker`); duplikaty/konflikty = twardy blad.
   - Wymaganie: template/init, przyklady i dokumentacja uzywaja tylko kanonicznych pol.
 
-- Blad: zmiana schematu `seal.json5` (np. `bundleFallback` -> `packagerFallback`, `stripSymbols/upxPack` -> `strip/elfPacker`) nie byla zaktualizowana we wszystkich projektach, docs i testach.
+- Blad: zmiana schematu `seal.json5` (np. usuniecie `bundleFallback` na rzecz jawnego `packager=bundle`, `stripSymbols/upxPack` -> `strip/elfPacker`) nie byla zaktualizowana we wszystkich projektach, docs i testach.
   - Wymaganie: migracja schematu = aktualizacja **wszystkich** `seal.json5` w repo (takze workspace `defaults`) + init template + docs + testy.
   - Wymaganie: parser musi fail‑fast na nieznanych/starych kluczach z jasnym hintem migracji.
   - Wymaganie: CI/skript sprawdza brak starych kluczy w repo (scan).
@@ -1910,7 +1910,7 @@
 
 ## Co sprawdzac po zmianach (checklist)
 
-- `seal release` bez `postject` musi failowac (chyba ze bundle fallback jawnie wlaczony).
+- `seal release` bez `postject` musi failowac (dla SEA); w razie potrzeby wybierz `--packager bundle`.
 - `elfPacker.tool="upx"` wlaczony + blad `upx` => build musi failowac.
 - `seal deploy` nie wysyla artefaktu podwojnie.
 - `installDir` w targetach jest w `/home/admin/apps/...`.
@@ -2541,6 +2541,9 @@
 - Blad: wielolinijkowe komendy E2E (dziesiatki `SEAL_E2E_*`) byly kopiowane z losowymi backslashami/typo (`\\E=...`, `\\0`), co zlepialo linie z nazwa skryptu i dawalo `MODULE_NOT_FOUND` lub uruchamialo zly zestaw testow.
   - Wymaganie: preferuj **pliki ENV** (`SEAL_E2E_CONFIG`) lub wrappery (np. `e2e.sh`) zamiast ręcznego paste; waliduj `SEAL_E2E_*` i fail‑fast przy nieznanych/niepoprawnych kluczach.
   - Wymaganie: loguj efektywny config i ostrzegaj o „pustych” zmiennych wynikajacych z blednej kontynuacji linii (trailing spacje po `\\`).
+- Blad: lock katalogowy (mkdir) w E2E pozostawal po crashu, co blokowalo kolejne uruchomienia i powodowalo “wiszenie” bez logu.
+  - Wymaganie: lock dir ma timeout oraz detekcje stale lock (mtime/TTL) z czytelnym logiem i instrukcja recovery.
+  - Wymaganie: lock zawiera `owner.json` + heartbeat, a stale‑lock weryfikuje PID/startTime, żeby nie usuwać aktywnych locków przy długich buildach.
 - Blad: uruchamianie skryptow E2E z podfolderu powodowalo zly `cwd` i sciezki względne wskazywaly na nieistniejace pliki (np. `.../example/tools/...`).
   - Wymaganie: skrypty maja auto‑detekcje repo root (`git rev-parse --show-toplevel` lub `realpath`) i uzywaja sciezek absolutnych; w logach wypisuja `repo_root`.
 

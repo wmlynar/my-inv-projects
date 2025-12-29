@@ -39,7 +39,7 @@ Poniższa treść pochodzi z poprzednich wersji i jest utrzymywana jako REF.
 Seal powinien mieć interfejs packagera, aby można było podmieniać metodę pakowania bez zmiany CLI i formatu paczki.
 
 - `packagers/sea` – domyślny (super sealing).
-- `packagers/fallback` – alternatywny (packager `bundle`, na wypadek ograniczeń SEA), ale **ten sam format outputu**.
+- `packagers/fallback` – packager `bundle` (gzip + loader), ale **ten sam format outputu**.
 
 **Kontrakt packagera (proponowany):**
 - input: `projectRoot`, `entry`, `appName`, `target`, `buildId`, `obfuscationProfile`, `options`
@@ -64,7 +64,7 @@ Seal powinien mieć interfejs packagera, aby można było podmieniać metodę pa
 
 #### 14.6.5. Konkretne kroki w „build sealed release” (SEA)
 
-> W CLI użytkownika ta faza jest częścią `seal deploy`. W implementacji możesz ją mieć jako wewnętrzną funkcję lub subkomendę (np. `seal build`).
+> W CLI użytkownika ta faza jest częścią `seal ship`. W implementacji możesz ją mieć jako wewnętrzną funkcję lub subkomendę (np. `seal build`).
 
 **A) Bundle do jednego pliku CJS**
 - wejście: `entry` (np. `src/server.js`)
@@ -103,8 +103,7 @@ Seal powinien mieć interfejs packagera, aby można było podmieniać metodę pa
   `SEA` i `thin-single` ignorują `strip`/ELF packer (auto-disabled); użyj `thin-split`, jeśli chcesz hardening binarki.
 - Rekomendowana kolejność packerów: `kiteshield` → `midgetpack` → `upx`.
 - Jeśli chcesz wyłączyć packer, usuń `protection.elfPacker` albo ustaw `elfPacker.tool=null`.
-- Gdy SEA nie jest możliwe i **bundle fallback jest jawnie włączony**, backend bundle jest pakowany do `app.bundle.cjs.gz` i uruchamiany przez mały loader (żeby nie leżał czytelny plik JS).
-- Bundle fallback wymaga jawnego włączenia: `build.packagerFallback=true` lub `packager=bundle`.
+- Dla packagera `bundle` backend bundle jest pakowany do `app.bundle.cjs.gz` i uruchamiany przez mały loader (żeby nie leżał czytelny plik JS).
 - Protection można wyłączyć w `seal.json5` (`build.protection.enabled=false`).
 - Preset bezpieczeństwa: `build.securityProfile` domyślnie = `strict`.
   Profile ustawiają **domyślne wartości** (nie nadpisują jawnych pól):
@@ -486,7 +485,7 @@ Proponowana implementacja:
    - brak targetów → `seal target add local`,
    - brak artefaktu → `seal release`,
    - jest artefakt → `seal verify` i `seal run-local`,
-  - są targety serwerowe → `seal deploy <target>` + `seal remote <target> status`.
+  - są targety serwerowe → `seal ship <target>` + `seal remote <target> status`.
 3) wypisz propozycje jako copy/paste (bez „filozofii”).
  4) (TTY) pozwól wybrać numer i uruchomić komendę bez opuszczania wizards.
  5) pokaż krótkie wyjaśnienie każdej komendy i wskaż rekomendowaną na teraz.
@@ -564,7 +563,7 @@ Uwaga: dla targetów SSH tryb HTTP wymaga `curl` albo `wget` na serwerze.
 ## 8. Multi-target deploy
 
 Implementacja:
-- `seal deploy t1 t2 t3` iteruje po targetach.
+- `seal ship t1 t2 t3` iteruje po targetach.
 - (SHOULD) generuje per-target raport: `seal-out/run/<target>/...` lub raport JSON agregujący.
 - exit code:
   - 0 jeśli wszystkie OK,

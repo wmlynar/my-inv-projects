@@ -31,7 +31,12 @@ const EXAMPLE_ROOT = resolveExampleRoot();
 const { log, fail } = createLogger("thin-e2e");
 
 function runCmd(cmd, args, timeoutMs = 5000) {
-  return spawnSync(cmd, args, { stdio: "pipe", timeout: timeoutMs });
+  const res = spawnSync(cmd, args, { stdio: "pipe", timeout: timeoutMs });
+  if (res.error) {
+    const msg = res.error.message || String(res.error);
+    throw new Error(`${cmd} failed: ${msg}`);
+  }
+  return res;
 }
 
 function hashFile(filePath) {
@@ -77,13 +82,16 @@ function supportsCxx20(cxx) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-cxx20-"));
   const srcPath = path.join(tmpDir, "cxx20.cc");
   const outPath = path.join(tmpDir, "cxx20.o");
-  fs.writeFileSync(srcPath, "int main(){return 0;}\n", "utf-8");
-  const res = spawnSyncWithTimeout(cxx, ["-std=c++20", "-c", srcPath, "-o", outPath], {
-    stdio: "ignore",
-    timeout: 8000,
-  });
-  fs.rmSync(tmpDir, { recursive: true, force: true });
-  return res.status === 0;
+  try {
+    fs.writeFileSync(srcPath, "int main(){return 0;}\n", "utf-8");
+    const res = spawnSyncWithTimeout(cxx, ["-std=c++20", "-c", srcPath, "-o", outPath], {
+      stdio: "ignore",
+      timeout: 8000,
+    });
+    return res.status === 0;
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 }
 
 function resolveNodeIncludeDir() {

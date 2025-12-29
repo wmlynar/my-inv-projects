@@ -16,7 +16,6 @@ function templateProjectJson5(appName, entry) {
     defaultTarget: "local",
     build: {
       packager: "auto",
-      packagerFallback: false,
       securityProfile: "strict",
       frontendMinify: { enabled: true, level: "safe", html: true, css: true },
       // NOTE: SEA/thin-single ignore strip/ELF packer. thin-split uses kiteshield by default.

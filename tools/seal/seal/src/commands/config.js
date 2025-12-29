@@ -10,7 +10,7 @@ const {
   normalizePackager,
   resolveThinConfig,
   resolveProtectionConfig,
-  resolveBundleFallback,
+  assertNoPackagerFallback,
   applyThinCompatibility,
   applyProtectionCompatibility,
 } = require("../lib/packagerConfig");
@@ -271,7 +271,7 @@ async function cmdConfigExplain(cwd, targetNameOrConfig, opts) {
   const protectionCompat = applyProtectionCompatibility(packagerSpec.label, protectionRaw);
   const thinCfg = thinCompat.thinCfg;
   const protectionCfg = protectionCompat.protectionCfg;
-  const allowBundleFallback = resolveBundleFallback(targetCfg, proj);
+  assertNoPackagerFallback(targetCfg, proj);
   const sentinelCfg = resolveSentinelConfig({
     projectRoot,
     projectCfg: proj,
@@ -308,9 +308,6 @@ async function cmdConfigExplain(cwd, targetNameOrConfig, opts) {
   const packagerSource = hasPath(rawTarget, ["packager"])
     ? "target"
     : (hasPath(rawProj, ["build", "packager"]) ? "project" : "default");
-  const packagerFallbackSource = hasPath(rawTarget, ["packagerFallback"])
-    ? "target"
-    : (hasPath(rawProj, ["build", "packagerFallback"]) ? "project" : "default");
 
   const frontendCfg = proj.build.frontendObfuscation;
   const frontendEnabled = frontendCfg === false ? false : !(typeof frontendCfg === "object" && frontendCfg && frontendCfg.enabled === false);
@@ -356,7 +353,6 @@ async function cmdConfigExplain(cwd, targetNameOrConfig, opts) {
 
   console.log("Packager:");
   console.log(`  packager: ${packagerSpec.label}${sourceTag(packagerSource)}`);
-  console.log(`  packagerFallback: ${allowBundleFallback}${sourceTag(packagerFallbackSource)}`);
   console.log("");
 
   console.log("Thin:");

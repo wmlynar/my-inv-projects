@@ -367,8 +367,8 @@ Launcher używa (w różnych źródłach):
 
 Minimalny kernel dla `memfd_create`: Linux >= 3.17 (praktycznie spełnione na Ubuntu).
 
-Fallback (MUST w opisie, MAY w implementacji):
-- jeśli “exec z memfd” jest blokowane polityką, fallback do `tmpfs + unlink` dla uruchomienia Node (tylko dla runtime ELF), nadal bez zostawiania trwałego pliku.
+Runtime store (manualny wybór, brak automatycznego fallbacku):
+- `thin.runtimeStore=memfd` (domyślny) lub `thin.runtimeStore=tmpfile` (tmpfs + unlink dla runtime ELF).
 
 ### 5.3 Runtime Node
 - `thin` nie zależy od systemowego `node` w PATH — runtime jest częścią artefaktów THIN.

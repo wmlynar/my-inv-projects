@@ -246,7 +246,7 @@ async function main(argv) {
 
   program
     .command("deploy")
-    .description("Deploy artifact to target (copy files; service control is explicit)")
+    .description("Manual deploy: copy/install release (no restart unless --restart)")
     .argument("[target]", "Target name (default: project defaultTarget)", null)
     .option("--bootstrap", "Install prerequisites on the target (first time)", false)
     .option("--push-config", "Overwrite server runtime config with repo config (explicit)", false)
@@ -258,7 +258,7 @@ async function main(argv) {
     .option("--wait-url <url>", "HTTP readiness URL (e.g. http://127.0.0.1:3000/healthz)", null)
     .option("--wait-mode <mode>", "Readiness mode: systemd|http|both (default: auto)", null)
     .option("--wait-http-timeout <ms>", "HTTP readiness timeout in ms (default: 2000)", null)
-    .option("--accept-drift, --allow-drift", "Allow start/restart when repo config differs from target", false)
+    .option("--accept-drift", "Allow start/restart when repo config differs from target", false)
     .option("--warn-drift", "Warn before deploy if repo config differs from target", false)
     .option("--artifact <path>", "Deploy a specific artifact (.tgz) instead of building", null)
     .option("--profile-overlay <name>", "Apply build profile overlay (seal.json5 build.profileOverlays.<name>)", null)
@@ -268,7 +268,7 @@ async function main(argv) {
 
   program
     .command("ship")
-    .description("Build, deploy, and restart service on target")
+    .description("Main flow: release + deploy + restart + readiness")
     .argument("[target]", "Target name (default: project defaultTarget)", null)
     .option("--bootstrap", "Install prerequisites on the target (first time)", false)
     .option("--push-config", "Overwrite server runtime config with repo config (explicit)", false)
@@ -279,7 +279,7 @@ async function main(argv) {
     .option("--wait-url <url>", "HTTP readiness URL (e.g. http://127.0.0.1:3000/healthz)", null)
     .option("--wait-mode <mode>", "Readiness mode: systemd|http|both (default: auto)", null)
     .option("--wait-http-timeout <ms>", "HTTP readiness timeout in ms (default: 2000)", null)
-    .option("--accept-drift, --allow-drift", "Allow start/restart when repo config differs from target", false)
+    .option("--accept-drift", "Allow start/restart when repo config differs from target", false)
     .option("--warn-drift", "Warn before deploy if repo config differs from target", false)
     .option("--skip-check", "Skip preflight checks", false)
     .option("--check-verbose", "Show tool output during preflight checks", false)
@@ -295,7 +295,7 @@ async function main(argv) {
     .command("rollback")
     .description("Rollback to previous release on target (minimal implementation)")
     .argument("[target]", "Target name", null)
-    .option("--accept-drift, --allow-drift", "Allow rollback when repo config differs from target", false)
+    .option("--accept-drift", "Allow rollback when repo config differs from target", false)
     .action(async (target, opts) => cmdRollback(process.cwd(), target, opts));
 
   program
@@ -304,7 +304,7 @@ async function main(argv) {
     .argument("[target]", "Target name", null)
     .option("--kill", "Kill running app process from current release before starting", false)
     .option("--sudo", "Run application as root (uses sudo)", false)
-    .option("--accept-drift, --allow-drift", "Allow run when repo config differs from target", false)
+    .option("--accept-drift", "Allow run when repo config differs from target", false)
     .action(async (target, opts) => cmdRunRemote(process.cwd(), target, opts));
 
   program
@@ -318,7 +318,7 @@ async function main(argv) {
     .description("Service control on target (mirrors appctl)")
     .argument("<target>", "Target name")
     .argument("<action>", "up|enable|start|restart|stop|disable|down|status|logs")
-    .option("--accept-drift, --allow-drift", "Allow start/restart when repo config differs from target", false)
+    .option("--accept-drift", "Allow start/restart when repo config differs from target", false)
     .option("--skip-sentinel-verify", "Skip post-install sentinel verify (runner check)", false)
     .action(async (target, action, opts) => cmdRemote(process.cwd(), target, action, opts));
 

@@ -22,6 +22,10 @@ function runBash(script, env, cwd) {
     encoding: "utf8",
     timeout: 30 * 60 * 1000,
   });
+  if (res.error) {
+    const msg = res.error.message || String(res.error);
+    throw new Error(`bash failed: ${msg}`);
+  }
   if (res.status !== 0) {
     const out = `${res.stdout || ""}\n${res.stderr || ""}`.trim();
     throw new Error(`bash failed (status=${res.status})${out ? `: ${out}` : ""}`);

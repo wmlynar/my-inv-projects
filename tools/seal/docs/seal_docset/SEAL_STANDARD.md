@@ -349,7 +349,8 @@ Przykład:
 - STD-027i (SHOULD): defaulty E2E sa w pliku wzorcowym w repo, a lokalne override w `.seal/e2e.env` (lub `SEAL_E2E_CONFIG`); runner loguje zrodlo configu, a override jest gitignored.
 - STD-027i.a (SHOULD): jawne ENV użytkownika (np. `SEAL_E2E_TESTS`) ma wyższy priorytet niż plik configu; jeśli chcesz pominąć config, użyj `SEAL_E2E_CONFIG=/dev/null`.
 - STD-027j (SHOULD): instalatory narzedzi E2E uzywaja locka per‑tool/cache i atomowego swapu (tmp + rename), a stamp jest zapisywany po sukcesie.
-- STD-027j.a (SHOULD): locki katalogowe (`mkdir` lock) mają timeout oraz detekcję „stale lock” (mtime/TTL), z czytelnym logiem i opcjami ENV do konfiguracji.
+- STD-027j.a (SHOULD): locki katalogowe (`mkdir` lock) mają timeout oraz detekcję „stale lock” (mtime/TTL), z czytelnym logiem i opcjami ENV do konfiguracji (np. `SEAL_E2E_LOCK_TIMEOUT_MS`, `SEAL_E2E_LOCK_STALE_MS`).
+- STD-027j.b (SHOULD): lock-dir zapisuje `owner.json` (pid/host/startTime) oraz heartbeat; stale‑lock weryfikuje PID+startTime i dopiero wtedy usuwa lock (unikanie false‑stale przy długich buildach).
 - STD-027k (SHOULD): lockfile narzedzi E2E jest walidowany schematem; brakujace pola (url/rev/bin) = fail‑fast z lista brakow.
 - STD-027l (SHOULD): lokalne patche do narzedzi sa jawnie logowane i sterowane ENV, a wersja patcha/flag wchodzi do stempla cache.
 - STD-027m (SHOULD): testy zalezne od funkcji kernela (cgroup/perf/ptrace) maja tryb strict (ENV), ktory zamienia SKIP na FAIL; w trybie domyslnym SKIP zawsze podaje instrukcje jak wymusic strict.

@@ -6,6 +6,10 @@ if [ "$(id -u)" -ne 0 ]; then
   SUDO="sudo"
 fi
 
+git_no_prompt() {
+  GIT_TERMINAL_PROMPT=0 "$@"
+}
+
 REPO="${SEAL_OLLVM_REPO:-https://github.com/obfuscator-llvm/obfuscator.git}"
 ROOT="${SEAL_OLLVM_DIR:-$HOME/.cache/seal/obfuscators/obfuscator-llvm}"
 BRANCH="${SEAL_OLLVM_BRANCH:-llvm-4.0}"
@@ -31,10 +35,10 @@ $SUDO apt-get install -y \
 mkdir -p "$ROOT"
 if [ -d "$ROOT/.git" ]; then
   echo "[install-ollvm] Updating repo..."
-  git -C "$ROOT" fetch --all --tags
+  git_no_prompt git -C "$ROOT" fetch --all --tags
 else
   echo "[install-ollvm] Cloning O-LLVM..."
-  git clone "$REPO" "$ROOT"
+  git_no_prompt git clone "$REPO" "$ROOT"
 fi
 
 echo "[install-ollvm] Checkout branch: $BRANCH"
@@ -56,7 +60,7 @@ fi
 if [ "$has_legacy_clang" -eq 0 ] && [ "$has_monorepo_clang" -eq 0 ] && [ -f "$ROOT/.gitmodules" ]; then
   if grep -qE 'path *= *tools/clang' "$ROOT/.gitmodules"; then
     echo "[install-ollvm] Initializing clang submodule..."
-    git -C "$ROOT" submodule update --init --recursive
+    git_no_prompt git -C "$ROOT" submodule update --init --recursive
   fi
 fi
 

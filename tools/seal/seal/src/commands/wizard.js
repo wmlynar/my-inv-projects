@@ -234,8 +234,9 @@ async function wizard(cwd) {
     console.log("  seal run-local --sealed # uruchomienie sealed build lokalnie");
     console.log("");
     console.log("Deploy (localhost / serwer):");
-    console.log("  seal deploy local --bootstrap   # przygotowanie lokalnego targetu");
-    console.log("  seal ship <target>              # build + deploy + restart");
+    console.log("  seal ship local --bootstrap     # główna ścieżka: build + deploy + restart + readiness");
+    console.log("  seal ship <target>              # główna ścieżka: build + deploy + restart + readiness");
+    console.log("  seal deploy <target>            # tryb manualny (bez restartu, chyba że --restart)");
     console.log("  seal remote <target> status     # status usługi");
     return;
   }
@@ -247,8 +248,8 @@ async function wizard(cwd) {
       { key: "2", label: "release (build)", desc: "buduje sealed release i artefakt .tgz", value: { cmd: ["release"] } },
       { key: "3", label: "verify --explain", desc: "weryfikuje artefakt i wypisuje checklistę", value: { cmd: ["verify", "--explain"] } },
       { key: "4", label: "run-local --sealed", desc: "uruchamia sealed build lokalnie", value: { cmd: ["run-local", "--sealed"] } },
-      { key: "5", label: "deploy (artifact) → target", desc: "wdraża artefakt na serwer (bez kontroli serwisu)", value: { cmd: ["deploy"], needsTarget: true, supportsBootstrap: true, supportsRestart: true } },
-      { key: "6", label: "ship (build+deploy+restart) → target", desc: "jedno polecenie: build + deploy + restart", value: { cmd: ["ship"], needsTarget: true, supportsBootstrap: true } },
+      { key: "5", label: "deploy (manual) → target", desc: "manualny deploy artefaktu (bez restartu, chyba że --restart)", value: { cmd: ["deploy"], needsTarget: true, supportsBootstrap: true, supportsRestart: true } },
+      { key: "6", label: "ship (main) → target", desc: "główna ścieżka: build + deploy + restart + readiness", value: { cmd: ["ship"], needsTarget: true, supportsBootstrap: true } },
       { key: "7", label: "remote (service control)", desc: "sterowanie usługą (up/enable/start/stop/status/logs)", value: { cmd: ["remote"], needsTarget: true, remote: true } },
       { key: "8", label: "rollback → target", desc: "powrót do poprzedniego release", value: { cmd: ["rollback"], needsTarget: true } },
       { key: "9", label: "uninstall → target", desc: "usuwa usługę SEAL z targetu", value: { cmd: ["uninstall"], needsTarget: true } },

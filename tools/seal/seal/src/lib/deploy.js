@@ -391,7 +391,7 @@ function deployLocal({ targetCfg, artifactPath, repoConfigPath, pushConfig, poli
 
   const svc = serviceFilePath(targetCfg);
   if (!fileExists(svc)) {
-    warn(`Service not installed (${svc}). Deploy will only copy files. If you want a local systemd service: seal deploy <target> --bootstrap`);
+    warn(`Service not installed (${svc}). Deploy will only copy files. If you want a local systemd service: seal ship <target> --bootstrap`);
   }
 
   info(`Extracting artifact to ${layout.releasesDir}`);

@@ -29,7 +29,12 @@ const EXAMPLE_ROOT = resolveExampleRoot();
 const { log, fail } = createLogger("elf-packers-e2e");
 
 function runCmd(cmd, args, timeoutMs = 5000) {
-  return spawnSync(cmd, args, { stdio: "pipe", timeout: timeoutMs });
+  const res = spawnSync(cmd, args, { stdio: "pipe", timeout: timeoutMs });
+  if (res.error) {
+    const msg = res.error.message || String(res.error);
+    throw new Error(`${cmd} failed: ${msg}`);
+  }
+  return res;
 }
 
 function ensureLauncherObfuscation(projectCfg) {
@@ -85,11 +90,12 @@ function parseReadelfSections(binPath) {
   return sections;
 }
 
-function verifyUpxPacked(binPath) {
-  if (!hasCommand("upx")) {
+function verifyUpxPacked(binPath, cmd) {
+  const upxCmd = cmd || "upx";
+  if (!hasCommand(upxCmd)) {
     return { skip: "upx not installed" };
   }
-  const res = runCmd("upx", ["-t", binPath], 10000);
+  const res = runCmd(upxCmd, ["-t", binPath], 10000);
   const out = `${res.stdout || ""}${res.stderr || ""}`;
   const lower = out.toLowerCase();
   if (lower.includes("not packed") || lower.includes("notpacked")) {
@@ -114,22 +120,23 @@ function verifyMarker(binPath, markers) {
   return { skip: "marker missing (tool version?)" };
 }
 
-function verifyPacker(binPath, spec) {
-  if (spec.id === "upx") return verifyUpxPacked(binPath);
+function verifyPacker(binPath, spec, cmd) {
+  if (spec.id === "upx") return verifyUpxPacked(binPath, cmd);
   if (spec.id === "kiteshield") return verifyMarker(binPath, ["[kiteshield]", "kiteshield"]);
   if (spec.id === "midgetpack") return verifyMarker(binPath, ["midgetpack"]);
   return { skip: "unsupported packer check" };
 }
 
-function attemptUnpack(binPath, spec) {
+function attemptUnpack(binPath, spec, cmd) {
   const strict = process.env.SEAL_E2E_STRICT_UNPACK === "1";
   if (spec.id !== "upx") return { skip: "unpack check not supported" };
-  if (!hasCommand("upx")) return { skip: "upx missing" };
+  const upxCmd = cmd || "upx";
+  if (!hasCommand(upxCmd)) return { skip: "upx missing" };
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-unpack-"));
   const tmpPath = path.join(tmpDir, path.basename(binPath));
   try {
     fs.copyFileSync(binPath, tmpPath);
-    const res = runCmd("upx", ["-d", tmpPath], 10000);
+    const res = runCmd(upxCmd, ["-d", tmpPath], 10000);
     const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
     if (res.status === 0) {
       if (strict) throw new Error("upx unpack succeeded");
@@ -262,14 +269,14 @@ async function testElfPacker(ctx, spec) {
   assert.strictEqual(step.ok, true, "Expected elf_packer step to be ok");
 
   const launcherPath = resolveLauncherPath(res.releaseDir, res.appName);
-  const verify = verifyPacker(launcherPath, spec);
+  const verify = verifyPacker(launcherPath, spec, cmd);
   if (verify && verify.error) {
     throw new Error(`${spec.name} verification failed: ${verify.error}`);
   }
   if (verify && verify.skip) {
     log(`SKIP: ${spec.name} packer verification (${verify.skip})`);
   }
-  const unpack = attemptUnpack(launcherPath, spec);
+  const unpack = attemptUnpack(launcherPath, spec, cmd);
   if (unpack && unpack.skip) {
     log(`SKIP: ${spec.name} unpack check (${unpack.skip})`);
   }
@@ -283,7 +290,7 @@ async function testElfPacker(ctx, spec) {
   const nbPath = path.join(res.releaseDir, "r", THIN_NATIVE_BOOTSTRAP_FILE);
   const checkNb = process.env.SEAL_E2E_CHECK_PACK_NB === "1" || process.env.SEAL_E2E_STRICT_PACK_NB === "1";
   if (checkNb && fs.existsSync(nbPath)) {
-    const verifyNb = verifyPacker(nbPath, spec);
+    const verifyNb = verifyPacker(nbPath, spec, cmd);
     if (verifyNb && verifyNb.error) {
       throw new Error(`${spec.name} native bootstrap verification failed: ${verifyNb.error}`);
     }

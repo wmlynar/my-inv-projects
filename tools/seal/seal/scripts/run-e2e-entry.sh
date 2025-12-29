@@ -1,12 +1,48 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 RUNNER="${SEAL_E2E_RUNNER:-}"
 LOG_PREFIX="${SEAL_E2E_LOG_PREFIX:-seal-e2e}"
-SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+SCRIPT_PATH="$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")"
 
 log() {
   echo "[${LOG_PREFIX}] $*"
+}
+
+load_e2e_config() {
+  if [ "${SEAL_E2E_CONFIG_LOADED:-0}" = "1" ]; then
+    return
+  fi
+  local cfg="${SEAL_E2E_CONFIG:-}"
+  local default_cfg="$REPO_ROOT/.seal/e2e.env"
+  local sample_cfg="$SCRIPT_DIR/e2e-config.env"
+  if [ -z "$cfg" ]; then
+    if [ -f "$default_cfg" ]; then
+      cfg="$default_cfg"
+    elif [ -f "$sample_cfg" ]; then
+      cfg="$sample_cfg"
+    fi
+  fi
+  if [ -z "$cfg" ]; then
+    return
+  fi
+  if [ "$cfg" = "/dev/null" ]; then
+    return
+  fi
+  if [ ! -r "$cfg" ]; then
+    log "ERROR: SEAL_E2E_CONFIG is not readable: $cfg"
+    exit 1
+  fi
+  log "Loading E2E config: $cfg"
+  set -a
+  set +u
+  # shellcheck disable=SC1090
+  source "$cfg"
+  set -u
+  set +a
+  export SEAL_E2E_CONFIG_LOADED=1
 }
 
 PLAN_ARGS=()
@@ -59,6 +95,8 @@ ensure_escalation() {
 }
 
 ensure_escalation "$@"
+
+load_e2e_config
 
 NODE_BIN="$(command -v node || true)"
 if [ -z "$NODE_BIN" ]; then

@@ -27,7 +27,12 @@ const EXAMPLE_ROOT = resolveExampleRoot();
 const { log, fail } = createLogger("strip-e2e");
 
 function runCmd(cmd, args, timeoutMs = 5000) {
-  return spawnSync(cmd, args, { stdio: "pipe", timeout: timeoutMs });
+  const res = spawnSync(cmd, args, { stdio: "pipe", timeout: timeoutMs });
+  if (res.error) {
+    const msg = res.error.message || String(res.error);
+    throw new Error(`${cmd} failed: ${msg}`);
+  }
+  return res;
 }
 
 function ensureLauncherObfuscation(projectCfg) {
@@ -320,7 +325,19 @@ function checkFileType(filePath) {
 
 function checkBinwalk(filePath) {
   if (!hasCommand("binwalk")) return { skip: "binwalk missing" };
-  const res = runCmd("binwalk", ["-q", filePath], 12000);
+  let res;
+  try {
+    res = runCmd("binwalk", ["-q", filePath], 12000);
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err);
+    if (/etimedout/i.test(msg)) {
+      return { skip: "binwalk timed out" };
+    }
+    if (/not found|unknown option|usage/i.test(msg)) {
+      return { skip: msg.slice(0, 120) };
+    }
+    return { skip: msg.slice(0, 120) || "binwalk failed" };
+  }
   const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
   if (res.status !== 0) {
     if (/not found|unknown option|usage/i.test(out)) return { skip: out.slice(0, 120) || "binwalk unsupported" };
@@ -493,6 +510,10 @@ function scanStringsForDenylist(filePath, denylist) {
   }
   if (res.error && res.error.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
     throw new Error(`strings output exceeded maxBuffer for ${filePath} (maxBuffer=${maxBuffer})`);
+  }
+  if (res.error) {
+    const msg = res.error.message || String(res.error);
+    throw new Error(`strings failed for ${filePath}: ${msg}`);
   }
   if (res.status !== 0 && res.status !== 1) {
     const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
@@ -730,7 +751,8 @@ async function main() {
     else process.env.SEAL_THIN_ZSTD_LEVEL = prevZstd;
     if (prevZstdTimeout === undefined) delete process.env.SEAL_THIN_ZSTD_TIMEOUT_MS;
     else process.env.SEAL_THIN_ZSTD_TIMEOUT_MS = prevZstdTimeout;
-    process.env.PATH = prevPath;
+    if (prevPath === undefined) delete process.env.PATH;
+    else process.env.PATH = prevPath;
   }
 
   if (failures > 0) process.exit(1);

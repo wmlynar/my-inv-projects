@@ -20,7 +20,7 @@ const { packThin, applyLauncherSelfHash } = require("./packagers/thin");
 const { THIN_NATIVE_BOOTSTRAP_FILE } = require("./thinPaths");
 const {
   normalizePackager,
-  resolveBundleFallback,
+  assertNoPackagerFallback,
   resolveThinConfig,
   resolveProtectionConfig,
   applyThinCompatibility,
@@ -1022,7 +1022,7 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   }
 
   const packagerRequested = packagerSpec.kind;
-  const allowBundleFallback = resolveBundleFallback(targetCfg, projectCfg);
+  assertNoPackagerFallback(targetCfg, projectCfg);
   const thinMode = (packagerSpec.kind === "thin" && packagerSpec.thinMode) ? packagerSpec.thinMode : thinCfg.mode;
   const thinLevel = thinCfg.level;
   const thinChunkSize = thinCfg.chunkSizeBytes;
@@ -1158,19 +1158,8 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   }
 
   if (!packOk) {
-    const fallbackAllowed = allowBundleFallback;
-    if (!fallbackAllowed) {
-      const hint = "Set build.packagerFallback=true in seal.json5 or use --packager bundle.";
-      const reason = packErrorShort ? `Reason: ${packErrorShort}.` : "Reason: SEA packager failed.";
-      throw new Error(`SEA packager failed and bundle fallback is disabled. ${reason} ${hint}`);
-    }
-    const res = timeSync("build.packager.fallback", () => packFallback({ stageDir, releaseDir, appName, obfPath }));
-    if (!res.ok) {
-      throw new Error(`Bundle packager failed: ${res.errorShort}`);
-    }
-    packOk = true;
-    packagerUsed = "bundle";
-    ok("Packager bundle OK (node + obfuscated bundle)");
+    const reason = packErrorShort ? `Reason: ${packErrorShort}.` : "Reason: SEA packager failed.";
+    throw new Error(`SEA packager failed. ${reason}`);
   }
 
   if (packagerSpec.kind !== "thin") {

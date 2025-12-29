@@ -98,7 +98,7 @@ Domyślnie `seal release`:
 
 > **UWAGA (BARDZO WAŻNE):** **`thin-split` to packager produkcyjny i bazowy dla łączenia zabezpieczeń.**
 
-Bundle fallback jest wyłączony domyślnie; włącz go jawnie przez `build.packagerFallback=true` albo `--packager bundle`.
+SEA jest wymagany, jeśli wybierasz packager `sea`; w razie problemów użyj `--packager bundle`.
 
 **Cleanup:** jeśli chcesz ręcznie wyczyścić artefakty, użyj `seal clean` (w monorepo uruchom w root, zadziała dla wszystkich podprojektów).
 
@@ -176,13 +176,13 @@ To jest test ścieżki serwerowej, ale nadal bez „prawdziwego” serwera.
 2) Pierwszy raz:
 
 ```bash
-seal deploy local --bootstrap
+seal ship local --bootstrap
 ```
 
 3) Kolejne aktualizacje:
 
 ```bash
-seal deploy local
+seal ship local
 seal remote local restart    # (opcjonalnie) jeżeli chcesz uruchomić usługę po deployu
 ```
 
@@ -215,13 +215,13 @@ Uzupełnij:
 ### Krok B: bootstrap (pierwszy raz)
 
 ```bash
-seal deploy robot-01 --bootstrap
+seal ship robot-01 --bootstrap
 ```
 
 ### Krok C: kolejne deploye
 
 ```bash
-seal deploy robot-01
+seal ship robot-01
 seal remote robot-01 restart    # (opcjonalnie) jeżeli chcesz uruchomić usługę po deployu
 ```
 
@@ -252,7 +252,7 @@ seal config pull robot-01 --apply
 
 - świadomie nadpisz config na serwerze z repo:
 ```bash
-seal deploy robot-01 --push-config
+seal ship robot-01 --push-config
 ```
 
 ---

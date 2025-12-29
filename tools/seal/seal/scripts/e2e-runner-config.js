@@ -2,15 +2,10 @@
 
 const fs = require("fs");
 const path = require("path");
-const { spawnSync } = require("child_process");
 const { parseList, normalizeFlag } = require("./e2e-runner-utils");
-const { hasCommand } = require("./e2e-utils");
-
-function shellQuote(value) {
-  return `'${String(value).replace(/'/g, "'\\''")}'`;
-}
 
 function loadE2EConfig(env, options) {
+  if (normalizeFlag(env.SEAL_E2E_CONFIG_LOADED, "0") === "1") return;
   const repoRoot = options.repoRoot;
   const scriptDir = options.scriptDir;
   const log = options.log;
@@ -24,7 +19,7 @@ function loadE2EConfig(env, options) {
       cfg = sampleCfg;
     }
   }
-  if (!cfg) return;
+  if (!cfg || cfg === "/dev/null") return;
   if (!fs.existsSync(cfg)) {
     log(`ERROR: SEAL_E2E_CONFIG points to missing file: ${cfg}`);
     process.exit(1);
@@ -35,46 +30,8 @@ function loadE2EConfig(env, options) {
     log(`ERROR: SEAL_E2E_CONFIG is not readable: ${cfg}`);
     process.exit(1);
   }
-  log(`Loading E2E config: ${cfg}`);
-  if (!hasCommand("bash")) {
-    log("ERROR: bash not found; cannot load E2E config.");
-    process.exit(1);
-  }
-  const configText = fs.readFileSync(cfg, "utf8");
-  const vars = new Set();
-  for (const line of configText.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const match = trimmed.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=/);
-    if (match) vars.add(match[1]);
-  }
-  if (!vars.size) return;
-  const cmd = `set -a; source ${shellQuote(cfg)}; env -0`;
-  const res = spawnSync("bash", ["-lc", cmd], {
-    env,
-    encoding: "utf8",
-    maxBuffer: 10 * 1024 * 1024,
-  });
-  if (res.status !== 0) {
-    log(`ERROR: failed to load E2E config (${cfg}).`);
-    if (res.stderr) process.stderr.write(res.stderr);
-    process.exit(1);
-  }
-  const out = res.stdout || "";
-  const entries = out.split("\0").filter(Boolean);
-  const nextEnv = {};
-  for (const entry of entries) {
-    const idx = entry.indexOf("=");
-    if (idx === -1) continue;
-    const key = entry.slice(0, idx);
-    const value = entry.slice(idx + 1);
-    nextEnv[key] = value;
-  }
-  for (const key of vars) {
-    if (Object.prototype.hasOwnProperty.call(nextEnv, key)) {
-      env[key] = nextEnv[key];
-    }
-  }
+  log(`NOTE: E2E config file detected (${cfg}) but not loaded.`);
+  log("      Run via tools/seal/seal/scripts/e2e.sh or source the config before invoking this runner.");
 }
 
 function parseTestFilters(env, knownTests, log) {

@@ -493,11 +493,16 @@ function ensureHelper(ctx, name, src) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `seal-ad-${name}-`));
   const srcPath = path.join(dir, `${name}.c`);
   const outPath = path.join(dir, name);
-  fs.writeFileSync(srcPath, src, "utf8");
-  const res = runCmd(cc, ["-O2", srcPath, "-o", outPath], 8000);
-  if (res.status !== 0) {
-    const out = `${res.stdout || ""}${res.stderr || ""}`;
-    throw new Error(`helper ${name} compile failed: ${out.slice(0, 200)}`);
+  try {
+    fs.writeFileSync(srcPath, src, "utf8");
+    const res = runCmd(cc, ["-O2", srcPath, "-o", outPath], 8000);
+    if (res.status !== 0) {
+      const out = `${res.stdout || ""}${res.stderr || ""}`;
+      throw new Error(`helper ${name} compile failed: ${out.slice(0, 200)}`);
+    }
+  } catch (err) {
+    fs.rmSync(dir, { recursive: true, force: true });
+    throw err;
   }
   const info = { dir, path: outPath };
   ctx.helpers[name] = info;
@@ -514,12 +519,17 @@ function ensureSharedHelper(ctx, name, src, extraArgs = []) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `seal-ad-${name}-`));
   const srcPath = path.join(dir, `${name}.c`);
   const outPath = path.join(dir, `${name}.so`);
-  fs.writeFileSync(srcPath, src, "utf8");
-  const args = ["-O2", "-fPIC", "-shared", srcPath, "-o", outPath, ...extraArgs];
-  const res = runCmd(cc, args, 8000);
-  if (res.status !== 0) {
-    const out = `${res.stdout || ""}${res.stderr || ""}`;
-    throw new Error(`helper ${name} compile failed: ${out.slice(0, 200)}`);
+  try {
+    fs.writeFileSync(srcPath, src, "utf8");
+    const args = ["-O2", "-fPIC", "-shared", srcPath, "-o", outPath, ...extraArgs];
+    const res = runCmd(cc, args, 8000);
+    if (res.status !== 0) {
+      const out = `${res.stdout || ""}${res.stderr || ""}`;
+      throw new Error(`helper ${name} compile failed: ${out.slice(0, 200)}`);
+    }
+  } catch (err) {
+    fs.rmSync(dir, { recursive: true, force: true });
+    throw err;
   }
   const info = { dir, path: outPath };
   ctx.helpers[name] = info;
@@ -2297,6 +2307,10 @@ function runExternalDumpScan(pid, tokenBuffers) {
     if (res.error && res.error.code === "ETIMEDOUT") {
       return { skip: "dump cmd timed out" };
     }
+    if (res.error) {
+      const msg = res.error.message || String(res.error);
+      return { skip: `dump cmd failed: ${msg}` };
+    }
     if (res.status !== 0) {
       return { skip: out.slice(0, 120) || "dump cmd failed" };
     }
@@ -2321,6 +2335,10 @@ function runGcoreDumpScan(pid, tokenBuffers) {
     if (!res) return { skip: "gcore/gdb missing" };
     if (res.error && res.error.code === "ETIMEDOUT") {
       return { skip: "gcore timed out" };
+    }
+    if (res.error) {
+      const msg = res.error.message || String(res.error);
+      return { skip: `gcore failed: ${msg}` };
     }
     const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
     const files = fs.readdirSync(tmpDir).filter((f) => f.startsWith("seal-core"));
@@ -2688,6 +2706,10 @@ async function checkGdbServerAttachBlockedPid(pid) {
     }
     throw new Error("gdbserver attach timed out (unexpected)");
   }
+  if (res.error) {
+    const msg = res.error.message || String(res.error);
+    return { skip: `gdbserver failed: ${msg}` };
+  }
   const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
   const skipMarkers = [/address already in use/i, /cannot bind/i, /failed to bind/i];
   if (skipMarkers.some((re) => re.test(out))) {
@@ -2722,6 +2744,10 @@ async function checkLldbServerAttachBlockedPid(pid) {
     if (strict) throw new Error("lldb-server attach timed out (possible attach)");
     return { skip: "lldb-server attach timed out" };
   }
+  if (res.error) {
+    const msg = res.error.message || String(res.error);
+    return { skip: `lldb-server failed: ${msg}` };
+  }
   const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
   const skipMarkers = [/address already in use/i, /cannot bind/i, /failed to bind/i];
   if (skipMarkers.some((re) => re.test(out))) {
@@ -2751,6 +2777,10 @@ function checkGdbAttachBlockedPid(pid) {
   if (res.error && res.error.code === "ETIMEDOUT") {
     throw new Error("gdb attach timed out (unexpected)");
   }
+  if (res.error) {
+    const msg = res.error.message || String(res.error);
+    return { skip: `gdb failed: ${msg}` };
+  }
   const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
   const failMarkers = [
     /could not attach/i,
@@ -2778,6 +2808,10 @@ function checkLldbAttachBlockedPid(pid) {
   if (res.error && res.error.code === "ETIMEDOUT") {
     if (strict) throw new Error("lldb attach timed out (possible attach)");
     return { skip: "lldb attach timed out" };
+  }
+  if (res.error) {
+    const msg = res.error.message || String(res.error);
+    return { skip: `lldb failed: ${msg}` };
   }
   const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
   const failMarkers = [
@@ -2810,6 +2844,10 @@ function checkStraceAttachBlockedPid(pid) {
     }
     throw new Error("strace attach timed out (unexpected)");
   }
+  if (res.error) {
+    const msg = res.error.message || String(res.error);
+    return { skip: `strace failed: ${msg}` };
+  }
   const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
   const failMarkers = [
     /operation not permitted/i,
@@ -2840,6 +2878,10 @@ function checkLtraceAttachBlockedPid(pid) {
       return { skip: "ltrace attach timed out (set SEAL_E2E_STRICT_PTRACE=1 to enforce)" };
     }
     throw new Error("ltrace attach timed out (unexpected)");
+  }
+  if (res.error) {
+    const msg = res.error.message || String(res.error);
+    return { skip: `ltrace failed: ${msg}` };
   }
   const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
   const failMarkers = [
@@ -2872,6 +2914,10 @@ function checkStackToolBlocked(cmd, args, label) {
       return { skip: `${name} attach timed out (set SEAL_E2E_STRICT_PTRACE=1 to enforce)` };
     }
     throw new Error(`${name} attach timed out (unexpected)`);
+  }
+  if (res.error) {
+    const msg = res.error.message || String(res.error);
+    return { skip: `${name} failed: ${msg}` };
   }
   const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
   const failMarkers = [
@@ -3603,6 +3649,10 @@ function checkGcoreBlocked(pid) {
         return { skip: "gcore timed out (set SEAL_E2E_STRICT_PTRACE=1 to enforce)" };
       }
       throw new Error("gcore timed out (unexpected)");
+    }
+    if (res.error) {
+      const msg = res.error.message || String(res.error);
+      return { skip: `gcore failed: ${msg}` };
     }
     const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
     const files = fs.readdirSync(tmpDir).filter((f) => f.startsWith("seal-core"));
@@ -4485,8 +4535,12 @@ async function runReleaseBootstrapSelfScan({
       : String(markerHexList);
   }
   const res = spawnSync(binPath, [], { cwd: releaseDir, env: childEnv, stdio: "pipe", timeout: runTimeoutMs });
-  if (res.error && res.error.code === "ETIMEDOUT") {
-    throw new Error(`bootstrap self-scan timed out (${stage}/${target}/${expect})`);
+  if (res.error) {
+    if (res.error.code === "ETIMEDOUT") {
+      throw new Error(`bootstrap self-scan timed out (${stage}/${target}/${expect})`);
+    }
+    const msg = res.error.message || String(res.error);
+    throw new Error(`bootstrap self-scan spawn failed (${stage}/${target}/${expect}): ${msg}`);
   }
   const stdout = `${res.stdout || ""}`.trim();
   const stderr = `${res.stderr || ""}`.trim();
@@ -4920,8 +4974,12 @@ async function runReleaseDumpSelftest({ releaseDir, runTimeoutMs }) {
       SEAL_E2E_HEAP_PATH: heapPath,
     });
     const res = spawnSync(binPath, [], { cwd: releaseDir, env: childEnv, stdio: "pipe", timeout: runTimeoutMs });
-    if (res.error && res.error.code === "ETIMEDOUT") {
-      throw new Error("bootstrap dump selftest timed out");
+    if (res.error) {
+      if (res.error.code === "ETIMEDOUT") {
+        throw new Error("bootstrap dump selftest timed out");
+      }
+      const msg = res.error.message || String(res.error);
+      throw new Error(`bootstrap dump selftest spawn failed: ${msg}`);
     }
     const stdout = `${res.stdout || ""}`.trim();
     const stderr = `${res.stderr || ""}`.trim();
@@ -4947,8 +5005,12 @@ function runReleaseBootstrapOneShot({ releaseDir, runTimeoutMs, env, label }) {
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
   const res = spawnSync(binPath, [], { cwd: releaseDir, env, stdio: "pipe", timeout: runTimeoutMs });
-  if (res.error && res.error.code === "ETIMEDOUT") {
-    throw new Error(`${label} timed out`);
+  if (res.error) {
+    if (res.error.code === "ETIMEDOUT") {
+      throw new Error(`${label} timed out`);
+    }
+    const msg = res.error.message || String(res.error);
+    throw new Error(`${label} spawn failed: ${msg}`);
   }
   const stdout = `${res.stdout || ""}`.trim();
   const stderr = `${res.stderr || ""}`.trim();
@@ -5695,6 +5757,17 @@ async function runReleaseToolingBaselineChecks({ releaseDir, runTimeoutMs }) {
     onReady: async ({ child }) => {
       const baseline = { ok: 0, skip: 0 };
       const strictTool = process.env.SEAL_E2E_STRICT_TOOL_BASELINE === "1";
+      const safeCheck = (label, fn) => {
+        try {
+          return fn();
+        } catch (err) {
+          const msg = err && err.message ? err.message : String(err);
+          if (strictTool) {
+            throw err;
+          }
+          return { skip: `${label} failed: ${msg}` };
+        }
+      };
       const noteSkip = (label, res) => {
         baseline.skip += 1;
         log(`SKIP: ${label} (${res.skip})`);
@@ -5706,37 +5779,37 @@ async function runReleaseToolingBaselineChecks({ releaseDir, runTimeoutMs }) {
       };
 
       log("Checking perf record baseline...");
-      const perfRec = checkPerfRecordAllowed(child.pid);
+      const perfRec = safeCheck("perf record baseline", () => checkPerfRecordAllowed(child.pid));
       if (perfRec.skip) noteSkip("perf record baseline", perfRec);
       else noteOk("perf record baseline allowed", perfRec);
 
       log("Checking perf trace baseline...");
-      const perfTrace = checkPerfTraceAllowed(child.pid);
+      const perfTrace = safeCheck("perf trace baseline", () => checkPerfTraceAllowed(child.pid));
       if (perfTrace.skip) noteSkip("perf trace baseline", perfTrace);
       else noteOk("perf trace baseline allowed", perfTrace);
 
       log("Checking rr attach baseline...");
-      const rrRes = checkRrAttachAllowed(child.pid);
+      const rrRes = safeCheck("rr baseline", () => checkRrAttachAllowed(child.pid));
       if (rrRes.skip) noteSkip("rr baseline", rrRes);
       else noteOk("rr baseline allowed", rrRes);
 
       log("Checking bpftrace baseline...");
-      const bpfRes = checkBpftraceAttachAllowed(child.pid);
+      const bpfRes = safeCheck("bpftrace baseline", () => checkBpftraceAttachAllowed(child.pid));
       if (bpfRes.skip) noteSkip("bpftrace baseline", bpfRes);
       else noteOk("bpftrace baseline allowed", bpfRes);
 
       log("Checking bpftrace uprobe baseline...");
-      const bpfU = checkBpftraceUprobeAllowed(child.pid);
+      const bpfU = safeCheck("bpftrace uprobe baseline", () => checkBpftraceUprobeAllowed(child.pid));
       if (bpfU.skip) noteSkip("bpftrace uprobe baseline", bpfU);
       else noteOk("bpftrace uprobe baseline allowed", bpfU);
 
       log("Checking lttng baseline...");
-      const lttngRes = checkLttngAttachAllowed(child.pid);
+      const lttngRes = safeCheck("lttng baseline", () => checkLttngAttachAllowed(child.pid));
       if (lttngRes.skip) noteSkip("lttng baseline", lttngRes);
       else noteOk("lttng baseline allowed", lttngRes);
 
       log("Checking sysdig baseline...");
-      const sysdigRes = checkSysdigAllowed(child.pid);
+      const sysdigRes = safeCheck("sysdig baseline", () => checkSysdigAllowed(child.pid));
       if (sysdigRes.skip) noteSkip("sysdig baseline", sysdigRes);
       else noteOk("sysdig baseline allowed", sysdigRes);
 
@@ -5994,61 +6067,58 @@ async function runReleaseStraceCapture({ releaseDir, runTimeoutMs, env }) {
   });
 
   try {
-    await withTimeout("strace run", runTimeoutMs, async () => {
-      await delay(1500);
-    });
-  } finally {
-    try { process.kill(-child.pid, "SIGTERM"); } catch {}
-    await new Promise((resolve) => {
-      const t = setTimeout(() => {
-        try { process.kill(-child.pid, "SIGKILL"); } catch {}
-        resolve();
-      }, 4000);
-      child.on("exit", () => {
-        clearTimeout(t);
-        resolve();
+    try {
+      await withTimeout("strace run", runTimeoutMs, async () => {
+        await delay(1500);
       });
-    });
-  }
+    } finally {
+      try { process.kill(-child.pid, "SIGTERM"); } catch {}
+      await new Promise((resolve) => {
+        const t = setTimeout(() => {
+          try { process.kill(-child.pid, "SIGKILL"); } catch {}
+          resolve();
+        }, 4000);
+        child.on("exit", () => {
+          clearTimeout(t);
+          resolve();
+        });
+      });
+    }
 
-  const exit = await exitPromise;
-  if (exit.error) {
-    throw exit.error;
-  }
-  const out = `${exit.stdout || ""}${exit.stderr || ""}`;
-  if (/operation not permitted/i.test(out) || /permission denied/i.test(out) || /ptrace/i.test(out)) {
-    log("SKIP: strace capture blocked by ptrace policy");
+    const exit = await exitPromise;
+    if (exit.error) {
+      throw exit.error;
+    }
+    const out = `${exit.stdout || ""}${exit.stderr || ""}`;
+    if (/operation not permitted/i.test(out) || /permission denied/i.test(out) || /ptrace/i.test(out)) {
+      log("SKIP: strace capture blocked by ptrace policy");
+      return;
+    }
+    await delay(200);
+    const trace = fs.existsSync(logPath) ? fs.readFileSync(logPath, "utf8") : "";
+    const hasMemfd = /memfd_create\(/.test(trace);
+    const hasExec = /(execveat|execve|fexecve)\(/.test(trace);
+    if (!hasExec) {
+      throw new Error(`strace capture missing exec syscall (out=${out.slice(0, 200)})`);
+    }
+    const lines = trace.split(/\r?\n/);
+    const memfdLine = lines.find((line) => line.includes("memfd_create("));
+    const execLine = lines.find((line) => /(execveat|execve|fexecve)\(/.test(line));
+    if (memfdLine) {
+      log(`strace memfd: ${memfdLine.trim().slice(0, 300)}`);
+    }
+    if (execLine) {
+      log(`strace exec: ${execLine.trim().slice(0, 300)}`);
+    }
+    if (!hasMemfd) {
+      log("SKIP: memfd_create not visible in strace output (strace too old or syscall unnamed)");
+      return;
+    }
+    log("OK: strace captured memfd_create + exec (antiDebug=off)");
+  } finally {
     if (readyFile) {
       try { fs.rmSync(readyFile, { force: true }); } catch {}
     }
-    return;
-  }
-  await delay(200);
-  const trace = fs.existsSync(logPath) ? fs.readFileSync(logPath, "utf8") : "";
-  const hasMemfd = /memfd_create\(/.test(trace);
-  const hasExec = /(execveat|execve|fexecve)\(/.test(trace);
-  if (!hasExec) {
-    throw new Error(`strace capture missing exec syscall (out=${out.slice(0, 200)})`);
-  }
-  const lines = trace.split(/\r?\n/);
-  const memfdLine = lines.find((line) => line.includes("memfd_create("));
-  const execLine = lines.find((line) => /(execveat|execve|fexecve)\(/.test(line));
-  if (memfdLine) {
-    log(`strace memfd: ${memfdLine.trim().slice(0, 300)}`);
-  }
-  if (execLine) {
-    log(`strace exec: ${execLine.trim().slice(0, 300)}`);
-  }
-  if (!hasMemfd) {
-    log("SKIP: memfd_create not visible in strace output (strace too old or syscall unnamed)");
-    if (readyFile) {
-      try { fs.rmSync(readyFile, { force: true }); } catch {}
-    }
-    return;
-  }
-  log("OK: strace captured memfd_create + exec (antiDebug=off)");
-  if (readyFile) {
-    try { fs.rmSync(readyFile, { force: true }); } catch {}
   }
 }
 

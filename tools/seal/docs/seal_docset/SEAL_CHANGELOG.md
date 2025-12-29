@@ -63,7 +63,7 @@
 ## Docset v0.4 (względem v0.3.1) – archiwum skrócone
 
 - `env` → `config` (koniec mindfucka).
-- Jedna główna komenda: `seal deploy <target>` (`seal ship` jako alias).
-- `seal deploy --bootstrap` zamiast osobnego kroku „server”.
+- Jedna główna komenda: `seal ship <target>` (`seal deploy` jako tryb manualny).
+- `seal ship --bootstrap` zamiast osobnego kroku „server”.
 - JSON5 jako wspólny format dla `seal.json5` i `seal-config/*`.
 - Domyślna retencja release’ów + automatyczny cleanup.

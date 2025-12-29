@@ -30,7 +30,12 @@ const EXAMPLE_ROOT = resolveExampleRoot();
 const { log, fail } = createLogger("sentinel-e2e");
 
 function runCmd(cmd, args, timeoutMs = 5000) {
-  return spawnSync(cmd, args, { stdio: "pipe", timeout: timeoutMs });
+  const res = spawnSync(cmd, args, { stdio: "pipe", timeout: timeoutMs });
+  if (res.error) {
+    const msg = res.error.message || String(res.error);
+    throw new Error(`${cmd} failed: ${msg}`);
+  }
+  return res;
 }
 
 function ensureLauncherObfuscation(projectCfg) {
@@ -159,22 +164,24 @@ int main(void) {
 }
 #endif
 `;
-  fs.writeFileSync(srcPath, src, "utf8");
-  const build = runCmd(cc, ["-O2", srcPath, "-o", outPath], 8000);
-  if (build.status !== 0) {
+  try {
+    fs.writeFileSync(srcPath, src, "utf8");
+    const build = runCmd(cc, ["-O2", srcPath, "-o", outPath], 8000);
+    if (build.status !== 0) {
+      return { value: "", error: "C compile failed" };
+    }
+    const run = runCmd(outPath, [], 5000);
+    const out = (run.stdout || "").toString("utf8").trim();
+    if (run.status === 2) {
+      return { value: "", unsupported: true };
+    }
+    if (run.status !== 0 || !out) {
+      return { value: "", error: "cpuid asm failed" };
+    }
+    return { value: out, unsupported: false };
+  } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
-    return { value: "", error: "C compile failed" };
   }
-  const run = runCmd(outPath, [], 5000);
-  const out = (run.stdout || "").toString("utf8").trim();
-  fs.rmSync(tmpDir, { recursive: true, force: true });
-  if (run.status === 2) {
-    return { value: "", unsupported: true };
-  }
-  if (run.status !== 0 || !out) {
-    return { value: "", error: "cpuid asm failed" };
-  }
-  return { value: out, unsupported: false };
 }
 
 function computeCpuIdBoth() {
@@ -447,7 +454,13 @@ async function runReleaseExpectExpire({
     waitForReady: requireReady,
     failOnExit: false,
     captureOutput: true,
-  }, async ({ exitInfo: exitPromise }) => {
+  }, async ({ exitInfo: exitPromise, readyFile, ready }) => {
+    if (requireReady && readyFile) {
+      const payload = await readReadyPayload(readyFile, ready, 1000);
+      if (!payload) {
+        throw new Error(`ready-file payload invalid (${readyFile})`);
+      }
+    }
     return await withTimeout("waitForExpire", expireTimeoutMs, () => exitPromise);
   });
 

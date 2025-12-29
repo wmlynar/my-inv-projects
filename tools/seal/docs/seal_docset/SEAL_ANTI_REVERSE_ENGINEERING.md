@@ -201,7 +201,7 @@ Uwagi:
 #### 2.12.2 `runtimeStore` — memfd vs tmpfile
 - Jak działa: domyślnie runtime i bundle są dekodowane do **memfd**; plik jest „sealowany” (`F_ADD_SEALS`) i uruchamiany przez `fexecve`.
 - Chroni przed: zostawieniem artefaktów na dysku i prostym „cat” payloadu.
-- Implementacja: `memfd_create` z `MFD_ALLOW_SEALING` + `F_ADD_SEALS`; fallback `tmpfile` używa `mkstemp` + `unlink` i `umask(077)`.
+- Implementacja: `memfd_create` z `MFD_ALLOW_SEALING` + `F_ADD_SEALS`; tryb `tmpfile` jest ustawiany jawnie (`thin.runtimeStore=tmpfile`) i używa `mkstemp` + `unlink` + `umask(077)`.
 
 #### 2.12.3 `bundle`/`sea` — packowanie backendu
 - Jak działa: backend bundle jest kompresowany (gzip/brotli), a loader odtwarza go **w pamięci** i kompiluje jako CJS.

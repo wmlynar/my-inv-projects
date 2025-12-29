@@ -66,8 +66,8 @@ W tej filozofii:
 
 Najważniejsze zmiany względem v0.3.1:
 - `env` → **`config`** (wariant konfiguracji runtime). Zostaje **target** (host) + **config** (wariant w `seal-config/configs`).
-- Jedna główna komenda: **`seal deploy <target>`** (a `seal ship` jest aliasem).
-- Bootstrap serwera jest częścią deployu: **`seal deploy <target> --bootstrap`**.
+- Jedna główna komenda: **`seal ship <target>`** (a `seal deploy` pozostaje trybem manualnym).
+- Bootstrap serwera jest częścią shipu: **`seal ship <target> --bootstrap`** (deploy też wspiera `--bootstrap`).
 - Jeden format konfiguracji Seala: **JSON5** (`seal.json5` + `seal-config/*`).
 - Serwer bez symlinków: aktywny release jest wskazywany przez `current.buildId`, a `run-current.sh` uruchamia `appctl` z aktywnego release.
 - Retencja release’ów: domyślnie `keep_releases=1` (tylko ostatni release) + cleanup po udanym deployu.
@@ -81,7 +81,7 @@ Seal ma zdejmować z głowy temat „jak zabezpieczyć kod, żeby mnie nie okrad
 
 ### Najważniejsze zasady projektowe (design principles)
 
-1) **Super proste użycie (minimum kroków):** domyślnie ma istnieć jedna główna ścieżka: `seal deploy <target>` (a `seal ship` jest aliasem).
+1) **Super proste użycie (minimum kroków):** domyślnie ma istnieć jedna główna ścieżka: `seal ship <target>` (a `seal deploy` to tryb manualny).
 2) **Convention over configuration:** jak najwięcej wynika z konwencji (np. `target == config`, `config.runtime.json5`), a nie z ręcznego mapowania.
 3) **Zero zbędnego narzutu dla dewelopera:** w dev pracujesz jak w normalnym projekcie Node.js. Sealing uruchamia się dopiero na etapie release/deploy.
 4) **Wszystko w repo aplikacji:** po `git clone` da się uruchomić lokalnie i wdrożyć na serwer bez szukania dodatkowych plików.
@@ -272,8 +272,8 @@ Seal dostarcza:
   - kontrola kompatybilności przed sealingiem: `seal check`,
   - sealed build: `seal release <target>`,
   - weryfikacja artefaktu: `seal verify <target|artifact>`,
-  - deploy: `seal deploy <target>`,
-  - przygotowanie serwera (pierwszy raz): `seal deploy <target> --bootstrap`,
+  - deploy+restart+readiness (główny flow): `seal ship <target>`,
+  - przygotowanie serwera (pierwszy raz): `seal ship <target> --bootstrap`,
   - serwis: `seal remote <target> logs|status|restart|stop|disable|down` + `seal run <target>`,
   - operacje na konfiguracji: `seal diff-config <target>`, `seal pull-config <target>`,
 - przykład (sample app) i/lub zestaw testów referencyjnych.
@@ -286,9 +286,9 @@ Seal dostarcza:
 
 - REQ-CLI-LOG-001 (MUST): logi Seala muszą pokazywać **krok** (np. `SHIP/UPLOAD`, `SHIP/UNPACK`), wykonaną komendę (lub opis operacji), exit code oraz czytelny „next step hint”.
 - REQ-CLI-LOG-002 (SHOULD): dla kluczowych komend (`ship`, `verify`, `status`) Seal powinien wspierać `--json` jako raport machine‑readable (łatwy do wklejenia do AI / automatyzacji).
-- REQ-CLI-LOG-003 (MUST): jeśli błąd wynika z braku bootstrapa lub uprawnień (np. brak `sudo`), Seal musi wypisać **konkretną** instrukcję naprawczą (np. `seal deploy <target> --bootstrap` lub komendę `ssh ... sudo mkdir/chown`).
+- REQ-CLI-LOG-003 (MUST): jeśli błąd wynika z braku bootstrapa lub uprawnień (np. brak `sudo`), Seal musi wypisać **konkretną** instrukcję naprawczą (np. `seal ship <target> --bootstrap` lub komendę `ssh ... sudo mkdir/chown`).
 
-**Aliasowanie komend (MAY):** jeśli chcesz, możesz utrzymać aliasy historyczne (`seal deploy` → `seal deploy`, itp.), ale w specyfikacji „królem” są nazwy powyżej.
+**Aliasowanie komend (MAY):** można utrzymać aliasy historyczne, ale **główną ścieżką** jest `seal ship <target>`, a `seal deploy` to tryb manualny.
 
 ### 4.2. Skrypt serwerowy
 Seal używa skryptu `seal-server.sh` uruchamianego na serwerze (`sudo bash ...`), który przygotowuje środowisko.
@@ -354,11 +354,10 @@ Ta sekcja jest celowo krótka: ma umożliwić szybkie zrozumienie *dlaczego* Sea
 7) **Pack bundla + ELF packer domyślnie (thin‑split)**  
    Bo usuwa „czytelny kod” z artefaktów bez ryzykownych modyfikacji binarki:
    - **SEA**: main script jest spakowany (Brotli/Gzip loader) zanim trafi do blobu.
-   - **bundle** (jawnie włączony): `app.bundle.cjs` jest zastąpione przez `.gz` + loader.
+   - **bundle** (jawny wybór): `app.bundle.cjs` jest zastąpione przez `.gz` + loader.
    - **thin‑split**: domyślnie uruchamiany jest ELF packer (kiteshield, `-n`) dla launchera `b/a`.
    `SEA` i `thin-single` ignorują `strip`/ELF packer (auto-disabled); użyj `thin-split`, jeśli chcesz hardening binarki.
    Rekomendowana kolejność packerów: `kiteshield` → `midgetpack` → `upx`.
-   Bundle fallback wymaga jawnego włączenia: `build.packagerFallback=true` lub `packager=bundle`.
 
 8) **Publiczne `/healthz` i `/status`**  
    Bo aplikacje w tym kontekście bywają wdrażane „normalnie”, a UI i serwis potrzebują tych endpointów na standardowym porcie.
@@ -501,19 +500,21 @@ seal-deploy/
   - `seal-out/run/plan.json` (dla AI/narzędzi),
   oraz zapisuje pozostałe artefakty runa do `seal-out/run/` (sekcja 18.5 + 25).
 - `plan` zawiera **decision trace**: co narzędzie rozpoznało i dlaczego, jakie defaulty zastosowało, jakie gałęzie odrzuciło.
-- `seal deploy <target>` jako pierwszy krok generuje plan i wykonuje kroki zgodnie z planem.
+- `seal ship <target>` jako pierwszy krok generuje plan i wykonuje kroki zgodnie z planem.
 
 ### 9.3. Sealed release
 - `seal release <target>` tworzy artefakt w `seal-out/`.
 
-### 9.4. Deploy
-- `seal deploy <target>` wykonuje:
+### 9.4. Ship (deploy + restart + readiness)
+- `seal ship <target>` wykonuje:
   1) snapshot configu z serwera do `seal-out/remote/` (jeśli serwer już działa i ma config),
   2) upload release,
   3) instalację wersji do `/home/admin/apps/<app>/releases/<buildId>`,
   4) ustawienie `current.buildId`,
   5) restart usługi,
   6) (opcjonalnie) health-check i rollback.
+
+`seal deploy <target>` to tryb **manualny** (kopiowanie plików + instalacja release). Restart jest tylko wtedy, gdy jawnie użyjesz `--restart`.
 
 ### 9.5. Serwis
 Seal zapewnia szybkie komendy:
@@ -523,7 +524,7 @@ Seal zapewnia szybkie komendy:
 - `seal remote <target> disable` – stop + disable autostart (systemd)
 - `seal run <target>` – uruchomienie w foreground (diagnostyka)
 
-> **Zasada prostoty:** użytkownik ma pamiętać tylko jedną komendę do wdrożeń: `seal deploy <target>`. Reszta to narzędzia pomocnicze.
+> **Zasada prostoty:** użytkownik ma pamiętać tylko jedną komendę do wdrożeń: `seal ship <target>`. Reszta to narzędzia pomocnicze.
 
 ---
 
@@ -562,7 +563,7 @@ Plik `seal-config/targets/<target>.json5` zawiera wyłącznie:
 - REQ-CFG-004 (MUST): jeśli na serwerze istnieje `shared/config.json5`, `seal deploy` wykonuje snapshot do `seal-out/remote/` (chyba że `--no-snapshot`).
 - REQ-CFG-005 (MUST): `seal deploy` wykrywa **drift** (różnice) pomiędzy `seal-config/configs/<config>.json5` w repo a `shared/config.json5` na serwerze.
   - Domyślnie drift = **błąd** (exit != 0) z jasną instrukcją „co dalej”.
-- REQ-CFG-006 (MAY): flaga `--allow-drift` zmienia drift z błędu w ostrzeżenie (dla przypadków, gdzie celowo zarządzasz configiem ręcznie na serwerze).
+- REQ-CFG-006 (MAY): flaga `--accept-drift` zmienia drift z błędu w ostrzeżenie (dla przypadków, gdzie celowo zarządzasz configiem ręcznie na serwerze).
 - REQ-CFG-006a (MAY): flaga `--warn-drift` uruchamia preflight diff przed deployem i tylko ostrzega (bez przerywania), aby wykryć drift przed uploadem.
 
 ### 10.5. Konwencja `target == config` oraz wyjątki
@@ -630,7 +631,7 @@ Serwer jest „nieprzygotowany”, jeśli brakuje któregokolwiek z:
 
 ### 11.3. Jak uruchomić bootstrap
 - Pierwszy deploy:
-  - `seal deploy <target> --bootstrap`
+  - `seal ship <target> --bootstrap`
 - Domyślnie Seal wykonuje auto‑bootstrap, jeśli wykryje brak przygotowania (`deploy.autoBootstrap=true`).
 - Jeśli auto‑bootstrap jest wyłączony i nie użyjesz `--bootstrap` na nieprzygotowanym serwerze, Seal **MUST** zakończyć się błędem z jedną, konkretną instrukcją naprawczą.
 
@@ -877,7 +878,7 @@ SEA w Node (Single Executable Application) ma twarde ograniczenia, które determ
 
 6) **Protection/pack (domyślnie włączone):**
    - **SEA:** Seal domyślnie pakuje backend bundle do „loadera” (Brotli/Gzip) *przed* generacją blobu SEA, aby w blobie nie było plaintext JS.
-   - **Bundle fallback:** gdy SEA nie jest możliwe, Seal domyślnie pakuje backend bundle do `app.bundle.cjs.gz` i uruchamia go przez mały loader (brak czytelnego pliku JS obok launchera).
+   - **Bundle (jawny wybór):** packager `bundle` pakuje backend bundle do `app.bundle.cjs.gz` i uruchamia go przez mały loader (brak czytelnego pliku JS obok launchera).
    - **ELF packer (thin‑split):** domyślnie uruchamiany jest `kiteshield` (`-n`) na launcherze `b/a`.  
      `SEA` i `thin-single` ignorują packer/strip (auto-disabled).
      - Gdy `elfPacker.tool="upx"` jest włączony i nie działa (brak narzędzia lub błąd typu `CantUnpackException: bad e_phoff`), build **musi** się przerwać z błędem.
@@ -1157,7 +1158,7 @@ Seal dostarcza sample-app, która implementuje:
 - uruchamianie jako systemd + appctl.
 
 Celem sample-app jest:
-- umożliwienie testu end-to-end: init → deploy --bootstrap → deploy → logs/status.
+- umożliwienie testu end-to-end: init → ship --bootstrap → ship → remote status/logs.
 
 ---
 
@@ -1166,11 +1167,11 @@ Celem sample-app jest:
 ### 21.1. Minimalne
 - Nowy projekt można przygotować `seal init`.
 - Po `git clone` repo aplikacji można uruchomić lokalnie bez plików spoza repo.
-- `seal deploy <target> --bootstrap` przygotowuje serwer (uruchamia bootstrap przez SSH).
-- `seal deploy <target>` wdraża nową wersję jako systemd service.
+- `seal ship <target> --bootstrap` przygotowuje serwer (uruchamia bootstrap przez SSH).
+- `seal ship <target>` wdraża nową wersję jako systemd service.
 - Na serwerze dostępne jest `appctl logs -f` i `appctl doctor`.
 - Runtime config na serwerze nie jest nadpisywany przez deploy (domyślnie).
-- `seal deploy` zapisuje snapshot configu z serwera do repo.
+- `seal ship` zapisuje snapshot configu z serwera do repo.
 
 ### 21.2. Zabezpieczenie (cel nadrzędny)
 - Artefakt produkcyjny **nie zawiera czytelnych źródeł `.js`** projektu ani struktury ułatwiającej analizę (np. katalogów źródeł).
@@ -1256,7 +1257,7 @@ Celem sample-app jest:
 - Seal działa w trybie offline (nie wymaga internetu do typowego działania; toolchain może być instalowany lokalnie/prefetch).
 - **Zasada minimalnych komend (MUST):**
   - lokalny loop zabezpieczenia: `seal release` → `seal verify` → `seal run-local`,
-  - wdrożenie: `seal deploy <target>` (z `seal ship` jako aliasem).
+- wdrożenie: `seal ship <target>` (a `seal deploy` to tryb manualny).
 
 ### 24.2. Domyślności (żeby nie pisać tego samego)
 
@@ -1291,7 +1292,7 @@ Przykładowe reguły:
 - jeśli brak `seal-config/configs/local.json5` → sugeruj `seal init` (naprawa),
 - jeśli brak artefaktu → sugeruj `seal release`,
 - jeśli ostatni release jest OK → sugeruj `seal run-local` i `seal verify`,
-- jeśli są targety serwerowe → sugeruj `seal deploy <target>`.
+- jeśli są targety serwerowe → sugeruj `seal ship <target>`.
 
 Alias (MAY): `seal wizard`.
 
@@ -1388,20 +1389,29 @@ Alias (MAY): `seal wizard`.
 
 ---
 
-#### `seal deploy <target...> [--bootstrap]`
-**Cel:** wdrożyć release na serwer jako usługę (systemd).
+#### `seal ship <target...> [--bootstrap]`
+**Cel:** build + deploy + restart + readiness (główna ścieżka).
 
 **MUST**
-- wspiera wiele targetów: `seal deploy robot-01 robot-02`,
+- wspiera wiele targetów: `seal ship robot-01 robot-02`,
 - generuje `seal-out/run/`,
   - ma atomowe przełączenie release + restart + health-check + rollback.
 
-**Flagi:**
+**Flagi (skrót):**
 - `--bootstrap`: przygotowanie serwera (katalogi + uprawnienia; po udanym deployu instalacja runnera + unit, bez autostartu).
 - `--push-config`: świadomie nadpisuje `shared/config.json5` na serwerze wersją z repo.
-- `--artifact <path>`: deploy bez budowania (deploy-only / airgap).
+- `--profile-overlay <name>` / `--fast`: tymczasowe nadpisania builda.
+- `--no-wait` lub `--wait-*`: sterowanie readiness po restarcie.
 
-Alias (MAY): `seal ship`.
+#### `seal deploy <target...> [--bootstrap]`
+**Cel:** manualny deploy (kopiowanie + instalacja release). Restart tylko z `--restart`.
+
+**MUST**
+- wspiera wiele targetów: `seal deploy robot-01 robot-02`,
+- generuje `seal-out/run/`.
+
+**Flagi (skrót):**
+- `--bootstrap`, `--push-config`, `--artifact <path>`, `--restart`, `--wait-*`.
 
 ---
 
@@ -1530,7 +1540,7 @@ Minimalne pola (MUST):
 - **Konfiguracja:** `ResolvedConfig` + jawne „sources of values” (pliki/CLI/defaulty widoczne w planie).
 - **Artefakty debug:** `seal-out/run/` + `seal-out/run.last_failed/`.
 - **Remote ops:** atomowy deploy + rollback.
-- **Packager:** jedna domyślna ścieżka + wewnętrzny bundle fallback raportujący „sealed strength”.
+- **Packager:** jedna domyślna ścieżka bez automatycznych fallbacków (SEA fail‑fast).
 
 ### 26.1. Algorytm `release`
 1) Wykryj root projektu.
@@ -1544,7 +1554,7 @@ Minimalne pola (MUST):
 9) (opcjonalnie) Decoy/joker: generuj wiarygodną strukturę projektu Node (bez nadpisywania istniejących plików).
 10) Utwórz paczkę `seal-out/<app>-<buildId>.tgz`.
 
-### 26.2. Algorytm `deploy` (alias: `ship`)
+### 26.2. Algorytm `ship` (deploy manual)
 1) (opcjonalnie) zrób `release`, jeśli nie ma paczki / jest nieświeża.
 2) Ustal `config` (domyślnie `config == target`, z możliwością nadpisania).
 3) (SHOULD) Załóż lock na serwerze (żeby uniknąć równoległych deployów).
@@ -1553,13 +1563,16 @@ Minimalne pola (MUST):
    - pobierz plik i zapisz do `seal-out/remote/<target>.current.json5` oraz do history.
 6) (SHOULD) Drift detection:
    - porównaj `seal-config/configs/<config>.json5` z configiem z serwera (snapshot),
-   - ostrzeż lub zakończ błędem (domyślnie) lub tylko ostrzeż przy `--allow-drift`.
+   - ostrzeż lub zakończ błędem (domyślnie) lub tylko ostrzeż przy `--accept-drift`.
 7) Upload paczki do serwera (np. `/tmp/<app>-<buildId>.tgz`).
 8) Rozpakuj do `releases/<buildId>` (bez zmiany `current.buildId`).
 9) Upewnij się, że `shared/config.json5` istnieje:
    - jeśli brak → seed z `seal-config/configs/<config>.json5`,
    - jeśli jest i `--push-config` → nadpisz.
 10) Zapisz `current.buildId` na nowy buildId (aktywacja wersji).
+
+Uwagi:
+- `seal deploy` używa tego samego flow, ale **nie restartuje** usługi bez `--restart` i **nie czeka** na readiness bez `--wait`.
 11) Restart systemd (usługa uruchomi nowy release przez `appctl`).
 12) Readiness / health-check:
     - `seal ship` **domyślnie czeka** na gotowość (systemd active).
@@ -1749,7 +1762,6 @@ Przykład (aktualny dla v0.5):
     // none = raw bundle + wrapper (bez protection/bundle.pack; tylko do diagnostyki)
     // UWAGA: thin-split = produkcja i baza do łączenia zabezpieczeń
     packager: "auto",
-    packagerFallback: false,
 
     // Poziom zabezpieczeń (ustawia domyślne wartości, bez nadpisywania jawnych pól)
     // minimal | balanced | strict | max
@@ -1840,7 +1852,6 @@ Przykład (aktualny dla v0.5):
 - `build.sentinel.profile`: domyślnie `auto` (sentinel włączany tylko dla `thin` + targetów `ssh`); opcje: `off|auto|required|strict`.
 - `build.sentinel.timeLimit.enforce`: `always` (domyślnie) lub `mismatch` (expiry tylko przy niedopasowaniu fingerprintu lub braku blobu).
 - `build.includeDirs`: `["public", "data"]`.
-- `build.packagerFallback`: `false`.
 - `build.thin.mode`: `split`.
 - `build.thin.level`: `low` | `medium` | `high`.
 - `build.thin.appBind`: domyślnie `{ enabled: true }`.
