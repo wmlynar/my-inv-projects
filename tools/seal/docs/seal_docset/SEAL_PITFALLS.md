@@ -1247,6 +1247,9 @@
 - Blad: `run-current.sh` i katalog aplikacji mialy zlego wlasciciela (root) i brak prawa wykonania.
   - Wymaganie: `installDir` i `run-current.sh` musza byc wlascicielem uzytkownika uslugi i `run-current.sh` musi byc wykonywalny.
 
+- Blad: wrapper skrypt (np. `run-current.sh`) uruchamial proces bez `exec`, przez co systemd wysylal sygnal do shella, a proces docelowy zostawal sierota.
+  - Wymaganie: ostatnia linia uruchamiajaca aplikacje w wrapperze uzywa `exec`, aby poprawnie propagowac sygnaly i exit code.
+
 - Blad: `serviceUser`/`serviceGroup` nie istnialy na hoście, a systemd failowal z mylacym komunikatem.
   - Wymaganie: preflight sprawdza istnienie user/group (`getent passwd/group`) i fail‑fast z instrukcja utworzenia.
 

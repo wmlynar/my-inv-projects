@@ -171,6 +171,7 @@ Przykład:
 - STD-033n (SHOULD): przy `spawn`/`exec` wykrywaj `ENOENT` i raportuj brakujace narzedzie z instrukcja instalacji; nie maskuj tego jako ogolny blad.
 - STD-038 (SHOULD): operacje destrukcyjne oferuja `--dry-run`.
 - STD-039 (SHOULD): SIGINT/SIGTERM sprzataja procesy i pliki tymczasowe.
+- STD-039a (SHOULD): wrappery/skrypty uruchomieniowe uzywaja `exec` dla procesu docelowego, aby sygnaly i exit code trafialy do aplikacji, nie do shella.
 - STD-043 (SHOULD): waliduj wymagania **warunkowo** od poziomu/trybu (np. level 0/1/2), nie wymuszaj danych dla wyzszych poziomow.
 - STD-044 (SHOULD): identyfikatory uzywane w sciezkach plikow musza byc sanitizowane do bezpiecznego alfabetu (brak path traversal).
 - STD-044a (SHOULD): `appName`/`serviceName` sa walidowane do bezpiecznego zestawu znakow (bez spacji/slash), zanim trafia do sciezek lub komend deploy.
