@@ -486,6 +486,8 @@ Przykład:
 - STD-089z.s (SHOULD): automatyzacja SSH ignoruje zewnętrzne `RSYNC_RSH`/`GIT_SSH_COMMAND`/`SSH_CONFIG` (ustawia jawnie lub `-F /dev/null`) i loguje effective args.
 - STD-089z.t (SHOULD): długie konfiguracje ENV przekazuj przez plik (`SEAL_E2E_CONFIG`/`--env-file`), aby uniknąć limitów `ARG_MAX`.
 - STD-089z.u (SHOULD): SSH w automatyzacji używa `IdentitiesOnly=yes` + `PreferredAuthentications=publickey` + jawny `-i`, aby uniknąć `Too many authentication failures`.
+- STD-089z.v (SHOULD): preflight zawsze loguje i weryfikuje wersję `node` oraz ścieżkę binarki; brak lub zła wersja = fail‑fast z instrukcją.
+- STD-089z.w (SHOULD): obsługuj IPv6 w SSH/SCP/rsync (nawiasy `[addr]` i/lub `-6`) i waliduj format w target config.
 - STD-090c (SHOULD): preflight sprawdza **narzedzia CLI** (np. `postject` w `node_modules/.bin`/PATH), nie tylko obecność modulu.
 - STD-091a (SHOULD): funkcje zalezne od architektury (np. CPUID) musza degradująco dzialac na platformach bez wsparcia (pusty/neutralny ID zamiast twardego bledu).
 - STD-092a (SHOULD): `--skip-check` jest wyraznie oznaczony jako ryzykowny i zawsze wypisuje ostrzezenie; krytyczne braki toolchaina nie powinny byc maskowane.
