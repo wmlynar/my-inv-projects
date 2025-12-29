@@ -890,8 +890,12 @@ disable_ui_e2e() {
 }
 
 if [ "${SEAL_UI_E2E:-0}" = "1" ] && should_run "example-ui"; then
-  PW_MARKER="${SEAL_E2E_PLAYWRIGHT_MARKER:-/root/.cache/seal/playwright-installed}"
-  PW_CACHE="/root/.cache/ms-playwright"
+  if [ -z "${PLAYWRIGHT_BROWSERS_PATH:-}" ] && [ "${SEAL_DOCKER_E2E:-0}" = "1" ]; then
+    export PLAYWRIGHT_BROWSERS_PATH="/root/.cache/ms-playwright"
+  fi
+  PW_CACHE_ROOT="${SEAL_E2E_PLAYWRIGHT_CACHE_ROOT:-${XDG_CACHE_HOME:-$HOME/.cache}}"
+  PW_CACHE="${PLAYWRIGHT_BROWSERS_PATH:-$PW_CACHE_ROOT/ms-playwright}"
+  PW_MARKER="${SEAL_E2E_PLAYWRIGHT_MARKER:-$CACHE_ROOT/playwright-installed}"
   PW_HAS_BROWSER=0
   PW_BROWSER_PATH=""
   PW_DEPS_OK=1

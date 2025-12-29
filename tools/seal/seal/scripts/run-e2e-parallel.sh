@@ -326,6 +326,8 @@ run_group() {
   local env_args=(
     SEAL_E2E_TESTS="$tests"
     SEAL_E2E_SKIP="${SEAL_E2E_SKIP:-}"
+    SEAL_E2E_CACHE_DIR="$CACHE_ROOT"
+    SEAL_E2E_CACHE_BIN="$CACHE_BIN"
     SEAL_E2E_EXAMPLE_ROOT="$root"
     SEAL_E2E_COPY_EXAMPLE=1
     SEAL_E2E_INSTALL_EXAMPLE_DEPS="$example_deps"
