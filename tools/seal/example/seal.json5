@@ -30,6 +30,7 @@
         "maxBackMs": 100
       },
       "launcherHardening": true,
+      // O-LLVM (LLVM 4) does not support -fcf-protection; keep CET off here.
       "launcherHardeningCET": false,
       "launcherObfuscation": true,
       "antiDebug": {
