@@ -3,20 +3,23 @@
 
 const fs = require("fs");
 const path = require("path");
-const { spawnSync } = require("child_process");
 const { readJson5, writeJson5 } = require("../src/lib/json5io");
-const { createLogger, stripAnsi, resolveExampleRoot } = require("./e2e-utils");
+const { createLogger, stripAnsi, resolveExampleRoot, spawnSyncWithTimeout } = require("./e2e-utils");
 
 const { log, fail } = createLogger("compat-e2e");
 const EXAMPLE_ROOT = resolveExampleRoot();
 const SEAL_BIN = path.resolve(__dirname, "..", "bin", "seal.js");
 
 function runSeal(cwd, args) {
-  const res = spawnSync(process.execPath, [SEAL_BIN, ...args], {
+  const res = spawnSyncWithTimeout(process.execPath, [SEAL_BIN, ...args], {
     cwd,
     encoding: "utf8",
     env: { ...process.env, SEAL_BATCH_SKIP: "1" },
+    timeout: 30000,
   });
+  if (res.error && res.error.code === "ETIMEDOUT") {
+    throw new Error(`seal ${args.join(" ")} timed out`);
+  }
   if (res.error) throw res.error;
   const out = stripAnsi(`${res.stdout || ""}${res.stderr || ""}`);
   if (res.status !== 0) {

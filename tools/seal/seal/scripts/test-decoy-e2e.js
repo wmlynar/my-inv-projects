@@ -34,7 +34,7 @@ function ensureNoSecrets(text) {
 async function buildWithDecoy({ mode, includeDirs, scope, overwrite }) {
   const projectCfg = loadProjectConfig(EXAMPLE_ROOT);
   const targetName = resolveTargetName(EXAMPLE_ROOT, "local");
-  const targetCfg = loadTargetConfig(EXAMPLE_ROOT, targetName);
+  const targetCfg = loadTargetConfig(EXAMPLE_ROOT, targetName).cfg;
   const configName = resolveConfigName(targetCfg, null);
 
   projectCfg.build = projectCfg.build || {};
@@ -55,66 +55,88 @@ async function buildWithDecoy({ mode, includeDirs, scope, overwrite }) {
   projectCfg.build.sentinel = { enabled: false };
 
   const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-decoy-"));
-  const res = await buildRelease({
-    projectRoot: EXAMPLE_ROOT,
-    projectCfg,
-    targetCfg,
-    configName,
-    packagerOverride: "none",
-    outDirOverride: outDir,
-    skipArtifact: true,
-  });
-  return { outDir, releaseDir: res.releaseDir };
+  try {
+    const res = await buildRelease({
+      projectRoot: EXAMPLE_ROOT,
+      projectCfg,
+      targetCfg,
+      configName,
+      packagerOverride: "none",
+      outDirOverride: outDir,
+      skipArtifact: true,
+    });
+    return { outDir, releaseDir: res.releaseDir };
+  } catch (err) {
+    fs.rmSync(outDir, { recursive: true, force: true });
+    throw err;
+  }
 }
 
 async function testSoftDecoy() {
   log("Building soft decoy...");
-  const { releaseDir } = await buildWithDecoy({ mode: "soft", includeDirs: ["data"] });
-  const files = [
-    "package.json",
-    "server.js",
-    "README.md",
-    "src/routes/index.js",
-    "src/services/data.js",
-    "src/services/cache.js",
-    "src/services/metrics.js",
-    "config/ui.json",
-  ];
-  for (const rel of files) {
-    const full = path.join(releaseDir, rel);
-    assert.ok(fs.existsSync(full), `Missing decoy file: ${rel}`);
-    ensureNoSecrets(readFileSafe(full));
+  const { releaseDir, outDir } = await buildWithDecoy({ mode: "soft", includeDirs: ["data"] });
+  try {
+    const files = [
+      "package.json",
+      "server.js",
+      "README.md",
+      "src/routes/index.js",
+      "src/services/data.js",
+      "src/services/cache.js",
+      "src/services/metrics.js",
+      "config/ui.json",
+    ];
+    for (const rel of files) {
+      const full = path.join(releaseDir, rel);
+      assert.ok(fs.existsSync(full), `Missing decoy file: ${rel}`);
+      ensureNoSecrets(readFileSafe(full));
+    }
+    assert.ok(!fs.existsSync(path.join(releaseDir, "public", "index.html")), "Backend-only decoy should not write public/");
+  } finally {
+    fs.rmSync(outDir, { recursive: true, force: true });
   }
-  assert.ok(!fs.existsSync(path.join(releaseDir, "public", "index.html")), "Backend-only decoy should not write public/");
 }
 
 async function testWrapperDecoy() {
   log("Building wrapper decoy...");
-  const { releaseDir } = await buildWithDecoy({ mode: "wrapper", includeDirs: ["data"] });
-  const worker = path.join(releaseDir, "bin", "worker.js");
-  assert.ok(fs.existsSync(worker), "Missing wrapper worker.js");
-  ensureNoSecrets(readFileSafe(worker));
+  const { releaseDir, outDir } = await buildWithDecoy({ mode: "wrapper", includeDirs: ["data"] });
+  try {
+    const worker = path.join(releaseDir, "bin", "worker.js");
+    assert.ok(fs.existsSync(worker), "Missing wrapper worker.js");
+    ensureNoSecrets(readFileSafe(worker));
+  } finally {
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
 }
 
 async function testFullDecoy() {
   log("Building full decoy...");
-  const { releaseDir } = await buildWithDecoy({ mode: "soft", includeDirs: ["data"], scope: "full" });
-  const publicHtml = path.join(releaseDir, "public", "index.html");
-  assert.ok(fs.existsSync(publicHtml), "Missing decoy public/index.html");
-  ensureNoSecrets(readFileSafe(publicHtml));
+  const { releaseDir, outDir } = await buildWithDecoy({ mode: "soft", includeDirs: ["data"], scope: "full" });
+  try {
+    const publicHtml = path.join(releaseDir, "public", "index.html");
+    assert.ok(fs.existsSync(publicHtml), "Missing decoy public/index.html");
+    ensureNoSecrets(readFileSafe(publicHtml));
+  } finally {
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
 }
 
 async function testCollision() {
   log("Testing collision detection...");
   let failed = false;
+  let outDir = null;
   try {
-    await buildWithDecoy({ mode: "soft", includeDirs: ["public"], scope: "full", overwrite: false });
+    const res = await buildWithDecoy({ mode: "soft", includeDirs: ["public"], scope: "full", overwrite: false });
+    outDir = res.outDir;
   } catch (e) {
     failed = true;
     const msg = String(e && e.message ? e.message : e);
     if (!msg.includes("Decoy install blocked")) {
       throw new Error(`Unexpected error: ${msg}`);
     }
+  }
+  if (outDir) {
+    fs.rmSync(outDir, { recursive: true, force: true });
   }
   if (!failed) {
     throw new Error("Expected collision failure, but build succeeded");

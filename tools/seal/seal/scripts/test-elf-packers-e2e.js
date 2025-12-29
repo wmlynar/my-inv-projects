@@ -15,11 +15,13 @@ const {
   resolveExampleRoot,
   createLogger,
   withSealedBinary,
+  parseArgsEnv,
 } = require("./e2e-utils");
 
 const { buildRelease } = require("../src/lib/build");
 const { loadProjectConfig, loadTargetConfig, resolveConfigName } = require("../src/lib/project");
 const { readJson5, writeJson5 } = require("../src/lib/json5io");
+const { THIN_NATIVE_BOOTSTRAP_FILE } = require("../src/lib/thinPaths");
 
 const EXAMPLE_ROOT = resolveExampleRoot();
 
@@ -67,18 +69,6 @@ function checkPrereqs() {
     return { ok: false, skip: false };
   }
   return { ok: true, skip: false };
-}
-
-function parseArgsEnv(raw) {
-  if (!raw) return null;
-  const trimmed = String(raw).trim();
-  if (!trimmed) return null;
-  if (trimmed.startsWith("[")) {
-    const parsed = JSON.parse(trimmed);
-    if (!Array.isArray(parsed)) throw new Error("args must be a JSON array");
-    return parsed.map((v) => String(v));
-  }
-  return trimmed.split(/\s+/).filter(Boolean);
 }
 
 function parseReadelfSections(binPath) {
@@ -241,7 +231,7 @@ async function testElfPacker(ctx, spec) {
     throw new Error(msg);
   }
 
-  let args = parseArgsEnv(process.env[spec.argsEnv]);
+  let args = parseArgsEnv(process.env[spec.argsEnv], spec.argsEnv);
   if (!args) args = spec.defaultArgs.slice();
 
   log(`Building thin-split with ${spec.name}...`);
@@ -283,21 +273,21 @@ async function testElfPacker(ctx, spec) {
     log(`SKIP: ${spec.name} section header check (${collapse.skip})`);
   }
 
-  const nbPath = path.join(res.releaseDir, "r", "nb.node");
+  const nbPath = path.join(res.releaseDir, "r", THIN_NATIVE_BOOTSTRAP_FILE);
   const checkNb = process.env.SEAL_E2E_CHECK_PACK_NB === "1" || process.env.SEAL_E2E_STRICT_PACK_NB === "1";
   if (checkNb && fs.existsSync(nbPath)) {
     const verifyNb = verifyPacker(nbPath, spec);
     if (verifyNb && verifyNb.error) {
-      throw new Error(`${spec.name} nb.node verification failed: ${verifyNb.error}`);
+      throw new Error(`${spec.name} native bootstrap verification failed: ${verifyNb.error}`);
     }
     if (verifyNb && verifyNb.skip) {
       if (process.env.SEAL_E2E_STRICT_PACK_NB === "1") {
-        throw new Error(`${spec.name} nb.node packer check skipped: ${verifyNb.skip}`);
+        throw new Error(`${spec.name} native bootstrap packer check skipped: ${verifyNb.skip}`);
       }
-      log(`SKIP: ${spec.name} nb.node packer check (${verifyNb.skip})`);
+      log(`SKIP: ${spec.name} native bootstrap packer check (${verifyNb.skip})`);
     }
   } else if (checkNb) {
-    log("SKIP: nb.node not present; packer check skipped");
+    log(`SKIP: r/${THIN_NATIVE_BOOTSTRAP_FILE} not present; packer check skipped`);
   }
 
   if (spec.runtimeSkip && process.env[spec.runtimeEnv] !== "1") {

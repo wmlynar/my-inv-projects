@@ -5,7 +5,7 @@ const assert = require("assert");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { spawn, spawnSync } = require("child_process");
+const { spawn } = require("child_process");
 
 const {
   hasCommand,
@@ -17,6 +17,7 @@ const {
   resolveExampleRoot,
   createLogger,
   terminateChild,
+  spawnSyncWithTimeout,
 } = require("./e2e-utils");
 const { readJson5, writeJson5 } = require("../src/lib/json5io");
 
@@ -51,7 +52,15 @@ function shellQuote(value) {
 }
 
 function systemctlUserReady() {
-  const res = spawnSync("systemctl", ["--user", "show-environment"], { stdio: "pipe", encoding: "utf-8" });
+  const res = spawnSyncWithTimeout("systemctl", ["--user", "show-environment"], {
+    stdio: "pipe",
+    encoding: "utf-8",
+    timeout: 8000,
+  });
+  if (res.error && res.error.code === "ETIMEDOUT") {
+    log("SKIP: systemctl --user timed out");
+    return false;
+  }
   if (res.status === 0) return true;
   const out = `${res.stdout || ""}\n${res.stderr || ""}`.trim();
   log(`SKIP: systemctl --user unavailable (${out || "status=" + res.status})`);
@@ -73,13 +82,16 @@ function sshExec(user, host, cmd, sshPort) {
   ];
   if (sshPort) args.push("-p", String(sshPort));
   args.push(`${user}@${host}`, `bash -lc ${shellQuote(cmd)}`);
-  const res = spawnSync("ssh", args, { stdio: "pipe", encoding: "utf-8" });
+  const res = spawnSyncWithTimeout("ssh", args, { stdio: "pipe", encoding: "utf-8", timeout: 20000 });
   const out = `${res.stdout || ""}\n${res.stderr || ""}`.trim();
+  if (res.error && res.error.code === "ETIMEDOUT") {
+    return { ok: false, status: null, out: "ssh timed out" };
+  }
   return { ok: res.status === 0, status: res.status, out };
 }
 
 function runSeal(cwd, args, opts = {}) {
-  const res = spawnSync(process.execPath, [SEAL_BIN, ...args], {
+  const res = spawnSyncWithTimeout(process.execPath, [SEAL_BIN, ...args], {
     cwd,
     env: {
       ...process.env,

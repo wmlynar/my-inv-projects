@@ -6,14 +6,13 @@ const crypto = require("crypto");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { spawnSync } = require("child_process");
-
 const { cmdShip } = require("../src/commands/deploy");
 const { uninstallLocal } = require("../src/lib/deploy");
 const { uninstallSsh } = require("../src/lib/deploySsh");
 const { sshExec } = require("../src/lib/ssh");
 const { writeJson5, readJson5 } = require("../src/lib/json5io");
-const { hasCommand, delay, resolveExampleRoot, createLogger } = require("./e2e-utils");
+const { hasCommand, delay, resolveExampleRoot, createLogger, spawnSyncWithTimeout } = require("./e2e-utils");
+const { THIN_NATIVE_BOOTSTRAP_FILE } = require("../src/lib/thinPaths");
 
 const EXAMPLE_ROOT = resolveExampleRoot();
 
@@ -49,7 +48,11 @@ async function captureOutput(fn) {
 }
 
 function systemctlUserReady() {
-  const res = spawnSync("systemctl", ["--user", "show-environment"], { stdio: "pipe" });
+  const res = spawnSyncWithTimeout("systemctl", ["--user", "show-environment"], { stdio: "pipe", timeout: 8000 });
+  if (res.error && res.error.code === "ETIMEDOUT") {
+    log("SKIP: systemctl --user timed out");
+    return false;
+  }
   if (res.status === 0) return true;
   const out = `${res.stdout || ""}\n${res.stderr || ""}`.trim();
   log(`SKIP: systemctl --user unavailable (${out || "status=" + res.status})`);
@@ -445,9 +448,9 @@ async function testShipThinBootstrapSsh() {
     const plPath = `${installDir}/r/pl`;
     const rtStat1 = sshStat(user, host, rtPath, sshPort);
     const plStat1 = sshStat(user, host, plPath, sshPort);
-    const nbStat1 = sshStat(user, host, `${installDir}/r/nb.node`, sshPort);
+    const nbStat1 = sshStat(user, host, `${installDir}/r/${THIN_NATIVE_BOOTSTRAP_FILE}`, sshPort);
     assert.ok(rtStat1 && plStat1, "Missing r/rt or r/pl after bootstrap ship (ssh)");
-    assert.ok(nbStat1, "Missing native bootstrap addon (r/nb.node) after bootstrap ship (ssh)");
+    assert.ok(nbStat1, `Missing native bootstrap addon (r/${THIN_NATIVE_BOOTSTRAP_FILE}) after bootstrap ship (ssh)`);
 
     await shipOnce(targetCfg, { bootstrap: false, pushConfig: false, skipCheck: true, packager: "thin-split" });
     const rtStat2 = sshStat(user, host, rtPath, sshPort);

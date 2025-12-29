@@ -19,6 +19,7 @@ const {
   delay,
   resolveExampleRoot,
   createLogger,
+  parseArgsEnv,
   terminateChild,
   withSealedBinary,
 } = require("./e2e-utils");
@@ -2057,18 +2058,6 @@ function scanJournalForTokens(pid, sinceMs, tokens) {
   return { ok: true };
 }
 
-function parseArgsEnv(raw) {
-  if (!raw) return [];
-  const trimmed = String(raw).trim();
-  if (!trimmed) return [];
-  if (trimmed.startsWith("[")) {
-    const parsed = JSON.parse(trimmed);
-    if (!Array.isArray(parsed)) throw new Error("args must be a JSON array");
-    return parsed.map((v) => String(v));
-  }
-  return trimmed.split(/\s+/).filter(Boolean);
-}
-
 function getFileSize(filePath) {
   let st;
   try {
@@ -2279,7 +2268,7 @@ function runExternalDumpScan(pid, tokenBuffers) {
   if (!hasCommand(cmd)) return { skip: `dump cmd missing: ${cmd}` };
   const rawArgs = process.env.SEAL_E2E_DUMP_ARGS || "";
   const outPath = process.env.SEAL_E2E_DUMP_OUT || path.join(os.tmpdir(), `seal-dump-${pid || "x"}-${Date.now()}.bin`);
-  const args = parseArgsEnv(rawArgs).map((arg) =>
+  const args = parseArgsEnv(rawArgs, "SEAL_E2E_DUMP_ARGS", { empty: [] }).map((arg) =>
     arg.replace(/\{pid\}/g, String(pid || "")).replace(/\{out\}/g, outPath)
   );
   const timeoutMs = resolveE2ETimeout("SEAL_E2E_DUMP_TIMEOUT_MS", 60000);

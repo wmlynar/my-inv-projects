@@ -15,6 +15,7 @@ const {
   resolveExampleRoot,
   createLogger,
   withSealedBinary,
+  parseArgsEnv,
 } = require("./e2e-utils");
 
 const { buildRelease } = require("../src/lib/build");
@@ -80,18 +81,6 @@ async function runRelease({ releaseDir, runTimeoutMs }) {
   });
 }
 
-function parseArgsEnv(raw) {
-  if (!raw) return null;
-  const trimmed = String(raw).trim();
-  if (!trimmed) return null;
-  if (trimmed.startsWith("[")) {
-    const parsed = JSON.parse(trimmed);
-    if (!Array.isArray(parsed)) throw new Error("args must be a JSON array");
-    return parsed.map((v) => String(v));
-  }
-  return trimmed.split(/\s+/).filter(Boolean);
-}
-
 async function buildWithObfuscator({ outRoot, obfuscator, cmd, args }) {
   const baseCfg = loadProjectConfig(EXAMPLE_ROOT);
   const projectCfg = JSON.parse(JSON.stringify(baseCfg));
@@ -136,7 +125,7 @@ async function testObfuscator(ctx, spec) {
     }
     throw new Error(`${msg}. Install via ${spec.installHint}`);
   }
-  let args = parseArgsEnv(process.env[spec.argsEnv]);
+  let args = parseArgsEnv(process.env[spec.argsEnv], spec.argsEnv);
   if (!args) args = spec.defaultArgs.slice();
 
   log(`Building with cObfuscator=${spec.id} (${cmd})...`);

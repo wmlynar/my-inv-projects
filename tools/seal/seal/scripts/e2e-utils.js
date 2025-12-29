@@ -5,9 +5,10 @@ const http = require("http");
 const net = require("net");
 const os = require("os");
 const path = require("path");
-const { spawn } = require("child_process");
+const { spawn, spawnSync } = require("child_process");
 
 const SKIP_CODE = 77;
+const DEFAULT_SPAWN_TIMEOUT_MS = 15000;
 
 function resolveCommand(cmd) {
   if (!cmd) return null;
@@ -107,6 +108,37 @@ async function waitForReadyFile(filePath, timeoutMs = 10_000) {
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function parseArgsEnv(raw, envName, opts = {}) {
+  const emptyValue = Object.prototype.hasOwnProperty.call(opts, "empty") ? opts.empty : null;
+  if (!raw) return emptyValue;
+  const trimmed = String(raw).trim();
+  if (!trimmed) return emptyValue;
+  if (trimmed.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (!Array.isArray(parsed)) {
+        throw new Error("expected JSON array");
+      }
+      return parsed.map((v) => String(v));
+    } catch (err) {
+      const label = envName || "args";
+      const msg = err && err.message ? err.message : String(err);
+      throw new Error(`${label} must be a valid JSON array (${msg})`);
+    }
+  }
+  return trimmed.split(/\s+/).filter(Boolean);
+}
+
+function spawnSyncWithTimeout(cmd, args, options = {}) {
+  const opts = { ...(options || {}) };
+  if (opts.timeout === undefined) {
+    const raw = process.env.SEAL_E2E_SPAWN_TIMEOUT_MS;
+    const parsed = raw !== undefined ? Number(raw) : NaN;
+    opts.timeout = Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_SPAWN_TIMEOUT_MS;
+  }
+  return spawnSync(cmd, args, opts);
 }
 
 function withTimeout(label, ms, fn) {
@@ -384,7 +416,10 @@ function createLogger(prefix) {
   const log = (msg) => process.stdout.write(`${tag} ${msg}\n`);
   const warn = (msg) => process.stdout.write(`${tag} WARN: ${msg}\n`);
   const error = (msg) => process.stderr.write(`${tag} ERROR: ${msg}\n`);
-  const fail = (msg) => error(msg);
+  const fail = (msg) => {
+    error(msg);
+    process.exitCode = 1;
+  };
   const skip = (msg) => {
     const line = msg.startsWith("SKIP:") ? msg : `SKIP: ${msg}`;
     log(line);
@@ -404,6 +439,8 @@ module.exports = {
   applyReadyFileEnv,
   waitForReadyFile,
   delay,
+  parseArgsEnv,
+  spawnSyncWithTimeout,
   withTimeout,
   httpJson,
   waitForStatus,

@@ -16,7 +16,7 @@ function bashQuote(value) {
 }
 
 function runBash(script, cwd) {
-  return spawnSync("bash", ["-lc", script], { cwd, encoding: "utf8" });
+  return spawnSync("bash", ["-lc", script], { cwd, encoding: "utf8", timeout: 15000 });
 }
 
 function writeFile(filePath, content) {

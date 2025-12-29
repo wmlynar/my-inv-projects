@@ -16,11 +16,14 @@ const {
   resolveExampleRoot,
   createLogger,
   withSealedBinary,
+  terminateChild,
+  spawnSyncWithTimeout,
 } = require("./e2e-utils");
 
 const { buildRelease } = require("../src/lib/build");
 const { loadProjectConfig, loadTargetConfig, resolveConfigName } = require("../src/lib/project");
 const { readJson5, writeJson5 } = require("../src/lib/json5io");
+const { THIN_NATIVE_BOOTSTRAP_FILE } = require("../src/lib/thinPaths");
 
 const EXAMPLE_ROOT = resolveExampleRoot();
 
@@ -74,7 +77,10 @@ function supportsCxx20(cxx) {
   const srcPath = path.join(tmpDir, "cxx20.cc");
   const outPath = path.join(tmpDir, "cxx20.o");
   fs.writeFileSync(srcPath, "int main(){return 0;}\n", "utf-8");
-  const res = spawnSync(cxx, ["-std=c++20", "-c", srcPath, "-o", outPath], { stdio: "ignore" });
+  const res = spawnSyncWithTimeout(cxx, ["-std=c++20", "-c", srcPath, "-o", outPath], {
+    stdio: "ignore",
+    timeout: 8000,
+  });
   fs.rmSync(tmpDir, { recursive: true, force: true });
   return res.status === 0;
 }
@@ -232,7 +238,7 @@ function resolveRunTimeoutMs(releaseDir, runTimeoutMs) {
   const nativeOverrideRaw = process.env.SEAL_THIN_E2E_NATIVE_RUN_TIMEOUT_MS;
   const nativeOverride = nativeOverrideRaw ? Number(nativeOverrideRaw) : 0;
   if (!Number.isFinite(nativeOverride) || nativeOverride <= 0) return base;
-  const nbPath = path.join(releaseDir, "r", "nb.node");
+  const nbPath = path.join(releaseDir, "r", THIN_NATIVE_BOOTSTRAP_FILE);
   if (!fs.existsSync(nbPath)) return base;
   return Math.max(base, nativeOverride);
 }
@@ -277,9 +283,22 @@ async function runReleaseExpectFailure({ releaseDir, env, runTimeoutMs, expectSu
   child.stdout.on("data", (c) => outChunks.push(c));
   child.stderr.on("data", (c) => errChunks.push(c));
 
-  const exit = await withTimeout("expectFailure", runTimeoutMs, () =>
-    new Promise((resolve) => child.on("close", (code, signal) => resolve({ code, signal })))
-  );
+  let exit = null;
+  try {
+    exit = await withTimeout("expectFailure", runTimeoutMs, () =>
+      new Promise((resolve) => {
+        child.on("close", (code, signal) => resolve({ code, signal }));
+        child.on("error", (error) => resolve({ code: null, signal: null, error }));
+      })
+    );
+  } catch (err) {
+    await terminateChild(child);
+    throw err;
+  }
+
+  if (exit && exit.error) {
+    throw exit.error;
+  }
 
   const stdout = Buffer.concat(outChunks).toString("utf8");
   const stderr = Buffer.concat(errChunks).toString("utf8");
@@ -300,39 +319,41 @@ async function testThinSplit(ctx) {
   const res = await buildThinRelease(ctx.buildTimeoutMs);
   const { releaseDir, buildId, outRoot } = res;
 
-  const launcher = path.join(releaseDir, "b", "a");
-  const rt = path.join(releaseDir, "r", "rt");
-  const pl = path.join(releaseDir, "r", "pl");
-  assert.ok(fs.existsSync(launcher), "BOOTSTRAP release missing b/a");
-  assert.ok(fs.existsSync(rt), "BOOTSTRAP release missing r/rt");
-  assert.ok(fs.existsSync(pl), "BOOTSTRAP release missing r/pl");
-  assertNoReleaseArtifacts(releaseDir);
+  try {
+    const launcher = path.join(releaseDir, "b", "a");
+    const rt = path.join(releaseDir, "r", "rt");
+    const pl = path.join(releaseDir, "r", "pl");
+    assert.ok(fs.existsSync(launcher), "BOOTSTRAP release missing b/a");
+    assert.ok(fs.existsSync(rt), "BOOTSTRAP release missing r/rt");
+    assert.ok(fs.existsSync(pl), "BOOTSTRAP release missing r/pl");
+    assertNoReleaseArtifacts(releaseDir);
 
-  log("Running thin SPLIT wrapper...");
-  await runRelease({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs });
+    log("Running thin SPLIT wrapper...");
+    await runRelease({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs });
 
-  log("Running thin SPLIT with hardened env (strict)...");
-  await runRelease({
-    releaseDir,
-    buildId,
-    runTimeoutMs: ctx.runTimeoutMs,
-    env: { SEAL_THIN_ENV_STRICT: "1", PATH: "" },
-  });
+    log("Running thin SPLIT with hardened env (strict)...");
+    await runRelease({
+      releaseDir,
+      buildId,
+      runTimeoutMs: ctx.runTimeoutMs,
+      env: { SEAL_THIN_ENV_STRICT: "1", PATH: "" },
+    });
 
-  const badEnv = {
-    NODE_OPTIONS: "--require /nonexistent",
-    NODE_PATH: "/nonexistent",
-    NODE_V8_COVERAGE: "/tmp/cover",
-  };
-  log("Running thin SPLIT with debug env (expect failure)...");
-  await runReleaseExpectFailure({
-    releaseDir,
-    runTimeoutMs: ctx.runTimeoutMs,
-    env: badEnv,
-    expectSubstring: "[thin] runtime invalid",
-  });
-
-  fs.rmSync(outRoot, { recursive: true, force: true });
+    const badEnv = {
+      NODE_OPTIONS: "--require /nonexistent",
+      NODE_PATH: "/nonexistent",
+      NODE_V8_COVERAGE: "/tmp/cover",
+    };
+    log("Running thin SPLIT with debug env (expect failure)...");
+    await runReleaseExpectFailure({
+      releaseDir,
+      runTimeoutMs: ctx.runTimeoutMs,
+      env: badEnv,
+      expectSubstring: "[thin] runtime invalid",
+    });
+  } finally {
+    fs.rmSync(outRoot, { recursive: true, force: true });
+  }
 }
 
 async function testThinSingleLegacy(ctx) {
@@ -340,13 +361,15 @@ async function testThinSingleLegacy(ctx) {
   const res = await buildThinRelease(ctx.buildTimeoutMs, { packager: "thin-single" });
   const { releaseDir, buildId, outRoot } = res;
 
-  const binPath = path.join(releaseDir, "seal-example");
-  assert.ok(fs.existsSync(binPath), "AIO release missing seal-example binary");
+  try {
+    const binPath = path.join(releaseDir, "seal-example");
+    assert.ok(fs.existsSync(binPath), "AIO release missing seal-example binary");
 
-  log("Running thin-single...");
-  await runRelease({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs });
-
-  fs.rmSync(outRoot, { recursive: true, force: true });
+    log("Running thin-single...");
+    await runRelease({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs });
+  } finally {
+    fs.rmSync(outRoot, { recursive: true, force: true });
+  }
 }
 
 async function testThinSplitNativeBootstrap(ctx) {
@@ -363,12 +386,12 @@ async function testThinSplitNativeBootstrap(ctx) {
     const { releaseDir, buildId, outRoot } = res;
 
     try {
-      const nb = path.join(releaseDir, "r", "nb.node");
-      assert.ok(fs.existsSync(nb), "BOOTSTRAP release missing r/nb.node");
+      const nb = path.join(releaseDir, "r", THIN_NATIVE_BOOTSTRAP_FILE);
+      assert.ok(fs.existsSync(nb), `BOOTSTRAP release missing r/${THIN_NATIVE_BOOTSTRAP_FILE}`);
       const nbSize = fs.statSync(nb).size;
       const launcher = path.join(releaseDir, "b", "a");
       const launcherSize = fs.existsSync(launcher) ? fs.statSync(launcher).size : 0;
-      log(`Native bootstrap mode=${mode} sizes: nb.node=${nbSize} bytes, launcher=${launcherSize} bytes`);
+      log(`Native bootstrap mode=${mode} sizes: ${THIN_NATIVE_BOOTSTRAP_FILE}=${nbSize} bytes, launcher=${launcherSize} bytes`);
 
       log(`Running thin SPLIT with native bootstrap mode=${mode}...`);
       await runRelease({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs });
