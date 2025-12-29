@@ -625,10 +625,57 @@ fi
 export LC_ALL=C
 export TZ=UTC
 
+SAFE_ROOTS=(/tmp /var/tmp /dev/shm)
+if [ -n "${TMPDIR:-}" ]; then
+  SAFE_ROOTS+=("$TMPDIR")
+fi
+if [ -n "${TMP:-}" ]; then
+  SAFE_ROOTS+=("$TMP")
+fi
+if [ -n "${TEMP:-}" ]; then
+  SAFE_ROOTS+=("$TEMP")
+fi
+if [ -n "${SEAL_E2E_SAFE_ROOTS:-}" ]; then
+  for root in $(echo "$SEAL_E2E_SAFE_ROOTS" | tr ':,;' ' '); do
+    SAFE_ROOTS+=("$root")
+  done
+fi
+
+is_safe_example_root() {
+  local path="$1"
+  local base
+  for base in "${SAFE_ROOTS[@]}"; do
+    if [ -z "$base" ]; then
+      continue
+    fi
+    case "$path" in
+      "$base" | "$base"/*) return 0 ;;
+    esac
+  done
+  return 1
+}
+
+require_safe_example_root() {
+  local path="$1"
+  if [ "${SEAL_E2E_UNSAFE_EXAMPLE_ROOT:-0}" = "1" ]; then
+    return 0
+  fi
+  if [[ "$path" != /* ]]; then
+    log "ERROR: SEAL_E2E_EXAMPLE_ROOT must be absolute (got: $path)"
+    exit 1
+  fi
+  if ! is_safe_example_root "$path"; then
+    log "ERROR: SEAL_E2E_EXAMPLE_ROOT is not under safe roots (${SAFE_ROOTS[*]})."
+    log "       Set SEAL_E2E_SAFE_ROOTS or SEAL_E2E_UNSAFE_EXAMPLE_ROOT=1 to override."
+    exit 1
+  fi
+}
+
 EXAMPLE_SRC="$REPO_ROOT/tools/seal/example"
 EXAMPLE_DST="${SEAL_E2E_EXAMPLE_ROOT:-/tmp/seal-example-e2e}"
 if [ "${SEAL_E2E_COPY_EXAMPLE:-1}" = "1" ]; then
   log "Preparing disposable example workspace..."
+  require_safe_example_root "$EXAMPLE_DST"
   rm -rf "$EXAMPLE_DST"
   cp -a "$EXAMPLE_SRC" "$EXAMPLE_DST"
   export SEAL_E2E_EXAMPLE_ROOT="$EXAMPLE_DST"
