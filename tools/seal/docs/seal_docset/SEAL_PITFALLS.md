@@ -2556,3 +2556,12 @@
   - Wymaganie: normalizuj listy testow (trim, usun puste, dedupe) i loguj finalny zestaw uruchamianych testow.
 - Blad: tryb fail‑fast ubijal grupy, ale zostawial procesy potomne i nie drukowal summary.
   - Wymaganie: fail‑fast zabija cala grupe procesow (PGID) i **zawsze** wypisuje summary/cleanup w `trap`, nawet przy wczesnym wyjsciu.
+
+## Dodatkowe wnioski (batch 326-330)
+
+- Blad: logi E2E byly zapisywane do katalogu bez praw zapisu (np. read‑only volume), co powodowalo pozny fail lub brak artefaktow diagnostycznych.
+  - Wymaganie: przed startem testow weryfikuj zapisywalnosc `SEAL_E2E_LOG_DIR` (lub domyslnego log root) i fail‑fast z instrukcja.
+- Blad: `SEAL_E2E_SUMMARY_PATH` wskazywal na katalog albo plik bez uprawnien zapisu, przez co summary psulo sie dopiero na koncu.
+  - Wymaganie: preflight sprawdza, ze parent `SEAL_E2E_SUMMARY_PATH` istnieje i jest zapisywalny, a docelowa sciezka jest plikiem lub nie istnieje.
+- Blad: nazwy testow/grup rozniace sie tylko wielkoscia liter powodowaly kolizje katalogow logow na FS case‑insensitive (macOS/Windows).
+  - Wymaganie: nazwy katalogow logow sa sanitizowane i wzbogacone o krótki hash, aby uniknac kolizji niezaleznie od FS.
