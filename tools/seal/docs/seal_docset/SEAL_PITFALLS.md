@@ -2484,6 +2484,13 @@
 - Blad: `PrivateTmp=true` izolował `/tmp`, a procesy oczekiwały wspólnego `/tmp` (np. do IPC z innymi narzędziami), co powodowało nieoczekiwane błędy.
   - Wymaganie: `PrivateTmp` włączaj tylko gdy wiesz, że proces nie potrzebuje współdzielonego `/tmp`, albo ustaw jawny `SEAL_TMPDIR` w `RuntimeDirectory`.
 
+## Dodatkowe wnioski (batch 316-320)
+
+- Blad: systemd `WorkingDirectory`/`RuntimeDirectory` nie byly tworzone lub miały zły owner, co powodowało fail startu i błędy zapisu.
+  - Wymaganie: używaj `StateDirectory/RuntimeDirectory` lub twórz katalogi z poprawnym ownerem przed startem; waliduj perms.
+- Blad: `journalctl -u` zwracał dane z pagera i blokował skrypty w trybie nieinteraktywnym.
+  - Wymaganie: ustaw `SYSTEMD_PAGER=cat`/`--no-pager` dla `journalctl` i loguj, że pager jest wyłączony.
+
 
 ## Dodatkowe wnioski (batch 296-300)
 
