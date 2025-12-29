@@ -2389,6 +2389,13 @@
 - Blad: rozpakowanie archiwum `tar` bez walidacji sciezek pozwalalo na path traversal (`../` lub absolutne sciezki).
   - Wymaganie: przed `tar -xf` wykonaj `tar -tf` i odrzuć wpisy z `..`/`/`; po ekstrakcji weryfikuj, że wszystkie pliki są pod katalogiem docelowym.
 
+## Dodatkowe wnioski (batch 266-270)
+
+- Blad: SSH odmawial uzycia klucza, bo uprawnienia `~/.ssh`/`id_*` byly zbyt szerokie (np. 755/644), co konczylo sie promptem lub `Permission denied (publickey)`.
+  - Wymaganie: przed uzyciem kluczy ustaw `chmod 700 ~/.ssh` oraz `chmod 600 ~/.ssh/id_*` i loguj, jesli perms sa zbyt otwarte.
+- Blad: klucze SSH w repo miały CRLF/BOM i ssh zwracał „invalid format”.
+  - Wymaganie: normalizuj newline do LF (`dos2unix`) i sprawdzaj `ssh-keygen -y -f key` w preflight; brak = fail‑fast z instrukcją.
+
 ## Dodatkowe wnioski (batch 246-250)
 
 - Blad: marker runtime byl tylko „gołym” hashem bez wersji/algorytmu, co utrudnialo zmiane formatu i migracje w przyszlosci.
