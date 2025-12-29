@@ -497,6 +497,8 @@ Przykład:
 - STD-089z.aa (SHOULD): `EnvironmentFile` jest tworzony w instalacji albo oznaczony jako opcjonalny (`-`), aby brak nie blokował startu.
 - STD-089z.ab (SHOULD): ustawiaj jawny `TimeoutStartSec` dla usług o długim starcie i loguj wartość.
 - STD-089z.ac (SHOULD): `Type=` w unicie odpowiada realnemu zachowaniu procesu (brak daemonize); domyślnie `simple/exec`.
+- STD-089z.ad (SHOULD): SSH loguje i wymusza politykę algorytmów kluczy (preferuj ed25519/ecdsa); legacy `ssh-rsa` tylko z jawnym opt‑in i ostrzeżeniem.
+- STD-089z.ae (SHOULD): użycie `scp` vs `sftp` jest jawne; dla legacy scp stosuj `-O` lub preferuj `rsync`/`sftp` z testem kompatybilności.
 - STD-090c (SHOULD): preflight sprawdza **narzedzia CLI** (np. `postject` w `node_modules/.bin`/PATH), nie tylko obecność modulu.
 - STD-091a (SHOULD): funkcje zalezne od architektury (np. CPUID) musza degradująco dzialac na platformach bez wsparcia (pusty/neutralny ID zamiast twardego bledu).
 - STD-092a (SHOULD): `--skip-check` jest wyraznie oznaczony jako ryzykowny i zawsze wypisuje ostrzezenie; krytyczne braki toolchaina nie powinny byc maskowane.
