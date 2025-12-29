@@ -13,6 +13,7 @@ const {
   resolveJsonSummaryPath,
   ensureSummaryFile,
   parseSummaryRows,
+  formatSummaryRow,
   listFailedTests,
   buildPlan,
   printPlan,
@@ -20,7 +21,8 @@ const {
   writeJsonSummary,
 } = require("./e2e-report");
 const { hasCommand } = require("./e2e-utils");
-const { parseList, makeRunId, formatDuration } = require("./e2e-runner-utils");
+const { loadE2EConfig, parseTestFilters } = require("./e2e-runner-config");
+const { assertEscalated, makeRunId, formatDuration } = require("./e2e-runner-utils");
 
 const SCRIPT_DIR = __dirname;
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "../../../..");
@@ -28,43 +30,6 @@ const SKIP_CODE = 77;
 
 function log(msg) {
   process.stdout.write(`[seal-e2e] ${msg}\n`);
-}
-
-function ensureEscalation() {
-  if (process.env.SEAL_E2E_ESCALATED === "1") {
-    return;
-  }
-  const uid = typeof process.getuid === "function" ? process.getuid() : null;
-  if (uid === 0) {
-    process.env.SEAL_E2E_ESCALATED = "1";
-    return;
-  }
-  if (!hasCommand("sudo")) {
-    log("ERROR: escalation required but sudo not found.");
-    process.exit(1);
-  }
-  const reexecArgs = ["-E", "env", "SEAL_E2E_ESCALATED=1", process.execPath, ...process.argv.slice(1)];
-  const nonInteractive = spawnSync("sudo", ["-n", "true"], { stdio: "ignore" });
-  if (nonInteractive.status === 0) {
-    log("Escalating via sudo...");
-    const res = spawnSync("sudo", reexecArgs, { stdio: "inherit" });
-    process.exit(res.status === null ? 1 : res.status);
-  }
-  if (!process.stdin.isTTY) {
-    log("ERROR: escalation required but no TTY; re-run with sudo or Codex escalation.");
-    process.exit(1);
-  }
-  log("Escalation required; you may be prompted.");
-  const auth = spawnSync("sudo", ["-v"], { stdio: "inherit" });
-  if (auth.status !== 0) {
-    process.exit(auth.status === null ? 1 : auth.status);
-  }
-  const res = spawnSync("sudo", reexecArgs, { stdio: "inherit" });
-  process.exit(res.status === null ? 1 : res.status);
-}
-
-function shellQuote(value) {
-  return `'${String(value).replace(/'/g, "'\\''")}'`;
 }
 
 function dirHasFiles(dir) {
@@ -78,70 +43,6 @@ function dirHasFiles(dir) {
 function setEnvDefault(env, key, value) {
   if (env[key] === undefined || env[key] === null || env[key] === "") {
     env[key] = value;
-  }
-}
-
-function loadE2EConfig(env) {
-  let cfg = env.SEAL_E2E_CONFIG || "";
-  const defaultCfg = path.join(REPO_ROOT, ".seal", "e2e.env");
-  const sampleCfg = path.join(SCRIPT_DIR, "e2e-config.env");
-  if (!cfg) {
-    if (fs.existsSync(defaultCfg)) {
-      cfg = defaultCfg;
-    } else if (fs.existsSync(sampleCfg)) {
-      cfg = sampleCfg;
-    }
-  }
-  if (!cfg) return;
-  if (!fs.existsSync(cfg)) {
-    log(`ERROR: SEAL_E2E_CONFIG points to missing file: ${cfg}`);
-    process.exit(1);
-  }
-  try {
-    fs.accessSync(cfg, fs.constants.R_OK);
-  } catch {
-    log(`ERROR: SEAL_E2E_CONFIG is not readable: ${cfg}`);
-    process.exit(1);
-  }
-  log(`Loading E2E config: ${cfg}`);
-  if (!hasCommand("bash")) {
-    log("ERROR: bash not found; cannot load E2E config.");
-    process.exit(1);
-  }
-  const configText = fs.readFileSync(cfg, "utf8");
-  const vars = new Set();
-  for (const line of configText.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)=/);
-    if (match) vars.add(match[1]);
-  }
-  if (!vars.size) return;
-  const cmd = `set -a; source ${shellQuote(cfg)}; env -0`;
-  const res = spawnSync("bash", ["-lc", cmd], {
-    env,
-    encoding: "utf8",
-    maxBuffer: 10 * 1024 * 1024,
-  });
-  if (res.status !== 0) {
-    log(`ERROR: failed to load E2E config (${cfg}).`);
-    if (res.stderr) process.stderr.write(res.stderr);
-    process.exit(1);
-  }
-  const out = res.stdout || "";
-  const entries = out.split("\0").filter(Boolean);
-  const nextEnv = {};
-  for (const entry of entries) {
-    const idx = entry.indexOf("=");
-    if (idx === -1) continue;
-    const key = entry.slice(0, idx);
-    const value = entry.slice(idx + 1);
-    nextEnv[key] = value;
-  }
-  for (const key of vars) {
-    if (Object.prototype.hasOwnProperty.call(nextEnv, key)) {
-      env[key] = nextEnv[key];
-    }
   }
 }
 
@@ -319,9 +220,9 @@ async function runCommand(cmd, args, options) {
 }
 
 async function main() {
-  ensureEscalation();
   const env = process.env;
-  loadE2EConfig(env);
+  loadE2EConfig(env, { repoRoot: REPO_ROOT, scriptDir: SCRIPT_DIR, log });
+  assertEscalated(log);
 
   const runId = env.SEAL_E2E_RUN_ID || makeRunId();
   env.SEAL_E2E_RUN_ID = runId;
@@ -450,19 +351,7 @@ async function main() {
     fs.renameSync(tmpPath, summaryLastPath);
   };
 
-  let onlyList = parseList(env.SEAL_E2E_TESTS);
-  let skipList = parseList(env.SEAL_E2E_SKIP);
-  const knownTests = new Set(manifestOrder);
-  const validateList = (label, list) => {
-    const unknown = list.filter((item) => !knownTests.has(item));
-    if (unknown.length) {
-      log(`ERROR: ${label} contains unknown tests: ${unknown.join(", ")}`);
-      log("       Check tools/seal/seal/scripts/e2e-tests.json5 for valid names.");
-      process.exit(1);
-    }
-  };
-  if (onlyList.length) validateList("SEAL_E2E_TESTS", onlyList);
-  if (skipList.length) validateList("SEAL_E2E_SKIP", skipList);
+  let { onlyList, skipList } = parseTestFilters(env, manifestOrder, log);
 
   const rerunFailed = env.SEAL_E2E_RERUN_FAILED === "1";
   const rerunFrom = env.SEAL_E2E_RERUN_FROM || summaryLastPath || summaryPath;
@@ -1038,21 +927,21 @@ async function main() {
       const category = (testByName.get(name) || {}).category || "";
       const parallel = (testByName.get(name) || {}).parallel || "0";
       const skipRisk = (testByName.get(name) || {}).skipRisk || "";
-      const desc = ((testByName.get(name) || {}).description || "").replace(/\t/g, " ");
-      const hint = ((testByName.get(name) || {}).failHint || "").replace(/\t/g, " ");
+      const desc = (testByName.get(name) || {}).description || "";
+      const hint = (testByName.get(name) || {}).failHint || "";
       const logPath = testLogs[name] || "";
-      const line = [
-        summaryGroup,
-        name,
+      const line = formatSummaryRow({
+        group: summaryGroup,
+        test: name,
         status,
-        dur,
+        duration: dur,
         category,
         parallel,
         skipRisk,
-        desc,
+        description: desc,
         logPath,
-        hint,
-      ].join("\t");
+        failHint: hint,
+      });
       fs.appendFileSync(summaryPath, `${line}\n`, "utf8");
     }
   };

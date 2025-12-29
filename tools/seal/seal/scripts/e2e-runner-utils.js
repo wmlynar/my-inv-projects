@@ -51,6 +51,19 @@ function safeName(raw) {
   return `${sanitizeName(raw)}-${shortHash(raw)}`;
 }
 
+function assertEscalated(log) {
+  if (process.env.SEAL_E2E_REQUIRE_ESCALATION === "0") {
+    return;
+  }
+  const uid = typeof process.getuid === "function" ? process.getuid() : null;
+  if (uid === 0 || process.env.SEAL_E2E_ESCALATED === "1") {
+    return;
+  }
+  const logger = typeof log === "function" ? log : (msg) => process.stdout.write(`${msg}\n`);
+  logger("ERROR: escalation required; run the shell wrapper or use sudo.");
+  process.exit(1);
+}
+
 module.exports = {
   parseList,
   makeRunId,
@@ -59,4 +72,5 @@ module.exports = {
   sanitizeName,
   shortHash,
   safeName,
+  assertEscalated,
 };

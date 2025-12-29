@@ -97,6 +97,27 @@ function parseSummaryRows(summaryPath) {
   return rows;
 }
 
+function sanitizeSummaryField(value) {
+  if (value === undefined || value === null) return "";
+  return String(value).replace(/\t/g, " ").replace(/\r?\n/g, " ");
+}
+
+function formatSummaryRow(row) {
+  const fields = [
+    row.group,
+    row.test,
+    row.status,
+    row.duration,
+    row.category,
+    row.parallel,
+    row.skipRisk,
+    row.description,
+    row.logPath,
+    row.failHint,
+  ].map(sanitizeSummaryField);
+  return fields.join("\t");
+}
+
 function listFailedTests(summaryPath) {
   const rows = parseSummaryRows(summaryPath);
   const failed = new Set();
@@ -220,6 +241,7 @@ module.exports = {
   resolveJsonSummaryPath,
   ensureSummaryFile,
   parseSummaryRows,
+  formatSummaryRow,
   listFailedTests,
   buildPlan,
   printPlan,

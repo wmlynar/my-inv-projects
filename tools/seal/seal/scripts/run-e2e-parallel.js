@@ -15,15 +15,16 @@ const {
   resolveJsonSummaryPath,
   ensureSummaryFile,
   parseSummaryRows,
+  formatSummaryRow,
   listFailedTests,
   buildPlan,
   printPlan,
   buildJsonSummary,
   writeJsonSummary,
 } = require("./e2e-report");
-const { hasCommand } = require("./e2e-utils");
+const { loadE2EConfig, parseTestFilters } = require("./e2e-runner-config");
 const {
-  parseList,
+  assertEscalated,
   makeRunId,
   formatDuration,
   normalizeFlag,
@@ -32,39 +33,6 @@ const {
 
 function log(msg) {
   process.stdout.write(`[seal-e2e-parallel] ${msg}\n`);
-}
-
-function ensureEscalation() {
-  if (process.env.SEAL_E2E_ESCALATED === "1") {
-    return;
-  }
-  const uid = typeof process.getuid === "function" ? process.getuid() : null;
-  if (uid === 0) {
-    process.env.SEAL_E2E_ESCALATED = "1";
-    return;
-  }
-  if (!hasCommand("sudo")) {
-    log("ERROR: escalation required but sudo not found.");
-    process.exit(1);
-  }
-  const reexecArgs = ["-E", "env", "SEAL_E2E_ESCALATED=1", process.execPath, ...process.argv.slice(1)];
-  const nonInteractive = spawnSync("sudo", ["-n", "true"], { stdio: "ignore" });
-  if (nonInteractive.status === 0) {
-    log("Escalating via sudo...");
-    const res = spawnSync("sudo", reexecArgs, { stdio: "inherit" });
-    process.exit(res.status === null ? 1 : res.status);
-  }
-  if (!process.stdin.isTTY) {
-    log("ERROR: escalation required but no TTY; re-run with sudo or Codex escalation.");
-    process.exit(1);
-  }
-  log("Escalation required; you may be prompted.");
-  const auth = spawnSync("sudo", ["-v"], { stdio: "inherit" });
-  if (auth.status !== 0) {
-    process.exit(auth.status === null ? 1 : auth.status);
-  }
-  const res = spawnSync("sudo", reexecArgs, { stdio: "inherit" });
-  process.exit(res.status === null ? 1 : res.status);
 }
 
 function intersectLists(left, right) {
@@ -103,7 +71,6 @@ function detectCgroupCpuLimit() {
   return null;
 }
 
-
 function writeCombinedSummary(summaryPath, groupOrder, groupSummary, syntheticRows) {
   if (!summaryPath) return;
   ensureSummaryFile(summaryPath, { append: false });
@@ -126,18 +93,7 @@ function writeCombinedSummary(summaryPath, groupOrder, groupSummary, syntheticRo
       if (!row || !row.test || writtenTests.has(row.test)) {
         continue;
       }
-      const line = [
-        row.group,
-        row.test,
-        row.status,
-        row.duration,
-        row.category,
-        row.parallel,
-        row.skipRisk,
-        row.description,
-        row.logPath,
-        row.failHint,
-      ].join("\t");
+      const line = formatSummaryRow(row);
       fs.appendFileSync(summaryPath, `${line}\n`, "utf8");
       writtenTests.add(row.test);
     }
@@ -177,8 +133,9 @@ function spawnRunner(env, label) {
 }
 
 async function main() {
-  ensureEscalation();
   const env = process.env;
+  loadE2EConfig(env, { repoRoot: REPO_ROOT, scriptDir: SCRIPT_DIR, log });
+  assertEscalated(log);
   const runId = env.SEAL_E2E_RUN_ID || makeRunId();
   env.SEAL_E2E_RUN_ID = runId;
   const runStart = Date.now();
@@ -249,23 +206,7 @@ async function main() {
   const { tests, order: manifestOrder } = manifestData;
   const testByName = new Map(tests.map((item) => [item.name, item]));
 
-  let onlyList = parseList(env.SEAL_E2E_TESTS);
-  let skipList = parseList(env.SEAL_E2E_SKIP);
-  const knownTests = new Set(manifestOrder);
-  const validateList = (label, list) => {
-    const unknown = list.filter((item) => !knownTests.has(item));
-    if (unknown.length) {
-      log(`ERROR: ${label} contains unknown tests: ${unknown.join(", ")}`);
-      log("       Check tools/seal/seal/scripts/e2e-tests.json5 for valid names.");
-      process.exit(1);
-    }
-  };
-  if (onlyList.length) {
-    validateList("SEAL_E2E_TESTS", onlyList);
-  }
-  if (skipList.length) {
-    validateList("SEAL_E2E_SKIP", skipList);
-  }
+  let { onlyList, skipList } = parseTestFilters(env, manifestOrder, log);
 
   const planMode = normalizeFlag(env.SEAL_E2E_PLAN || env.SEAL_E2E_EXPLAIN, "0") === "1";
   const capabilities = detectCapabilities(env);
@@ -544,27 +485,27 @@ async function main() {
         const task = runGroup(group, groupTestsFiltered.get(group) || [], root);
         running.set(group, task.child);
         task.promise.then((result) => {
-            const duration = Math.floor((Date.now() - start) / 1000);
-            groupDurations[group] = duration;
-            if (result.code === 0) {
-              groupStatus[group] = "ok";
-            } else {
-              groupStatus[group] = "failed";
-              failures += 1;
-              if (failFast === "1" && !failFastTriggered) {
-                failFastTriggered = true;
-                log("Fail-fast enabled; stopping remaining groups...");
-                for (const [otherGroup, child] of running.entries()) {
-                  if (otherGroup !== group && child && child.kill) {
-                    child.kill("SIGTERM");
-                  }
-                }
-                while (queue.length) {
-                  markGroupAborted(queue.shift());
+          const duration = Math.floor((Date.now() - start) / 1000);
+          groupDurations[group] = duration;
+          if (result.code === 0) {
+            groupStatus[group] = "ok";
+          } else {
+            groupStatus[group] = "failed";
+            failures += 1;
+            if (failFast === "1" && !failFastTriggered) {
+              failFastTriggered = true;
+              log("Fail-fast enabled; stopping remaining groups...");
+              for (const [otherGroup, child] of running.entries()) {
+                if (otherGroup !== group && child && child.kill) {
+                  child.kill("SIGTERM");
                 }
               }
+              while (queue.length) {
+                markGroupAborted(queue.shift());
+              }
             }
-          })
+          }
+        })
           .finally(() => {
             running.delete(group);
             if (queue.length) {
@@ -621,20 +562,20 @@ async function main() {
         testSum += row.duration || 0;
       }
       log(`Group ${group}  ${status}  (tests=${formatDuration(testSum)}, wall=${formatDuration(wallTime)})`);
-    if (rows.length) {
-      log("  Test | Status | Time | Category | SkipRisk | Description");
-      for (const row of rows) {
-        log(`  - ${row.test} | ${row.status} | ${formatDuration(row.duration || 0)} | ${row.category} | ${row.skipRisk} | ${row.description}`);
-      }
-    } else if (!hasTests) {
-      if (status === "aborted") {
-        log("  - aborted (fail-fast)");
-      } else {
-        log("  - no summary data");
+      if (rows.length) {
+        log("  Test | Status | Time | Category | SkipRisk | Description");
+        for (const row of rows) {
+          log(`  - ${row.test} | ${row.status} | ${formatDuration(row.duration || 0)} | ${row.category} | ${row.skipRisk} | ${row.description}`);
+        }
+      } else if (!hasTests) {
+        if (status === "aborted") {
+          log("  - aborted (fail-fast)");
+        } else {
+          log("  - no summary data");
+        }
       }
     }
   }
-}
 
   function printCombinedSummary(summaryRows, orderList) {
     const statusByTest = {};
