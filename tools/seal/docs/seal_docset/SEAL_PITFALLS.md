@@ -2488,6 +2488,13 @@
 - Blad: unit `Type` nie odpowiadał zachowaniu procesu (np. forking/daemonizing), co kończyło się fałszywym „start ok” lub restart loop.
   - Wymaganie: procesy uruchamiane przez Seala nie daemonizują się; ustaw `Type=simple`/`exec` i testuj rzeczywisty stan procesu.
 
+## Dodatkowe wnioski (batch 306-310)
+
+- Blad: nowe OpenSSH (>=8.8) blokowało `ssh-rsa` (host key i/lub user key), więc auth do starszych serwerów nagle przestał działać.
+  - Wymaganie: preferuj nowoczesne klucze (ed25519/ecdsa); w legacy przypadkach ustaw jawnie `HostKeyAlgorithms=+ssh-rsa` i/lub `PubkeyAcceptedAlgorithms=+ssh-rsa` (z logiem ostrzeżenia).
+- Blad: `scp` w nowych OpenSSH domyślnie używa SFTP, co zmienia zachowanie i bywa niekompatybilne z ograniczonymi serwerami.
+  - Wymaganie: jeśli wymagany jest legacy scp, używaj `scp -O` (force legacy protocol) lub przejdź na `rsync`/`sftp` z jasnym testem kompatybilności.
+
 ## Dodatkowe wnioski (batch 246-250)
 
 - Blad: marker runtime byl tylko „gołym” hashem bez wersji/algorytmu, co utrudnialo zmiane formatu i migracje w przyszlosci.
@@ -2565,3 +2572,12 @@
   - Wymaganie: preflight sprawdza, ze parent `SEAL_E2E_SUMMARY_PATH` istnieje i jest zapisywalny, a docelowa sciezka jest plikiem lub nie istnieje.
 - Blad: nazwy testow/grup rozniace sie tylko wielkoscia liter powodowaly kolizje katalogow logow na FS case‑insensitive (macOS/Windows).
   - Wymaganie: nazwy katalogow logow sa sanitizowane i wzbogacone o krótki hash, aby uniknac kolizji niezaleznie od FS.
+
+## Dodatkowe wnioski (batch 331-335)
+
+- Blad: `SEAL_E2E_ISOLATE_HOME=1` izolowal HOME, ale nie ustawial `XDG_RUNTIME_DIR`, przez co testy z `systemctl --user` failowaly mimo poprawnej konfiguracji.
+  - Wymaganie: w trybie izolacji HOME ustawiaj `XDG_RUNTIME_DIR` (tymczasowy) albo jawnie skipuj testy user‑systemd z czytelnym powodem.
+- Blad: `SEAL_E2E_HOME_KEEP=1` pozostawial katalogi HOME na stale, co z czasem zapychalo dysk lub zostawialo dane testowe.
+  - Wymaganie: `HOME_KEEP` uzywaj tylko do debug; loguj sciezke i dodaj instrukcje cleanup/retention.
+- Blad: izolowane HOME bylo wspoldzielone miedzy runami (brak per‑run sufiksu), przez co pliki z poprzednich uruchomien wplywaly na wyniki.
+  - Wymaganie: izolowany HOME jest zawsze unikalny per‑run (np. suffix z `RUN_ID`) i sprzatany w `trap`, chyba ze `HOME_KEEP=1`.
