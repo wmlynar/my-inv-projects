@@ -46,3 +46,7 @@
 - `npx seal verify --explain` prints a human-readable verification checklist.
 - `npx seal run-local --sealed` runs the latest sealed build from `seal-out/release`.
 - `npx seal deploy local --bootstrap` deploys and installs the example as a **user** systemd service (`seal-example-sandbox.service`).
+
+## Long-Running Commands
+- Use the idle-timeout wrapper with a 120s threshold for long-running commands:
+  - `tools/seal/seal/scripts/run-with-idle-timeout.sh 120 <command...>`

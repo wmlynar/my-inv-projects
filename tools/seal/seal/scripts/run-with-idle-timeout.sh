@@ -56,6 +56,7 @@ while kill -0 "$cmd_pid" 2>/dev/null; do
         printf '\n' > "/proc/$cmd_pid/fd/0" || true
       fi
       probe_sent_at="$now"
+      sleep 2
       continue
     fi
     if [ "$probe_sent_at" -gt 0 ] && [ $((now - probe_sent_at)) -lt "$probe_wait" ]; then
