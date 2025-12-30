@@ -17,6 +17,10 @@ Ten dokument opisuje, jak uruchamiac testy E2E w kilku trybach: Docker (2 konten
 2) Runner E2E sam wykrywa potrzebe eskalacji i uruchamia sie przez `sudo`,
    chyba ze ustawisz `SEAL_E2E_REQUIRE_ESCALATION=0`.
 3) Testy uruchamiaj z repo root.
+4) Gdy testy sie "zawieszaja" bez outputu, uzyj wrappera z idle-timeout:
+   `tools/seal/seal/scripts/run-with-idle-timeout.sh 300 tools/seal/seal/scripts/e2e.sh --local`
+5) E2E loguje heartbeat co N sekund (domyslnie 60) aby watchdog nie ubijal
+   dlugich etapow: `SEAL_E2E_RUNNER_HEARTBEAT_SEC=60` (0 = wylacz).
 
 ## Krytyczne: higiena dysku i tmp
 

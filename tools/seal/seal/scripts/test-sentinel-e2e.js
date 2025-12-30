@@ -676,6 +676,7 @@ async function testSentinelMismatchDeferred(ctx) {
       runTimeoutMs: ctx.runTimeoutMs,
       expectCode: 222,
       expireTimeoutMs: timeoutMs,
+      requireReady: false,
     });
   } finally {
     if (outRoot) fs.rmSync(outRoot, { recursive: true, force: true });
@@ -713,6 +714,7 @@ async function testSentinelMissingDeferred(ctx) {
       runTimeoutMs: ctx.runTimeoutMs,
       expectCode: 222,
       expireTimeoutMs: timeoutMs,
+      requireReady: false,
     });
   } finally {
     if (outRoot) fs.rmSync(outRoot, { recursive: true, force: true });

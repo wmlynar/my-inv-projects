@@ -43,7 +43,7 @@
           "lldb",
           "strace",
           "ltrace",
-          "rr",
+          "/rr",
           "frida"
         ],
         "ptraceGuard": {

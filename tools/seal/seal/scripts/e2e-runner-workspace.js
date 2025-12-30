@@ -10,6 +10,7 @@ function buildSafeRoots(env, extraRoots = []) {
   const roots = new Set();
   const osTmp = os.tmpdir();
   if (osTmp) roots.add(osTmp);
+  roots.add("/tmp");
   roots.add("/var/tmp");
   roots.add("/dev/shm");
   const extras = [
@@ -56,8 +57,28 @@ function prepareExampleWorkspace(options) {
   const env = options.env || process.env;
   const log = options.log;
   const repoRoot = options.repoRoot || "";
-  const exampleRootBase = options.exampleRootBase || "";
-  const fallbackExampleRoot = env.SEAL_E2E_TMP_ROOT || os.tmpdir();
+  const exampleSrc = path.join(repoRoot, "tools", "seal", "example");
+  let exampleRootBase = options.exampleRootBase || "";
+  const hardTmp = "/tmp";
+  let fallbackExampleRoot = env.SEAL_E2E_TMP_ROOT || os.tmpdir();
+  if (fallbackExampleRoot && (fallbackExampleRoot === exampleSrc || fallbackExampleRoot.startsWith(`${exampleSrc}${path.sep}`))) {
+    if (typeof log === "function") {
+      log(`WARN: SEAL_E2E_TMP_ROOT is inside example source (${fallbackExampleRoot}); using ${hardTmp}.`);
+    }
+    fallbackExampleRoot = hardTmp;
+  }
+  if (fallbackExampleRoot && (fallbackExampleRoot === exampleSrc || fallbackExampleRoot.startsWith(`${exampleSrc}${path.sep}`))) {
+    if (typeof log === "function") {
+      log(`WARN: tmp fallback is still inside example source (${fallbackExampleRoot}); using /var/tmp.`);
+    }
+    fallbackExampleRoot = "/var/tmp";
+  }
+  if (exampleRootBase && (exampleRootBase === exampleSrc || exampleRootBase.startsWith(`${exampleSrc}${path.sep}`))) {
+    if (typeof log === "function") {
+      log(`WARN: exampleRootBase is inside example source (${exampleRootBase}); using tmp fallback.`);
+    }
+    exampleRootBase = "";
+  }
   const defaultExampleRoot = exampleRootBase
     ? path.join(exampleRootBase, "single")
     : path.join(fallbackExampleRoot, "seal-example-e2e");
@@ -65,7 +86,6 @@ function prepareExampleWorkspace(options) {
   const cleanupExample = !env.SEAL_E2E_EXAMPLE_ROOT;
   const copyExample = isEnabled(env, "SEAL_E2E_COPY_EXAMPLE", "1");
   const safeRoots = buildSafeRoots(env, [exampleRootBase]);
-  const exampleSrc = path.join(repoRoot, "tools", "seal", "example");
 
   if (copyExample) {
     if (typeof log === "function") {

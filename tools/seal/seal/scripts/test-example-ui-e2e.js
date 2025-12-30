@@ -178,7 +178,16 @@ async function runUiTest({ url, buildId, headless, artifactsDir, captureTrace })
     throw new Error("Missing dependency: playwright. Install: npm --prefix tools/seal/seal install -D playwright && npx playwright install");
   }
 
-  const browser = await playwright.chromium.launch({ headless });
+  const launchArgs = [
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
+    "--disable-software-rasterizer",
+    "--no-zygote",
+  ];
+  if (process.getuid && process.getuid() === 0) {
+    launchArgs.push("--no-sandbox", "--disable-setuid-sandbox");
+  }
+  const browser = await playwright.chromium.launch({ headless, args: launchArgs });
   let context;
   let page;
   const consoleLogs = [];
@@ -217,7 +226,14 @@ async function runUiTest({ url, buildId, headless, artifactsDir, captureTrace })
     );
 
     await page.fill("#md5Input", "abc");
-    await page.click("#btnMd5");
+    await page.waitForFunction(
+      () => {
+        const btn = document.querySelector("#btnMd5");
+        return btn && !btn.disabled;
+      },
+      { timeout: 10_000 }
+    );
+    await page.click("#btnMd5", { timeout: 10_000, force: true });
     await page.waitForFunction(
       () => {
         const el = document.querySelector("#md5Out");
@@ -226,7 +242,14 @@ async function runUiTest({ url, buildId, headless, artifactsDir, captureTrace })
       { timeout: 10_000 }
     );
 
-    await page.click("#btnExternal");
+    await page.waitForFunction(
+      () => {
+        const btn = document.querySelector("#btnExternal");
+        return btn && !btn.disabled;
+      },
+      { timeout: 10_000 }
+    );
+    await page.click("#btnExternal", { timeout: 10_000, force: true });
     await page.waitForFunction(
       () => {
         const el = document.querySelector("#externalOut");

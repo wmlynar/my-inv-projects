@@ -187,7 +187,12 @@ async function main() {
   }
 
   const seedUser = env.SUDO_USER || env.USER || "unknown";
-  const seedRootDefault = path.join(cacheRoot, "e2e-seed", seedUser);
+  const exampleSrc = path.join(REPO_ROOT, "tools", "seal", "example");
+  const cacheUnderExample = cacheRoot && (cacheRoot === exampleSrc || cacheRoot.startsWith(`${exampleSrc}${path.sep}`));
+  const seedTmpBase = fs.existsSync("/tmp") ? "/tmp" : "/var/tmp";
+  const seedRootDefault = cacheUnderExample
+    ? path.join(seedTmpBase, "seal-e2e-seed", seedUser)
+    : path.join(cacheRoot, "e2e-seed", seedUser);
   const seedRoot = env.SEAL_E2E_SEED_ROOT || seedRootDefault;
 
   let safeRootsEnv = env.SEAL_E2E_SAFE_ROOTS || "";
@@ -221,7 +226,16 @@ async function main() {
     isParallelChild: isEnabled(env, "SEAL_E2E_PARALLEL_CHILD"),
   });
 
-  const exampleRootParent = exampleRootBase || tmpRoot || os.tmpdir();
+  let exampleRootParent = exampleRootBase || tmpRoot || os.tmpdir();
+  if (exampleRootParent) {
+    const exampleSrc = path.join(REPO_ROOT, "tools", "seal", "example");
+    if (exampleRootParent === exampleSrc || exampleRootParent.startsWith(`${exampleSrc}${path.sep}`)) {
+      const base = fs.existsSync("/tmp") ? "/tmp" : "/var/tmp";
+      exampleRootParent = path.join(base, "seal-e2e-workers", runId);
+      fs.mkdirSync(exampleRootParent, { recursive: true });
+      log(`WARN: exampleRootParent inside example source; using ${exampleRootParent}`);
+    }
+  }
 
   let defaultJobs = 4;
   if (Array.isArray(os.cpus()) && os.cpus().length) {
@@ -314,6 +328,7 @@ async function main() {
       SEAL_E2E_SETUP_ONLY: "1",
       SEAL_E2E_EXAMPLE_ROOT: seedRoot,
       SEAL_E2E_COPY_EXAMPLE: "1",
+      SEAL_E2E_RUN_LAYOUT: "concurrent",
       SEAL_E2E_SAFE_ROOTS: safeRootsEnv,
     };
     await new Promise((resolve, reject) => {
@@ -442,6 +457,7 @@ async function main() {
       SEAL_E2E_INSTALL_DEPS: "0",
       SEAL_E2E_INSTALL_PACKERS: "0",
       SEAL_E2E_INSTALL_OBFUSCATORS: "0",
+      SEAL_E2E_RUN_LAYOUT: "concurrent",
       SEAL_E2E_SSH: remoteE2e,
       SEAL_E2E_GROUP: group,
       SEAL_E2E_SUMMARY_PATH: summaryFile,

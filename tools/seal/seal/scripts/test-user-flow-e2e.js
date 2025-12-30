@@ -27,6 +27,12 @@ const SEAL_BIN = path.resolve(__dirname, "..", "bin", "seal.js");
 
 const { log, error } = createLogger("user-flow-e2e");
 
+function pickTmpBase() {
+  if (fs.existsSync("/tmp")) return "/tmp";
+  if (fs.existsSync("/var/tmp")) return "/var/tmp";
+  return os.tmpdir();
+}
+
 function fail(msg) {
   error(msg);
   process.exit(1);
@@ -317,7 +323,7 @@ async function main() {
     fail(`Missing example root: ${EXAMPLE_ROOT}`);
   }
 
-  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-user-flow-"));
+  const tmpRoot = fs.mkdtempSync(path.join(pickTmpBase(), "seal-user-flow-"));
   try {
     copyExampleSkeleton(EXAMPLE_ROOT, tmpRoot);
     const nm = ensureNodeModules(EXAMPLE_ROOT, tmpRoot);

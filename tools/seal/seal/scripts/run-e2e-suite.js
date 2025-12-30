@@ -307,6 +307,11 @@ async function withDirLock(lockPath, fn) {
   }
 }
 
+function formatElapsedMs(startMs) {
+  const elapsedSec = Math.max(0, Math.floor((Date.now() - startMs) / 1000));
+  return formatDuration(elapsedSec);
+}
+
 async function runCommand(cmd, args, options) {
   if (!options.logFile) {
     const res = spawnSync(cmd, args, { env: options.env, cwd: options.cwd, stdio: "inherit" });
@@ -322,6 +327,10 @@ async function runCommand(cmd, args, options) {
     ensureDir(path.dirname(options.logFile));
     const logStream = fs.createWriteStream(options.logFile);
     let settled = false;
+    const label = options.label ? String(options.label) : "";
+    const heartbeatSec = Number(options.heartbeatSec || 0);
+    const startedAt = Date.now();
+    let heartbeatTimer = null;
     const forward = (chunk, target) => {
       logStream.write(chunk);
       target.write(chunk);
@@ -329,6 +338,7 @@ async function runCommand(cmd, args, options) {
     const finish = (code, extraMessage) => {
       if (settled) return;
       settled = true;
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
       if (extraMessage) {
         const line = `${extraMessage}\n`;
         logStream.write(line);
@@ -337,6 +347,14 @@ async function runCommand(cmd, args, options) {
       logStream.end();
       resolve(code);
     };
+    if (heartbeatSec > 0) {
+      heartbeatTimer = setInterval(() => {
+        const line = `[seal-e2e] HEARTBEAT: ${label || "test"} running (${formatElapsedMs(startedAt)})\n`;
+        logStream.write(line);
+        process.stdout.write(line);
+      }, Math.max(1, Math.floor(heartbeatSec * 1000)));
+      heartbeatTimer.unref();
+    }
     child.stdout.on("data", (chunk) => forward(chunk, process.stdout));
     child.stderr.on("data", (chunk) => forward(chunk, process.stderr));
     child.on("error", (err) => {
@@ -415,6 +433,7 @@ async function main() {
   env.SEAL_E2E_LOG_DIR = logDir;
   const logTailLines = Number(env.SEAL_E2E_LOG_TAIL_LINES || "40");
   const logFiltered = env.SEAL_E2E_LOG_FILTERED || "1";
+  const heartbeatSec = Number(env.SEAL_E2E_RUNNER_HEARTBEAT_SEC || "60");
   if (setupOnly) {
     logCapture = "0";
   }
@@ -465,6 +484,9 @@ async function main() {
       { key: "skip", value: env.SEAL_E2E_SKIP || "<none>" },
       { key: "limited_host", value: env.SEAL_E2E_LIMITED_HOST || 0 },
       { key: "fail_fast", value: failFast },
+    ]),
+    formatConfigLine([
+      { key: "heartbeat_sec", value: Number.isFinite(heartbeatSec) ? String(heartbeatSec) : "0" },
     ]),
     formatConfigLine([
       { key: "summary", value: summaryPath || "<disabled>" },
@@ -620,6 +642,8 @@ async function main() {
     exampleRootBase,
     log,
   });
+  if (runRoot) ensureDir(runRoot);
+  if (tmpRoot) ensureDir(tmpRoot);
 
   setupRunCleanup({
     env,
@@ -867,6 +891,8 @@ async function main() {
       env: { ...env, ...extraEnv },
       cwd: REPO_ROOT,
       logFile,
+      label: name,
+      heartbeatSec,
     });
     const duration = Math.floor((Date.now() - start) / 1000);
     testDurations[name] = duration;
