@@ -31,6 +31,7 @@ const {
   buildRunConfigLines,
   buildTimingRows,
   isEnabled,
+  logE2EDiskSummary,
 } = require("./e2e-runner-utils");
 const { applyToolsetDefaults, applyE2EFeatureFlags, applySshDefaults } = require("./e2e-runner-env");
 const { preparePlan, applyRerunFailedFilters } = require("./e2e-runner-plan");
@@ -1019,6 +1020,8 @@ async function main() {
     runEnd: Date.now(),
     log,
   });
+
+  logE2EDiskSummary(env, { e2eRoot, log });
 
   if (failures > 0) {
     log(`E2E failures: ${failures}`);

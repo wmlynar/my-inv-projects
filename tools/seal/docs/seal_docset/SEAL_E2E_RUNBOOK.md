@@ -50,6 +50,9 @@ nie sprzatac. Ponizej jest lista bledow, napraw oraz zasad zapobiegania.
 - Po debugowaniu zawsze sprzataj: `rm -rf tools/seal/example/seal-out/e2e/run tools/seal/example/seal-out/e2e/concurrent-runs`.
 - Alternatywnie: `seal clean runs` (tylko project).
 - Regularnie monitoruj rozmiar: `du -sh tools/seal/example/seal-out/e2e`.
+- Raport dysku po runie: `SEAL_E2E_DISK_SUMMARY=1` (domyslnie) i prog ostrzezenia
+  `SEAL_E2E_SEAL_OUT_WARN_GB` (domyslnie 10). Ustaw `SEAL_E2E_DISK_SUMMARY=0`,
+  jesli chcesz to wylaczyc.
 
 ## Docker E2E (2 kontenery: builder + host)
 

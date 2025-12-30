@@ -31,6 +31,18 @@ seal clean-global-cache docker
 seal clean-global-cache all
 ```
 
+Tabela: scope → komenda → katalog (skrot)
+| Scope | Komenda | Katalog |
+| --- | --- | --- |
+| project/all | `seal clean` | `seal-out/` |
+| project/cache | `seal clean cache` | `seal-out/cache/` |
+| project/e2e | `seal clean e2e` | `seal-out/e2e/` |
+| project/runs | `seal clean runs` | `seal-out/e2e/run/` + `seal-out/e2e/concurrent-runs/` |
+| global | `seal clean-global-cache global` | `~/.cache/seal` + toolchain caches |
+| docker | `seal clean-global-cache docker` | `SEAL_DOCKER_E2E_CACHE_DIR` (domyslnie `/var/tmp/seal-e2e-cache`) |
+| playwright | `seal clean-global-cache playwright` | `PLAYWRIGHT_BROWSERS_PATH` / XDG cache |
+| global/all | `seal clean-global-cache all` | global + docker + playwright |
+
 Uwagi:
 - `seal clean` (bez scope) usuwa caly `seal-out/`.
 - `seal clean e2e` usuwa `seal-out/e2e` (projekt).
@@ -148,6 +160,11 @@ rm -rf /var/tmp/seal-e2e-cache
 ```
 
 ## 7) Kontrola rozmiaru
+Ostrzezenie rozmiaru `seal-out/` po E2E:
+- `SEAL_E2E_SEAL_OUT_WARN_GB` (domyslnie `10`) - loguje WARN jesli `seal-out/` przekracza prog.
+- `SEAL_E2E_SEAL_OUT_WARN_GB=0` - wylacza ostrzezenie.
+- `SEAL_E2E_DISK_SUMMARY=0` - wylacza caly raport dysku po E2E.
+
 Najprostszy audyt:
 ```
 du -sh seal-out/cache seal-out/e2e ~/.cache/seal /var/tmp/seal-e2e-cache 2>/dev/null

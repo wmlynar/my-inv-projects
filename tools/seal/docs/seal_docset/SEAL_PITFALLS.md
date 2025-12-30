@@ -1479,10 +1479,60 @@
   - Wymaganie: E2E loguje zuzycie dysku przed/po runie i ma retention/limit (liczba/rozmiar/TTL) dla cache/logow/artefaktow.
   - Wymaganie: cache E2E jest w dedykowanym katalogu w `seal-out/e2e/cache` (lub `SEAL_E2E_CACHE_DIR`), latwym do wyczyszczenia; dokumentuj szybki cleanup.
   - Wymaganie: gdy zabraknie miejsca (`ENOSPC`), testy podaja konkretne kroki cleanup (cache, volumes, obrazy) zamiast ogolnego bledu.
+- Blad: brak prostego, powtarzalnego sygnalu o rosnieciu `seal-out/` powodowal, ze problem wychodzil dopiero po zapełnieniu dysku.
+  - Wymaganie: po E2E loguj rozmiar `seal-out/e2e` i ostrzegaj, gdy `seal-out/` przekracza prog
+    (konfigurowalny w E2E, domyslnie 10GB).
+  - Wymaganie: ostrzezenie musi byc E2E‑specyficzne (`SEAL_E2E_*`), aby nie mieszac E2E z CLI.
 - Blad: brak jawnej komendy sprzatania cache powodowal, ze uzytkownik nie wiedzial co czyscic i gdzie rosnie.
   - Wymaganie: udostepnij `seal clean` (projekt) oraz `seal clean-global-cache <scope>` (global), i dokumentuj scope/efekty.
   - Wymaganie: komendy czyszczenia loguja docelowe sciezki (bez zgadywania) i nie dotykaja katalogow spoza scope.
   - Wymaganie: nowy cache dodaje wpis do `SEAL_CACHE_GUIDE` i zakres do `seal clean-global-cache <scope>` (lub jawne "nie dotyczy").
+- Blad: mieszanie flag/konfiguracji E2E z CLI (build/deploy) powodowalo zamieszanie i ryzyko niezamierzonego zachowania narzedzia.
+  - Wymaganie: wszystkie flagi E2E maja prefix `SEAL_E2E_*` i sa dokumentowane tylko w E2E runbooku.
+  - Wymaganie: config E2E nie moze zmieniac semantyki komend CLI (build/deploy); dotyczy tylko test runnera.
+- Blad: duplikacja logiki (np. rozmiary dysku) w kilku runnerach prowadziła do dryfu i niespójnych logów.
+  - Wymaganie: wspolna logika E2E jest w jednym helperze, a runnery tylko ja wywoluja.
+- Blad: brak jawnej dokumentacji domyslnych wartosci E2E powodowal, ze uzytkownik nie wiedzial, co tak naprawde jest aktywne.
+  - Wymaganie: wszystkie domyslne flagi E2E maja wpis w `e2e-config.env` oraz sa streszczone w runbooku.
+- Blad: ostrzezenia o fallbackach (np. busy run, zewnetrzny tmp) byly niewidoczne w logach podsumowania.
+  - Wymaganie: fallback zawsze loguje ostrzezenie na STDOUT i jest widoczny w summary/koncu runa.
+- Blad: cleanup po bledzie/kill nie byl gwarantowany, co zostawialo tymczasowe katalogi po nieudanych runach.
+  - Wymaganie: cleanup jest w `finally` i uruchamia sie takze po wyjatkach/exit(1).
+  - Wymaganie: tryb debug (`KEEP_TMP`/`KEEP_RUNS`) jest jawny i logowany w naglowku.
+- Blad: brak limitu/ostrzezenia na wzrost cache w CI powodowal nagle failure na kolejnych jobach.
+  - Wymaganie: w CI raportuj rozmiar cache po runie i failuj/ostrzegaj po przekroczeniu progu.
+- Blad: brak walidacji konfliktu runow (np. rownolegly start) prowadzil do nadpisan i losowych failow.
+  - Wymaganie: zawsze uzywaj locka dla shared run i jasnego fallbacku do `concurrent-runs`.
+- Blad: rozproszone flagi (legacy + nowe) tworzyly niejednoznaczny stan (np. SEAL_E2E_PARALLEL vs SEAL_E2E_RUN_MODE).
+  - Wymaganie: legacy flagi sa mapowane do nowego API i logowane jako "alias".
+  - Wymaganie: dokumentuj kanoniczne flagi, a legacy tylko jako kompatybilnosc.
+- Blad: brak czytelnego, jednolitego opisu katalogow (run/cache/logs/tmp) powodowal zgadywanie, gdzie co lezy.
+  - Wymaganie: utrzymuj jedna "mape katalogow" w dokumentacji i zawsze ja aktualizuj przy zmianach.
+- Blad: brak twardych guardow na sciezki cleanupu mogl skutkowac czyszczeniem poza projektem.
+  - Wymaganie: wszystkie rm -rf przechodza przez guard-helper i loguja docelowa sciezke.
+- Blad: brak jednoznacznego opisu retencji/keep flags powodowal, ze uzytkownicy zostawiali dane nie wiedzac o kosztach.
+  - Wymaganie: flagi `KEEP_*` musza byc jawnie oznaczone jako debug-only i logowane na starcie runa.
+  - Wymaganie: kazda flaga keep ma wskazana komenda/porada cleanup.
+- Blad: nie było szybkiego sposobu, by sprawdzic czy E2E zostawilo pliki poza root.
+  - Wymaganie: dodaj "leak check" w E2E lub checkliste w runbooku (tmp/cache/logs poza `seal-out/e2e`).
+- Blad: brak konsekwentnych nazw katalogow "run/logs/tmp" w kodzie i docs utrudnial automatyczny cleanup.
+  - Wymaganie: uzywaj ustandaryzowanej struktury run root i nie wprowadzaj nowych nazw bez aktualizacji docs.
+- Blad: brak jednoznacznego opisu co jest cache, a co artefaktem tymczasowym powodowal bledne czyszczenia (np. usuwanie cache build w srodku runa).
+  - Wymaganie: dokumentuj rozdzial "cache vs tmp vs artefakty" i trzymaj to w kodzie/cleanup.
+- Blad: brak testu regresyjnego na "disk summary" i ostrzezenia powodowal, ze logi mialy czasem inne nazwy lub znikały.
+  - Wymaganie: E2E ma test/asserte na obecność podsumowania i ostrzezenia przy przekroczonym progu.
+- Blad: brak jawnej informacji o tym, które komendy czyszczenia wymagają bycia w projekcie (cwd), powodował mylące "missing project" błędy.
+  - Wymaganie: dokumentuj jasno, które clean scope wymagają projektu i dawaj jasny komunikat w CLI.
+- Blad: brak spójnego prefixu logów dla E2E utrudniał filtrowanie i automatyczną analizę.
+  - Wymaganie: wszystkie logi E2E muszą mieć spójny prefix (`[seal-e2e]` / `[seal-e2e-parallel]`).
+- Blad: brak jawnego rozdziału odpowiedzialności (co jest „E2E harness”, a co „CLI”) powodował rozlane zmiany w nieodpowiednich modułach.
+  - Wymaganie: zmiany E2E trzymać w `tools/seal/seal/scripts/*` + docs, CLI tylko gdy to konieczne.
+- Blad: brak “default-off” dla ryzykownych operacji (np. zewnętrzny tmp) prowadził do przypadkowych wycieków danych.
+  - Wymaganie: ryzykowne zachowania muszą być opt‑in i wprost oznaczone jako niezalecane.
+- Blad: brak jasnego podsumowania co zostalo po runie utrudnial manualny cleanup i diagnoze.
+  - Wymaganie: run zawsze podaje "co zostaje" (logs, summary, cache) oraz link/komende czyszczenia.
+- Blad: brak jednolitego miejsca na logi powodowal ich rozproszenie i trudny debugging.
+  - Wymaganie: logi E2E zawsze trafiaja do `seal-out/e2e/run/logs` lub `concurrent-runs/<id>/logs`, a override jest jawny i logowany.
 - Blad: cache/artefakty byly tworzone bez "manifestu" (kto/po co/jak wyczyscic), przez co uzytkownik nie wiedzial skad sie biora.
   - Wymaganie: kazdy trwały katalog ma krotki manifest (owner/purpose/cleanup command) lub przynajmniej jawny log startowy ze sciezkami i instrukcja czyszczenia.
 - Blad: retencja cache byla oparta o czas (TTL) zamiast o faktyczne wejscia (hash lockfile/wersje), co dawalo przypadkowe "hit/miss".

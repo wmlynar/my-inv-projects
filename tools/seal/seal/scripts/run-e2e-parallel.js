@@ -4,7 +4,7 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const { spawn, spawnSync } = require("child_process");
+const { spawn } = require("child_process");
 
 const SCRIPT_DIR = __dirname;
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "../../../..");
@@ -34,6 +34,7 @@ const {
   buildRunConfigLines,
   buildTimingRows,
   isEnabled,
+  logE2EDiskSummary,
 } = require("./e2e-runner-utils");
 const { preparePlan, applyRerunFailedFilters } = require("./e2e-runner-plan");
 
@@ -674,6 +675,8 @@ async function main() {
     runEnd,
     log,
   });
+
+  logE2EDiskSummary(env, { e2eRoot, log });
 
   log("All E2E groups finished.");
   if (failures) {
