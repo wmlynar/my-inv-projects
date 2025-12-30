@@ -57,7 +57,7 @@ _seal_complete() {
     cword=$COMP_CWORD
   fi
 
-  local commands="init wizard completion check target config sentinel release run-local verify clean deploy ship rollback run uninstall remote"
+  local commands="init wizard completion check target config sentinel release run-local verify clean clean-global-cache deploy ship rollback run uninstall remote"
   local global_opts="-h --help -V --version"
 
   if [[ "$prev" == "--packager" ]]; then
@@ -98,6 +98,12 @@ _seal_complete() {
         fi
       fi
       ;;
+    clean-global-cache)
+      if (( cword == 2 )); then
+        COMPREPLY=( $(compgen -W "global docker playwright all" -- "$cur") )
+        return
+      fi
+      ;;
     sentinel)
       if (( cword == 2 )); then
         COMPREPLY=( $(compgen -W "probe inspect install verify uninstall" -- "$cur") )
@@ -136,6 +142,7 @@ _seal_complete() {
     release) opts="--config --skip-check --check-verbose --check-cc --packager --payload-only --profile-overlay --fast --timing" ;;
     run-local) opts="--sealed --config" ;;
     verify) opts="--explain" ;;
+    clean) opts="" ;;
     sentinel) opts="--force --insecure --skip-verify --json" ;;
     deploy) opts="--bootstrap --push-config --skip-sentinel-verify --restart --wait --wait-timeout --wait-interval --wait-url --wait-mode --wait-http-timeout --accept-drift --warn-drift --artifact --profile-overlay --fast --timing" ;;
     ship) opts="--bootstrap --push-config --skip-sentinel-verify --no-wait --wait-timeout --wait-interval --wait-url --wait-mode --wait-http-timeout --accept-drift --warn-drift --skip-check --check-verbose --check-cc --packager --payload-only --profile-overlay --fast --timing" ;;
@@ -146,6 +153,10 @@ _seal_complete() {
   esac
   if [[ "$cmd" == "config" && "\${words[2]}" == "pull" ]]; then
     opts="--apply"
+  fi
+  if [[ "$cmd" == "clean" && $cword -eq 2 ]]; then
+    COMPREPLY=( $(compgen -W "cache e2e runs all" -- "$cur") )
+    return
   fi
   if [[ -z "$opts" && "$cur" == -* ]]; then
     opts="$global_opts"

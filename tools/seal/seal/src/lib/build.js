@@ -939,7 +939,7 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   const releaseDir = path.join(baseOutDir, "release");
 
   // Always keep only the latest local release artifacts.
-  const keepNames = baseOutDir === canonicalOutDir ? ["cache"] : [];
+  const keepNames = baseOutDir === canonicalOutDir ? ["cache", "e2e"] : [];
   cleanOutDir(baseOutDir, keepNames);
   ensureDir(stageDir);
   ensureDir(releaseDir);

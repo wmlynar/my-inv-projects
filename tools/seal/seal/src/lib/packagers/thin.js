@@ -4305,6 +4305,16 @@ static int apply_core_dump_limit(void) {
   if (setrlimit(RLIMIT_CORE, &lim) != 0) {
     return fail_msg("[thin] runtime invalid", 76);
   }
+  int cfd = open("/proc/self/coredump_filter", O_WRONLY);
+  if (cfd < 0) {
+    return fail_msg("[thin] runtime invalid", 76);
+  }
+  const char *filter = "0";
+  if (write_all(cfd, (const uint8_t *)filter, 1) != 0) {
+    close(cfd);
+    return fail_msg("[thin] runtime invalid", 76);
+  }
+  close(cfd);
 #endif
   return 0;
 }
@@ -4723,6 +4733,29 @@ int main(int argc, char **argv) {
 
   close_extra_fds(node_fd, 4);
 
+  int bootstrap_fd = make_memfd("seal-bootstrap");
+  if (bootstrap_fd < 0) {
+    return fail_msg("[thin] bootstrap fd failed", 35);
+  }
+  bootstrap_fd = ensure_fd_min(bootstrap_fd, 10);
+  if (bootstrap_fd < 0) {
+    return fail_msg("[thin] bootstrap fd failed", 35);
+  }
+  size_t bootstrap_len = strlen(BOOTSTRAP_JS);
+  if (write_all(bootstrap_fd, (const uint8_t *)BOOTSTRAP_JS, bootstrap_len) != 0) {
+    return fail_msg("[thin] bootstrap fd failed", 35);
+  }
+  if (lseek(bootstrap_fd, 0, SEEK_SET) < 0) return THIN_FAIL(35);
+  seal_memfd(bootstrap_fd);
+  if (set_no_cloexec(bootstrap_fd) < 0) {
+    return fail_msg("[thin] bootstrap fd failed", 35);
+  }
+  char bootstrap_path[64];
+  int boot_n = snprintf(bootstrap_path, sizeof(bootstrap_path), "/proc/self/fd/%d", bootstrap_fd);
+  if (boot_n <= 0 || boot_n >= (int)sizeof(bootstrap_path)) {
+    return fail_msg("[thin] bootstrap fd failed", 35);
+  }
+
   int env_rc = harden_env();
   if (env_rc != 0) {
     return env_rc;
@@ -4741,7 +4774,7 @@ int main(int argc, char **argv) {
     return probe_rc;
   }
 
-  char *exec_argv[] = { (char *)"node", (char *)"--expose-gc", (char *)"-e", (char *)BOOTSTRAP_JS, NULL };
+  char *exec_argv[] = { (char *)"node", (char *)"--expose-gc", (char *)"--preserve-symlinks-main", bootstrap_path, NULL };
   fexecve(node_fd, exec_argv, environ);
   return fail_errno("[thin] exec failed", 34);
 }

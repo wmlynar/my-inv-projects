@@ -21,7 +21,8 @@ const {
   logRerunHint,
   writeJsonSummaryReport,
 } = require("./e2e-report");
-const { loadE2EConfig, resolveSummaryPaths, resolveLogDir, resolveRerunFrom, isPlanMode } = require("./e2e-runner-config");
+const { loadE2EConfig, resolveE2ERoot, resolveE2EPaths, resolveRerunFrom, isPlanMode } = require("./e2e-runner-config");
+const { resolveRunContext, setupRunCleanup } = require("./e2e-runner-fs");
 const {
   assertEscalated,
   makeRunId,
@@ -30,7 +31,9 @@ const {
   safeName,
   logEffectiveConfig,
   formatConfigLine,
+  buildRunConfigLines,
   buildTimingRows,
+  isEnabled,
 } = require("./e2e-runner-utils");
 const { preparePlan, applyRerunFailedFilters } = require("./e2e-runner-plan");
 
@@ -127,21 +130,52 @@ function spawnRunner(env, label) {
   return { child, promise };
 }
 
+function createWorkerRoot(parent, label) {
+  fs.mkdirSync(parent, { recursive: true });
+  const root = path.join(parent, safeName(label));
+  fs.rmSync(root, { recursive: true, force: true });
+  fs.mkdirSync(root, { recursive: true });
+  return root;
+}
+
 async function main() {
   const env = process.env;
   loadE2EConfig(env, { repoRoot: REPO_ROOT, scriptDir: SCRIPT_DIR, log });
   assertEscalated(log);
-  const runId = env.SEAL_E2E_RUN_ID || makeRunId();
-  env.SEAL_E2E_RUN_ID = runId;
+  const keepRuns = isEnabled(env, "SEAL_E2E_KEEP_RUNS");
+  const runContext = resolveRunContext({
+    env,
+    log,
+    repoRoot: REPO_ROOT,
+    resolveE2ERoot,
+    runModeOptions: { forceMode: "parallel", defaultMode: "parallel" },
+    keepRuns,
+    makeRunId,
+    ensureExampleBase: true,
+  });
+  const {
+    runId,
+    runLayout,
+    runRoot,
+    runsRoot,
+    tmpRoot,
+    exampleRootBase,
+    e2eRoot,
+    lockOwned,
+    lockPath,
+  } = runContext;
   const runStart = Date.now();
 
-  const home = env.HOME || os.homedir();
-  const cacheBin = env.SEAL_E2E_CACHE_BIN || path.join(home, ".cache", "seal", "bin");
-  const cacheRoot = env.SEAL_E2E_CACHE_DIR || path.dirname(cacheBin);
   const manifestPath = env.SEAL_E2E_MANIFEST || path.join(SCRIPT_DIR, "e2e-tests.json5");
   const manifestStrict = normalizeFlag(env.SEAL_E2E_MANIFEST_STRICT, "1") === "1";
-  const logRoot = resolveLogDir({ env, cacheRoot, runId });
-  const { summaryPath, summaryLastPath } = resolveSummaryPaths({ env, cacheRoot, runId });
+  const {
+    cacheRoot,
+    cacheBin,
+    summaryPath,
+    summaryLastPath,
+    logDir,
+  } = resolveE2EPaths({ env, e2eRoot, runId });
+  const logRoot = logDir;
   const failFast = normalizeFlag(env.SEAL_E2E_FAIL_FAST, "0");
   const remoteE2e = normalizeFlag(env.SEAL_E2E_SSH || env.SEAL_SHIP_SSH_E2E, "0");
   const parallelMode = env.SEAL_E2E_PARALLEL_MODE || "groups";
@@ -150,8 +184,6 @@ async function main() {
     log(`ERROR: invalid SEAL_E2E_PARALLEL_MODE=${parallelMode}. Allowed: groups, per-test.`);
     process.exit(1);
   }
-  const tmpRoot = env.SEAL_E2E_TMP_ROOT || env.TMPDIR || "/tmp";
-  fs.mkdirSync(tmpRoot, { recursive: true });
 
   const seedUser = env.SUDO_USER || env.USER || "unknown";
   const seedRootDefault = path.join(cacheRoot, "e2e-seed", seedUser);
@@ -161,9 +193,34 @@ async function main() {
   if (cacheRoot) {
     safeRootsEnv = safeRootsEnv ? `${safeRootsEnv}:${cacheRoot}` : cacheRoot;
   }
+  if (e2eRoot) {
+    safeRootsEnv = safeRootsEnv ? `${safeRootsEnv}:${e2eRoot}` : e2eRoot;
+  }
   if (tmpRoot) {
     safeRootsEnv = safeRootsEnv ? `${safeRootsEnv}:${tmpRoot}` : tmpRoot;
   }
+  if (exampleRootBase) {
+    safeRootsEnv = safeRootsEnv ? `${safeRootsEnv}:${exampleRootBase}` : exampleRootBase;
+  }
+
+  setupRunCleanup({
+    env,
+    log,
+    runId,
+    runRoot,
+    runsRoot,
+    tmpRoot,
+    exampleRoot: exampleRootBase,
+    cleanupExample: true,
+    keepTmp: isEnabled(env, "SEAL_E2E_KEEP_TMP"),
+    keepRuns,
+    runLayout,
+    lockOwned,
+    lockPath,
+    isParallelChild: isEnabled(env, "SEAL_E2E_PARALLEL_CHILD"),
+  });
+
+  const exampleRootParent = exampleRootBase || tmpRoot || os.tmpdir();
 
   let defaultJobs = 4;
   if (Array.isArray(os.cpus()) && os.cpus().length) {
@@ -217,6 +274,11 @@ async function main() {
   const hostLimited = capabilities.limitedHost;
 
   const effectiveLines = [
+    ...buildRunConfigLines({
+      runLayout,
+      runId,
+      runRoot,
+    }),
     formatConfigLine([
       { key: "jobs", value: jobs },
       { key: "cgroup_limit", value: cgroupLimit || "none" },
@@ -388,6 +450,7 @@ async function main() {
       SEAL_E2E_RERUN_FAILED: "0",
       SEAL_E2E_FAIL_FAST: failFast,
       SEAL_E2E_SAFE_ROOTS: safeRootsEnv,
+      SEAL_E2E_PARALLEL_CHILD: "1",
     };
     if (nodeModulesRoot) {
       childEnv.SEAL_E2E_NODE_MODULES_ROOT = nodeModulesRoot;
@@ -399,7 +462,7 @@ async function main() {
     if (!groups.length) return;
     if (jobs <= 1) {
       for (const group of groups) {
-        const root = fs.mkdtempSync(path.join(tmpRoot, `seal-example-e2e-${safeName(group)}-`));
+        const root = createWorkerRoot(exampleRootParent, `group-${group}`);
         const start = Date.now();
         const task = runGroup(group, groupTestsFiltered.get(group) || [], root);
         const result = await task.promise;
@@ -422,7 +485,7 @@ async function main() {
     const startNext = () => {
       while (!failFastTriggered && running.size < jobs && queue.length) {
         const group = queue.shift();
-        const root = fs.mkdtempSync(path.join(tmpRoot, `seal-example-e2e-${safeName(group)}-`));
+        const root = createWorkerRoot(exampleRootParent, `group-${group}`);
         const start = Date.now();
         const task = runGroup(group, groupTestsFiltered.get(group) || [], root);
         running.set(group, task.child);
@@ -568,7 +631,7 @@ async function main() {
     }
   } else {
     for (const test of serialFiltered) {
-      const root = fs.mkdtempSync(path.join(tmpRoot, `seal-example-e2e-${safeName(test)}-`));
+      const root = createWorkerRoot(exampleRootParent, `test-${test}`);
       const start = Date.now();
       const task = runGroup(test, [test], root);
       const result = await task.promise;

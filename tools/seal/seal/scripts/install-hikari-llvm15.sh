@@ -28,6 +28,30 @@ EXTRA_CMAKE_ARGS="${SEAL_HIKARI_CMAKE_ARGS:-}"
 BIN_NAME="${SEAL_HIKARI_BIN_NAME:-hikari-clang}"
 BIN_DIR="${SEAL_HIKARI_BIN_DIR:-/usr/local/bin}"
 INSTALL_BIN="${SEAL_HIKARI_INSTALL:-1}"
+KEEP_SRC="${SEAL_TOOLCHAIN_KEEP_SRC:-0}"
+
+safe_rm_dir() {
+  local dir="$1"
+  if [ -z "$dir" ] || [ "$dir" = "/" ] || [ "$dir" = "." ]; then
+    echo "[install-hikari] WARN: skip unsafe cleanup path: '$dir'"
+    return
+  fi
+  if [ -n "${HOME:-}" ] && [ "$dir" = "$HOME" ]; then
+    echo "[install-hikari] WARN: skip cleanup of HOME: '$dir'"
+    return
+  fi
+  rm -rf "$dir"
+}
+
+cleanup_sources() {
+  if [ "$KEEP_SRC" = "1" ]; then
+    echo "[install-hikari] Keeping sources (SEAL_TOOLCHAIN_KEEP_SRC=1)."
+    return
+  fi
+  echo "[install-hikari] Cleaning source/build cache..."
+  safe_rm_dir "$BUILD_DIR"
+  safe_rm_dir "$ROOT"
+}
 
 echo "[install-hikari] Installing build dependencies..."
 $SUDO apt-get update
@@ -198,3 +222,8 @@ fi
 
 echo "[install-hikari] Done."
 echo "[install-hikari] Obfuscating clang: $BIN_PATH"
+if [ "$INSTALL_BIN" = "1" ]; then
+  cleanup_sources
+else
+  echo "[install-hikari] Skipping cleanup (SEAL_HIKARI_INSTALL=0)."
+fi

@@ -1066,6 +1066,10 @@ Ten moduł dotyczy testów E2E (zwłaszcza po sealingu), które mają potwierdza
 - TEST-006 (SHOULD): zewnętrzne integracje są stubowane lokalnie (brak zależności od internetu).
 - TEST-007 (SHOULD): testy używają losowych portów (brak hardcode `3000`).
 - TEST-008 (SHOULD): testy sprzątają katalogi tymczasowe po zakończeniu (żeby nie zapychać dysku).
+- TEST-008a (SHOULD): rooty E2E (tmp/cache/log/summary) są jawne i logowane; domyślnie pod `seal-out/e2e` lub `SEAL_E2E_ROOT`, nigdy ukryte w `/tmp`.
+- TEST-008b (SHOULD): tryb runu jest jawny (`SEAL_E2E_RUN_MODE=single|parallel` + `SEAL_E2E_RUN_LAYOUT=auto|shared|concurrent`); layout shared uzywa stalego `run/`, concurrent uzywa `concurrent-runs/<run-id>`; oba tryby sprzątają po sobie.
+- TEST-008c (SHOULD): cleanup jest deterministyczny i idempotentny (exit/SIGINT/SIGTERM), tak aby po failu nie zostawały śmieci.
+- TEST-008d (SHOULD): przed startem testów E2E wykonuj preflight zasobów (dysk/inodes/perms) dla tmp/cache/log; brak zasobów = fail‑fast z instrukcją cleanup.
 - TEST-009 (SHOULD): testy wypisują podsumowanie SKIP i mają tryb strict, w którym SKIP = FAIL (runy certyfikacyjne).
 - TEST-010 (SHOULD): testy wykrywają ograniczenia środowiska (OS, brak systemd, brak capów) i oznaczają je jako SKIP z instrukcją naprawy.
 - TEST-011 (SHOULD): testy bezpieczeństwa logują kontekst hosta (kernel/arch, seccomp, kluczowe sysctl), żeby wyniki były porównywalne.

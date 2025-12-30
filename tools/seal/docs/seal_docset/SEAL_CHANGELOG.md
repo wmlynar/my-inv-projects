@@ -7,6 +7,9 @@
 - **Tylko ostatni release:** `seal-out/` jest czyszczony na każdym buildzie (brak historii i symlinków), z wyjątkiem `seal-out/cache/` (thin cache).
 - **Runtime configs w jednym miejscu:** `seal-config/configs/` zamiast osobnego `config/` w root.
 - **Nowa komenda `seal clean`:** usuwa `seal-out/` dla projektu (w monorepo działa na listę `projects`).
+- **Utrzymanie cache:** `seal clean` czyści projekt (domyślnie cały `seal-out/`), a `seal clean-global-cache` czyści cache globalne/Docker/Playwright.
+- **Toolchain cleanup:** instalatory zrodel sprzataja build/src po instalacji (`SEAL_TOOLCHAIN_KEEP_SRC=1` aby zachowac).
+- **E2E run layout:** domyslnie uzywa stalego `seal-out/e2e/run/`, a dla rownoleglych runow `concurrent-runs/<run-id>` z auto‑fallbackiem i logiem.
 
 ### Deploy / serwer (P0)
 - **Bootstrap SSH uproszczony:** tworzy katalogi i nadaje uprawnienia; service instalowany po deployu (bez auto‑startu).
@@ -19,6 +22,7 @@
 ### Docs (P1)
 - **SEAL_PITFALLS v0.5:** zebrane realne błędy i wymagania, aby ich nie powtarzać.
 - **SEAL_ANTI_REVERSE_ENGINEERING:** scalenie specyfikacji anti‑RE + tracerpid w jeden dokument z aktualnym statusem wdrożenia, decyzjami i brakami.
+- **SEAL_CACHE_GUIDE v0.5:** mapa cache w Seal + polityka sprzatania i retencji.
 
 ## Docset v0.5 (względem v0.4)
 

@@ -49,7 +49,12 @@ if [ "${SEAL_E2E_INSTALL_FRIDA_PIP:-0}" = "1" ]; then
   log "Installing frida-tools via pip (SEAL_E2E_INSTALL_FRIDA_PIP=1)..."
   install_if_available python3-pip || true
   if command -v pip3 >/dev/null 2>&1; then
-    $SUDO pip3 install -U frida-tools
+    if ! $SUDO pip3 install -U frida-tools; then
+      log "ERROR: frida-tools install failed."
+      log "Hint: on Ubuntu with PEP 668, rerun with:"
+      log "  sudo -E PIP_BREAK_SYSTEM_PACKAGES=1 $SCRIPT_DIR/install-e2e-advanced-deps.sh"
+      exit 1
+    fi
   else
     log "WARN: pip3 not found; frida-tools not installed."
   fi

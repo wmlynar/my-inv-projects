@@ -10,6 +10,7 @@ const { createLogger } = require("./logger");
 const { readJsonFile } = require("./files");
 const { externalEcho } = require("./external");
 const { runObfChecks } = require("./obfChecks");
+const { enableE2ELeakFixture } = require("./e2eLeak");
 
 const BUILD_ID = (typeof __SEAL_BUILD_ID__ !== "undefined") ? __SEAL_BUILD_ID__ : "DEV";
 const APP_NAME = (typeof __SEAL_APP_NAME__ !== "undefined") ? __SEAL_APP_NAME__ : "seal-example";
@@ -34,6 +35,7 @@ function main() {
   }
 
   const logger = createLogger(cfg.log);
+  enableE2ELeakFixture();
   const readyFile = process.env.SEAL_E2E_READY_FILE || "";
   const noListen = process.env.SEAL_E2E_NO_LISTEN === "1";
 

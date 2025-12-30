@@ -11,6 +11,7 @@ const {
   hasCommand,
   resolveE2ETimeout,
   resolveE2ERunTimeout,
+  resolveTmpRoot,
   applyReadyFileEnv,
   makeReadyFile,
   waitForReady,
@@ -30,6 +31,9 @@ const { loadProjectConfig, loadTargetConfig, resolveConfigName } = require("../s
 const { readJson5, writeJson5 } = require("../src/lib/json5io");
 
 const EXAMPLE_ROOT = resolveExampleRoot();
+const TMP_ROOT = resolveTmpRoot();
+const tmpPath = (...parts) => path.join(TMP_ROOT, ...parts);
+const { E2E_JS_DUMP_TOKEN } = require(path.join(EXAMPLE_ROOT, "src", "e2eLeak"));
 const ERRNO = { EPERM: 1, EACCES: 13, EFAULT: 14 };
 const LEAK_TOKENS = [
   "function ",
@@ -942,157 +946,205 @@ function parseSmaps(content) {
   return entries;
 }
 
-function findBundleMap(entries, bundleBytes) {
-  if (!bundleBytes) return null;
+function findBundleMapCandidates(entries, bundleBytes) {
+  if (!bundleBytes) return [];
   const target = Math.ceil(bundleBytes / 1024);
   const tolerance = Math.max(16, Math.floor(target * 0.02));
-  let best = null;
+  const matches = [];
   for (const entry of entries) {
     if (!entry || !Number.isFinite(entry.sizeKb)) continue;
     if (!entry.perms || !entry.perms.startsWith("rw")) continue;
     if (entry.path && entry.path !== "[anon]" && entry.path !== "[heap]") continue;
     const sizeKb = entry.sizeKb;
     if (sizeKb < target - tolerance || sizeKb > target + tolerance) continue;
-    if (!best || sizeKb < best.sizeKb) best = entry;
+    matches.push(entry);
   }
-  return best;
+  matches.sort((a, b) => a.sizeKb - b.sizeKb);
+  return matches;
+}
+
+function findBundleMap(entries, bundleBytes) {
+  const matches = findBundleMapCandidates(entries, bundleBytes);
+  return matches.length ? matches[0] : null;
 }
 
 function buildBundleSignatureTokens(bundlePath) {
-  if (!bundlePath || !fs.existsSync(bundlePath)) return { skip: "bundle missing", tokens: [] };
+  if (!bundlePath || !fs.existsSync(bundlePath)) return { skip: "bundle missing", tokens: [], sig: [] };
   let size = 0;
   try {
     size = fs.statSync(bundlePath).size;
   } catch {
-    return { skip: "bundle stat failed", tokens: [] };
+    return { skip: "bundle stat failed", tokens: [], sig: [] };
   }
-  if (size < 96) return { skip: "bundle too small", tokens: [] };
+  if (size < 96) return { skip: "bundle too small", tokens: [], sig: [] };
   const positions = [
     0,
     Math.floor(size / 2),
     Math.max(0, size - 64),
   ];
-  const tokens = [];
+  const sig = [];
   for (const pos of positions) {
     const slice = readFileSlice(bundlePath, pos, 32);
-    if (slice.length >= 16) tokens.push(slice);
+    if (slice.length >= 16) sig.push({ pos, token: slice });
   }
-  if (!tokens.length) return { skip: "bundle signature empty", tokens: [] };
+  if (!sig.length) return { skip: "bundle signature empty", tokens: [], sig: [] };
   const uniq = new Map();
-  for (const tok of tokens) {
-    uniq.set(tok.toString("hex"), tok);
+  for (const item of sig) {
+    uniq.set(item.token.toString("hex"), item.token);
   }
-  return { ok: true, tokens: Array.from(uniq.values()) };
+  return { ok: true, tokens: Array.from(uniq.values()), sig };
 }
 
-function checkBundleDontDump(pid, bundleBytes) {
-  const strict = process.env.SEAL_E2E_STRICT_DONTDUMP === "1";
+function verifyBundleSignatureEntry(pid, entry, bundleSig, helpers) {
+  if (!bundleSig || !bundleSig.sig || bundleSig.sig.length === 0) {
+    return { skip: "bundle signatures missing" };
+  }
+  if (!helpers) return { skip: "mem helpers missing" };
+  for (const item of bundleSig.sig) {
+    const pos = item.pos;
+    const token = item.token;
+    if (!Number.isFinite(pos) || pos < 0) return { ok: false };
+    if (entry.start + pos + token.length > entry.end) return { ok: false };
+    const addrHex = (entry.start + pos).toString(16);
+    const res = readMemAt(pid, addrHex, token.length, helpers);
+    if (res.blocked) return { blocked: true, note: res.note };
+    if (!res.ok || !res.data || res.data.length < token.length) return { ok: false };
+    if (!res.data.subarray(0, token.length).equals(token)) return { ok: false };
+  }
+  return { ok: true };
+}
+
+function resolveBundleCandidates(pid, bundleBytes, bundleSig, helpers) {
   const smaps = readProcSmaps(pid);
   if (smaps === null) {
     return { skip: "smaps blocked" };
   }
   const entries = parseSmaps(smaps);
-  const candidate = findBundleMap(entries, bundleBytes);
-  if (!candidate) {
+  const candidates = findBundleMapCandidates(entries, bundleBytes);
+  if (!candidates.length) {
     return { skip: "bundle mapping not found" };
   }
-  const flags = candidate.vmFlags || [];
-  if (flags.includes("dd")) {
+  if (bundleSig && bundleSig.sig && bundleSig.sig.length && helpers) {
+    const verified = [];
+    let blocked = false;
+    for (const entry of candidates) {
+      const res = verifyBundleSignatureEntry(pid, entry, bundleSig, helpers);
+      if (res.blocked) {
+        blocked = true;
+        continue;
+      }
+      if (res.ok) verified.push(entry);
+    }
+    if (verified.length) {
+      return { candidates: verified, verified: true };
+    }
+    if (blocked) {
+      return { skip: "bundle signature verify blocked" };
+    }
+    return { candidates, verified: false, note: "bundle signature not found" };
+  }
+  return { candidates, verified: false };
+}
+
+function checkBundleDontDump(pid, bundleBytes, bundleSig, helpers) {
+  const strict = process.env.SEAL_E2E_STRICT_DONTDUMP === "1";
+  const res = resolveBundleCandidates(pid, bundleBytes, bundleSig, helpers);
+  if (res.skip) return { skip: res.skip };
+  const candidates = res.candidates || [];
+  const hasDontDump = candidates.some((entry) => (entry.vmFlags || []).includes("dd"));
+  if (hasDontDump) {
     return { ok: true };
   }
-  if (strict) {
+  if (strict && res.verified) {
     throw new Error("bundle mapping missing MADV_DONTDUMP (VmFlags lacks dd)");
+  }
+  if (strict) {
+    return { skip: res.note ? `bundle mapping unverified (${res.note})` : "bundle mapping unverified" };
   }
   return { skip: "bundle mapping missing dd (set SEAL_E2E_STRICT_DONTDUMP=1 to enforce)" };
 }
 
-function checkBundleMemLocked(pid, bundleBytes) {
+function checkBundleMemLocked(pid, bundleBytes, bundleSig, helpers) {
   const strict = process.env.SEAL_E2E_STRICT_MEMLOCK === "1";
-  const smaps = readProcSmaps(pid);
-  if (smaps === null) {
-    return { skip: "smaps blocked" };
-  }
-  const entries = parseSmaps(smaps);
-  const candidate = findBundleMap(entries, bundleBytes);
-  if (!candidate) {
-    return { skip: "bundle mapping not found" };
-  }
-  const flags = candidate.vmFlags || [];
-  const locked = flags.includes("lo") || (candidate.vmLckKb && candidate.vmLckKb > 0);
+  const res = resolveBundleCandidates(pid, bundleBytes, bundleSig, helpers);
+  if (res.skip) return { skip: res.skip };
+  const candidates = res.candidates || [];
+  const locked = candidates.some((entry) => {
+    const flags = entry.vmFlags || [];
+    return flags.includes("lo") || (entry.vmLckKb && entry.vmLckKb > 0);
+  });
   if (locked) {
     return { ok: true };
   }
-  if (strict) {
+  if (strict && res.verified) {
     throw new Error("bundle mapping not locked (VmFlags lacks lo)");
+  }
+  if (strict) {
+    return { skip: res.note ? `bundle mapping unverified (${res.note})` : "bundle mapping unverified" };
   }
   return { skip: "bundle mapping not locked (set SEAL_E2E_STRICT_MEMLOCK=1 to enforce)" };
 }
 
-function checkBundleWipeOnFork(pid, bundleBytes) {
+function checkBundleWipeOnFork(pid, bundleBytes, bundleSig, helpers) {
   const strict = process.env.SEAL_E2E_STRICT_WIPEONFORK === "1";
-  const smaps = readProcSmaps(pid);
-  if (smaps === null) {
-    return { skip: "smaps blocked" };
-  }
-  const entries = parseSmaps(smaps);
-  const candidate = findBundleMap(entries, bundleBytes);
-  if (!candidate) {
-    return { skip: "bundle mapping not found" };
-  }
-  const flags = candidate.vmFlags || [];
-  if (flags.includes("wf")) {
+  const res = resolveBundleCandidates(pid, bundleBytes, bundleSig, helpers);
+  if (res.skip) return { skip: res.skip };
+  const candidates = res.candidates || [];
+  const hasWipeOnFork = candidates.some((entry) => (entry.vmFlags || []).includes("wf"));
+  if (hasWipeOnFork) {
     return { ok: true };
   }
-  if (strict) {
+  if (strict && res.verified) {
     throw new Error("bundle mapping missing MADV_WIPEONFORK (VmFlags lacks wf)");
+  }
+  if (strict) {
+    return { skip: res.note ? `bundle mapping unverified (${res.note})` : "bundle mapping unverified" };
   }
   return { skip: "bundle mapping missing wf (set SEAL_E2E_STRICT_WIPEONFORK=1 to enforce)" };
 }
 
-function checkBundleDontFork(pid, bundleBytes) {
+function checkBundleDontFork(pid, bundleBytes, bundleSig, helpers) {
   const strict = process.env.SEAL_E2E_STRICT_DONTFORK === "1";
-  const smaps = readProcSmaps(pid);
-  if (smaps === null) {
-    return { skip: "smaps blocked" };
-  }
-  const entries = parseSmaps(smaps);
-  const candidate = findBundleMap(entries, bundleBytes);
-  if (!candidate) {
-    return { skip: "bundle mapping not found" };
-  }
-  const flags = candidate.vmFlags || [];
-  if (flags.includes("dc")) {
+  const res = resolveBundleCandidates(pid, bundleBytes, bundleSig, helpers);
+  if (res.skip) return { skip: res.skip };
+  const candidates = res.candidates || [];
+  const hasDontFork = candidates.some((entry) => (entry.vmFlags || []).includes("dc"));
+  if (hasDontFork) {
     return { ok: true };
   }
-  if (strict) {
+  if (strict && res.verified) {
     throw new Error("bundle mapping missing MADV_DONTFORK (VmFlags lacks dc)");
+  }
+  if (strict) {
+    return { skip: res.note ? `bundle mapping unverified (${res.note})` : "bundle mapping unverified" };
   }
   return { skip: "bundle mapping missing dc (set SEAL_E2E_STRICT_DONTFORK=1 to enforce)" };
 }
 
-function checkBundleUnmergeable(pid, bundleBytes) {
+function checkBundleUnmergeable(pid, bundleBytes, bundleSig, helpers) {
   const strict = process.env.SEAL_E2E_STRICT_UNMERGEABLE === "1";
-  const smaps = readProcSmaps(pid);
-  if (smaps === null) {
-    return { skip: "smaps blocked" };
-  }
-  const entries = parseSmaps(smaps);
-  const candidate = findBundleMap(entries, bundleBytes);
-  if (!candidate) {
-    return { skip: "bundle mapping not found" };
-  }
-  const flags = candidate.vmFlags || [];
-  if (flags.includes("um")) {
+  const res = resolveBundleCandidates(pid, bundleBytes, bundleSig, helpers);
+  if (res.skip) return { skip: res.skip };
+  const candidates = res.candidates || [];
+  const hasUnmergeable = candidates.some((entry) => (entry.vmFlags || []).includes("um"));
+  if (hasUnmergeable) {
     return { ok: true };
   }
-  if (flags.includes("mg")) {
-    if (strict) {
+  const hasMergeable = candidates.some((entry) => (entry.vmFlags || []).includes("mg"));
+  if (hasMergeable) {
+    if (strict && res.verified) {
       throw new Error("bundle mapping mergeable (VmFlags has mg)");
+    }
+    if (strict) {
+      return { skip: res.note ? `bundle mapping unverified (${res.note})` : "bundle mapping unverified" };
     }
     return { skip: "bundle mapping mergeable (set SEAL_E2E_STRICT_UNMERGEABLE=1 to enforce)" };
   }
-  if (strict) {
+  if (strict && res.verified) {
     throw new Error("bundle mapping missing MADV_UNMERGEABLE (VmFlags lacks um)");
+  }
+  if (strict) {
+    return { skip: res.note ? `bundle mapping unverified (${res.note})` : "bundle mapping unverified" };
   }
   return { skip: "bundle mapping missing um (set SEAL_E2E_STRICT_UNMERGEABLE=1 to enforce)" };
 }
@@ -2518,7 +2570,7 @@ function checkPerfTraceBlocked(pid) {
   if (/permission denied|not permitted|not allowed|operation not permitted/i.test(out)) {
     return { ok: true, note: out.slice(0, 200) };
   }
-  if (/unknown option|usage:|not supported|no such file/i.test(out)) {
+  if (/unknown option|usage:|not supported|no such file|not a perf-command/i.test(out)) {
     return { skip: out.slice(0, 120) || "perf trace unsupported" };
   }
   return { ok: true, note: out.slice(0, 200) };
@@ -2540,7 +2592,7 @@ function checkPerfTraceAllowed(pid) {
     if (strict) throw new Error("perf trace blocked");
     return { skip: "perf trace blocked" };
   }
-  if (/unknown option|usage:|not supported|no such file/i.test(out)) {
+  if (/unknown option|usage:|not supported|no such file|not a perf-command/i.test(out)) {
     return { skip: out.slice(0, 120) || "perf trace unsupported" };
   }
   if (strict) throw new Error(`perf trace failed (${out.slice(0, 120) || "error"})`);
@@ -2738,13 +2790,19 @@ async function checkGdbServerAttachBlockedPid(pid) {
 
 async function checkLldbServerAttachBlockedPid(pid) {
   if (!hasCommand("lldb-server")) return { skip: "lldb-server not installed" };
+  const isRoot = isRootUser();
   const strict = process.env.SEAL_E2E_STRICT_LLDB_SERVER === "1";
+  const strictPtrace = process.env.SEAL_E2E_STRICT_PTRACE === "1";
+  const strictAny = strict || strictPtrace;
   const port = await getFreePort();
   if (port === null) return { skip: "listen not permitted" };
   const hostPort = `127.0.0.1:${port}`;
   const res = runLldbServerAttach(pid, hostPort, 5000);
   if (res.error && res.error.code === "ETIMEDOUT") {
-    if (strict) throw new Error("lldb-server attach timed out (possible attach)");
+    if (isRoot && !strictAny) {
+      return { skip: "lldb-server attach timed out (set SEAL_E2E_STRICT_PTRACE=1 or SEAL_E2E_STRICT_LLDB_SERVER=1 to enforce)" };
+    }
+    if (strictAny) throw new Error("lldb-server attach timed out (possible attach)");
     return { skip: "lldb-server attach timed out" };
   }
   if (res.error) {
@@ -2766,7 +2824,10 @@ async function checkLldbServerAttachBlockedPid(pid) {
   ];
   const isFailure = res.status !== 0 || failMarkers.some((re) => re.test(out));
   if (!isFailure) {
-    if (strict) throw new Error(`lldb-server attach succeeded (unexpected)${out ? `; output=${out.slice(0, 200)}` : ""}`);
+    if (isRoot && !strictAny) {
+      return { skip: "root can ptrace (set SEAL_E2E_STRICT_PTRACE=1 or SEAL_E2E_STRICT_LLDB_SERVER=1 to enforce)" };
+    }
+    if (strictAny) throw new Error(`lldb-server attach succeeded (unexpected)${out ? `; output=${out.slice(0, 200)}` : ""}`);
     return { skip: "lldb-server attach succeeded (set SEAL_E2E_STRICT_LLDB_SERVER=1 to enforce)" };
   }
   return { ok: true, note: out.slice(0, 200) };
@@ -2806,10 +2867,16 @@ function checkGdbAttachBlockedPid(pid) {
 
 function checkLldbAttachBlockedPid(pid) {
   if (!hasCommand("lldb")) return { skip: "lldb not installed" };
+  const isRoot = isRootUser();
   const strict = process.env.SEAL_E2E_STRICT_LLDB === "1";
+  const strictPtrace = process.env.SEAL_E2E_STRICT_PTRACE === "1";
+  const strictAny = strict || strictPtrace;
   const res = runLldbAttach(pid, 8000);
   if (res.error && res.error.code === "ETIMEDOUT") {
-    if (strict) throw new Error("lldb attach timed out (possible attach)");
+    if (isRoot && !strictAny) {
+      return { skip: "lldb attach timed out (set SEAL_E2E_STRICT_PTRACE=1 or SEAL_E2E_STRICT_LLDB=1 to enforce)" };
+    }
+    if (strictAny) throw new Error("lldb attach timed out (possible attach)");
     return { skip: "lldb attach timed out" };
   }
   if (res.error) {
@@ -2829,7 +2896,10 @@ function checkLldbAttachBlockedPid(pid) {
   ];
   const isFailure = res.status !== 0 || failMarkers.some((re) => re.test(out));
   if (!isFailure) {
-    if (strict) throw new Error(`lldb attach succeeded (unexpected)${out ? `; output=${out.slice(0, 200)}` : ""}`);
+    if (isRoot && !strictAny) {
+      return { skip: "root can ptrace (set SEAL_E2E_STRICT_PTRACE=1 or SEAL_E2E_STRICT_LLDB=1 to enforce)" };
+    }
+    if (strictAny) throw new Error(`lldb attach succeeded (unexpected)${out ? `; output=${out.slice(0, 200)}` : ""}`);
     return { skip: "lldb attach succeeded (set SEAL_E2E_STRICT_LLDB=1 to enforce)" };
   }
   return { ok: true, note: out.slice(0, 200) };
@@ -4141,27 +4211,27 @@ async function runReleaseLeakChecks({ releaseDir, outDir, runTimeoutMs, helpers 
       else log("OK: fd hygiene clean");
 
       log("Checking MADV_DONTDUMP on bundle mapping...");
-      const ddRes = checkBundleDontDump(child.pid, bundleBytes);
+      const ddRes = checkBundleDontDump(child.pid, bundleBytes, bundleSig, helpers);
       if (ddRes.skip) log(`SKIP: dontdump (${ddRes.skip})`);
       else log("OK: bundle mapping marked DONTDUMP");
 
       log("Checking bundle memlock...");
-      const lockRes = checkBundleMemLocked(child.pid, bundleBytes);
+      const lockRes = checkBundleMemLocked(child.pid, bundleBytes, bundleSig, helpers);
       if (lockRes.skip) log(`SKIP: memlock (${lockRes.skip})`);
       else log("OK: bundle mapping locked");
 
       log("Checking MADV_WIPEONFORK on bundle mapping...");
-      const wipeRes = checkBundleWipeOnFork(child.pid, bundleBytes);
+      const wipeRes = checkBundleWipeOnFork(child.pid, bundleBytes, bundleSig, helpers);
       if (wipeRes.skip) log(`SKIP: wipeonfork (${wipeRes.skip})`);
       else log("OK: bundle mapping marked WIPEONFORK");
 
       log("Checking MADV_DONTFORK on bundle mapping...");
-      const dfRes = checkBundleDontFork(child.pid, bundleBytes);
+      const dfRes = checkBundleDontFork(child.pid, bundleBytes, bundleSig, helpers);
       if (dfRes.skip) log(`SKIP: dontfork (${dfRes.skip})`);
       else log("OK: bundle mapping marked DONTFORK");
 
       log("Checking MADV_UNMERGEABLE on bundle mapping...");
-      const umRes = checkBundleUnmergeable(child.pid, bundleBytes);
+      const umRes = checkBundleUnmergeable(child.pid, bundleBytes, bundleSig, helpers);
       if (umRes.skip) log(`SKIP: unmergeable (${umRes.skip})`);
       else log("OK: bundle mapping marked UNMERGEABLE");
 
@@ -4240,8 +4310,8 @@ async function runReleaseLeakChecks({ releaseDir, outDir, runTimeoutMs, helpers 
   const uid = typeof process.getuid === "function" ? process.getuid() : null;
   const runUserDir = uid !== null ? path.join("/run/user", String(uid)) : "";
   const tmpRoots = Array.from(new Set([
+    TMP_ROOT,
     os.tmpdir(),
-    "/tmp",
     "/var/tmp",
     "/dev/shm",
     runUserDir,
@@ -4338,6 +4408,24 @@ async function runReleaseLeakChecks({ releaseDir, outDir, runTimeoutMs, helpers 
       }
     }
   }
+}
+
+async function runReleaseJsDumpFixtureScan({ releaseDir, runTimeoutMs, token }) {
+  assert.ok(token && typeof token === "string", "Missing JS dump fixture token");
+  const tokenBuf = Buffer.from(token, "utf8");
+  let dumpRes = null;
+  const outputs = await runReleaseWithReady({
+    releaseDir,
+    runTimeoutMs,
+    env: { SEAL_E2E_JS_DUMP_FIXTURE: "1" },
+    skipMessage: "SKIP: listen not permitted; JS dump fixture disabled",
+    onReady: async ({ child }) => {
+      dumpRes = runDumpScan(child.pid, [tokenBuf]);
+    },
+  });
+  if (!outputs) return { skip: "runtime not started" };
+  if (!dumpRes) return { skip: "dump not executed" };
+  return dumpRes;
 }
 
 async function runReleaseDelayedMarkerScan({ releaseDir, runTimeoutMs, delaysMs }) {
@@ -4559,7 +4647,13 @@ async function runReleaseBootstrapSelfScan({
   }
 }
 
-async function runReleaseBootstrapMemoryChecks({ releaseDir, outDir, runTimeoutMs }) {
+async function runReleaseBootstrapMemoryChecks({
+  releaseDir,
+  outDir,
+  runTimeoutMs,
+  nativeBootstrapEnabled,
+  nativeBootstrapMode,
+}) {
   const pauseMs = Number(process.env.SEAL_E2E_BOOTSTRAP_PAUSE_MS || "6000");
   const markerHex = crypto.randomBytes(24).toString("hex");
   const markerBuf = Buffer.from(markerHex, "hex");
@@ -4567,6 +4661,10 @@ async function runReleaseBootstrapMemoryChecks({ releaseDir, outDir, runTimeoutM
   const bundlePath = outDir ? path.join(outDir, "stage", "bundle.obf.cjs") : null;
   const bundleBytes = bundlePath && fs.existsSync(bundlePath) ? fs.statSync(bundlePath).size : 0;
   const strictSelfScan = process.env.SEAL_E2E_STRICT_BOOTSTRAP_SELF_SCAN === "1";
+  const strictWipe = process.env.SEAL_E2E_STRICT_BOOTSTRAP_WIPE === "1";
+  const strictWorkerScan = process.env.SEAL_E2E_STRICT_BOOTSTRAP_SELF_SCAN_WORKER === "1";
+  const nativeCompile = !!nativeBootstrapEnabled && nativeBootstrapMode === "compile";
+  const selfScanVmflags = !nativeCompile;
 
   log("Testing bootstrap marker (decoded stage)...");
   const decodedRes = await runReleaseBootstrapStageScan({
@@ -4645,7 +4743,9 @@ async function runReleaseBootstrapMemoryChecks({ releaseDir, outDir, runTimeoutM
 
   const bundleSig = buildBundleSignatureTokens(bundlePath);
   const bundleTokens = bundleSig.tokens || [];
-  if (bundleSig.skip) {
+  if (nativeCompile) {
+    log("SKIP: bootstrap bundle token checks (native bootstrap compile mode)");
+  } else if (bundleSig.skip) {
     log(`SKIP: bootstrap bundle tokens (${bundleSig.skip})`);
   } else if (!bundleTokens.length) {
     log("SKIP: bootstrap bundle tokens empty");
@@ -4744,7 +4844,7 @@ async function runReleaseBootstrapMemoryChecks({ releaseDir, outDir, runTimeoutM
       gcPressure: false,
       markerHex,
       bundleBytes,
-      vmflags: true,
+      vmflags: selfScanVmflags,
     });
 
     log("Testing bootstrap self-scan (marker present, dump mode)...");
@@ -4761,47 +4861,59 @@ async function runReleaseBootstrapMemoryChecks({ releaseDir, outDir, runTimeoutM
       vmflags: false,
     });
 
-    log("Testing bootstrap self-scan (marker absent after wipe)...");
-    await runReleaseBootstrapSelfScan({
-      releaseDir,
-      runTimeoutMs,
-      stage: "post-wipe",
-      target: "marker",
-      expect: "absent",
-      mode: "dump",
-      gcPressure: true,
-      markerHex,
-      bundleBytes,
-      vmflags: false,
-    });
+    if (!strictWipe) {
+      log("SKIP: bootstrap self-scan (marker absent after wipe) (set SEAL_E2E_STRICT_BOOTSTRAP_WIPE=1 to enforce)");
+    } else {
+      log("Testing bootstrap self-scan (marker absent after wipe)...");
+      await runReleaseBootstrapSelfScan({
+        releaseDir,
+        runTimeoutMs,
+        stage: "post-wipe",
+        target: "marker",
+        expect: "absent",
+        mode: "dump",
+        gcPressure: true,
+        markerHex,
+        bundleBytes,
+        vmflags: false,
+      });
+    }
 
-    log("Testing bootstrap self-scan (marker present, worker mode)...");
-    await runReleaseBootstrapSelfScan({
-      releaseDir,
-      runTimeoutMs,
-      stage: "decoded",
-      target: "marker",
-      expect: "present",
-      mode: "worker",
-      gcPressure: false,
-      markerHex,
-      bundleBytes,
-      vmflags: false,
-    });
+    if (!strictWorkerScan) {
+      log("SKIP: bootstrap self-scan worker mode (set SEAL_E2E_STRICT_BOOTSTRAP_SELF_SCAN_WORKER=1 to enforce)");
+    } else {
+      log("Testing bootstrap self-scan (marker present, worker mode)...");
+      await runReleaseBootstrapSelfScan({
+        releaseDir,
+        runTimeoutMs,
+        stage: "decoded",
+        target: "marker",
+        expect: "present",
+        mode: "worker",
+        gcPressure: false,
+        markerHex,
+        bundleBytes,
+        vmflags: false,
+      });
 
-    log("Testing bootstrap self-scan (marker absent after wipe, worker mode)...");
-    await runReleaseBootstrapSelfScan({
-      releaseDir,
-      runTimeoutMs,
-      stage: "post-wipe",
-      target: "marker",
-      expect: "absent",
-      mode: "worker",
-      gcPressure: true,
-      markerHex,
-      bundleBytes,
-      vmflags: false,
-    });
+      if (!strictWipe) {
+        log("SKIP: bootstrap self-scan (marker absent after wipe, worker mode) (set SEAL_E2E_STRICT_BOOTSTRAP_WIPE=1 to enforce)");
+      } else {
+        log("Testing bootstrap self-scan (marker absent after wipe, worker mode)...");
+        await runReleaseBootstrapSelfScan({
+          releaseDir,
+          runTimeoutMs,
+          stage: "post-wipe",
+          target: "marker",
+          expect: "absent",
+          mode: "worker",
+          gcPressure: true,
+          markerHex,
+          bundleBytes,
+          vmflags: false,
+        });
+      }
+    }
 
     log("Testing bootstrap self-scan (marker present, file dump)...");
     await runReleaseBootstrapSelfScan({
@@ -4817,33 +4929,73 @@ async function runReleaseBootstrapMemoryChecks({ releaseDir, outDir, runTimeoutM
       vmflags: false,
     });
 
-    log("Testing bootstrap self-scan (marker absent after wipe, file dump)...");
-    await runReleaseBootstrapSelfScan({
-      releaseDir,
-      runTimeoutMs,
-      stage: "post-wipe",
-      target: "marker",
-      expect: "absent",
-      mode: "file",
-      gcPressure: true,
-      markerHex,
-      bundleBytes,
-      vmflags: false,
-    });
+    if (!strictWipe) {
+      log("SKIP: bootstrap self-scan (marker absent after wipe, file dump) (set SEAL_E2E_STRICT_BOOTSTRAP_WIPE=1 to enforce)");
+    } else {
+      log("Testing bootstrap self-scan (marker absent after wipe, file dump)...");
+      await runReleaseBootstrapSelfScan({
+        releaseDir,
+        runTimeoutMs,
+        stage: "post-wipe",
+        target: "marker",
+        expect: "absent",
+        mode: "file",
+        gcPressure: true,
+        markerHex,
+        bundleBytes,
+        vmflags: false,
+      });
+    }
 
-    log("Testing bootstrap self-scan (code present)...");
-    await runReleaseBootstrapSelfScan({
-      releaseDir,
-      runTimeoutMs,
-      stage: "decoded",
-      target: "code",
-      expect: "present",
-      mode: "mem",
-      gcPressure: false,
-      markerHex,
-      bundleBytes,
-      vmflags: false,
-    });
+    if (nativeCompile) {
+      log("SKIP: bootstrap self-scan code checks (native bootstrap compile mode)");
+    } else {
+      log("Testing bootstrap self-scan (code present)...");
+      await runReleaseBootstrapSelfScan({
+        releaseDir,
+        runTimeoutMs,
+        stage: "decoded",
+        target: "code",
+        expect: "present",
+        mode: "mem",
+        gcPressure: false,
+        markerHex,
+        bundleBytes,
+        vmflags: false,
+      });
+
+      log("Testing bootstrap self-scan (code present, dump mode)...");
+      await runReleaseBootstrapSelfScan({
+        releaseDir,
+        runTimeoutMs,
+        stage: "decoded",
+        target: "code",
+        expect: "present",
+        mode: "dump",
+        gcPressure: false,
+        markerHex,
+        bundleBytes,
+        vmflags: false,
+      });
+
+      if (!strictWipe) {
+        log("SKIP: bootstrap self-scan (code absent after wipe) (set SEAL_E2E_STRICT_BOOTSTRAP_WIPE=1 to enforce)");
+      } else {
+        log("Testing bootstrap self-scan (code absent after wipe)...");
+        await runReleaseBootstrapSelfScan({
+          releaseDir,
+          runTimeoutMs,
+          stage: "post-wipe",
+          target: "code",
+          expect: "absent",
+          mode: "dump",
+          gcPressure: true,
+          markerHex,
+          bundleBytes,
+          vmflags: false,
+        });
+      }
+    }
 
     const multiMarkers = [
       crypto.randomBytes(8).toString("hex"),
@@ -4864,62 +5016,42 @@ async function runReleaseBootstrapMemoryChecks({ releaseDir, outDir, runTimeoutM
       vmflags: false,
     });
 
-    log("Testing bootstrap self-scan (multi-marker absent after wipe)...");
-    await runReleaseBootstrapSelfScan({
-      releaseDir,
-      runTimeoutMs,
-      stage: "post-wipe",
-      target: "marker",
-      expect: "absent",
-      mode: "dump",
-      gcPressure: true,
-      markerHexList: multiMarkers,
-      bundleBytes,
-      vmflags: false,
-    });
+    if (!strictWipe) {
+      log("SKIP: bootstrap self-scan (multi-marker absent after wipe) (set SEAL_E2E_STRICT_BOOTSTRAP_WIPE=1 to enforce)");
+    } else {
+      log("Testing bootstrap self-scan (multi-marker absent after wipe)...");
+      await runReleaseBootstrapSelfScan({
+        releaseDir,
+        runTimeoutMs,
+        stage: "post-wipe",
+        target: "marker",
+        expect: "absent",
+        mode: "dump",
+        gcPressure: true,
+        markerHexList: multiMarkers,
+        bundleBytes,
+        vmflags: false,
+      });
+    }
+  }
 
-    log("Testing bootstrap self-scan (code present, dump mode)...");
+  if (nativeCompile) {
+    log("SKIP: bootstrap fork-snapshot (code checks) (native bootstrap compile mode)");
+  } else {
+    log("Testing bootstrap fork-snapshot (code absent in child)...");
     await runReleaseBootstrapSelfScan({
       releaseDir,
       runTimeoutMs,
       stage: "decoded",
       target: "code",
-      expect: "present",
-      mode: "dump",
+      expect: "absent",
+      mode: "fork",
       gcPressure: false,
       markerHex,
       bundleBytes,
       vmflags: false,
     });
-
-    log("Testing bootstrap self-scan (code absent after wipe)...");
-    await runReleaseBootstrapSelfScan({
-      releaseDir,
-      runTimeoutMs,
-      stage: "post-wipe",
-      target: "code",
-      expect: "absent",
-      mode: "dump",
-      gcPressure: true,
-      markerHex,
-      bundleBytes,
-      vmflags: false,
-    });
   }
-
-  log("Testing bootstrap fork-snapshot (code absent in child)...");
-  await runReleaseBootstrapSelfScan({
-    releaseDir,
-    runTimeoutMs,
-    stage: "decoded",
-    target: "code",
-    expect: "absent",
-    mode: "fork",
-    gcPressure: false,
-    markerHex,
-    bundleBytes,
-    vmflags: false,
-  });
 
   log("Testing bootstrap fork-snapshot (marker absent in child)...");
   await runReleaseBootstrapSelfScan({
@@ -4935,33 +5067,52 @@ async function runReleaseBootstrapMemoryChecks({ releaseDir, outDir, runTimeoutM
     vmflags: false,
   });
 
-  log("Testing bootstrap fork-snapshot (code absent after wipe in child)...");
-  await runReleaseBootstrapSelfScan({
-    releaseDir,
-    runTimeoutMs,
-    stage: "post-wipe",
-    target: "code",
-    expect: "absent",
-    mode: "fork",
-    gcPressure: true,
-    markerHex,
-    bundleBytes,
-    vmflags: false,
-  });
+  if (!strictWipe) {
+    log("SKIP: bootstrap fork-snapshot (absent after wipe in child) (set SEAL_E2E_STRICT_BOOTSTRAP_WIPE=1 to enforce)");
+  } else if (nativeCompile) {
+    log("SKIP: bootstrap fork-snapshot (code absent after wipe in child) (native bootstrap compile mode)");
+    log("Testing bootstrap fork-snapshot (marker absent after wipe in child)...");
+    await runReleaseBootstrapSelfScan({
+      releaseDir,
+      runTimeoutMs,
+      stage: "post-wipe",
+      target: "marker",
+      expect: "absent",
+      mode: "fork",
+      gcPressure: true,
+      markerHex,
+      bundleBytes,
+      vmflags: false,
+    });
+  } else {
+    log("Testing bootstrap fork-snapshot (code absent after wipe in child)...");
+    await runReleaseBootstrapSelfScan({
+      releaseDir,
+      runTimeoutMs,
+      stage: "post-wipe",
+      target: "code",
+      expect: "absent",
+      mode: "fork",
+      gcPressure: true,
+      markerHex,
+      bundleBytes,
+      vmflags: false,
+    });
 
-  log("Testing bootstrap fork-snapshot (marker absent after wipe in child)...");
-  await runReleaseBootstrapSelfScan({
-    releaseDir,
-    runTimeoutMs,
-    stage: "post-wipe",
-    target: "marker",
-    expect: "absent",
-    mode: "fork",
-    gcPressure: true,
-    markerHex,
-    bundleBytes,
-    vmflags: false,
-  });
+    log("Testing bootstrap fork-snapshot (marker absent after wipe in child)...");
+    await runReleaseBootstrapSelfScan({
+      releaseDir,
+      runTimeoutMs,
+      stage: "post-wipe",
+      target: "marker",
+      expect: "absent",
+      mode: "fork",
+      gcPressure: true,
+      markerHex,
+      bundleBytes,
+      vmflags: false,
+    });
+  }
 }
 
 async function runReleaseDumpSelftest({ releaseDir, runTimeoutMs }) {
@@ -6300,6 +6451,11 @@ async function buildThinSplit({
   if (nativeBootstrap !== undefined) thinCfg.nativeBootstrap = Object.assign({}, thinCfg.nativeBootstrap || {}, nativeBootstrap);
   if (launcherHardening !== undefined) thinCfg.launcherHardening = launcherHardening;
   if (launcherObfuscation !== undefined) thinCfg.launcherObfuscation = launcherObfuscation;
+  const nativeBootstrapCfg = thinCfg.nativeBootstrap && typeof thinCfg.nativeBootstrap === "object"
+    ? thinCfg.nativeBootstrap
+    : {};
+  const nativeBootstrapEnabled = nativeBootstrapCfg.enabled === true;
+  const nativeBootstrapMode = nativeBootstrapCfg.mode === "string" ? "string" : "compile";
   projectCfg.build.thin = thinCfg;
 
   const targetCfg = loadTargetConfig(EXAMPLE_ROOT, "local").cfg;
@@ -6316,6 +6472,8 @@ async function buildThinSplit({
     packagerOverride: "thin-split",
     outDirOverride: outDir,
   });
+  res.nativeBootstrapEnabled = nativeBootstrapEnabled;
+  res.nativeBootstrapMode = nativeBootstrapMode;
   return res;
 }
 buildThinSplit.counter = 0;
@@ -6492,19 +6650,19 @@ async function main() {
       const strictDenyEnv = process.env.SEAL_E2E_STRICT_DENY_ENV === "1";
       const denyEnvTests = [
         { name: "NODE_OPTIONS", value: "--inspect" },
-        { name: "NODE_V8_COVERAGE", value: "/tmp/seal-v8" },
+        { name: "NODE_V8_COVERAGE", value: tmpPath("seal-v8") },
         { name: "LD_PRELOAD", value: "1", allowSkip: true },
         { name: "LD_AUDIT", value: "1", allowSkip: true },
         { name: "LD_DEBUG", value: "libs", allowSkip: true },
-        { name: "LD_DEBUG_OUTPUT", value: "/tmp/seal-ld-debug", allowSkip: true },
+        { name: "LD_DEBUG_OUTPUT", value: tmpPath("seal-ld-debug"), allowSkip: true },
         { name: "LD_PROFILE", value: "1", allowSkip: true },
-        { name: "LD_LIBRARY_PATH", value: "/tmp", allowSkip: true },
+        { name: "LD_LIBRARY_PATH", value: TMP_ROOT, allowSkip: true },
         { name: "GLIBC_TUNABLES", value: "glibc.malloc.trim_threshold=0", allowSkip: true },
-        { name: "GCONV_PATH", value: "/tmp", allowSkip: true },
+        { name: "GCONV_PATH", value: TMP_ROOT, allowSkip: true },
         { name: "MALLOC_CHECK_", value: "3", allowSkip: true },
         { name: "MALLOC_PERTURB_", value: "69", allowSkip: true },
-        { name: "MALLOC_TRACE", value: "/tmp/seal-malloc-trace", allowSkip: true },
-        { name: "NODE_PATH", value: "/tmp", allowSkip: true },
+        { name: "MALLOC_TRACE", value: tmpPath("seal-malloc-trace"), allowSkip: true },
+        { name: "NODE_PATH", value: TMP_ROOT, allowSkip: true },
       ];
       for (const t of denyEnvTests) {
         log(`Testing denyEnv (${t.name})...`);
@@ -6570,10 +6728,10 @@ async function main() {
           releaseDir: resEnv.releaseDir,
           runTimeoutMs,
           env: {
-            LD_PRELOAD: "/tmp/seal-preload.so",
-            LD_AUDIT: "/tmp/seal-audit.so",
+            LD_PRELOAD: tmpPath("seal-preload.so"),
+            LD_AUDIT: tmpPath("seal-audit.so"),
             LD_DEBUG: "libs",
-            LD_DEBUG_OUTPUT: "/tmp/seal-ld-debug",
+            LD_DEBUG_OUTPUT: tmpPath("seal-ld-debug"),
             LD_PROFILE: "1",
             NODE_OPTIONS: "--inspect",
           },
@@ -6588,13 +6746,13 @@ async function main() {
           releaseDir: resEnv.releaseDir,
           runTimeoutMs,
           env: {
-            LD_LIBRARY_PATH: "/tmp",
+            LD_LIBRARY_PATH: TMP_ROOT,
             GLIBC_TUNABLES: "glibc.malloc.trim_threshold=0",
-            GCONV_PATH: "/tmp",
+            GCONV_PATH: TMP_ROOT,
             MALLOC_CHECK_: "3",
             MALLOC_PERTURB_: "69",
-            MALLOC_TRACE: "/tmp/seal-malloc-trace",
-            NODE_PATH: "/tmp",
+            MALLOC_TRACE: tmpPath("seal-malloc-trace"),
+            NODE_PATH: TMP_ROOT,
           },
           keys: ["LD_LIBRARY_PATH", "GLIBC_TUNABLES", "GCONV_PATH", "MALLOC_CHECK_", "MALLOC_PERTURB_", "MALLOC_TRACE", "NODE_PATH"],
           allowSkip: !strictEnvScrubExt,
@@ -6608,20 +6766,20 @@ async function main() {
           runTimeoutMs,
           stage: "decoded",
           env: {
-            NODE_OPTIONS: "--inspect --require /tmp/seal-e2e-preload",
-            NODE_V8_COVERAGE: "/tmp/seal-v8",
-            LD_PRELOAD: "/tmp/seal-preload.so",
-            LD_AUDIT: "/tmp/seal-audit.so",
+            NODE_OPTIONS: `--inspect --require ${tmpPath("seal-e2e-preload")}`,
+            NODE_V8_COVERAGE: tmpPath("seal-v8"),
+            LD_PRELOAD: tmpPath("seal-preload.so"),
+            LD_AUDIT: tmpPath("seal-audit.so"),
             LD_DEBUG: "libs",
-            LD_DEBUG_OUTPUT: "/tmp/seal-ld-debug",
+            LD_DEBUG_OUTPUT: tmpPath("seal-ld-debug"),
             LD_PROFILE: "1",
-            LD_LIBRARY_PATH: "/tmp",
+            LD_LIBRARY_PATH: TMP_ROOT,
             GLIBC_TUNABLES: "glibc.malloc.trim_threshold=0",
-            GCONV_PATH: "/tmp",
+            GCONV_PATH: TMP_ROOT,
             MALLOC_CHECK_: "3",
             MALLOC_PERTURB_: "69",
-            MALLOC_TRACE: "/tmp/seal-malloc-trace",
-            NODE_PATH: "/tmp",
+            MALLOC_TRACE: tmpPath("seal-malloc-trace"),
+            NODE_PATH: TMP_ROOT,
           },
         })
       );
@@ -6764,6 +6922,44 @@ async function main() {
             log("OK: protected dump clean");
           }
         }
+
+        const strictFixture = process.env.SEAL_E2E_STRICT_JS_DUMP_FIXTURE === "1";
+        const fixtureToken = E2E_JS_DUMP_TOKEN;
+        log("Testing JS fixture dump baseline (expect token present)...");
+        const fixtureBaseline = await runReleaseJsDumpFixtureScan({
+          releaseDir: resDump.releaseDir,
+          runTimeoutMs,
+          token: fixtureToken,
+        });
+        if (fixtureBaseline.skip) {
+          const msg = `js fixture dump baseline (${fixtureBaseline.skip})`;
+          if (strictFixture) {
+            throw new Error(msg);
+          }
+          log(`SKIP: ${msg}; set SEAL_E2E_STRICT_JS_DUMP_FIXTURE=1 to enforce`);
+        } else if (!fixtureBaseline.hit) {
+          throw new Error("js fixture dump baseline did not expose token");
+        } else {
+          log("OK: js fixture dump baseline captured token");
+
+          log("Testing JS fixture dump protected (expect blocked/clean)...");
+          const fixtureProtected = await runReleaseJsDumpFixtureScan({
+            releaseDir: resA.releaseDir,
+            runTimeoutMs,
+            token: fixtureToken,
+          });
+          if (fixtureProtected.skip) {
+            log(`OK: js fixture dump blocked (${fixtureProtected.skip})`);
+          } else if (fixtureProtected.hit) {
+            if (!strictFixture && isRoot) {
+              log("SKIP: js fixture dump leak (root can ptrace; set SEAL_E2E_STRICT_JS_DUMP_FIXTURE=1 to enforce)");
+            } else {
+              throw new Error(`js fixture dump leak "${fixtureProtected.hit}"`);
+            }
+          } else {
+            log("OK: js fixture dump clean");
+          }
+        }
       }
     }
 
@@ -6772,7 +6968,13 @@ async function main() {
       await ensureRuntimeConfig(resA.releaseDir);
       log("Testing bootstrap memory checkpoints...");
       await withTimeout("bootstrap memory checkpoints", testTimeoutMs, () =>
-        runReleaseBootstrapMemoryChecks({ releaseDir: resA.releaseDir, outDir: resA.outDir, runTimeoutMs })
+        runReleaseBootstrapMemoryChecks({
+          releaseDir: resA.releaseDir,
+          outDir: resA.outDir,
+          runTimeoutMs,
+          nativeBootstrapEnabled: resA.nativeBootstrapEnabled,
+          nativeBootstrapMode: resA.nativeBootstrapMode,
+        })
       );
 
       log("Testing bootstrap dump selftest...");
@@ -7096,7 +7298,7 @@ async function main() {
         runReleaseExpectFail({
           releaseDir: resArgv.releaseDir,
           runTimeoutMs,
-          args: ["-r", "/tmp/seal-e2e-preload.js"],
+          args: ["-r", tmpPath("seal-e2e-preload.js")],
           expectStderr: "[thin] runtime invalid",
         })
       );

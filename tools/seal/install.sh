@@ -134,6 +134,12 @@ fi
 
 if [ "$INSTALL_PLAYWRIGHT" = "1" ]; then
   log "Installing Playwright browsers (chromium)..."
+  if [ -z "${PLAYWRIGHT_BROWSERS_PATH:-}" ]; then
+    PLAYWRIGHT_BROWSERS_PATH="${SEAL_PLAYWRIGHT_CACHE_DIR:-/usr/local/share/ms-playwright}"
+    export PLAYWRIGHT_BROWSERS_PATH
+  fi
+  run_sudo mkdir -p "$PLAYWRIGHT_BROWSERS_PATH"
+  run_sudo chown "$(id -u)":"$(id -g)" "$PLAYWRIGHT_BROWSERS_PATH" 2>/dev/null || true
   if ! (cd "$ROOT_DIR" && npx playwright install --with-deps chromium); then
     warn "Playwright install failed. UI E2E tests will be skipped."
   fi

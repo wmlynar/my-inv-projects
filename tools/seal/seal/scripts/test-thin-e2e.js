@@ -11,6 +11,7 @@ const {
   hasCommand,
   resolveE2ETimeout,
   resolveE2ERunTimeout,
+  resolveTmpRoot,
   withTimeout,
   getFreePort,
   resolveExampleRoot,
@@ -27,6 +28,7 @@ const { readJson5, writeJson5 } = require("../src/lib/json5io");
 const { THIN_NATIVE_BOOTSTRAP_FILE } = require("../src/lib/thinPaths");
 
 const EXAMPLE_ROOT = resolveExampleRoot();
+const TMP_ROOT = resolveTmpRoot();
 
 const { log, fail } = createLogger("thin-e2e");
 
@@ -347,7 +349,7 @@ async function testThinSplit(ctx) {
     const badEnv = {
       NODE_OPTIONS: "--require /nonexistent",
       NODE_PATH: "/nonexistent",
-      NODE_V8_COVERAGE: "/tmp/cover",
+      NODE_V8_COVERAGE: path.join(TMP_ROOT, "cover"),
     };
     log("Running thin SPLIT with debug env (expect failure)...");
     await runReleaseExpectFailure({

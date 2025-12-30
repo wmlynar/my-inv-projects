@@ -11,6 +11,7 @@ const { cmdInit } = require("./commands/init");
 const { cmdCheck } = require("./commands/check");
 const { cmdBatch } = require("./commands/batch");
 const { cmdClean } = require("./commands/clean");
+const { cmdCacheClean } = require("./commands/cache");
 const { cmdCompletion, getCompletionScript } = require("./commands/completion");
 const { cmdRelease } = require("./commands/release");
 const { cmdVerify } = require("./commands/verify");
@@ -236,8 +237,20 @@ async function main(argv) {
 
   program
     .command("clean")
-    .description("Remove seal-out/ for this project (generated artifacts)")
-    .action(async () => cmdClean(process.cwd()));
+    .description("Reset project outputs in seal-out (defaults to all)")
+    .argument("[scope]", "Optional scope: cache|e2e|runs|all", null)
+    .action(async (scope, opts) => cmdClean(process.cwd(), scope, opts));
+
+  program
+    .command("clean-global-cache")
+    .description("Reset global caches (defaults to global+docker+playwright)")
+    .argument("[scope]", "Optional scope: global|docker|playwright|all", null)
+    .action(async (scope) =>
+      cmdCacheClean(process.cwd(), scope, {
+        defaultScopes: ["global", "docker", "playwright"],
+        allowedScopes: ["global", "docker", "playwright"],
+      })
+    );
 
   program
     .command("profiles")

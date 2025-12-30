@@ -2,7 +2,16 @@
 
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 const { parseList, normalizeFlag } = require("./e2e-runner-utils");
+
+function resolveE2ERoot(options) {
+  const env = options.env || process.env;
+  if (env.SEAL_E2E_ROOT) return env.SEAL_E2E_ROOT;
+  const repoRoot = options.repoRoot || "";
+  if (!repoRoot) return "";
+  return path.join(repoRoot, "tools", "seal", "example", "seal-out", "e2e");
+}
 
 function loadE2EConfig(env, options) {
   if (normalizeFlag(env.SEAL_E2E_CONFIG_LOADED, "0") === "1") return;
@@ -63,7 +72,8 @@ function resolveSummaryPaths(options) {
   if (summaryOverride) {
     return { summaryPath: summaryOverride, summaryLastPath: "" };
   }
-  const summaryDir = path.join(cacheRoot, "e2e-summary");
+  const e2eRoot = env.SEAL_E2E_ROOT || "";
+  const summaryDir = e2eRoot ? path.join(e2eRoot, "summary") : path.join(cacheRoot, "e2e-summary");
   return {
     summaryPath: path.join(summaryDir, `run-${runId}.tsv`),
     summaryLastPath: path.join(summaryDir, "last.tsv"),
@@ -74,7 +84,40 @@ function resolveLogDir(options) {
   const env = options.env || process.env;
   const cacheRoot = options.cacheRoot || "";
   const runId = options.runId || "";
-  return env.SEAL_E2E_LOG_DIR || path.join(cacheRoot, "e2e-logs", runId);
+  if (env.SEAL_E2E_LOG_DIR) return env.SEAL_E2E_LOG_DIR;
+  const runRoot = env.SEAL_E2E_RUN_ROOT || "";
+  if (runRoot) return path.join(runRoot, "logs");
+  const e2eRoot = env.SEAL_E2E_ROOT || "";
+  if (e2eRoot) return path.join(e2eRoot, "run", "logs");
+  return path.join(cacheRoot, "e2e-logs", runId);
+}
+
+function resolveE2EPaths(options) {
+  const env = options.env || process.env;
+  const e2eRoot = options.e2eRoot || env.SEAL_E2E_ROOT || "";
+  const home = options.home || env.HOME || os.homedir();
+  const defaultCacheRoot = e2eRoot ? path.join(e2eRoot, "cache") : path.join(home, ".cache", "seal");
+  const cacheRoot = env.SEAL_E2E_CACHE_DIR || defaultCacheRoot;
+  const cacheBin = env.SEAL_E2E_CACHE_BIN || path.join(cacheRoot, "bin");
+  const stampsDir = path.join(cacheRoot, "stamps");
+  const npmCacheDir = env.NPM_CONFIG_CACHE || path.join(cacheRoot, "npm");
+  const { summaryPath, summaryLastPath } = resolveSummaryPaths({
+    env,
+    cacheRoot,
+    runId: options.runId,
+    enabled: options.summaryEnabled !== false,
+  });
+  const logDir = resolveLogDir({ env, cacheRoot, runId: options.runId });
+  return {
+    e2eRoot,
+    cacheRoot,
+    cacheBin,
+    stampsDir,
+    npmCacheDir,
+    summaryPath,
+    summaryLastPath,
+    logDir,
+  };
 }
 
 function resolveRerunFrom(env, summaryPath, summaryLastPath) {
@@ -90,9 +133,11 @@ function isPlanMode(env) {
 
 module.exports = {
   loadE2EConfig,
+  resolveE2ERoot,
   parseTestFilters,
   resolveSummaryPaths,
   resolveLogDir,
+  resolveE2EPaths,
   resolveRerunFrom,
   isPlanMode,
 };

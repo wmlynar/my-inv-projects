@@ -12,6 +12,7 @@ SRC_ROOT="$CACHE_ROOT/src"
 BIN_CACHE="$CACHE_ROOT/bin"
 STAMP_DIR="$CACHE_ROOT/stamps"
 BIN_DIR="${SEAL_THIRD_PARTY_BIN_DIR:-/usr/local/bin}"
+KEEP_SRC="${SEAL_TOOLCHAIN_KEEP_SRC:-0}"
 
 mkdir -p "$SRC_ROOT" "$BIN_CACHE" "$STAMP_DIR" "$BIN_DIR"
 
@@ -21,6 +22,31 @@ unset BASH_ENV ENV CDPATH GLOBIGNORE
 
 log() {
   echo "[install-tools] $*"
+}
+
+safe_rm_dir() {
+  local dir="$1"
+  if [ -z "$dir" ] || [ "$dir" = "/" ] || [ "$dir" = "." ]; then
+    log "WARN: skip unsafe cleanup path: '$dir'"
+    return
+  fi
+  if [ -n "${HOME:-}" ] && [ "$dir" = "$HOME" ]; then
+    log "WARN: skip cleanup of HOME: '$dir'"
+    return
+  fi
+  rm -rf "$dir"
+}
+
+cleanup_tool_sources() {
+  local name="$1"
+  if [ "$KEEP_SRC" = "1" ]; then
+    return
+  fi
+  local repo_dir="$SRC_ROOT/$name"
+  if [ -d "$repo_dir" ]; then
+    log "$name: cleaning source cache..."
+    safe_rm_dir "$repo_dir"
+  fi
 }
 
 trim() {
@@ -444,6 +470,7 @@ install_tool() {
 
   mark_installed "$name"
   log "$name: installed"
+  cleanup_tool_sources "$name"
 }
 
 for tool in "${TOOL_ORDER[@]}"; do

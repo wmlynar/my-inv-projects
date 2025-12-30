@@ -11,6 +11,29 @@ REF="${SEAL_KITESHIELD_REF:-}"
 ROOT="${SEAL_KITESHIELD_DIR:-$HOME/.cache/seal/kiteshield}"
 BIN_NAME="${SEAL_KITESHIELD_BIN:-kiteshield}"
 BIN_DIR="${SEAL_KITESHIELD_BIN_DIR:-/usr/local/bin}"
+KEEP_SRC="${SEAL_TOOLCHAIN_KEEP_SRC:-0}"
+
+safe_rm_dir() {
+  local dir="$1"
+  if [ -z "$dir" ] || [ "$dir" = "/" ] || [ "$dir" = "." ]; then
+    echo "[install-kiteshield] WARN: skip unsafe cleanup path: '$dir'"
+    return
+  fi
+  if [ -n "${HOME:-}" ] && [ "$dir" = "$HOME" ]; then
+    echo "[install-kiteshield] WARN: skip cleanup of HOME: '$dir'"
+    return
+  fi
+  rm -rf "$dir"
+}
+
+cleanup_sources() {
+  if [ "$KEEP_SRC" = "1" ]; then
+    echo "[install-kiteshield] Keeping sources (SEAL_TOOLCHAIN_KEEP_SRC=1)."
+    return
+  fi
+  echo "[install-kiteshield] Cleaning source/build cache..."
+  safe_rm_dir "$ROOT"
+}
 
 echo "[install-kiteshield] Installing build dependencies..."
 $SUDO apt-get update
@@ -149,3 +172,4 @@ fi
 echo "[install-kiteshield] Installing to $BIN_DIR/$BIN_NAME"
 $SUDO install -m 0755 "$BIN_PATH" "$BIN_DIR/$BIN_NAME"
 echo "[install-kiteshield] OK"
+cleanup_sources

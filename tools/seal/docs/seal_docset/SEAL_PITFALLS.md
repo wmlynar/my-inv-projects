@@ -15,6 +15,25 @@
 9) Toolchain ma jawnie pinowane standardy/flag (np. `-std=c11`) i log „effective config” dla ENV.
 10) Format binarny ma wersje i twardy fail na nieznana wersje.
 
+## Wnioski ogolne (meta-zasady)
+
+- Zasada: kazdy plik/artefakt ma jawny root, retention i komenda sprzatania; nowe cache wymagaja wpisu w `SEAL_CACHE_GUIDE`.
+- Zasada: zero ukrytych tempow; tmp root musi byc kontrolowany i logowany.
+- Zasada: jedno zrodlo prawdy dla defaultow/sciezek/cleanup; entrypointy nie maja lokalnych defaultow ani rozproszonego lifecycle tempow.
+- Zasada: bezpieczne defaulty (single + stale katalogi); tryby ryzykowne tylko jawnie.
+- Zasada: brak cichych fallbackow; kazdy fallback loguje powod, scope i konsekwencje.
+- Zasada: preflight zasobow (disk/inodes/ram) i uprawnien przed startem; fail-fast z instrukcja.
+- Zasada: loguj effective config, wersje narzedzi oraz sciezki (tmp/cache/log/summary) na starcie; to jedyny audyt runu.
+- Zasada: cleanup deterministyczny i idempotentny na exit/SIGINT/SIGTERM, odporny na partial runy i sprawdzany w E2E.
+- Zasada: operacje destrukcyjne tylko w allowlist roots + realpath check.
+- Zasada: wspoldzielone zasoby pod lockiem; inaczej race i flake.
+- Zasada: globalny stan (cache/tmp) izolowany per-run i oznaczony markerem ownera, aby cleanup po crashu byl bezpieczny.
+- Zasada: E2E obejmuje negatywne sciezki, cleanup i raportowanie, nie tylko happy path.
+- Zasada: kazdy cache ma jawny scope (build/e2e/toolchain/global) i nie miesza danych miedzy scope.
+- Zasada: komendy sprzatania loguja docelowe sciezki i efekt (co usunieto/ominięto).
+- Zasada: po instalacji narzedzi nie zostawiaj zrodel/buildow bez jawnej flagi "keep".
+- Zasada: logi/summary trafiaja do trwalego katalogu cache, nie do tmp.
+
 ## Zasady ogólne (cross-cutting)
 
 - Blad: brak walidacji argumentow/parametrow powodowal niejasne bledy runtime.
@@ -503,6 +522,10 @@
 - Blad: cache repo narzedzia z lockfile bywal w stanie "dirty" (stale locki lub pliki po przerwanym buildzie) i `git checkout` failowal przez untracked files.
   - Wymaganie: przed checkoutem usuwaj stale locki `.git/index.lock` i zawsze rob `git reset --hard` + `git clean -fdx` dla repo w cache.
 
+- Blad: instalatory narzedzi zostawialy zrodla/build po instalacji, co zapychalo dysk i bylo niewidoczne dla uzytkownika.
+  - Wymaganie: po sukcesie zostaw tylko binarki + stampy; zrodla/build kasuj domyslnie.
+  - Wymaganie: zachowanie zrodel/build wymaga jawnej flagi `SEAL_TOOLCHAIN_KEEP_SRC=1` i logu.
+
 - Blad: instalatory budujace ze zrodel wykonywaly `make install` do systemu (`/usr/local`), wymagaly sudo i zostawialy globalne artefakty.
   - Wymaganie: instaluj narzedzia do katalogu cache (`$SEAL_CACHE/tools/...`) przez `DESTDIR`/`CMAKE_INSTALL_PREFIX`, bez sudo; w PATH dodawaj tylko lokalny prefix.
 
@@ -787,7 +810,7 @@
   - Wymaganie: cache jest kluczowany po lockfile/konfiguracji i loguje decyzje "fresh vs reuse".
   - Wymaganie: cache root jest jawny (nie zalezy od `HOME` root/user) i logowany na starcie testu.
   - Wymaganie: cache kluczuj dodatkowo po `node` major, `npm` major i `os+arch`, zeby uniknac ABI mismatch w `node_modules`.
-  - Wymaganie: cache root musi byc zapisywalny i poza repo; brak zapisu = fail‑fast z instrukcja.
+  - Wymaganie: cache root musi byc zapisywalny i w dedykowanym katalogu (np. `seal-out/e2e/cache` lub `SEAL_E2E_CACHE_DIR`); brak zapisu = fail‑fast z instrukcja.
   - Wymaganie: weryfikuj, czy wspolny `node_modules`/symlink wskazuje na istniejący, zapisywalny katalog; inaczej rebuild lub fail‑fast z instrukcja.
   - Wymaganie: cache invaliduje sie po zmianie skryptow instalacyjnych lub wersji narzedzi; hash skryptow i wersji wchodzi do klucza cache.
   - Wymaganie: wspoldzielony `node_modules` jest chroniony lockiem podczas `npm ci/install`, aby uniknac uszkodzen przy rownoleglych runach.
@@ -965,7 +988,7 @@
   - Wymaganie: summary path jest unikalny per‑run/grupa lub zapisy chronione lockiem (append atomowy).
 
 - Blad: `SEAL_E2E_SUMMARY_PATH` wskazywal na katalog w repo (zwl. przy uruchomieniu jako root), co zostawialo root‑owned artefakty i przypadkowe commity.
-  - Wymaganie: summary path jest poza repo (np. `/tmp`/`$TMPDIR`); gdy jest w repo, wymagaj jawnego override i ostrzezenia.
+  - Wymaganie: summary path jest w `seal-out/e2e/summary` (domyslnie) lub jawnie ustawiony; gdy jest w repo poza `seal-out`, wymagaj jawnego override i ostrzezenia.
 
 - Blad: pola summary (group/test) zawieraly taby/nowe linie, co psulo format TSV.
   - Wymaganie: sanitizuj pola summary (stripuj `\\t`/`\\n`) lub escapuj je w stabilny sposob.
@@ -1124,7 +1147,7 @@
   - Wymaganie: testy i helpery uzywaja POSIX `/bin/sh` lub jawnie sprawdzaja dostepnosc `bash` i oznaczaja SKIP.
 
 - Blad: brak asercji „brak tmp” pozwalal na ukryty wyciek plikow tymczasowych.
-  - Wymaganie: po E2E sprawdzaj, czy nie zostaly `/tmp/seal-*` (fail jeśli tak).
+  - Wymaganie: po E2E sprawdzaj, czy nie zostaly pliki poza `SEAL_E2E_ROOT` (w szczegolnosci w `/tmp`); fail jeśli tak.
 
 - Blad: zachowanie zalezne od ENV bylo niejawne i rozne miedzy maszynami.
   - Wymaganie: ENV ma jawne defaulty, a „effective config” jest logowane.
@@ -1448,10 +1471,30 @@
 - Blad: brak wczesnej walidacji wolnego miejsca na serwerze powodowal `tar: Cannot mkdir: No space left on device`.
   - Wymaganie: preflight sprawdza wolne miejsce w `installDir` oraz `/tmp` i failuje z instrukcja, jesli za malo miejsca.
 
-- Blad: testy E2E i cache (node_modules/logi/artefakty/Docker volumes) rosly bez limitu i zapelnialy dysk.
+- Blad: testy E2E i cache (node_modules/logi/artefakty/Docker volumes) rosly bez limitu i potrafily trafic do nieznanych katalogow (np. /tmp), zapychajac dysk bez wiedzy uzytkownika.
+  - Wymaganie: **NIE MOZNA DOPUSZCZAC, ABY PLIKI ROSLY W NIEZNANYM FOLDERZE I ZAPCHALY DYSK.**
+  - Wymaganie: wszystkie artefakty E2E musza byc w `seal-out/e2e` (lub jawnie ustawionym `SEAL_E2E_ROOT`/`SEAL_E2E_TMP_ROOT`), a sciezki sa logowane na starcie.
+  - Wymaganie: domyslny layout uzywa stalego `run/`, a `SEAL_E2E_RUN_LAYOUT=concurrent`
+    tworzy `concurrent-runs/<runId>`; po runie sprzataj `tmp/` i `workers/`.
   - Wymaganie: E2E loguje zuzycie dysku przed/po runie i ma retention/limit (liczba/rozmiar/TTL) dla cache/logow/artefaktow.
-  - Wymaganie: cache E2E jest w dedykowanym katalogu poza repo (np. `/tmp/seal-e2e-cache`), latwym do wyczyszczenia; dokumentuj szybki cleanup.
+  - Wymaganie: cache E2E jest w dedykowanym katalogu w `seal-out/e2e/cache` (lub `SEAL_E2E_CACHE_DIR`), latwym do wyczyszczenia; dokumentuj szybki cleanup.
   - Wymaganie: gdy zabraknie miejsca (`ENOSPC`), testy podaja konkretne kroki cleanup (cache, volumes, obrazy) zamiast ogolnego bledu.
+- Blad: brak jawnej komendy sprzatania cache powodowal, ze uzytkownik nie wiedzial co czyscic i gdzie rosnie.
+  - Wymaganie: udostepnij `seal clean` (projekt) oraz `seal clean-global-cache <scope>` (global), i dokumentuj scope/efekty.
+  - Wymaganie: komendy czyszczenia loguja docelowe sciezki (bez zgadywania) i nie dotykaja katalogow spoza scope.
+  - Wymaganie: nowy cache dodaje wpis do `SEAL_CACHE_GUIDE` i zakres do `seal clean-global-cache <scope>` (lub jawne "nie dotyczy").
+- Blad: cache/artefakty byly tworzone bez "manifestu" (kto/po co/jak wyczyscic), przez co uzytkownik nie wiedzial skad sie biora.
+  - Wymaganie: kazdy trwały katalog ma krotki manifest (owner/purpose/cleanup command) lub przynajmniej jawny log startowy ze sciezkami i instrukcja czyszczenia.
+- Blad: retencja cache byla oparta o czas (TTL) zamiast o faktyczne wejscia (hash lockfile/wersje), co dawalo przypadkowe "hit/miss".
+  - Wymaganie: cache kluczuj po tresci (hash lockfile/konfiguracji) i wersjach narzedzi/OS/arch; TTL tylko jako dodatkowy bezpiecznik.
+- Blad: cleanup byl "best-effort" i cicho ignorowal bledy, co zostawialo smieci po runie.
+  - Wymaganie: cleanup jest deterministyczny; przy niepowodzeniu loguj sciezke i przyczyne, a w CI/E2E traktuj jako FAIL.
+- Blad: `rm -rf` na sciezkach z ENV bez walidacji moglo usunac niewlasciwe katalogi (root/home/empty).
+  - Wymaganie: wszystkie operacje `rm -rf` przechodza przez guard-helper (blokada root/home/puste sciezki) i loguja docelowy katalog.
+- Blad: mieszano scope cache (build/e2e/toolchain/global), co powodowalo regresje i "dziwne" reuse.
+  - Wymaganie: cache ma rozdzielone scope i jawne komendy czyszczenia per-scope.
+- Blad: brak testu "creates & cleans" pozwalal na wycieki plikow poza root.
+  - Wymaganie: kazda nowa funkcja, ktora tworzy cache/tmp, ma E2E "leak test" (brak plikow poza root po runie).
 - Blad: docker build cache/obrazy narastaly bez limitu i zapychaly dysk, mimo czyszczenia wolumenow.
   - Wymaganie: testy raportuja rozmiar cache/obrazow (`docker system df`) i udostepniaja jawny tryb cleanup (`docker builder prune`/`docker image prune`).
   - Wymaganie: dla E2E rekomenduj dedykowany `data-root` Dockera lub osobny disk/volume na cache obrazow.
@@ -2571,7 +2614,8 @@
 ## Dodatkowe wnioski (batch 256-260)
 
 - Blad: logi/summary E2E trafialy do stalych sciezek, przez co rownolegle uruchomienia nadpisywaly sie i gubily artefakty diagnostyczne.
-  - Wymaganie: kazdy run ma unikalny `RUN_ID`, a katalogi logow/summary sa per‑run; skrypt loguje te sciezki na starcie.
+  - Wymaganie: domyslny layout uzywa `run/`, a tryb `concurrent` ma unikalny `RUN_ID`;
+    logi/summary sa per‑run i skrypt loguje te sciezki na starcie.
 - Blad: keep‑alive `sudo -v` uruchomiony w tle nie byl sprzatany, zostawiajac procesy po zakonczeniu testow.
   - Wymaganie: background keep‑alive jest zawsze ubijany w `trap` (z zachowaniem exit code), a jego PID jest logowany.
 

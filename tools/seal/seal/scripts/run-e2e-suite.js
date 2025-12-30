@@ -20,10 +20,21 @@ const {
   writeJsonSummaryReport,
 } = require("./e2e-report");
 const { hasCommand } = require("./e2e-utils");
-const { loadE2EConfig, resolveSummaryPaths, resolveLogDir, resolveRerunFrom, isPlanMode } = require("./e2e-runner-config");
-const { assertEscalated, makeRunId, formatDuration, logEffectiveConfig, formatConfigLine, buildTimingRows } = require("./e2e-runner-utils");
+const { loadE2EConfig, resolveE2ERoot, resolveE2EPaths, resolveRerunFrom, isPlanMode } = require("./e2e-runner-config");
+const { ensureDir, resolveRunContext, setupRunCleanup } = require("./e2e-runner-fs");
+const {
+  assertEscalated,
+  makeRunId,
+  formatDuration,
+  logEffectiveConfig,
+  formatConfigLine,
+  buildRunConfigLines,
+  buildTimingRows,
+  isEnabled,
+} = require("./e2e-runner-utils");
 const { applyToolsetDefaults, applyE2EFeatureFlags, applySshDefaults } = require("./e2e-runner-env");
 const { preparePlan, applyRerunFailedFilters } = require("./e2e-runner-plan");
+const { prepareExampleWorkspace } = require("./e2e-runner-workspace");
 
 const SCRIPT_DIR = __dirname;
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "../../../..");
@@ -104,10 +115,6 @@ function sigChanged(stampPath, sig) {
   } catch {
     return true;
   }
-}
-
-function ensureDir(dir) {
-  fs.mkdirSync(dir, { recursive: true });
 }
 
 function findFirstFile(root, names) {
@@ -299,37 +306,6 @@ async function withDirLock(lockPath, fn) {
   }
 }
 
-function buildSafeRoots(env) {
-  const roots = ["/tmp", "/var/tmp", "/dev/shm"];
-  const extras = [env.TMPDIR, env.TMP, env.TEMP];
-  for (const extra of extras) {
-    if (extra) roots.push(extra);
-  }
-  if (env.SEAL_E2E_SAFE_ROOTS) {
-    for (const root of env.SEAL_E2E_SAFE_ROOTS.split(/[:;,]+/).filter(Boolean)) {
-      roots.push(root);
-    }
-  }
-  return roots;
-}
-
-function isSafeExampleRoot(exampleRoot, safeRoots) {
-  return safeRoots.some((base) => exampleRoot === base || exampleRoot.startsWith(`${base}/`));
-}
-
-function requireSafeExampleRoot(exampleRoot, safeRoots, env) {
-  if (env.SEAL_E2E_UNSAFE_EXAMPLE_ROOT === "1") return;
-  if (!path.isAbsolute(exampleRoot)) {
-    log(`ERROR: SEAL_E2E_EXAMPLE_ROOT must be absolute (got: ${exampleRoot})`);
-    process.exit(1);
-  }
-  if (!isSafeExampleRoot(exampleRoot, safeRoots)) {
-    log(`ERROR: SEAL_E2E_EXAMPLE_ROOT is not under safe roots (${safeRoots.join(" ")}).`);
-    log("       Set SEAL_E2E_SAFE_ROOTS or SEAL_E2E_UNSAFE_EXAMPLE_ROOT=1 to override.");
-    process.exit(1);
-  }
-}
-
 async function runCommand(cmd, args, options) {
   if (!options.logFile) {
     const res = spawnSync(cmd, args, { env: options.env, cwd: options.cwd, stdio: "inherit" });
@@ -376,14 +352,44 @@ async function main() {
   loadE2EConfig(env, { repoRoot: REPO_ROOT, scriptDir: SCRIPT_DIR, log });
   assertEscalated(log);
 
-  const runId = env.SEAL_E2E_RUN_ID || makeRunId();
-  env.SEAL_E2E_RUN_ID = runId;
+  const keepRuns = isEnabled(env, "SEAL_E2E_KEEP_RUNS");
+  const runContext = resolveRunContext({
+    env,
+    log,
+    repoRoot: REPO_ROOT,
+    resolveE2ERoot,
+    keepRuns,
+    makeRunId,
+    ensureExampleBase: true,
+  });
+  const {
+    runId,
+    runLayout,
+    runRoot,
+    runsRoot,
+    tmpRoot,
+    exampleRootBase,
+    e2eRoot,
+    lockOwned,
+    lockPath,
+  } = runContext;
   const runStart = Date.now();
 
-  const originalHome = env.HOME || os.homedir();
-  const cacheBin = env.SEAL_E2E_CACHE_BIN || path.join(originalHome, ".cache", "seal", "bin");
-  const cacheRoot = env.SEAL_E2E_CACHE_DIR || path.dirname(cacheBin);
-  const stampsDir = path.join(cacheRoot, "stamps");
+  const setupOnly = isEnabled(env, "SEAL_E2E_SETUP_ONLY");
+  const {
+    cacheRoot,
+    cacheBin,
+    stampsDir,
+    npmCacheDir,
+    summaryPath,
+    summaryLastPath,
+    logDir,
+  } = resolveE2EPaths({
+    env,
+    e2eRoot,
+    runId,
+    summaryEnabled: !setupOnly,
+  });
   ensureDir(cacheBin);
   ensureDir(stampsDir);
   env.PATH = `${cacheBin}${path.delimiter}${env.PATH || ""}`;
@@ -392,12 +398,10 @@ async function main() {
   env.SEAL_KITESHIELD_BIN_DIR = cacheBin;
   env.SEAL_MIDGETPACK_BIN_DIR = cacheBin;
 
-  const setupOnly = env.SEAL_E2E_SETUP_ONLY === "1";
   const failFast = env.SEAL_E2E_FAIL_FAST || "0";
   const summaryGroup = env.SEAL_E2E_GROUP || "default";
   let summaryScope = env.SEAL_E2E_SUMMARY_SCOPE || "all";
 
-  const npmCacheDir = env.NPM_CONFIG_CACHE || path.join(cacheRoot, "npm");
   env.NPM_CONFIG_CACHE = npmCacheDir;
   env.NPM_CONFIG_AUDIT = env.NPM_CONFIG_AUDIT || "false";
   env.NPM_CONFIG_FUND = env.NPM_CONFIG_FUND || "false";
@@ -406,15 +410,7 @@ async function main() {
   env.NPM_CONFIG_LOGLEVEL = env.NPM_CONFIG_LOGLEVEL || "warn";
   ensureDir(npmCacheDir);
 
-  const { summaryPath, summaryLastPath } = resolveSummaryPaths({
-    env,
-    cacheRoot,
-    runId,
-    enabled: !setupOnly,
-  });
-
   let logCapture = env.SEAL_E2E_CAPTURE_LOGS || "1";
-  let logDir = resolveLogDir({ env, cacheRoot, runId });
   env.SEAL_E2E_LOG_DIR = logDir;
   const logTailLines = Number(env.SEAL_E2E_LOG_TAIL_LINES || "40");
   const logFiltered = env.SEAL_E2E_LOG_FILTERED || "1";
@@ -450,6 +446,13 @@ async function main() {
   const manifestStrict = env.SEAL_E2E_MANIFEST_STRICT !== "0";
 
   const effectiveLines = [
+    ...buildRunConfigLines({
+      runLayout,
+      runId,
+      runRoot,
+      tmpRoot,
+      includeTmpRoot: true,
+    }),
     formatConfigLine([
       { key: "toolset", value: toolset },
       { key: "parallel", value: env.SEAL_E2E_PARALLEL || "0" },
@@ -490,7 +493,7 @@ async function main() {
     ensureSummaryFile(summaryPath, { append: env.SEAL_E2E_SUMMARY_APPEND === "1" });
   };
 
-  const rerunFailed = env.SEAL_E2E_RERUN_FAILED === "1" && !setupOnly;
+  const rerunFailed = isEnabled(env, "SEAL_E2E_RERUN_FAILED") && !setupOnly;
   const rerunFrom = resolveRerunFrom(env, summaryPath, summaryLastPath);
   const planMode = isPlanMode(env);
   const adjustFilters = ({ onlyList, skipList }) => {
@@ -605,25 +608,34 @@ async function main() {
   env.LC_ALL = "C";
   env.TZ = "UTC";
 
-  const safeRoots = buildSafeRoots(env);
-  const exampleSrc = path.join(REPO_ROOT, "tools", "seal", "example");
-  const exampleDst = env.SEAL_E2E_EXAMPLE_ROOT || "/tmp/seal-example-e2e";
+  const {
+    exampleRoot: exampleDst,
+    exampleDir,
+    cleanupExample,
+    exampleSrc,
+  } = prepareExampleWorkspace({
+    env,
+    repoRoot: REPO_ROOT,
+    exampleRootBase,
+    log,
+  });
 
-  if ((env.SEAL_E2E_COPY_EXAMPLE || "1") === "1") {
-    log("Preparing disposable example workspace...");
-    requireSafeExampleRoot(exampleDst, safeRoots, env);
-    ensureDir(path.dirname(exampleDst));
-    fs.rmSync(exampleDst, { recursive: true, force: true });
-    fs.cpSync(exampleSrc, exampleDst, { recursive: true, dereference: false });
-    env.SEAL_E2E_EXAMPLE_ROOT = exampleDst;
-  }
-
-  const exampleDir = env.SEAL_E2E_EXAMPLE_ROOT || exampleDst;
-  if ((env.SEAL_E2E_COPY_EXAMPLE || "1") !== "1" && !fs.existsSync(exampleDir)) {
-    log(`ERROR: SEAL_E2E_EXAMPLE_ROOT not found (${exampleDir}).`);
-    log("       Set SEAL_E2E_EXAMPLE_ROOT to an existing example or enable SEAL_E2E_COPY_EXAMPLE=1.");
-    process.exit(1);
-  }
+  setupRunCleanup({
+    env,
+    log,
+    runId,
+    runRoot,
+    runsRoot,
+    tmpRoot,
+    exampleRoot: exampleRootBase || exampleDst,
+    cleanupExample,
+    keepTmp: isEnabled(env, "SEAL_E2E_KEEP_TMP"),
+    keepRuns,
+    runLayout,
+    lockOwned,
+    lockPath,
+    isParallelChild: isEnabled(env, "SEAL_E2E_PARALLEL_CHILD"),
+  });
   let exampleNodeModulesDir = path.join(exampleDir, "node_modules");
   let sharedNodeModulesDir = "";
   if (env.SEAL_E2E_NODE_MODULES_ROOT) {

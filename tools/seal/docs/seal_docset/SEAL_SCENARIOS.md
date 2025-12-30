@@ -199,6 +199,29 @@ seal deploy robot-01 --artifact seal-out/<app>-<buildId>.tgz
 
 ---
 
+## S17) Czyszczenie cache i artefaktow E2E
+**Cel:** usunac cache po E2E lub zresetowac build cache, bez zgadywania sciezek.
+
+```bash
+# Projekt: domyslnie usuwa caly seal-out
+seal clean
+
+# Projekt: scope wybranego katalogu
+seal clean cache
+seal clean e2e
+seal clean runs
+seal clean all
+
+# Cache globalne / docker / playwright
+seal clean-global-cache
+seal clean-global-cache docker
+seal clean-global-cache global
+seal clean-global-cache playwright
+seal clean-global-cache all
+```
+
+---
+
 ## S17) Deploy na wiele targetów (fleet)
 **Cel:** jedno wydanie na wiele robotów/hostów.
 

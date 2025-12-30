@@ -5,6 +5,7 @@ SUDO=""
 if [ "$(id -u)" -ne 0 ]; then
   SUDO="sudo"
 fi
+KEEP_SRC="${SEAL_TOOLCHAIN_KEEP_SRC:-0}"
 
 export DEBIAN_FRONTEND=noninteractive
 export TZ=UTC
@@ -15,6 +16,19 @@ log() {
 
 has_cmd() {
   command -v "$1" >/dev/null 2>&1
+}
+
+safe_rm_dir() {
+  local dir="$1"
+  if [ -z "$dir" ] || [ "$dir" = "/" ] || [ "$dir" = "." ]; then
+    log "WARN: skip unsafe cleanup path: '$dir'"
+    return
+  fi
+  if [ -n "${HOME:-}" ] && [ "$dir" = "$HOME" ]; then
+    log "WARN: skip cleanup of HOME: '$dir'"
+    return
+  fi
+  rm -rf "$dir"
 }
 
 candidate_available() {
@@ -134,6 +148,12 @@ $SUDO make -C "$ROOT" install
 
 if has_cmd criu; then
   log "criu installed: $(command -v criu)"
+  if [ "$KEEP_SRC" = "1" ]; then
+    log "Keeping sources (SEAL_TOOLCHAIN_KEEP_SRC=1)."
+  else
+    log "Cleaning source/build cache..."
+    safe_rm_dir "$ROOT"
+  fi
 else
   log "WARN: criu build completed but binary not found."
 fi

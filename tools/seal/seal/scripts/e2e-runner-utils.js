@@ -33,6 +33,14 @@ function normalizeFlag(value, fallback = "0") {
   return value === "1" ? "1" : "0";
 }
 
+function isEnabled(env, key, fallback = "0") {
+  const source = env || process.env;
+  if (!source || !key) {
+    return normalizeFlag(undefined, fallback) === "1";
+  }
+  return normalizeFlag(source[key], fallback) === "1";
+}
+
 function sanitizeName(raw) {
   const cleaned = String(raw || "")
     .replace(/[^A-Za-z0-9._-]+/g, "_")
@@ -86,6 +94,18 @@ function formatConfigLine(entries) {
   return `  ${parts.join(" ")}`;
 }
 
+function buildRunConfigLines(options) {
+  const entries = [
+    { key: "run_layout", value: options.runLayout },
+    { key: "run_id", value: options.runId },
+    { key: "run_root", value: options.runRoot || "<none>" },
+  ];
+  if (options.includeTmpRoot) {
+    entries.push({ key: "tmp_root", value: options.tmpRoot || "<none>" });
+  }
+  return [formatConfigLine(entries)];
+}
+
 function buildTimingRows(durationByTest, statusByTest) {
   const durations = durationByTest || {};
   const statuses = statusByTest || {};
@@ -101,11 +121,13 @@ module.exports = {
   makeRunId,
   formatDuration,
   normalizeFlag,
+  isEnabled,
   sanitizeName,
   shortHash,
   safeName,
   assertEscalated,
   logEffectiveConfig,
   formatConfigLine,
+  buildRunConfigLines,
   buildTimingRows,
 };

@@ -60,6 +60,12 @@ function resolveE2ETimeoutScale() {
   return 1;
 }
 
+function resolveTmpRoot() {
+  const envRoot = process.env.SEAL_E2E_TMP_ROOT || process.env.TMPDIR || process.env.TMP || process.env.TEMP;
+  if (envRoot) return envRoot;
+  return os.tmpdir();
+}
+
 function resolveE2ETimeout(envKey, defaultMs) {
   const override = envKey ? parseNumber(process.env[envKey]) : null;
   if (override !== null) return override;
@@ -469,6 +475,7 @@ module.exports = {
   parseArgsEnv,
   readReadyPayload,
   spawnSyncWithTimeout,
+  resolveTmpRoot,
   withTimeout,
   httpJson,
   waitForStatus,
