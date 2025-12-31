@@ -57,7 +57,7 @@ _seal_complete() {
     cword=$COMP_CWORD
   fi
 
-  local commands="init wizard completion check target config sentinel release run-local verify clean clean-global-cache deploy ship rollback run uninstall remote"
+  local commands="init wizard completion check target config sentinel release run-local verify diag doctor clean clean-global-cache deploy ship rollback run uninstall remote"
   local global_opts="-h --help -V --version"
 
   if [[ "$prev" == "--packager" ]]; then
@@ -125,7 +125,7 @@ _seal_complete() {
         return
       fi
       ;;
-    deploy|ship|rollback|run|uninstall|check|release)
+    deploy|ship|rollback|run|uninstall|check|release|diag|doctor)
       if (( cword == 2 )); then
         if [[ "$cur" != -* ]]; then
           COMPREPLY=( $(compgen -W "$(_seal_targets)" -- "$cur") )

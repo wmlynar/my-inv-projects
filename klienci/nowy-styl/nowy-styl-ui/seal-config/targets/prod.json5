@@ -7,6 +7,6 @@
   serviceScope: "system",
   installDir: "/home/admin/apps/nowy-styl-ui",
   serviceName: "nowy-styl-ui",
-  packager: "sea",
+  packager: "auto",
   config: "prod",
 }

@@ -4,42 +4,5 @@
     { "name": "nowy-styl-ui" },
     { "name": "robot-task-manager" },
     { "name": "robot-ui" }
-  ],
-  "defaults": {
-    "defaultTarget": "local",
-    "build": {
-      "packager": "sea",
-      "packagerFallback": false,
-      "securityProfile": "strict",
-      "frontendObfuscation": {
-        "enabled": true
-      },
-      "frontendMinify": {
-        "enabled": true,
-        "level": "safe",
-        "html": true,
-        "css": true
-      },
-      "protection": {
-        "enabled": true,
-        "bundle": {
-          "pack": true
-        },
-        "strip": {
-          "enabled": false
-        }
-      }
-    },
-    "deploy": {
-      "autoBootstrap": true
-    },
-    "policy": {
-      "retention": {
-        "keepReleases": 1,
-        "cleanupOnSuccess": true,
-        "neverDeleteCurrent": true,
-        "keepAtLeastOneRollback": true
-      }
-    }
-  }
+  ]
 }

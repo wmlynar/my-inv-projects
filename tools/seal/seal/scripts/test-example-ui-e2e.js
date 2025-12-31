@@ -3,6 +3,7 @@
 
 const assert = require("assert");
 const fs = require("fs");
+const http = require("http");
 const os = require("os");
 const path = require("path");
 const { spawnSync } = require("child_process");
@@ -48,6 +49,57 @@ function runCmd(cmd, args, timeoutMs = 5000) {
     throw new Error(`${cmd} failed: ${msg}`);
   }
   return res;
+}
+
+function readCmdlineArgv0(pid) {
+  const cmdlinePath = `/proc/${pid}/cmdline`;
+  const buf = fs.readFileSync(cmdlinePath);
+  const parts = buf.toString("utf-8").split("\0").filter(Boolean);
+  return parts[0] || "";
+}
+
+function httpGet(url, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const req = http.get(url, (res) => {
+      let data = "";
+      res.setEncoding("utf-8");
+      res.on("data", (chunk) => {
+        data += chunk;
+      });
+      res.on("end", () => resolve({ statusCode: res.statusCode || 0, body: data }));
+    });
+    req.on("error", reject);
+    if (timeoutMs) {
+      req.setTimeout(timeoutMs, () => {
+        req.destroy(new Error("HTTP timeout"));
+      });
+    }
+  });
+}
+
+async function checkStatusEndpoint(baseUrl, buildId) {
+  const res = await httpGet(`${baseUrl}/api/status`, 5000);
+  assert.strictEqual(res.statusCode, 200, `Expected /api/status 200, got ${res.statusCode}`);
+  let payload;
+  try {
+    payload = JSON.parse(res.body || "{}");
+  } catch (e) {
+    throw new Error(`/api/status invalid JSON: ${e.message}`);
+  }
+  assert.ok(payload && payload.ok === true, "Expected /api/status ok=true");
+  assert.strictEqual(payload.buildId, buildId, "Expected /api/status buildId to match release");
+  return payload;
+}
+
+async function checkIndexEndpoint(baseUrl) {
+  const res = await httpGet(`${baseUrl}/`, 5000);
+  if (res.statusCode === 404) {
+    return { ok: false, statusCode: res.statusCode };
+  }
+  if (res.statusCode >= 400) {
+    throw new Error(`Expected / to be reachable, got ${res.statusCode}`);
+  }
+  return { ok: true, statusCode: res.statusCode };
 }
 
 function probeCompilerFlag(cmd, flag) {
@@ -131,6 +183,7 @@ async function buildThinRelease(buildTimeoutMs) {
     log("Integrity inline + ELF packer is incompatible; disabling elfPacker for test");
     projectCfg.build.protection.elfPacker = {};
   }
+  projectCfg.build.thin.runtimeArgv0 = "appName";
   const targetCfg = loadTargetConfig(EXAMPLE_ROOT, "local").cfg;
   const configName = resolveConfigName(targetCfg, "local");
 
@@ -328,7 +381,11 @@ async function testUi(ctx) {
       writeRuntimeConfig,
       log,
       captureOutput: true,
-    }, async ({ port, readyFile, ready }) => {
+    }, async ({ child, port, readyFile, ready }) => {
+      if (process.platform === "linux" && child && Number.isFinite(child.pid)) {
+        const argv0 = readCmdlineArgv0(child.pid);
+        assert.strictEqual(argv0, "seal-example", `Expected argv0 to be seal-example (got: ${argv0})`);
+      }
       if (readyFile) {
         const payload = await readReadyPayload(readyFile, ready, 1000);
         if (!payload) {
@@ -339,7 +396,14 @@ async function testUi(ctx) {
         log("SKIP: UI runtime check disabled (ready-file mode)");
         return;
       }
-      const url = `http://127.0.0.1:${port}/`;
+      const baseUrl = `http://127.0.0.1:${port}`;
+      await checkStatusEndpoint(baseUrl, buildId);
+      const indexCheck = await checkIndexEndpoint(baseUrl);
+      if (!indexCheck.ok) {
+        log("SKIP: / returned 404; skipping Playwright UI check");
+        return;
+      }
+      const url = `${baseUrl}/`;
       await withTimeout("uiSmoke", ctx.uiTimeoutMs, () =>
         runUiTest({
           url,

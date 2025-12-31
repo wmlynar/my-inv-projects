@@ -126,6 +126,10 @@ function pickMountpoint(items) {
   return "";
 }
 
+function safeJson(value) {
+  return JSON.stringify(value, (key, val) => (typeof val === "bigint" ? val.toString() : val), 2);
+}
+
 async function cmdSentinelProbe(cwd, targetArg) {
   const ctx = resolveContext(cwd, targetArg);
   if (!ensureEnabled(ctx)) return;
@@ -180,7 +184,7 @@ async function cmdSentinelVerify(cwd, targetArg, opts) {
 
   const res = verifySentinelSsh({ targetCfg: ctx.targetCfg, sentinelCfg: ctx.sentinelCfg });
   if (opts.json) {
-    process.stdout.write(JSON.stringify(res, null, 2) + "\n");
+    process.stdout.write(safeJson(res) + "\n");
     if (!res.ok) throw new Error(`Sentinel verify failed (${res.reason || "unknown"})`);
     return;
   }
@@ -214,7 +218,7 @@ async function cmdSentinelInspect(cwd, targetArg, opts) {
   const res = inspectSentinelSsh({ targetCfg: ctx.targetCfg, sentinelCfg: ctx.sentinelCfg });
 
   if (opts.json) {
-    process.stdout.write(JSON.stringify(res, null, 2) + "\n");
+    process.stdout.write(safeJson(res) + "\n");
     return;
   }
 

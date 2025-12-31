@@ -368,6 +368,8 @@ async function withSealedBinary(opts, fn) {
   const runTimeoutMs = options.runTimeoutMs;
   const writeRuntimeConfig = options.writeRuntimeConfig;
   const env = options.env || null;
+  const uid = Number.isFinite(options.uid) ? options.uid : null;
+  const gid = Number.isFinite(options.gid) ? options.gid : null;
   const skipListen = options.skipListen === true;
   const captureOutput = options.captureOutput;
   const log = options.log;
@@ -386,7 +388,10 @@ async function withSealedBinary(opts, fn) {
   }
 
   const childEnv = applyReadyFileEnv(Object.assign({}, process.env, env || {}), readyFile);
-  const child = spawn(binPath, args, { cwd: releaseDir, stdio: ["ignore", "pipe", "pipe"], env: childEnv });
+  const childOpts = { cwd: releaseDir, stdio: ["ignore", "pipe", "pipe"], env: childEnv };
+  if (uid !== null) childOpts.uid = uid;
+  if (gid !== null) childOpts.gid = gid;
+  const child = spawn(binPath, args, childOpts);
   const captureEnabled = captureOutput === true || (captureOutput && typeof captureOutput === "object");
   const logs = captureEnabled ? captureProcessOutput(child, captureOutput === true ? {} : captureOutput) : null;
   if (!captureEnabled) {

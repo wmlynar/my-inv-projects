@@ -1316,6 +1316,10 @@ static int sentinel_check(void) {
 `;
 }
 
+function escapeCString(value) {
+  return String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
 function renderLauncherSource(
   codecState,
   limits,
@@ -1323,6 +1327,7 @@ function renderLauncherSource(
   sentinelCfg,
   envMode,
   runtimeStore,
+  runtimeArgv0,
   antiDebugCfg,
   integrityCfg,
   appBindValue,
@@ -4307,6 +4312,9 @@ static int apply_core_dump_limit(void) {
   }
   int cfd = open("/proc/self/coredump_filter", O_WRONLY);
   if (cfd < 0) {
+    if (errno == EACCES || errno == EPERM) {
+      return 0;
+    }
     return fail_msg("[thin] runtime invalid", 76);
   }
   const char *filter = "0";
@@ -4774,7 +4782,7 @@ int main(int argc, char **argv) {
     return probe_rc;
   }
 
-  char *exec_argv[] = { (char *)"node", (char *)"--expose-gc", (char *)"--preserve-symlinks-main", bootstrap_path, NULL };
+  char *exec_argv[] = { (char *)"${escapeCString(runtimeArgv0 || "n")}", (char *)"--expose-gc", (char *)"--preserve-symlinks-main", bootstrap_path, NULL };
   fexecve(node_fd, exec_argv, environ);
   return fail_errno("[thin] exec failed", 34);
 }
@@ -4788,6 +4796,7 @@ function buildLauncher(
   sentinelCfg,
   envMode,
   runtimeStore,
+  runtimeArgv0,
   cObfuscator,
   antiDebugCfg,
   integrityCfg,
@@ -4837,6 +4846,7 @@ function buildLauncher(
       sentinelCfg,
       envMode,
       runtimeStore,
+      runtimeArgv0,
       antiDebugCfg,
       integrityCfg,
       appBindValue,
@@ -4976,6 +4986,7 @@ async function packThin({
   zstdTimeoutMs,
   envMode,
   runtimeStore,
+  runtimeArgv0,
   launcherHardening,
   launcherHardeningCET,
   antiDebug,
@@ -5108,6 +5119,7 @@ async function packThin({
       sentinel,
       envMode,
       runtimeStore,
+      runtimeArgv0,
       cObfuscator,
       antiDebug,
       integrityCfg,

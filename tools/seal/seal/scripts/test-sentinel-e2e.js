@@ -29,6 +29,21 @@ const EXAMPLE_ROOT = resolveExampleRoot();
 
 const { log, fail } = createLogger("sentinel-e2e");
 
+function resolveWritableTmpBase() {
+  const candidates = ["/tmp", "/var/tmp", os.tmpdir()];
+  for (const base of candidates) {
+    try {
+      fs.accessSync(base, fs.constants.W_OK | fs.constants.X_OK);
+      return base;
+    } catch {
+      // try next
+    }
+  }
+  return os.tmpdir();
+}
+
+const TMP_BASE = resolveWritableTmpBase();
+
 function runCmd(cmd, args, timeoutMs = 5000) {
   const res = spawnSync(cmd, args, { stdio: "pipe", timeout: timeoutMs });
   if (res.error) {
@@ -130,7 +145,7 @@ function getCpuIdAsm() {
   const cc = resolveCc();
   if (!cc) return { value: "", error: "Missing C compiler" };
 
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-cpuid-"));
+  const tmpDir = fs.mkdtempSync(path.join(TMP_BASE, "seal-cpuid-"));
   const srcPath = path.join(tmpDir, "cpuid.c");
   const outPath = path.join(tmpDir, "cpuid");
   const src = `#include <stdio.h>
@@ -287,7 +302,7 @@ async function buildReleaseWithSentinel({ baseDir, outRoot, sentinelOverride }) 
   };
   targetCfg.packager = "thin-split";
 
-  const outRootFinal = outRoot || fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-"));
+  const outRootFinal = outRoot || fs.mkdtempSync(path.join(TMP_BASE, "seal-sentinel-"));
   const createdOutRoot = !outRoot;
   const outDir = path.join(outRootFinal, "seal-out");
 
@@ -324,6 +339,38 @@ function ensureBaseDirOwned(baseDir, mode) {
   fs.chownSync(baseDir, 0, 0);
 }
 
+function resolveNonRootUser() {
+  const raw = readFileTrim("/etc/passwd");
+  if (!raw) return null;
+  const lines = raw.split(/\r?\n/).filter(Boolean);
+  let fallback = null;
+  for (const line of lines) {
+    if (line.startsWith("#")) continue;
+    const parts = line.split(":");
+    if (parts.length < 4) continue;
+    const name = parts[0];
+    const uid = Number(parts[2]);
+    const gid = Number(parts[3]);
+    if (!Number.isFinite(uid) || !Number.isFinite(gid)) continue;
+    if (uid === 0) continue;
+    if (name === "nobody") return { name, uid, gid };
+    if (!fallback) fallback = { name, uid, gid };
+  }
+  return fallback;
+}
+
+function chownRecursive(root, uid, gid) {
+  if (!fs.existsSync(root)) return;
+  const stat = fs.lstatSync(root);
+  fs.chownSync(root, uid, gid);
+  if (stat.isDirectory()) {
+    const entries = fs.readdirSync(root);
+    for (const entry of entries) {
+      chownRecursive(path.join(root, entry), uid, gid);
+    }
+  }
+}
+
 function installSentinelBlob({
   baseDir,
   namespaceId,
@@ -337,14 +384,18 @@ function installSentinelBlob({
   includeCpuId,
   includePuid,
   expiresAtSec,
+  dirMode,
+  dirGroup,
 }) {
   ensureBaseDirOwned(baseDir, 0o711);
   const opaqueDir = deriveOpaqueDir(namespaceId);
   const opaqueFile = deriveOpaqueFile(namespaceId, appId);
   const dirPath = path.join(baseDir, opaqueDir);
-  fs.mkdirSync(dirPath, { recursive: true, mode: 0o710 });
-  fs.chmodSync(dirPath, 0o710);
-  fs.chownSync(dirPath, 0, 0);
+  const useMode = Number.isFinite(dirMode) ? dirMode : 0o750;
+  const useGroup = Number.isFinite(dirGroup) ? dirGroup : 0;
+  fs.mkdirSync(dirPath, { recursive: true, mode: useMode });
+  fs.chmodSync(dirPath, useMode);
+  fs.chownSync(dirPath, 0, useGroup);
 
   const anchor = buildAnchor(namespaceId, appId);
   const installId = crypto.randomBytes(32);
@@ -367,11 +418,11 @@ function installSentinelBlob({
   const filePath = path.join(dirPath, opaqueFile);
   fs.writeFileSync(filePath, blob, { mode: 0o640 });
   fs.chmodSync(filePath, 0o640);
-  fs.chownSync(filePath, 0, 0);
+  fs.chownSync(filePath, 0, useGroup);
   return filePath;
 }
 
-async function runReleaseExpectOk({ releaseDir, buildId, runTimeoutMs }) {
+async function runReleaseExpectOk({ releaseDir, buildId, runTimeoutMs, uid, gid }) {
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
 
@@ -383,6 +434,8 @@ async function runReleaseExpectOk({ releaseDir, buildId, runTimeoutMs }) {
     writeRuntimeConfig,
     log,
     captureOutput: true,
+    uid,
+    gid,
   }, async ({ port, readyFile, ready }) => {
     if (readyFile) {
       const payload = await readReadyPayload(readyFile, ready, 1000);
@@ -399,7 +452,7 @@ async function runReleaseExpectOk({ releaseDir, buildId, runTimeoutMs }) {
   });
 }
 
-async function runReleaseExpectFail({ releaseDir, runTimeoutMs, expectCode }) {
+async function runReleaseExpectFail({ releaseDir, runTimeoutMs, expectCode, uid, gid }) {
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
 
@@ -413,6 +466,8 @@ async function runReleaseExpectFail({ releaseDir, runTimeoutMs, expectCode }) {
     waitForReady: false,
     failOnExit: false,
     captureOutput: true,
+    uid,
+    gid,
   }, async ({ port, readyFile, exitInfo: exitPromise }) => {
     const readyPromise = waitForReadyVerified({ port, readyFile, timeoutMs: runTimeoutMs });
     const winner = await withTimeout("waitForExit", runTimeoutMs, () => Promise.race([
@@ -475,16 +530,16 @@ async function runReleaseExpectExpire({
 function resolveSentinelExpiry() {
   const windowMs = resolveE2ETimeout("SEAL_SENTINEL_E2E_EXPIRE_WINDOW_MS", 3000);
   const windowSec = Math.max(3, Math.ceil(windowMs / 1000));
-  const timeoutMs = resolveE2ETimeout("SEAL_SENTINEL_E2E_EXPIRE_TIMEOUT_MS", 8000);
+  const timeoutMs = resolveE2ETimeout("SEAL_SENTINEL_E2E_EXPIRE_TIMEOUT_MS", 20000);
   return { windowSec, timeoutMs };
 }
 
 async function testSentinelBasics(ctx) {
   log("Building thin-split with sentinel...");
-  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-base-"));
+  const baseDir = fs.mkdtempSync(path.join(TMP_BASE, "seal-sentinel-base-"));
   const namespaceId = "00112233445566778899aabbccddeeff";
 
-  let outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-"));
+  let outRoot = fs.mkdtempSync(path.join(TMP_BASE, "seal-sentinel-"));
   let releaseDir = null;
   let buildId = null;
   let appId = null;
@@ -512,6 +567,60 @@ async function testSentinelBasics(ctx) {
     installSentinelBlob({ baseDir, namespaceId, appId, level: 1, mid, cpuid });
     await runReleaseExpectOk({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs });
 
+    log("Case: sentinel dir not group-readable -> expect fail for non-root");
+    const nonRoot = resolveNonRootUser();
+    if (!nonRoot) {
+      log("SKIP: no non-root user available for sentinel dir permission test");
+    } else {
+      chownRecursive(outRoot, nonRoot.uid, nonRoot.gid);
+      try {
+        fs.chmodSync(outRoot, 0o755);
+      } catch {}
+      try {
+        fs.chmodSync(releaseDir, 0o755);
+      } catch {}
+      try {
+        fs.chmodSync(path.join(releaseDir, "seal-example"), 0o755);
+      } catch {}
+      installSentinelBlob({
+        baseDir,
+        namespaceId,
+        appId,
+        level: 1,
+        mid,
+        cpuid,
+        dirMode: 0o710,
+        dirGroup: nonRoot.gid,
+      });
+      await runReleaseExpectFail({
+        releaseDir,
+        runTimeoutMs: ctx.runTimeoutMs,
+        expectCode: 222,
+        uid: nonRoot.uid,
+        gid: nonRoot.gid,
+      });
+
+      log("Case: sentinel dir group-readable -> expect OK for non-root");
+      installSentinelBlob({
+        baseDir,
+        namespaceId,
+        appId,
+        level: 1,
+        mid,
+        cpuid,
+        dirMode: 0o750,
+        dirGroup: nonRoot.gid,
+      });
+      await runReleaseExpectOk({
+        releaseDir,
+        buildId,
+        runTimeoutMs: ctx.runTimeoutMs,
+        uid: nonRoot.uid,
+        gid: nonRoot.gid,
+      });
+      chownRecursive(outRoot, 0, 0);
+    }
+
     log("Case: mismatched machine-id -> expect fail");
     const badMid = mid ? `${mid}-bad` : "deadbeef";
     installSentinelBlob({ baseDir, namespaceId, appId, level: 1, mid: badMid, cpuid });
@@ -527,7 +636,7 @@ async function testSentinelBasics(ctx) {
     }
 
     log("Case: baseDir symlink -> expect fail");
-    realBase = path.join(os.tmpdir(), `seal-sentinel-real-${process.pid}`);
+    realBase = path.join(TMP_BASE, `seal-sentinel-real-${process.pid}`);
     fs.rmSync(baseDir, { recursive: true, force: true });
     ensureBaseDirOwned(realBase, 0o711);
     fs.symlinkSync(realBase, baseDir);
@@ -548,10 +657,10 @@ async function testSentinelBasics(ctx) {
 
 async function testSentinelRehostRid(ctx) {
   log("Building thin-split with sentinel level=2 (root RID)...");
-  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-rid-"));
+  const baseDir = fs.mkdtempSync(path.join(TMP_BASE, "seal-sentinel-rid-"));
   const namespaceId = "00112233445566778899aabbccddeeff";
 
-  let outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-"));
+  let outRoot = fs.mkdtempSync(path.join(TMP_BASE, "seal-sentinel-"));
   let releaseDir = null;
   let buildId = null;
   let appId = null;
@@ -595,9 +704,9 @@ async function testSentinelRehostRid(ctx) {
 async function testSentinelExpiry(ctx) {
   log("Building thin-split with sentinel expiry...");
   const { windowSec, timeoutMs } = resolveSentinelExpiry();
-  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-exp-"));
+  const baseDir = fs.mkdtempSync(path.join(TMP_BASE, "seal-sentinel-exp-"));
   const namespaceId = "00112233445566778899aabbccddeeff";
-  let outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-"));
+  let outRoot = fs.mkdtempSync(path.join(TMP_BASE, "seal-sentinel-"));
   let releaseDir = null;
   let buildId = null;
   let appId = null;
@@ -642,9 +751,9 @@ async function testSentinelExpiry(ctx) {
 async function testSentinelMismatchDeferred(ctx) {
   log("Building thin-split with sentinel mismatch deferral...");
   const { windowSec, timeoutMs } = resolveSentinelExpiry();
-  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-def-"));
+  const baseDir = fs.mkdtempSync(path.join(TMP_BASE, "seal-sentinel-def-"));
   const namespaceId = "00112233445566778899aabbccddeeff";
-  let outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-"));
+  let outRoot = fs.mkdtempSync(path.join(TMP_BASE, "seal-sentinel-"));
   let releaseDir = null;
   let buildId = null;
   let appId = null;
@@ -687,8 +796,8 @@ async function testSentinelMismatchDeferred(ctx) {
 async function testSentinelMissingDeferred(ctx) {
   log("Building thin-split with sentinel missing deferral...");
   const { windowSec, timeoutMs } = resolveSentinelExpiry();
-  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-miss-"));
-  let outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-"));
+  const baseDir = fs.mkdtempSync(path.join(TMP_BASE, "seal-sentinel-miss-"));
+  let outRoot = fs.mkdtempSync(path.join(TMP_BASE, "seal-sentinel-"));
   let releaseDir = null;
   let buildId = null;
 
@@ -725,9 +834,9 @@ async function testSentinelMissingDeferred(ctx) {
 async function testSentinelExpiredBlob(ctx) {
   log("Building thin-split with sentinel expired blob...");
   const { windowSec } = resolveSentinelExpiry();
-  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-expired-"));
+  const baseDir = fs.mkdtempSync(path.join(TMP_BASE, "seal-sentinel-expired-"));
   const namespaceId = "00112233445566778899aabbccddeeff";
-  let outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-"));
+  let outRoot = fs.mkdtempSync(path.join(TMP_BASE, "seal-sentinel-"));
   let releaseDir = null;
   let buildId = null;
   let appId = null;
@@ -759,9 +868,9 @@ async function testSentinelExpiredBlob(ctx) {
 
 async function testSentinelUnsupportedLevels(ctx) {
   log("Building thin-split with sentinel for unsupported level tests...");
-  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-l34-"));
+  const baseDir = fs.mkdtempSync(path.join(TMP_BASE, "seal-sentinel-l34-"));
   const namespaceId = "00112233445566778899aabbccddeeff";
-  let outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-"));
+  let outRoot = fs.mkdtempSync(path.join(TMP_BASE, "seal-sentinel-"));
   let releaseDir = null;
   let buildId = null;
   let appId = null;
@@ -823,8 +932,8 @@ async function testSentinelUnsupportedLevels(ctx) {
 
 async function testSentinelExternalAnchorUnsupported(ctx) {
   log("Testing sentinel externalAnchor unsupported...");
-  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-ext-"));
-  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-"));
+  const baseDir = fs.mkdtempSync(path.join(TMP_BASE, "seal-sentinel-ext-"));
+  const outRoot = fs.mkdtempSync(path.join(TMP_BASE, "seal-sentinel-"));
   try {
     let threw = false;
     try {

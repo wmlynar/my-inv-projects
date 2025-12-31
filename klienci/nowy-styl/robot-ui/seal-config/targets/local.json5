@@ -6,6 +6,6 @@
   serviceScope: "user",
   installDir: "~/.local/share/seal/robot-ui",
   serviceName: "robot-ui-sandbox",
-  packager: "sea",
+  packager: "auto",
   config: "local",
 }

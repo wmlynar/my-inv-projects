@@ -21,7 +21,7 @@ const {
 } = require("./e2e-report");
 const { hasCommand } = require("./e2e-utils");
 const { loadE2EConfig, resolveE2ERoot, resolveE2EPaths, resolveRerunFrom, isPlanMode } = require("./e2e-runner-config");
-const { ensureDir, resolveRunContext, setupRunCleanup } = require("./e2e-runner-fs");
+const { ensureDir, resolveRunContext, setupRunCleanup, removeDirSafe } = require("./e2e-runner-fs");
 const {
   assertEscalated,
   makeRunId,
@@ -428,6 +428,13 @@ async function main() {
   env.NPM_CONFIG_UPDATE_NOTIFIER = env.NPM_CONFIG_UPDATE_NOTIFIER || "false";
   env.NPM_CONFIG_LOGLEVEL = env.NPM_CONFIG_LOGLEVEL || "warn";
   ensureDir(npmCacheDir);
+  {
+    // Avoid TMPDIR overrides that point into per-run temp roots.
+    const compileRoot = path.join("/tmp", "seal-e2e-compile-cache");
+    const compileCache = path.join(compileRoot, String(process.pid));
+    ensureDir(compileCache);
+    env.NODE_COMPILE_CACHE = compileCache;
+  }
 
   let logCapture = env.SEAL_E2E_CAPTURE_LOGS || "1";
   env.SEAL_E2E_LOG_DIR = logDir;
@@ -441,6 +448,7 @@ async function main() {
   const toolset = env.SEAL_E2E_TOOLSET || "core";
   applyToolsetDefaults(env, toolset);
 
+  const keepTmp = isEnabled(env, "SEAL_E2E_KEEP_TMP");
   let isolateHome = env.SEAL_E2E_ISOLATE_HOME || "";
   if (!isolateHome) {
     isolateHome = env.SEAL_DOCKER_E2E === "1" ? "1" : "0";
@@ -460,6 +468,20 @@ async function main() {
     ensureDir(env.XDG_DATA_HOME);
     ensureDir(env.XDG_STATE_HOME);
     log(`Isolated HOME for E2E: ${e2eHome}`);
+  }
+  if (e2eHome && !keepTmp) {
+    const cleanupHome = () => {
+      removeDirSafe(e2eHome);
+    };
+    process.on("exit", cleanupHome);
+    process.on("SIGINT", () => {
+      cleanupHome();
+      process.exit(130);
+    });
+    process.on("SIGTERM", () => {
+      cleanupHome();
+      process.exit(143);
+    });
   }
 
   const manifestPath = env.SEAL_E2E_MANIFEST || path.join(SCRIPT_DIR, "e2e-tests.json5");
@@ -654,7 +676,7 @@ async function main() {
     tmpRoot,
     exampleRoot: exampleRootBase || exampleDst,
     cleanupExample,
-    keepTmp: isEnabled(env, "SEAL_E2E_KEEP_TMP"),
+    keepTmp,
     keepRuns,
     runLayout,
     lockOwned,
@@ -687,6 +709,22 @@ async function main() {
       }
     }
     if (sharedNodeModulesDir) {
+      if (!dirHasFiles(sharedNodeModulesDir)) {
+        needExampleDeps = "1";
+      }
+      const sharedResolved = path.resolve(sharedNodeModulesDir);
+      try {
+        const sharedStat = fs.lstatSync(sharedNodeModulesDir);
+        if (sharedStat.isSymbolicLink()) {
+          const linkTarget = fs.readlinkSync(sharedNodeModulesDir);
+          const linkResolved = path.resolve(path.dirname(sharedNodeModulesDir), linkTarget);
+          if (linkResolved === sharedResolved) {
+            fs.unlinkSync(sharedNodeModulesDir);
+          }
+        }
+      } catch {
+        // ignore
+      }
       ensureDir(sharedNodeModulesDir);
       if (!dirHasFiles(sharedNodeModulesDir) && dirHasFiles(env.SEAL_E2E_NODE_MODULES_ROOT || "")) {
         log("Migrating shared node_modules cache layout...");
@@ -725,8 +763,10 @@ async function main() {
               ensureDir(sharedNodeModulesDir);
               fs.cpSync(nmLink, sharedNodeModulesDir, { recursive: true, dereference: false });
             }
-            fs.rmSync(nmLink, { recursive: true, force: true });
-            fs.symlinkSync(sharedNodeModulesDir, nmLink);
+            if (path.resolve(nmLink) !== sharedResolved) {
+              fs.rmSync(nmLink, { recursive: true, force: true });
+              fs.symlinkSync(sharedNodeModulesDir, nmLink);
+            }
             fs.writeFileSync(exampleStamp, exampleSig, "utf8");
           } else {
             log("Example dependencies already installed (shared cache).");

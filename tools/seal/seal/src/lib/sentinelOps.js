@@ -287,7 +287,7 @@ C
 cc -O2 "$TMP/cpuid.c" -o "$TMP/cpuid" >/dev/null 2>&1
 "$TMP/cpuid"
 `;
-  const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-lc", script], stdio: "pipe" });
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-c", script], stdio: "pipe" });
   const out = `${res.stdout}\n${res.stderr}`.trim();
   if (out.includes("__SEAL_NO_CC__")) {
     throw new Error("sentinel cpuid asm requires cc on target (install build-essential)");
@@ -436,7 +436,7 @@ echo "FSTYPE=$FSTYPE"
 echo "PUID=$PUID"
 echo "CPUID=$CPUID"
 `;
-  const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-lc", script], stdio: "pipe" });
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-c", script], stdio: "pipe" });
   if (!res.ok) {
     const out = `${res.stdout}\n${res.stderr}`.trim();
     throw new Error(`sentinel host probe failed (status=${res.status})${formatSshFailure(res) || (out ? `: ${out}` : "")}`);
@@ -453,7 +453,7 @@ echo "CPUID=$CPUID"
 
 function getEpochSecondsSsh(targetCfg) {
   const { user, host } = sshUserHost(targetCfg);
-  const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-lc", "date +%s"], stdio: "pipe" });
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-c", "date +%s"], stdio: "pipe" });
   if (!res.ok) {
     const out = `${res.stdout}\n${res.stderr}`.trim();
     throw new Error(`sentinel time probe failed (status=${res.status})${formatSshFailure(res) || (out ? `: ${out}` : "")}`);
@@ -533,7 +533,7 @@ if [ "$SVC_USER" != "root" ]; then
 fi
 echo "BASE_EXEC=$BASE_EXEC"
 `;
-  const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-lc", script], stdio: "pipe" });
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-c", script], stdio: "pipe" });
   if (!res.ok) {
     const out = `${res.stdout}\n${res.stderr}`.trim();
     throw new Error(`sentinel baseDir probe failed (status=${res.status})${formatSshFailure(res) || (out ? `: ${out}` : "")}`);
@@ -605,12 +605,26 @@ fi
 echo "__SEAL_SENTINEL_VERIFY_FAIL__:$code"
 exit 5
 `;
-  const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-lc", script], stdio: "pipe" });
-  if (!res.ok) {
-    const out = `${res.stdout}\n${res.stderr}`.trim();
-    throw new Error(`sentinel runtime verify failed (status=${res.status})${formatSshFailure(res) || (out ? `: ${out}` : "")}`);
-  }
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-c", script], stdio: "pipe" });
   const out = String(res.stdout || "");
+  if (!res.ok) {
+    if (out.includes("__SEAL_SENTINEL_VERIFY_OK__")) {
+      return { ok: true, launcher };
+    }
+    const combined = `${res.stdout}\n${res.stderr}`.trim();
+    if (out.includes("__SEAL_SENTINEL_VERIFY_NO_LAUNCHER__")) {
+      return { ok: false, reason: "missing_launcher", launcher };
+    }
+    if (out.includes("__SEAL_SENTINEL_VERIFY_RUNAS__")) {
+      return { ok: false, reason: "runas_unavailable", launcher };
+    }
+    const match = out.match(/__SEAL_SENTINEL_VERIFY_FAIL__:(\d+)/);
+    const exitCode = match ? Number(match[1]) : null;
+    if (exitCode !== null) {
+      return { ok: false, reason: "runtime_invalid", exitCode, launcher };
+    }
+    throw new Error(`sentinel runtime verify failed (status=${res.status})${formatSshFailure(res) || (combined ? `: ${combined}` : "")}`);
+  }
   if (out.includes("__SEAL_SENTINEL_VERIFY_NO_LAUNCHER__")) {
     return { ok: false, reason: "missing_launcher", launcher };
   }
@@ -627,6 +641,27 @@ exit 5
 
 function installSentinelSsh({ targetCfg, sentinelCfg, force, insecure, skipVerify }) {
   const { user, host } = sshUserHost(targetCfg);
+  if (!force) {
+    const existing = verifySentinelSsh({ targetCfg, sentinelCfg });
+    if (existing && existing.ok) {
+      if (!skipVerify) {
+        const verifyRes = verifySentinelRuntimeSsh({ targetCfg });
+        if (!verifyRes.ok) {
+          const detail = verifyRes.reason === "missing_launcher"
+            ? `launcher missing: ${verifyRes.launcher}`
+            : (verifyRes.reason === "runas_unavailable"
+              ? "cannot switch to service user"
+              : `runtime invalid (exit=${verifyRes.exitCode ?? "?"})`);
+          throw new Error(`sentinel verify failed: ${detail} (use --skip-verify or --skip-sentinel-verify to ignore)`);
+        }
+      }
+      return {
+        hostInfo: existing.hostInfo || null,
+        level: existing.parsed ? existing.parsed.level : null,
+        output: "__SEAL_SENTINEL_OK__",
+      };
+    }
+  }
   const hostInfo = getHostInfoSsh(targetCfg);
   const timeLimit = sentinelCfg && sentinelCfg.timeLimit ? sentinelCfg.timeLimit : { mode: "off" };
   const needsNow = timeLimit.mode && timeLimit.mode !== "off";
@@ -767,7 +802,7 @@ fi
 
 mkdir -p "$DIR"
 chown root:"$SVC_GROUP" "$DIR"
-chmod 0710 "$DIR"
+chmod 0750 "$DIR"
 
 if ! command -v flock >/dev/null 2>&1; then
   echo "__SEAL_LOCK_MISSING__"
@@ -798,8 +833,8 @@ mv "$FILE.tmp" "$FILE"
 fsync_path "$DIR"
 echo "__SEAL_SENTINEL_INSTALLED__"
 `;
-  const script = sudo ? `${sudo} bash -lc ${shQuote(rootScript)}` : rootScript;
-  const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-lc", script], stdio: "pipe" });
+  const script = sudo ? `${sudo} bash -c ${shQuote(rootScript)}` : rootScript;
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-c", script], stdio: "pipe" });
   if (!res.ok) {
     const out = `${res.stdout}\n${res.stderr}`.trim();
     const hint = describeSentinelInstallError(out, baseDir);
@@ -837,12 +872,13 @@ statline="$(stat -Lc '%u %g %a' "$FILE" 2>/dev/null || true)"
 echo "FILE_STAT=$statline"
 echo "NOW_EPOCH=$(date +%s)"
 `;
-  const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-lc", script], stdio: "pipe" });
-  if (!res.ok) {
-    throw new Error(`sentinel verify failed (status=${res.status})${formatSshFailure(res)}`);
-  }
-  if ((res.stdout || "").includes("__SEAL_SENTINEL_MISSING__")) {
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-c", script], stdio: "pipe" });
+  const out = `${res.stdout || ""}\n${res.stderr || ""}`;
+  if (out.includes("__SEAL_SENTINEL_MISSING__")) {
     return { ok: false, reason: "missing" };
+  }
+  if (!res.ok) {
+    throw new Error(`sentinel verify failed (status=${res.status})${formatSshFailure(res) || (out.trim() ? `: ${out.trim()}` : "")}`);
   }
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-"));
@@ -978,8 +1014,8 @@ if [ -d "$BASE" ]; then
 fi
 echo "__SEAL_SENTINEL_REMOVED__"
 `;
-  const script = sudo ? `${sudo} bash -lc ${shQuote(rootScript)}` : rootScript;
-  const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-lc", script], stdio: "pipe" });
+  const script = sudo ? `${sudo} bash -c ${shQuote(rootScript)}` : rootScript;
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-c", script], stdio: "pipe" });
   if (!res.ok) {
     const out = `${res.stdout}\n${res.stderr}`.trim();
     const hint = describeSentinelUninstallError(out);
@@ -1396,7 +1432,7 @@ if command -v tpm2_getcap >/dev/null 2>&1 || command -v tpm2_pcrread >/dev/null 
 fi
 echo "TPM_TOOL=$TPM_TOOL"
 `;
-  const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-lc", script], stdio: "pipe" });
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-c", script], stdio: "pipe" });
   if (!res.ok) {
     const out = `${res.stdout}\n${res.stderr}`.trim();
     throw new Error(`sentinel inspect failed (status=${res.status})${formatSshFailure(res) || (out ? `: ${out}` : "")}`);

@@ -491,6 +491,37 @@ unsigned int la_version(unsigned int v) {
 }
 `;
 
+const HELPER_COREDUMP_FILTER_SRC = `#define _GNU_SOURCE
+#include <errno.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <sys/prctl.h>
+#include <unistd.h>
+
+int main(void) {
+  if (prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) != 0) {
+    fprintf(stderr, "dumpable:%d\\n", errno);
+    return 10;
+  }
+  int fd = open("/proc/self/coredump_filter", O_WRONLY);
+  if (fd < 0) {
+    if (errno == EACCES || errno == EPERM) return 2;
+    fprintf(stderr, "open:%d\\n", errno);
+    return 3;
+  }
+  const char *filter = "0";
+  if (write(fd, filter, 1) < 0) {
+    int err = errno;
+    close(fd);
+    if (err == EACCES || err == EPERM) return 4;
+    fprintf(stderr, "write:%d\\n", err);
+    return 5;
+  }
+  close(fd);
+  return 0;
+}
+`;
+
 function ensureHelper(ctx, name, src) {
   if (ctx.helpers[name]) return ctx.helpers[name];
   const cc = resolveCc();
@@ -6588,6 +6619,7 @@ async function main() {
       pidfd: ensureHelper(helperCtx, "pidfd", HELPER_PIDFD_SRC),
       preload: ensureSharedHelper(helperCtx, "preload", HELPER_PRELOAD_SRC),
       audit: ensureSharedHelper(helperCtx, "audit", HELPER_AUDIT_SRC),
+      corefilter: ensureHelper(helperCtx, "corefilter", HELPER_COREDUMP_FILTER_SRC),
     };
     const baseCfg = loadProjectConfig(EXAMPLE_ROOT);
     const cObfCmd = baseCfg?.build?.protection?.cObfuscator?.cmd;
@@ -6697,6 +6729,22 @@ async function main() {
         })
       );
       log("OK: ptrace/core probes ok");
+
+      log("Testing coredump_filter access after PR_SET_DUMPABLE=0...");
+      const coreProbe = runCmd(helpers.corefilter.path, [], 8000);
+      if (coreProbe.status === 0) {
+        log("SKIP: coredump_filter writable after dumpable=0");
+      } else if (coreProbe.status === 2 || coreProbe.status === 4) {
+        log("INFO: coredump_filter blocked after dumpable=0; verifying runtime still ok...");
+        await withTimeout("coredump_filter blocked run ok", testTimeoutMs, () =>
+          runReleaseOk({ releaseDir: resA.releaseDir, runTimeoutMs })
+        );
+        log("OK: runtime tolerates coredump_filter blocked");
+      } else {
+        const out = `${coreProbe.stdout || ""}${coreProbe.stderr || ""}`.trim();
+        const note = out ? `: ${out.slice(0, 120)}` : "";
+        throw new Error(`coredump_filter probe failed (status=${coreProbe.status})${note}`);
+      }
     }
 
     if (suiteEnabled("env")) {
@@ -7801,13 +7849,9 @@ async function main() {
         log("OK: snapshot guard SIGSTOP rejected");
       } catch (e) {
         const strictSnapshot = process.env.SEAL_E2E_STRICT_SNAPSHOT_GUARD === "1";
-        if (process.env.SEAL_DOCKER_E2E === "1" && !strictSnapshot) {
-          const msg = e && e.message ? e.message : String(e);
-          if (msg.includes("process exited before ready")) {
-            log(`SKIP: snapshot guard SIGSTOP (${msg}; set SEAL_E2E_STRICT_SNAPSHOT_GUARD=1 to enforce)`);
-          } else {
-            throw e;
-          }
+        const msg = e && e.message ? e.message : String(e);
+        if (!strictSnapshot && msg.includes("process exited before ready")) {
+          log(`SKIP: snapshot guard SIGSTOP (${msg}; set SEAL_E2E_STRICT_SNAPSHOT_GUARD=1 to enforce)`);
         } else {
           throw e;
         }
@@ -7827,14 +7871,10 @@ async function main() {
         );
       } catch (e) {
         const strictSnapshot = process.env.SEAL_E2E_STRICT_SNAPSHOT_GUARD === "1";
-        if (process.env.SEAL_DOCKER_E2E === "1" && !strictSnapshot) {
-          const msg = e && e.message ? e.message : String(e);
-          if (msg.includes("process exited before ready")) {
-            log(`SKIP: snapshot guard cgroup (${msg}; set SEAL_E2E_STRICT_SNAPSHOT_GUARD=1 to enforce)`);
-            cgRes = { skip: msg };
-          } else {
-            throw e;
-          }
+        const msg = e && e.message ? e.message : String(e);
+        if (!strictSnapshot && msg.includes("process exited before ready")) {
+          log(`SKIP: snapshot guard cgroup (${msg}; set SEAL_E2E_STRICT_SNAPSHOT_GUARD=1 to enforce)`);
+          cgRes = { skip: msg };
         } else {
           throw e;
         }

@@ -358,6 +358,8 @@ function loadProjectConfig(projectRoot, opts) {
   cfg.build.thin = cfg.build.thin || {};
   if (cfg.build.thin.mode === undefined) cfg.build.thin.mode = "split";
   if (cfg.build.thin.level === undefined) cfg.build.thin.level = "low";
+  if (cfg.build.thin.launcherHardeningCET === undefined) cfg.build.thin.launcherHardeningCET = false;
+  if (cfg.build.thin.runtimeArgv0 === undefined) cfg.build.thin.runtimeArgv0 = "n";
   cfg.build.obfuscationProfile = cfg.build.obfuscationProfile || "balanced";
   cfg.build.includeDirs = cfg.build.includeDirs || ["public", "data"];
   // Frontend obfuscation: enabled by default (can be set to false)

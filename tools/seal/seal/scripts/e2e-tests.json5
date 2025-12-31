@@ -104,6 +104,39 @@
       "requirements": []
     },
     {
+      "name": "noop-a",
+      "category": "misc",
+      "parallel": true,
+      "description": "No-op test used for orchestration and cleanup checks.",
+      "skipRisk": "low",
+      "failHint": "No-op test should always pass.",
+      "script": "tools/seal/seal/scripts/test-noop-a-e2e.js",
+      "hostOnly": false,
+      "requirements": []
+    },
+    {
+      "name": "noop-b",
+      "category": "misc",
+      "parallel": true,
+      "description": "No-op test used for orchestration and cleanup checks.",
+      "skipRisk": "low",
+      "failHint": "No-op test should always pass.",
+      "script": "tools/seal/seal/scripts/test-noop-b-e2e.js",
+      "hostOnly": false,
+      "requirements": []
+    },
+    {
+      "name": "cleanup-guard",
+      "category": "flow",
+      "parallel": false,
+      "description": "Runs a small parallel suite and verifies no run directories are left behind.",
+      "skipRisk": "medium",
+      "failHint": "Check E2E cleanup handlers and worker temp roots.",
+      "script": "tools/seal/seal/scripts/test-e2e-cleanup-e2e.js",
+      "hostOnly": false,
+      "requirements": []
+    },
+    {
       "name": "profile-overlay",
       "category": "misc",
       "parallel": true,
@@ -273,6 +306,17 @@
       "skipRisk": "high",
       "failHint": "Check SSH, sudo, and target config.",
       "script": "tools/seal/seal/scripts/test-ship-e2e.js",
+      "hostOnly": false,
+      "requirements": []
+    },
+    {
+      "name": "diag",
+      "category": "misc",
+      "parallel": true,
+      "description": "Diagnostic bundle creation (seal diag).",
+      "skipRisk": "low",
+      "failHint": "Check seal-out permissions and local CLI path.",
+      "script": "tools/seal/seal/scripts/test-diag-e2e.js",
       "hostOnly": false,
       "requirements": []
     }

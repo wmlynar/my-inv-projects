@@ -70,10 +70,13 @@ Przykład:
 - STD-012 (SHOULD): wszelkie metadane trafiające na **target** powinny być w formie binarnej/obfuskowanej (nieczytelne dla człowieka). Jeśli potrzebujesz jawnych danych do debugowania, trzymaj je lokalnie po stronie builda.
 - STD-013 (SHOULD): nazwy plików na target nie powinny zdradzać roli/znaczenia; preferuj krótkie/nijakie nazwy (np. `c` zamiast `codec.bin`), o ile nie utrudnia to operacji serwisowych.
 - STD-014 (SHOULD): jeśli konfiguracja udostępnia opcję (np. `sshPort`, `StrictHostKeyChecking`), to **każda** ścieżka wykonania powinna ją respektować (ssh/scp/rsync); normalizację trzymaj w jednym miejscu, aby uniknąć rozjazdów.
+- STD-014a (SHOULD): CLI loguje przy starcie sciezke binarki i wersje; w dev/test uzywaj lokalnego CLI z repo, aby uniknac rozjazdow z globalnie zainstalowaną wersją.
+- STD-014b (SHOULD): output `--json` nie moze zawierac `BigInt` ani nie‑serializowalnych typow; wszystko musi byc jawnie serializowane do string/number.
 
 ### 1.4. Narzędzia i automatyzacje (Seal/CLI)
 #### Build / toolchain (priorytet: zgodnosc)
 - STD-015 (SHOULD): wykrywanie narzędzi (np. `postject`) musi mieć **jedno źródło prawdy**; `check` i `build` używają tego samego resolvera binarki.
+- STD-015b (SHOULD): `seal check` uzywa tego samego targetu/packagera/profilu co build/deploy; brak jawnego targetu w multi‑target = fail‑fast.
 - STD-015a (SHOULD): wykrywanie narzedzi nie moze zalezec od `bash` (np. `bash -lc command -v`); uzyj skanu `PATH` lub `/bin/sh`, a brak wymaganej powloki = fail‑fast z instrukcja.
 - STD-026 (SHOULD): preflight i build uzywaja tych samych opcji i resolvera narzedzi, zeby uniknac rozjazdow.
 - STD-032 (SHOULD): preflight sprawdza OS/arch i wersje toolchaina; mismatch = fail-fast.
@@ -82,41 +85,55 @@ Przykład:
 - STD-032c (SHOULD): native dodatki/addony sa kompilowane z naglowkami zgodnymi z wersja runtime Node na target (np. `--target` lub pobrane headers); mismatch = fail-fast w preflight/testach.
 - STD-032d (SHOULD): kod native korzysta z API V8 warunkowo (guardy wersji/feature-detect) i ma fallback dla starszych wersji Node.
 - STD-032e (SHOULD): jezeli addon wymaga konkretnego standardu C++ (np. C++20), preflight wykonuje probe kompilatora i fail‑fast z jasnym komunikatem.
+- STD-032e.a (SHOULD): hardening flags (np. CET/CFI) sa wlaczane tylko po probe kompilatora; brak wsparcia = auto‑disable + warning.
 - STD-032f (SHOULD): release nie zawiera sourcemap (`.map`) ani komentarzy `sourceMappingURL`; testy E2E weryfikuja brak map oraz brak `sourceMappingURL` w bundle.
 - STD-032g (SHOULD): obfuskacja/mangle nie dotyka publicznych kontraktow API/JSON; utrzymuj liste `reserved/keep` dla nazw pol i pokryj to E2E (a gdy brak pewnosci, wylacz renameProperties).
 - STD-032h (SHOULD): tree-shaking respektuje `sideEffects`, a moduly z efektami ubocznymi sa jawnie deklarowane/importowane; E2E potwierdza obecnosc efektow po sealingu.
 - STD-032i (SHOULD): opcje minifikacji typu `unsafe`/`pure_getters` sa domyslnie OFF; wlaczaj je tylko z dedykowanym E2E i logiem "effective config".
 - STD-032j (SHOULD): dynamiczne `require()` i native addon-y (`.node`) sa oznaczone jako `external`, a pliki `.node` kopiowane do release; E2E weryfikuje ladowanie po sealingu.
 - STD-032k (SHOULD): bundler dostaje jawny `NODE_ENV` (np. `define: { 'process.env.NODE_ENV': '\"production\"' }`), aby dead-code elimination dzialalo deterministycznie.
+- STD-032k.a (SHOULD): profil builda (dev/prod/fast/strict) jest jawnie logowany, a profil prod nie moze wlaczyc debug/inspect bez jawnego opt‑in.
 - STD-032l (SHOULD): nie uzywaj `-march=native`/`-mtune=native` w artefaktach dystrybucyjnych; target CPU musi byc zgodny z docelowa maszyną (np. `-march=x86-64 -mtune=generic`).
 - STD-032m (SHOULD): `seal check` waliduje limity/liczby dla opcji `thin.*` (np. `chunkSizeBytes`, `zstdLevel`, `timeoutMs`) i fail‑fast.
 - STD-035 (SHOULD): build zapisuje wersje narzedzi/zaleznosci; build nie pobiera rzeczy z internetu.
 - STD-035a (SHOULD): manifest/hash artefaktow jest liczony po wszystkich krokach post-processingu (strip/packer/obfuscation), jako ostatni etap builda.
 - STD-035b (SHOULD): automatyczny wybor artefaktu bazuje na metadanych (`target+packager+config`), nie na samym `mtime`; inaczej wymagaj jawnego `--artifact`.
 - STD-040 (SHOULD): preflight uzywa tych samych argumentow i srodowiska co runtime.
+- STD-040d (SHOULD): `PATH/ENV` dla preflight/build/deploy sa logowane i znormalizowane; rozjazdy musza byc jawne.
 - STD-040a (SHOULD): runtime/serwis uruchamia aplikacje z `NODE_ENV=production` (jesli nie ustawiono inaczej), a testy E2E sprawdzaja ten tryb.
 - STD-040b (SHOULD): runtime sanitizuje ryzykowne ENV (`NODE_OPTIONS`, `NODE_PATH`, `NODE_EXTRA_CA_CERTS`, `NODE_V8_COVERAGE`, `NODE_DEBUG`) aby nie wstrzykiwac hookow/inspect z hosta; debug uruchamiaj jawnie przez flagi runtime.
 - STD-040c (SHOULD): wewnetrzne uruchomienia Node korzystaja z `process.execPath` (nie z PATH), aby uniknac rozjazdow wersji; loguj użyta binarke.
+- STD-040e (SHOULD): nazwa procesu runtime (`argv0`) jest konfigurowalna (`thin.runtimeArgv0`, domyslnie `n`, opcja `appName`), aby ograniczac ujawnianie technologii w status/ps.
 - STD-041 (SHOULD): release nie moze polegac na toolchainie builda na serwerze.
+- STD-041a (SHOULD): auto‑bootstrap loguje zainstalowane wersje runtime/launcher i nie moze byc jedynym sposobem zapewnienia prereq w CI (preflight musi to weryfikowac).
 
 #### Operacje / niezawodnosc
 - STD-024 (SHOULD): fallbacki obnizajace zabezpieczenia musza byc jawne (flag/config) i zawsze logowac ostrzezenie.
 - STD-036 (SHOULD): ryzykowne opcje sa OFF domyslnie i wymagaja jawnego wlaczenia.
 - STD-036a (SHOULD): payload-only fallback zawsze loguje powod; pelny upload jest dozwolony tylko gdy artefakt jest dostepny, inaczej fail‑fast z instrukcja (`seal ship` bez `--payload-only` lub `--artifact`).
 - STD-036b (SHOULD): thin‑split payload-only/reuse wymaga zgodnosci markera runtime (np. `r/nv` = `sha256(process.version)` jako binarny hash); brak/mismatch = pelny upload runtime.
+- STD-036b.a (SHOULD): decyzja payload-only/full upload zawsze loguje przyczyne i stan markerow; brak markerow = full upload.
 - STD-036c (SHOULD): gdy `deploy/ship` z restartem i/lub readiness failuje, Seal podejmuje probe rollbacku i loguje wynik.
+- STD-036d (SHOULD): config drift bez jawnej flagi (`--accept-drift`/`--warn-drift`) blokuje deploy; zawsze loguj diff oraz źródło configu (repo vs target).
+- STD-036e (SHOULD): aktywny profil (`fast`/`strict`/custom) musi wypisac liste nadpisanych opcji i wartosci; w trybie strict brak logu = FAIL.
 - STD-034 (SHOULD): wejscia z CLI/config sa walidowane typami/zakresami; bledne = fail-fast.
 - STD-034a (SHOULD): wartosc podana, ale nieprawidlowa nie moze byc cicho normalizowana do defaultu; musi byc FAIL albo jawny warning + log „effective config”.
 - STD-034b (SHOULD): walidacja configu (np. `packager`) jest wykonywana w loaderze i dotyczy **wszystkich** komend; nie zakladaj, ze uzytkownik uruchomil `seal check`.
 - STD-034c (SHOULD): booleany w configu sa typu `true/false`; stringi/numbery nie sa akceptowane (brak `!!` coercion).
 - STD-034d (SHOULD): walidacja targetu (host/user/serviceName/installDir) jest scentralizowana i uzywana przez wszystkie komendy (deploy/check/sentinel).
+- STD-034d.a (SHOULD): weryfikacje runtime (sentinel/launcher) uruchamiaj jako `serviceUser`; loguj uid/gid i kontekst uruchomienia.
 - STD-034e (SHOULD): sekcje `build.thin`/`target.thin` sa plain object; `null`/array/string/number = fail‑fast (prefer w `seal check`).
 - STD-034f (SHOULD): `build.protection` akceptuje tylko boolean lub obiekt; inne typy = fail‑fast (prefer w `seal check`).
 - STD-034g (SHOULD): `installDir` jest absolutny i bez whitespace/metaznakow; walidacja dotyczy lokalnych i SSH targetow.
+- STD-034g.a (SHOULD): walidacja `installDir` odbywa sie przed deployem i przed generowaniem unit/runner; bledne wartosci = fail‑fast.
+- STD-034g.b (SHOULD): domyslne ustawienia konfiguracyjne sa zdefiniowane tylko w jednym miejscu (parent/global), a konfiguracje podprojektow zawieraja tylko nadpisania; unikaj duplikowania wartosci domyslnych.
 - STD-034h (SHOULD): `thin.level` walidowany do `low|medium|high`; niepoprawne wartosci = fail‑fast.
 - STD-034i (SHOULD): `thin.antiDebug.seccompNoDebug.mode` akceptuje tylko `errno|kill`; inne wartosci = fail‑fast.
 - STD-034j (SHOULD): `protection.*.args` oraz `protection.strings.obfuscation` sa walidowane typami/allowlista; bledy = fail‑fast lub jawny warning + log `effective config`.
 - STD-034k (SHOULD): `appName`/`serviceName` maja spójne zasady override we wszystkich komendach; gdy override niedozwolony = fail‑fast z instrukcja.
+- STD-034k.a (SHOULD): loguj „effective config” z oznaczeniem zrodla (default/overlay/target/CLI); konflikty i nadpisania musza byc jawne.
+- STD-034k.a1 (SHOULD): każda komenda loguje aktywny target/config; brak jawnego targetu w trybie wielo‑targetowym = fail‑fast.
+- STD-034k.b (SHOULD): identyfikatory sentinela (`namespaceId`, `appId`) sa unikalne per aplikacja/target i nie sa kopiowane miedzy projektami; cache prywatny jest jedynym zrodlem prawdy.
 - STD-034l (SHOULD): `target.kind` akceptuje tylko `local|ssh`; inne wartosci = fail‑fast.
 - STD-034m (SHOULD): `defaultTarget` wskazuje istniejacy target; brak = fail‑fast w `seal check`.
 - STD-034n (SHOULD): merge configu blokuje `__proto__`/`constructor`/`prototype` (prototype pollution); wykryte klucze = FAIL lub jawny warning.
@@ -130,6 +147,7 @@ Przykład:
 - STD-028b (SHOULD): edycje plikow JSON5 zachowuja komentarze i formatowanie (JSON5-aware writer) albo narzedzie ostrzega o utracie komentarzy i tworzy backup/diff; nie przepisuj cicho do czystego JSON.
 - STD-028c (SHOULD): bledy parsowania JSON/JSON5 musza zawierac sciezke pliku, line/col i krotki hint (BOM/CRLF, duplikaty kluczy); brak = FAIL.
 - STD-029 (SHOULD): operacje bootstrap/deploy/clean sa idempotentne (powtorka nie psuje stanu).
+- STD-029b (SHOULD): cleanup usuwa caly layout release (b/r/shared/releases) atomowo; reczne usuwanie pojedynczych katalogow jest zabronione w instrukcjach.
 - STD-029a (SHOULD): szybkie sciezki (payload-only/fast) musza zachowywac parytet walidacji i listy plikow z pelnym deployem; ewentualne roznice musza byc jawnie opisane i testowane.
 - STD-029b (SHOULD): stop/disable/uninstall sa idempotentne; brak unitu = noop z logiem, nie twardy FAIL.
 - STD-030 (SHOULD): build/deploy/clean uzywaja lockfile; kolizje maja czytelny komunikat i nie niszcza stanu.
@@ -137,6 +155,7 @@ Przykład:
 - STD-030b (SHOULD): po aktualizacji pliku unit zawsze wykonaj `systemctl daemon-reload` (lub `--user`), aby uniknac starej konfiguracji.
 - STD-030b.a (SHOULD): unit file zapisuj atomowo (tmp + `fsync` + `rename` + `fsync` katalogu), aby systemd nie odczytal polowicznego pliku; dopiero potem `daemon-reload`.
 - STD-030c (SHOULD): wywolania `systemctl` maja timeout i obsługę braku systemd/DBus (SKIP z powodem w testach).
+- STD-030c.a (SHOULD): readiness wspiera tryby `systemd|http|both`; dla aplikacji z endpointem health preferuj `both`.
 - STD-030d (SHOULD): dla `systemctl --user` w trybie non‑interactive ustaw `XDG_RUNTIME_DIR`/`DBUS_SESSION_BUS_ADDRESS` lub fail‑fast z instrukcja; brak tych zmiennych nie moze dawac niejasnego bledu.
 - STD-030d (SHOULD): `serviceName` nie zawiera sufiksu `.service`; normalizuj lub fail‑fast z jasnym bledem.
 - STD-030e (SHOULD): dla `serviceScope=system` logi `journalctl` uruchamiaj przez `sudo` lub wymagaj grupy `systemd-journal`; brak uprawnien = jasny blad.
@@ -151,6 +170,8 @@ Przykład:
 - STD-031d (SHOULD): gdy `sudo` jest wymagane, preflight sprawdza jego obecność w PATH; brak `sudo` = fail‑fast z instrukcja instalacji/konfiguracji.
 - STD-031e (SHOULD): gdy operacja jest uruchamiana jako `root`, nie uzywaj `sudo`; inaczej minimalne hosty bez `sudo` beda failowac.
 - STD-033 (SHOULD): operacje zewnetrzne (ssh/scp/rsync/http) maja timeout i komunikat "co dalej".
+- STD-033a (SHOULD): timeouty w deploy/ship wymuszaja cleanup lokalny i zdalny (tmp artefakty, locki) oraz loguja pozostawiony stan; kolejny deploy ma wykrywac i sprzatac "stare" tmp.
+- STD-033b (SHOULD): readiness HTTP ma konfigurowalny timeout/interval i loguje uzyte wartosci; brak = bezpieczne defaulty.
 - STD-033a (SHOULD): pobieranie przez `curl`/`wget` uzywa `--fail` + timeoutów (`--connect-timeout`, `--max-time`) i limitu retry; brak odpowiedzi = fail‑fast.
 - STD-033a.a (SHOULD): po pobraniu waliduj format (np. `file`, `tar -tzf` dry‑run, magic bytes); HTML/komunikat błędu zamiast archiwum = fail‑fast z hintem o rate‑limit lub zlym URL.
 - STD-033a.b (SHOULD): dla URLi z przekierowaniami (np. GitHub Releases) uzywaj `curl -L`/`wget --max-redirect`, a liczbe redirectow limituj i loguj finalny URL.
@@ -169,6 +190,7 @@ Przykład:
 - STD-033h (SHOULD): parser lockfile narzedzi normalizuje CRLF/BOM/whitespace i waliduje skladnie; duplikaty sekcji i nieznane klucze = fail‑fast z lista problemow.
 - STD-033i (SHOULD): nazwy narzedzi/binarek w lockfile sa walidowane jako bezpieczne basename (bez `/`, `..`, whitespace; tylko `[a-zA-Z0-9_.-]`).
 - STD-033j (SHOULD): preflight dla deployu SSH sprawdza obecność `tar`/`gzip` (wsparcie `-z`/`-tzf`) na hoście zdalnym; brak = fail‑fast z instrukcja.
+- STD-033j.a (SHOULD): preflight weryfikuje wszystkie narzedzia wymagane przez deploy (ssh/scp/rsync/tar/gzip) na hoście docelowym; brak = fail‑fast z instrukcja instalacji.
 - STD-033k (SHOULD): instalatory narzedzi z `pip` uzywaja `python3 -m pip` (nie `pip` z PATH), preferuja venv/pipx, ustawiają `PIP_NO_INPUT=1` i `PIP_DISABLE_PIP_VERSION_CHECK=1`; jeśli używasz `--user`, dodaj `~/.local/bin` do PATH.
 - STD-033l (SHOULD): narzedzia budowane ze zrodel instaluja sie do lokalnego prefixu (`$SEAL_CACHE/tools/...`) przez `DESTDIR`/`CMAKE_INSTALL_PREFIX` bez `sudo`; globalny `make install` do `/usr/local` jest zabroniony w E2E/CI.
 - STD-033l.a (SHOULD): instalatory narzedzi waliduja layout repo po clone (np. `llvm/`, `tools/clang`, `CMakeLists.txt`); brak = fail‑fast z instrukcja zmiany repo/branchu.
@@ -245,6 +267,8 @@ Przykład:
 - STD-106w (SHOULD): ustawiaj `ServerAliveCountMax`, aby ograniczyc maksymalny czas wiszenia polaczen SSH przy zerwaniu sieci.
 - STD-106x (SHOULD): komendy SSH nieinteraktywne uruchamiaj z `-n` lub `</dev/null`, aby nie czytaly stdin i nie wieszaly sie na braku inputu.
 - STD-106y (SHOULD): zdalna komenda dla `ssh` jest przekazywana jako pojedynczy string; argumenty musza byc jawnie quotingowane (shell‑escape), bo `ssh` konkatenowal args bez quoting.
+- STD-106z (SHOULD): gdy zdalny skrypt zwraca marker sukcesu w stdout, nie opieraj sie wyłącznie na exit code (login shell/quoting potrafi zwrócić != 0 mimo sukcesu); preferuj `bash -c` + upload skryptu dla wieloetapowych komend.
+- STD-106z.a (SHOULD): automatyzacje nie uzywaja login shell (`bash -lc`) bez potrzeby; preferuj `bash -c`/`env -i`, aby uniknac side‑effectow z rc plikow.
 - STD-106z (SHOULD): dla wielu krokow/duzych komend SSH uzywaj skryptu (upload lub `bash -s` z stdin), a nie ogromnych one‑linerow, aby uniknac limitow dlugosci i bledow quoting.
 - STD-106aa (SHOULD): w automacji jawnie wylaczaj forwarding (`ForwardAgent=no`, `ForwardX11=no`, `ForwardX11Trusted=no` lub `ClearAllForwardings=yes`), aby uniknac niezamierzonego przekazywania kluczy/sesji.
 - STD-107 (SHOULD): parsowanie outputu narzedzi systemowych powinno wymuszac `LC_ALL=C` (lub `LANG=C`) albo uzywac trybu `--json`/`--output`, aby uniknac roznic locale.
@@ -291,6 +315,8 @@ Przykład:
 - STD-129a (SHOULD): rozpakowanie artefaktu odbywa sie w katalogu stagingowym; `current.buildId` aktualizuj dopiero po walidacji.
 - STD-129b (SHOULD): dla sentinela z opoznionym wygasaniem uruchamiaj `sentinel verify` tym samym kodem co runtime przed release/deploy; pomijanie weryfikacji tylko jawnie (flaga/ENV) z ostrzezeniem; testy uzywaja krotszych okresow lub hooka czasu.
 - STD-129c (SHOULD): okresowe kontrole sentinela maja minimalny interwal + jitter i cache’owanie kosztownych odczytów (np. xattr/machine‑id), aby uniknac spike I/O/CPU.
+- STD-129d (SHOULD): storage sentinela musi byc czytelny dla `serviceUser` (katalog `0750`, grupa = `serviceGroup`, plik `0640`); weryfikacja runtime uruchamiana jako `serviceUser`.
+- STD-129e (SHOULD): testy E2E sentinela zawieraja wariant uruchomienia jako nie‑root; root-only runy sa niewystarczajace do weryfikacji uprawnien.
 - STD-130b (SHOULD): dla krytycznych binarek nie polegaj na niekontrolowanym `PATH`; uzywaj `command -v` + whitelisty lub absolutnych sciezek, szczegolnie przy `sudo`.
 - STD-130a (SHOULD): wykrywanie narzedzi z `node_modules/.bin` musi uwzgledniac monorepo/workspaces (sprawdzaj kilka poziomow lub uzyj `npm bin -w`/`npm exec`), inaczej CLI/testy beda false‑negative.
 - STD-131 (SHOULD): przy ekstrakcji archiwow w deploy ustaw `--no-same-owner` i `--no-same-permissions` oraz ustaw jawne perm po rozpakowaniu.
@@ -330,6 +356,7 @@ Przykład:
 - STD-160 (SHOULD): `antiDebug.ptraceGuard` i `antiDebug.coreDump` muszą sprawdzać kody błędów (`prctl`/`setrlimit`) i fail‑fast (bez cichych skipów).
 - STD-161 (SHOULD): `antiDebug.seccompNoDebug` ma czytelny tryb działania (`errno`/`kill`), a testy używają trybu `errno` do asercji błędów.
 - STD-162 (SHOULD): aktywny guard `PTRACE_TRACEME` wymaga modelu fork/parent‑handshake i `Type=forking` w systemd; domyślny tryb simple exec go nie wspiera (używaj `dumpable+seccomp`).
+- STD-162a (SHOULD): diagnoza runtime nie uruchamia anti‑debug bez opt‑in (np. `SEAL_DIAG=1`); narzedzia diagnostyczne musza miec jawny tryb "safe".
 - STD-163 (SHOULD): `antiDebug.loaderGuard` weryfikuje loader (PT_INTERP vs `/proc/self/maps`) i fail‑fast przy mismatch; testy muszą mieć wymuszenie kontrolowane przez ENV.
 
 #### Testy / CI
@@ -348,6 +375,7 @@ Przykład:
 - STD-027h (SHOULD): gdy ustawiony jest filtr testow, runner loguje liste dopasowanych testow; brak dopasowan = FAIL lub jawny SKIP z instrukcja.
 - STD-027i (SHOULD): defaulty E2E sa w pliku wzorcowym w repo, a lokalne override w `.seal/e2e.env` (lub `SEAL_E2E_CONFIG`); runner loguje zrodlo configu, a override jest gitignored.
 - STD-027i.a (SHOULD): jawne ENV użytkownika (np. `SEAL_E2E_TESTS`) ma wyższy priorytet niż plik configu; jeśli chcesz pominąć config, użyj `SEAL_E2E_CONFIG=/dev/null`.
+- STD-027i.b (SHOULD): timeouty E2E sa konfigurowalne przez ENV i logowane; CI ustawia wyzsze progi w zaleznosci od obciazenia.
 - STD-027j (SHOULD): instalatory narzedzi E2E uzywaja locka per‑tool/cache i atomowego swapu (tmp + rename), a stamp jest zapisywany po sukcesie.
 - STD-027j.a (SHOULD): locki katalogowe (`mkdir` lock) mają timeout oraz detekcję „stale lock” (mtime/TTL), z czytelnym logiem i opcjami ENV do konfiguracji (np. `SEAL_E2E_LOCK_TIMEOUT_MS`, `SEAL_E2E_LOCK_STALE_MS`).
 - STD-027j.b (SHOULD): lock-dir zapisuje `owner.json` (pid/host/startTime) oraz heartbeat; stale‑lock weryfikuje PID+startTime i dopiero wtedy usuwa lock (unikanie false‑stale przy długich buildach).
@@ -493,6 +521,7 @@ Przykład:
 - STD-089z.j (SHOULD): przed ekstrakcją `tar` waliduj listę plików (`tar -tf`) i odrzuć ścieżki z `..` lub absolutne; po ekstrakcji weryfikuj root.
 - STD-089z.k (SHOULD): preflight SSH weryfikuje perms `~/.ssh` (700) i kluczy (600) oraz normalizuje CRLF w kluczach; brak = fail‑fast z instrukcją.
 - STD-089z.l (SHOULD): odczyt statusu systemd interpretuje exit codes (`is-active`/`is-enabled`) zgodnie z dokumentacją; `inactive/disabled` to stan, nie błąd.
+- STD-089z.l.a (SHOULD): po nieudanym starcie lub naprawie wykonuj `systemctl reset-failed` i loguj status przed/po, aby uniknac zablokowanych restartow.
 - STD-089z.m (SHOULD): po ekstrakcji/uploadzie zawsze ustaw `chmod +x` dla runnerów/skryptów i waliduj permsy; brak = fail‑fast.
 - STD-089z.n (SHOULD): waliduj tar pod kątem symlink/hardlink traversal (brak ścieżek wychodzących poza root).
 - STD-089z.o (SHOULD): preflight weryfikuje perms `/tmp` (sticky bit `1777`); w razie braku użyj prywatnego `SEAL_TMPDIR` lub fail‑fast.
@@ -519,6 +548,14 @@ Przykład:
 - STD-089z.aj (SHOULD): jeśli używasz `ProtectSystem`/`ReadWritePaths`, lista zapisów jest jawna i zawiera wszystkie katalogi runtime; brak = fail‑fast.
 - STD-089z.ak (SHOULD): `PrivateTmp` jest świadomą decyzją; przy włączonym `PrivateTmp` ustaw jawny `SEAL_TMPDIR` lub RuntimeDirectory i testuj start.
 - STD-089z.al (SHOULD): używaj `StateDirectory`/`RuntimeDirectory` w systemd albo twórz katalogi z poprawnym ownerem/perms przed startem.
+- STD-089z.am (SHOULD): przed restartem/deployem waliduj istnienie `installDir`/`release`/`run-current.sh` na target; brak = fail‑fast z jasnym komunikatem (unikaj `status=200/CHDIR`).
+- STD-089z.an (SHOULD): w trybie thin‑split `WorkingDirectory` lub CWD powinno wskazywac na katalog release (tam gdzie `public/`); statyczne assets nie moga polegac na `__dirname` jesli runtime startuje z `installDir`.
+- STD-089z.ao (SHOULD): readiness/monitoring uzywa istniejacego endpointu zdrowia (np. `/healthz` lub `/api/status`); jesli HTTP nieobslugiwane, tryb readiness to `systemd`.
+- STD-089z.ap (SHOULD): runner i readiness wypisuja jednoznaczne hinty naprawcze (np. `--bootstrap`, `seal sentinel install`) na typowe bledy startu; brak hintu = FAIL w E2E.
+- STD-089z.aq (SHOULD): przy config drift wypisz jasna instrukcje akcji (`seal config push <target>` lub `--accept-drift`) i loguj, gdzie jest zrodlo prawdy dla configu/sekretow.
+- STD-089z.ar (SHOULD): sentinel `verify` rozroznia "missing" vs "mismatch/expired" i nie blokuje instalacji; komunikat zawiera sciezke do blobu i hint `seal sentinel install <target>`.
+- STD-089z.as (SHOULD): payload‑only w thin‑split kopiuje "release extras" (poza `b/` i `r/`), aby nie gubic `public/`, `appctl` i `version.json`; E2E weryfikuje obecność.
+- STD-089z.at (SHOULD): dla UI dokumentuj i testuj endpoint health (np. `/api/status`), a test `GET /` jest opcjonalny; brak `/` nie moze powodowac FAIL.
 - STD-089z.am (SHOULD): `journalctl` w automatyzacji uruchamiaj z `--no-pager`/`SYSTEMD_PAGER=cat` (bez blokowania TTY).
 - STD-090c (SHOULD): preflight sprawdza **narzedzia CLI** (np. `postject` w `node_modules/.bin`/PATH), nie tylko obecność modulu.
 - STD-091a (SHOULD): funkcje zalezne od architektury (np. CPUID) musza degradująco dzialac na platformach bez wsparcia (pusty/neutralny ID zamiast twardego bledu).
@@ -528,6 +565,12 @@ Przykład:
 - STD-095 (SHOULD): szanuj `TMPDIR` oraz sytuacje `noexec` na `/tmp`; tymczasowe binarki uruchamiaj w bezpiecznym katalogu.
 - STD-096 (SHOULD): przed startem procesu sprawdzaj zajety port; wypisz PID/komende procesu lub jasny hint naprawczy (zeby uniknac niejasnego `EADDRINUSE`).
 - STD-097 (SHOULD): preflight/deploy sprawdza wolne miejsce na serwerze (`installDir` i `/tmp`) i failuje z instrukcja, jesli brak miejsca.
+- STD-097b (SHOULD): preflight weryfikuje wolne inodes w `installDir` i `/tmp`; progi konfigurowalne per target.
+- STD-097c (SHOULD): preflight sprawdza `installDir` pod katem `noexec`; wykrycie = fail‑fast z instrukcja lub jawny override (`preflight.allowNoexec`).
+- STD-097d (SHOULD): preflight SSH sprawdza wymagane narzedzia deployu (`tar`, `gzip`, inne z `preflight.requireTools`); brak = fail‑fast z instrukcja instalacji.
+- STD-097e (SHOULD): gdy przyczyna bledu nie jest oczywista, narzedzie dostarcza `seal diag` generujące bundle diagnostyczny (check/config/status) w `seal-out/diagnostics`.
+- STD-097f (SHOULD): preflight SSH weryfikuje passwordless sudo (gdy wymagane) i fail‑fast z instrukcją konfiguracji NOPASSWD.
+- STD-097g (SHOULD): deploy używa blokady (`deploy lock`) na czas operacji, aby uniknąć równoległych wdrożeń; przy kolizji pokazuje wiek locka i TTL.
 - STD-097a (SHOULD): preflight/deploy sprawdza mount options `installDir` i failuje, gdy wykryje `noexec` (z instrukcja wyboru innej sciezki).
 - STD-098 (SHOULD): testy E2E uzywaja sandbox `installDir` i unikalnych nazw uslug; operacje systemowe sa gated env‑flaga i domyslnie SKIP.
 - STD-099 (SHOULD): testy E2E izolują cache (osobny temp project root lub `SEAL_THIN_CACHE_LIMIT=0`), aby uniknac cross‑test contamination.
@@ -859,6 +902,7 @@ Dlatego standard rozróżnia dwa tryby:
 - STD-238 (SHOULD): tymczasowe pliki z sekretami sa usuwane deterministycznie.
 - STD-239 (SHOULD): core dumpy sa domyslnie wylaczone (opt‑in z ostrzezeniem).
 - STD-239a (SHOULD): gdy proces jest uruchamiany przez systemd, ustaw `LimitCORE=0` (i ewentualnie `CoredumpFilter=`); dodatkowo `ulimit -c 0` w runtime dla spojnoci.
+- STD-239a1 (SHOULD): jeśli `PR_SET_DUMPABLE=0` jest aktywne, błąd `EACCES/EPERM` przy zapisie do `/proc/self/coredump_filter` nie powinien powodować fail; inne błędy = fail‑fast.
 
 - STD-240 (SHOULD): unknown keys w configu daja warning/blad (strict schema).
 - STD-241 (SHOULD): wartosci z ENV sa trimowane i walidowane.
@@ -1084,6 +1128,8 @@ Ten moduł dotyczy testów E2E (zwłaszcza po sealingu), które mają potwierdza
 - TEST-022 (SHOULD): summary zawiera agregaty per‑kategoria (PASS/FAIL/SKIP) oraz czas per‑kategoria, aby łatwo identyfikować najdroższe obszary.
 - TEST-020 (SHOULD): `e2e-tests.json5` jest jedynym źródłem prawdy; runner nie używa TSV jako manifestu (TSV tylko jako export).
 - TEST-021 (SHOULD): manifest zawiera sekcję `meta` z allowlistami (`categories`, `skipRisk`, `requirements`) używanymi do walidacji.
+- TEST-023 (SHOULD): E2E obejmuje probe dla `/proc/self/coredump_filter` po `PR_SET_DUMPABLE=0`; `EACCES/EPERM` jest akceptowalne i nie powoduje failu runtime.
+- TEST-024 (SHOULD): artefakty diagnostyczne (np. strace, dumpy, repro) trafiają do `seal-out/diagnostics/` lub katalogu z `SEAL_DIAG_DIR`; nie zapisuj ich w root repo ani w `/tmp` bez kontroli.
 
 ## 11. Minimalny „kontrakt dla AI” (wersja promptable)
 

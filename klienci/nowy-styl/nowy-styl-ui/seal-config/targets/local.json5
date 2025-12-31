@@ -6,6 +6,6 @@
   serviceScope: "user",
   installDir: "~/.local/share/seal/nowy-styl-ui",
   serviceName: "nowy-styl-ui-sandbox",
-  packager: "sea",
+  packager: "auto",
   config: "local",
 }

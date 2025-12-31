@@ -16,6 +16,7 @@ const { cmdCompletion, getCompletionScript } = require("./commands/completion");
 const { cmdRelease } = require("./commands/release");
 const { cmdVerify } = require("./commands/verify");
 const { cmdRunLocal } = require("./commands/runLocal");
+const { cmdDiag } = require("./commands/diag");
 const { cmdTargetAdd } = require("./commands/targetAdd");
 const { cmdConfigAdd, cmdConfigDiff, cmdConfigPull, cmdConfigPush, cmdConfigExplain } = require("./commands/config");
 const { cmdProfiles } = require("./commands/profiles");
@@ -234,6 +235,18 @@ async function main(argv) {
     .argument("[artifactOrTarget]", "Artifact path (.tgz) or target name (defaults to last artifact)", null)
     .option("--explain", "Print a readable checklist", false)
     .action(async (arg, opts) => cmdVerify(process.cwd(), arg, opts));
+
+  program
+    .command("diag")
+    .description("Collect diagnostic bundle (check/config/status)")
+    .argument("[target]", "Target name (defaults: project defaultTarget or 'local')")
+    .action(async (target) => cmdDiag(process.cwd(), target));
+
+  program
+    .command("doctor")
+    .description("Alias for diag")
+    .argument("[target]", "Target name (defaults: project defaultTarget or 'local')")
+    .action(async (target) => cmdDiag(process.cwd(), target));
 
   program
     .command("clean")

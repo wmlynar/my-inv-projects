@@ -1084,6 +1084,11 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
     }
     const launcherHardening = thinCfg.launcherHardening !== false;
     const launcherHardeningCET = thinCfg.launcherHardeningCET !== false;
+    let runtimeArgv0 = thinCfg.runtimeArgv0;
+    if (typeof runtimeArgv0 === "string") {
+      const lower = runtimeArgv0.trim().toLowerCase();
+      if (lower === "appname") runtimeArgv0 = appName;
+    }
     const nativeBootstrapObfuscator = protectionCfg.nativeBootstrapObfuscatorCmd
       ? {
         cmd: protectionCfg.nativeBootstrapObfuscatorCmd,
@@ -1103,6 +1108,7 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
       zstdTimeoutMs: thinZstdTimeoutMs,
       envMode: thinCfg.envMode,
       runtimeStore: thinCfg.runtimeStore,
+      runtimeArgv0,
       launcherHardening,
       launcherHardeningCET,
       launcherObfuscation,

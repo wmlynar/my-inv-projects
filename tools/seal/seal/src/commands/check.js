@@ -42,6 +42,141 @@ function resolveCcOverride(opts) {
   return cc ? cc : null;
 }
 
+function resolvePreflightThreshold(targetCfg, key, envKey, fallback) {
+  const cfg = targetCfg && targetCfg.preflight && typeof targetCfg.preflight === "object"
+    ? targetCfg.preflight[key]
+    : undefined;
+  const raw = cfg !== undefined ? cfg : (process.env[envKey] !== undefined ? process.env[envKey] : fallback);
+  const num = Number(raw);
+  if (!Number.isFinite(num) || num <= 0) return fallback;
+  return Math.floor(num);
+}
+
+function resolvePreflightEnv(envKey, fallback) {
+  const raw = process.env[envKey] !== undefined ? process.env[envKey] : fallback;
+  const num = Number(raw);
+  if (!Number.isFinite(num) || num <= 0) return fallback;
+  return Math.floor(num);
+}
+
+function resolveTmpDir(targetCfg) {
+  const cfg = targetCfg && targetCfg.preflight && typeof targetCfg.preflight === "object"
+    ? targetCfg.preflight.tmpDir
+    : null;
+  const tmpDir = cfg !== undefined && cfg !== null ? String(cfg).trim() : "";
+  return tmpDir || "/tmp";
+}
+
+function resolvePreflightTools(targetCfg) {
+  const cfg = targetCfg && targetCfg.preflight && typeof targetCfg.preflight === "object"
+    ? targetCfg.preflight.requireTools
+    : null;
+  if (!cfg) return [];
+  if (Array.isArray(cfg)) {
+    return cfg.map((v) => String(v || "").trim()).filter(Boolean);
+  }
+  return [String(cfg).trim()].filter(Boolean);
+}
+
+function resolveNoexecPolicy(targetCfg) {
+  const cfg = targetCfg && targetCfg.preflight && typeof targetCfg.preflight === "object"
+    ? targetCfg.preflight.allowNoexec
+    : undefined;
+  return cfg === true;
+}
+
+function resolveSudoRequired(targetCfg) {
+  const cfg = targetCfg && targetCfg.preflight && typeof targetCfg.preflight === "object"
+    ? targetCfg.preflight.requireSudo
+    : undefined;
+  if (cfg === true) return true;
+  if (cfg === false) return false;
+  if (targetCfg && targetCfg.user === "root") return false;
+  return true;
+}
+
+function parsePreflightResources(out) {
+  const res = {
+    lowDisk: null,
+    lowInodes: null,
+    lowTmpDisk: null,
+    lowTmpInodes: null,
+    tmpMissing: false,
+    noexecInstall: false,
+    missingTools: [],
+    missingSudo: false,
+    diskCheckFailed: false,
+    inodeCheckFailed: false,
+    tmpDiskCheckFailed: false,
+    tmpInodeCheckFailed: false,
+  };
+  const diskMatch = out.match(/__SEAL_DISK_LOW__:(\d+):(\d+)/);
+  if (diskMatch) {
+    res.lowDisk = { availMb: Number(diskMatch[1]), minMb: Number(diskMatch[2]) };
+  }
+  const inodeMatch = out.match(/__SEAL_INODES_LOW__:(\d+):(\d+)/);
+  if (inodeMatch) {
+    res.lowInodes = { avail: Number(inodeMatch[1]), min: Number(inodeMatch[2]) };
+  }
+  const tmpDiskMatch = out.match(/__SEAL_TMP_DISK_LOW__:(\d+):(\d+)/);
+  if (tmpDiskMatch) {
+    res.lowTmpDisk = { availMb: Number(tmpDiskMatch[1]), minMb: Number(tmpDiskMatch[2]) };
+  }
+  const tmpInodeMatch = out.match(/__SEAL_TMP_INODES_LOW__:(\d+):(\d+)/);
+  if (tmpInodeMatch) {
+    res.lowTmpInodes = { avail: Number(tmpInodeMatch[1]), min: Number(tmpInodeMatch[2]) };
+  }
+  if (out.includes("__SEAL_TMP_MISSING__")) res.tmpMissing = true;
+  if (out.includes("__SEAL_NOEXEC__")) res.noexecInstall = true;
+  const toolMatches = out.match(/__SEAL_TOOL_MISSING__:[^\s]+/g) || [];
+  if (toolMatches.length) {
+    res.missingTools = toolMatches.map((line) => line.split(":")[1]).filter(Boolean);
+  }
+  if (out.includes("__SEAL_SUDO_MISSING__")) res.missingSudo = true;
+  if (out.includes("__SEAL_DISK_CHECK_FAILED__")) res.diskCheckFailed = true;
+  if (out.includes("__SEAL_INODES_CHECK_FAILED__")) res.inodeCheckFailed = true;
+  if (out.includes("__SEAL_TMP_DISK_CHECK_FAILED__")) res.tmpDiskCheckFailed = true;
+  if (out.includes("__SEAL_TMP_INODES_CHECK_FAILED__")) res.tmpInodeCheckFailed = true;
+  return res;
+}
+
+function parseDfValue(output) {
+  const line = String(output || "").trim().split(/\r?\n/)[1] || "";
+  const parts = line.trim().split(/\s+/);
+  if (parts.length < 4) return null;
+  const value = Number(parts[3]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function checkLocalResources({ pathLabel, pathValue, minFreeMb, minFreeInodes, errors, warnings }) {
+  const df = spawnSyncSafe("df", ["-Pk", pathValue], { stdio: "pipe" });
+  if (!df.ok) {
+    warnings.push(`Local preflight: cannot check disk space for ${pathLabel} (${pathValue})`);
+  } else {
+    const availKb = parseDfValue(`${df.stdout}\n${df.stderr}`);
+    if (availKb === null) {
+      warnings.push(`Local preflight: cannot parse disk space for ${pathLabel} (${pathValue})`);
+    } else {
+      const availMb = Math.floor(availKb / 1024);
+      if (availMb < minFreeMb) {
+        errors.push(`Low disk space on ${pathLabel}: ${availMb} MB < ${minFreeMb} MB (${pathValue})`);
+      }
+    }
+  }
+
+  const dfInodes = spawnSyncSafe("df", ["-Pi", pathValue], { stdio: "pipe" });
+  if (!dfInodes.ok) {
+    warnings.push(`Local preflight: cannot check inodes for ${pathLabel} (${pathValue})`);
+  } else {
+    const availInodes = parseDfValue(`${dfInodes.stdout}\n${dfInodes.stderr}`);
+    if (availInodes === null) {
+      warnings.push(`Local preflight: cannot parse inodes for ${pathLabel} (${pathValue})`);
+    } else if (availInodes < minFreeInodes) {
+      errors.push(`Low inode count on ${pathLabel}: ${availInodes} < ${minFreeInodes} (${pathValue})`);
+    }
+  }
+}
+
 function remoteLayout(targetCfg) {
   const installDir = targetCfg.installDir || `/home/admin/apps/${targetCfg.appName || "app"}`;
   return {
@@ -57,12 +192,30 @@ function checkRemoteWritable(targetCfg) {
   const user = targetCfg.user || "root";
   const host = targetCfg.host;
   const layout = remoteLayout(targetCfg);
+  const minFreeMb = resolvePreflightThreshold(targetCfg, "minFreeMb", "SEAL_PREFLIGHT_MIN_FREE_MB", 100);
+  const minFreeInodes = resolvePreflightThreshold(targetCfg, "minFreeInodes", "SEAL_PREFLIGHT_MIN_FREE_INODES", 1000);
+  const minTmpFreeMb = resolvePreflightThreshold(targetCfg, "tmpMinFreeMb", "SEAL_PREFLIGHT_TMP_MIN_FREE_MB", 100);
+  const minTmpFreeInodes = resolvePreflightThreshold(targetCfg, "tmpMinFreeInodes", "SEAL_PREFLIGHT_TMP_MIN_FREE_INODES", 1000);
+  const tmpDir = resolveTmpDir(targetCfg);
+  const requireTools = resolvePreflightTools(targetCfg);
+  const allowNoexec = resolveNoexecPolicy(targetCfg) ? 1 : 0;
+  const requireSudo = resolveSudoRequired(targetCfg) ? 1 : 0;
+  const forceSudoFail = process.env.SEAL_PREFLIGHT_FORCE_SUDO_FAIL === "1" ? 1 : 0;
   const cmd = ["bash", "-lc", `
 ROOT=${shQuote(layout.installDir)}
 REL=${shQuote(layout.releasesDir)}
 SHARED=${shQuote(layout.sharedDir)}
 RUNNER=${shQuote(layout.runner)}
 UNIT=${shQuote(layout.serviceFile)}
+MIN_MB=${Math.trunc(minFreeMb)}
+MIN_INODES=${Math.trunc(minFreeInodes)}
+TMP_DIR=${shQuote(tmpDir)}
+TMP_MIN_MB=${Math.trunc(minTmpFreeMb)}
+TMP_MIN_INODES=${Math.trunc(minTmpFreeInodes)}
+ALLOW_NOEXEC=${allowNoexec}
+REQUIRED_TOOLS=${shQuote(requireTools.join(" "))}
+REQUIRE_SUDO=${requireSudo}
+FORCE_SUDO_FAIL=${forceSudoFail}
 issues=()
 
 if [ ! -d "$ROOT" ]; then
@@ -73,6 +226,75 @@ else
   if [ -d "$SHARED" ] && [ ! -w "$SHARED" ]; then issues+=("__SEAL_NOT_WRITABLE_SHARED__"); fi
   if [ ! -f "$RUNNER" ]; then issues+=("__SEAL_MISSING_RUNNER__"); fi
   if [ ! -f "$UNIT" ]; then issues+=("__SEAL_MISSING_UNIT__"); fi
+  if command -v df >/dev/null 2>&1; then
+    AVAIL_KB="$(df -Pk "$ROOT" 2>/dev/null | awk 'NR==2 {print $4}')"
+    if [ -n "$AVAIL_KB" ]; then
+      AVAIL_MB=$((AVAIL_KB / 1024))
+      if [ "$AVAIL_MB" -lt "$MIN_MB" ]; then
+        issues+=("__SEAL_DISK_LOW__:${AVAIL_MB}:${MIN_MB}")
+      fi
+    else
+      issues+=("__SEAL_DISK_CHECK_FAILED__")
+    fi
+    AVAIL_INODES="$(df -Pi "$ROOT" 2>/dev/null | awk 'NR==2 {print $4}')"
+    if [ -n "$AVAIL_INODES" ]; then
+      if [ "$AVAIL_INODES" -lt "$MIN_INODES" ]; then
+        issues+=("__SEAL_INODES_LOW__:${AVAIL_INODES}:${MIN_INODES}")
+      fi
+    else
+      issues+=("__SEAL_INODES_CHECK_FAILED__")
+    fi
+    if [ -d "$TMP_DIR" ]; then
+      TMP_AVAIL_KB="$(df -Pk "$TMP_DIR" 2>/dev/null | awk 'NR==2 {print $4}')"
+      if [ -n "$TMP_AVAIL_KB" ]; then
+        TMP_AVAIL_MB=$((TMP_AVAIL_KB / 1024))
+        if [ "$TMP_AVAIL_MB" -lt "$TMP_MIN_MB" ]; then
+          issues+=("__SEAL_TMP_DISK_LOW__:${TMP_AVAIL_MB}:${TMP_MIN_MB}")
+        fi
+      else
+        issues+=("__SEAL_TMP_DISK_CHECK_FAILED__")
+      fi
+      TMP_AVAIL_INODES="$(df -Pi "$TMP_DIR" 2>/dev/null | awk 'NR==2 {print $4}')"
+      if [ -n "$TMP_AVAIL_INODES" ]; then
+        if [ "$TMP_AVAIL_INODES" -lt "$TMP_MIN_INODES" ]; then
+          issues+=("__SEAL_TMP_INODES_LOW__:${TMP_AVAIL_INODES}:${TMP_MIN_INODES}")
+        fi
+      else
+        issues+=("__SEAL_TMP_INODES_CHECK_FAILED__")
+      fi
+    else
+      issues+=("__SEAL_TMP_MISSING__")
+    fi
+    if command -v findmnt >/dev/null 2>&1; then
+      if [ "$ALLOW_NOEXEC" -ne 1 ]; then
+        OPTS="$(findmnt -no OPTIONS --target "$ROOT" 2>/dev/null || true)"
+        if echo "$OPTS" | grep -q "noexec"; then
+          issues+=("__SEAL_NOEXEC__")
+        fi
+      fi
+    fi
+  else
+    issues+=("__SEAL_DISK_CHECK_FAILED__")
+    issues+=("__SEAL_INODES_CHECK_FAILED__")
+    issues+=("__SEAL_TMP_DISK_CHECK_FAILED__")
+    issues+=("__SEAL_TMP_INODES_CHECK_FAILED__")
+  fi
+  if [ -n "$REQUIRED_TOOLS" ]; then
+    for tool in $REQUIRED_TOOLS; do
+      if ! command -v "$tool" >/dev/null 2>&1; then
+        issues+=("__SEAL_TOOL_MISSING__:$tool")
+      fi
+    done
+  fi
+  if [ "$REQUIRE_SUDO" -eq 1 ]; then
+    if [ "$FORCE_SUDO_FAIL" -eq 1 ]; then
+      issues+=("__SEAL_SUDO_MISSING__")
+    else
+      if ! sudo -n true >/dev/null 2>&1; then
+        issues+=("__SEAL_SUDO_MISSING__")
+      fi
+    fi
+  fi
 fi
 
 if [ "\${#issues[@]}" -eq 0 ]; then
@@ -137,6 +359,27 @@ async function cmdCheck(cwd, targetArg, opts) {
     return;
   }
 
+  const localMinFreeMb = resolvePreflightEnv("SEAL_PREFLIGHT_LOCAL_MIN_FREE_MB", resolvePreflightEnv("SEAL_PREFLIGHT_MIN_FREE_MB", 100));
+  const localMinFreeInodes = resolvePreflightEnv("SEAL_PREFLIGHT_LOCAL_MIN_FREE_INODES", resolvePreflightEnv("SEAL_PREFLIGHT_MIN_FREE_INODES", 1000));
+  const localTmpMinFreeMb = resolvePreflightEnv("SEAL_PREFLIGHT_LOCAL_TMP_MIN_FREE_MB", resolvePreflightEnv("SEAL_PREFLIGHT_TMP_MIN_FREE_MB", 100));
+  const localTmpMinFreeInodes = resolvePreflightEnv("SEAL_PREFLIGHT_LOCAL_TMP_MIN_FREE_INODES", resolvePreflightEnv("SEAL_PREFLIGHT_TMP_MIN_FREE_INODES", 1000));
+  checkLocalResources({
+    pathLabel: "project root",
+    pathValue: projectRoot,
+    minFreeMb: localMinFreeMb,
+    minFreeInodes: localMinFreeInodes,
+    errors,
+    warnings,
+  });
+  checkLocalResources({
+    pathLabel: "tmp",
+    pathValue: os.tmpdir(),
+    minFreeMb: localTmpMinFreeMb,
+    minFreeInodes: localTmpMinFreeInodes,
+    errors,
+    warnings,
+  });
+
   const targetName = resolveTargetName(projectRoot, targetArg || null);
   const t = loadTargetConfig(projectRoot, targetName);
   if (!t) warnings.push(`Missing target '${targetName}' in seal-config/targets`);
@@ -176,6 +419,48 @@ async function cmdCheck(cwd, targetArg, opts) {
       if (!res.ok) {
         warnings.push(`SSH preflight failed for ${user}@${host}: ${out || res.error || "unknown"}`);
       } else {
+        const resourceCheck = parsePreflightResources(out);
+        const tmpDir = resolveTmpDir(targetCfg);
+        if (resourceCheck.lowDisk) {
+          const { availMb, minMb } = resourceCheck.lowDisk;
+          errors.push(`Low disk space on ${host}: ${availMb} MB < ${minMb} MB (set target.preflight.minFreeMb or SEAL_PREFLIGHT_MIN_FREE_MB)`);
+        }
+        if (resourceCheck.lowInodes) {
+          const { avail, min } = resourceCheck.lowInodes;
+          errors.push(`Low inode count on ${host}: ${avail} < ${min} (set target.preflight.minFreeInodes or SEAL_PREFLIGHT_MIN_FREE_INODES)`);
+        }
+        if (resourceCheck.lowTmpDisk) {
+          const { availMb, minMb } = resourceCheck.lowTmpDisk;
+          errors.push(`Low disk space on ${host} (${tmpDir}): ${availMb} MB < ${minMb} MB (set target.preflight.tmpMinFreeMb or SEAL_PREFLIGHT_TMP_MIN_FREE_MB)`);
+        }
+        if (resourceCheck.lowTmpInodes) {
+          const { avail, min } = resourceCheck.lowTmpInodes;
+          errors.push(`Low inode count on ${host} (${tmpDir}): ${avail} < ${min} (set target.preflight.tmpMinFreeInodes or SEAL_PREFLIGHT_TMP_MIN_FREE_INODES)`);
+        }
+        if (resourceCheck.tmpMissing) {
+          errors.push(`Tmp dir missing on ${host}: ${tmpDir} (set target.preflight.tmpDir)`);
+        }
+        if (resourceCheck.noexecInstall) {
+          errors.push(`installDir mounted with noexec on ${host}: ${layout.installDir} (set target.preflight.allowNoexec=true or use a different path)`);
+        }
+        if (resourceCheck.missingTools && resourceCheck.missingTools.length) {
+          errors.push(`Missing tools on ${host}: ${resourceCheck.missingTools.join(", ")} (set target.preflight.requireTools or install them)`);
+        }
+        if (resourceCheck.missingSudo) {
+          errors.push(`Passwordless sudo missing on ${host} (configure NOPASSWD or set target.preflight.requireSudo=false)`);
+        }
+        if (resourceCheck.diskCheckFailed) {
+          warnings.push(`Disk space check failed on ${host} (df unavailable or unreadable).`);
+        }
+        if (resourceCheck.inodeCheckFailed) {
+          warnings.push(`Inode check failed on ${host} (df unavailable or unreadable).`);
+        }
+        if (resourceCheck.tmpDiskCheckFailed) {
+          warnings.push(`Tmp disk space check failed on ${host} (${tmpDir}).`);
+        }
+        if (resourceCheck.tmpInodeCheckFailed) {
+          warnings.push(`Tmp inode check failed on ${host} (${tmpDir}).`);
+        }
         const hasOk = out.includes("__SEAL_OK__");
         const missingDir = out.includes("__SEAL_MISSING_DIR__");
         const notWritable = out.includes("__SEAL_NOT_WRITABLE__");

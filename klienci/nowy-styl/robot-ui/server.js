@@ -307,7 +307,10 @@ if (!USE_MOCK_RDS) {
 
 const app = express();
 app.use(bodyParser.json());
-app.use(express.static(path.join(__dirname, "public")));
+const publicDir = fs.existsSync(path.join(process.cwd(), "public"))
+  ? path.join(process.cwd(), "public")
+  : path.join(__dirname, "public");
+app.use(express.static(publicDir));
 
 app.get("/api/status", (req, res) => {
   res.json({ ok: true, buildId: BUILD_ID, ts: Date.now() });

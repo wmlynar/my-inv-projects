@@ -177,7 +177,7 @@ function cleanupTmpDirs(state) {
 }
 
 function registerCleanupHandlers(state) {
-  if (!state || state.isParallelChild) return;
+  if (!state) return;
   if (state.cleanupRegistered) return;
   state.cleanupRegistered = true;
   const handler = () => {

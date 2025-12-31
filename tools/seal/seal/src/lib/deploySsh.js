@@ -79,6 +79,189 @@ function targetLabel(targetCfg) {
   return targetCfg.target || targetCfg.serviceName || "server";
 }
 
+function resolvePreflightThreshold(targetCfg, key, envKey, fallback) {
+  const cfg = targetCfg && targetCfg.preflight && typeof targetCfg.preflight === "object"
+    ? targetCfg.preflight[key]
+    : undefined;
+  const raw = cfg !== undefined ? cfg : (process.env[envKey] !== undefined ? process.env[envKey] : fallback);
+  const num = Number(raw);
+  if (!Number.isFinite(num) || num <= 0) return fallback;
+  return Math.floor(num);
+}
+
+function resolveTmpDir(targetCfg) {
+  const cfg = targetCfg && targetCfg.preflight && typeof targetCfg.preflight === "object"
+    ? targetCfg.preflight.tmpDir
+    : null;
+  const tmpDir = cfg !== undefined && cfg !== null ? String(cfg).trim() : "";
+  return tmpDir || "/tmp";
+}
+
+function resolvePreflightTools(targetCfg) {
+  const cfg = targetCfg && targetCfg.preflight && typeof targetCfg.preflight === "object"
+    ? targetCfg.preflight.requireTools
+    : null;
+  if (!cfg) return [];
+  if (Array.isArray(cfg)) {
+    return cfg.map((v) => String(v || "").trim()).filter(Boolean);
+  }
+  return [String(cfg).trim()].filter(Boolean);
+}
+
+function resolveNoexecPolicy(targetCfg) {
+  const cfg = targetCfg && targetCfg.preflight && typeof targetCfg.preflight === "object"
+    ? targetCfg.preflight.allowNoexec
+    : undefined;
+  return cfg === true;
+}
+
+function resolveSudoRequired(targetCfg) {
+  const cfg = targetCfg && targetCfg.preflight && typeof targetCfg.preflight === "object"
+    ? targetCfg.preflight.requireSudo
+    : undefined;
+  if (cfg === true) return true;
+  if (cfg === false) return false;
+  if (targetCfg && targetCfg.user === "root") return false;
+  return true;
+}
+
+function resolveLockTtlSec(targetCfg) {
+  const cfg = targetCfg && targetCfg.preflight && typeof targetCfg.preflight === "object"
+    ? targetCfg.preflight.lockTtlSec
+    : undefined;
+  const raw = cfg !== undefined && cfg !== null ? cfg : process.env.SEAL_DEPLOY_LOCK_TTL_SEC;
+  const num = Number(raw);
+  if (!Number.isFinite(num) || num <= 0) return 900;
+  return Math.floor(num);
+}
+
+function parseLockResult(out) {
+  const ok = out.includes("__SEAL_LOCK_OK__");
+  const busyMatch = out.match(/__SEAL_LOCK_BUSY__:(\d+):(\d+)/);
+  if (busyMatch) {
+    return { ok: false, ageSec: Number(busyMatch[1]), ttlSec: Number(busyMatch[2]) };
+  }
+  return { ok };
+}
+
+function acquireDeployLockSsh(targetCfg, tmpDir) {
+  const { user, host } = sshUserHost(targetCfg);
+  const ttlSec = resolveLockTtlSec(targetCfg);
+  const lockBase = `${tmpDir || "/tmp"}/seal-deploy-${targetCfg.serviceName || targetCfg.appName || "app"}.lock`;
+  const cmd = [
+    "bash",
+    "-c",
+    `
+LOCK=${shQuote(lockBase)}
+TTL=${Math.trunc(ttlSec)}
+NOW="$(date +%s)"
+if mkdir "$LOCK" 2>/dev/null; then
+  echo "$NOW" > "$LOCK/ts"
+  echo "$$" > "$LOCK/pid"
+  echo "__SEAL_LOCK_OK__"
+  exit 0
+fi
+if [ -f "$LOCK/ts" ]; then
+  TS="$(cat "$LOCK/ts" 2>/dev/null || echo 0)"
+  AGE=$((NOW - TS))
+  if [ "$AGE" -gt "$TTL" ]; then
+    rm -rf "$LOCK" 2>/dev/null || true
+    if mkdir "$LOCK" 2>/dev/null; then
+      echo "$NOW" > "$LOCK/ts"
+      echo "$$" > "$LOCK/pid"
+      echo "__SEAL_LOCK_OK__"
+      exit 0
+    fi
+  else
+    echo "__SEAL_LOCK_BUSY__:${AGE}:${TTL}"
+    exit 0
+  fi
+fi
+echo "__SEAL_LOCK_BUSY__:0:${TTL}"
+exit 0
+`,
+  ];
+  const res = sshExecTarget(targetCfg, { user, host, args: cmd, stdio: "pipe" });
+  const out = `${res.stdout}\n${res.stderr}`.trim();
+  if (!res.ok) {
+    throw new Error(`ssh lock failed${formatSshFailure(res) || (out ? `: ${out}` : "")}`);
+  }
+  const parsed = parseLockResult(out);
+  if (!parsed.ok) {
+    throw new Error(`deploy lock busy on ${host} (${lockBase}) age=${parsed.ageSec}s ttl=${parsed.ttlSec}s. Wait or remove lock.`);
+  }
+  return { lockBase };
+}
+
+function releaseDeployLockSsh(targetCfg, lock) {
+  if (!lock || !lock.lockBase) return;
+  const { user, host } = sshUserHost(targetCfg);
+  const cmd = ["bash", "-c", `rm -rf ${shQuote(lock.lockBase)} 2>/dev/null || true`];
+  sshExecTarget(targetCfg, { user, host, args: cmd, stdio: "pipe" });
+}
+
+function parsePreflightResources(out) {
+  const res = {
+    lowDisk: null,
+    lowInodes: null,
+    lowTmpDisk: null,
+    lowTmpInodes: null,
+    tmpMissing: false,
+    noexecInstall: false,
+    missingTools: [],
+    missingSudo: false,
+    diskCheckFailed: false,
+    inodeCheckFailed: false,
+    tmpDiskCheckFailed: false,
+    tmpInodeCheckFailed: false,
+  };
+  const diskMatch = out.match(/__SEAL_DISK_LOW__:(\d+):(\d+)/);
+  if (diskMatch) {
+    res.lowDisk = { availMb: Number(diskMatch[1]), minMb: Number(diskMatch[2]) };
+  }
+  const inodeMatch = out.match(/__SEAL_INODES_LOW__:(\d+):(\d+)/);
+  if (inodeMatch) {
+    res.lowInodes = { avail: Number(inodeMatch[1]), min: Number(inodeMatch[2]) };
+  }
+  const tmpDiskMatch = out.match(/__SEAL_TMP_DISK_LOW__:(\d+):(\d+)/);
+  if (tmpDiskMatch) {
+    res.lowTmpDisk = { availMb: Number(tmpDiskMatch[1]), minMb: Number(tmpDiskMatch[2]) };
+  }
+  const tmpInodeMatch = out.match(/__SEAL_TMP_INODES_LOW__:(\d+):(\d+)/);
+  if (tmpInodeMatch) {
+    res.lowTmpInodes = { avail: Number(tmpInodeMatch[1]), min: Number(tmpInodeMatch[2]) };
+  }
+  if (out.includes("__SEAL_TMP_MISSING__")) res.tmpMissing = true;
+  if (out.includes("__SEAL_NOEXEC__")) res.noexecInstall = true;
+  const toolMatches = out.match(/__SEAL_TOOL_MISSING__:[^\s]+/g) || [];
+  if (toolMatches.length) {
+    res.missingTools = toolMatches.map((line) => line.split(":")[1]).filter(Boolean);
+  }
+  if (out.includes("__SEAL_SUDO_MISSING__")) res.missingSudo = true;
+  if (out.includes("__SEAL_DISK_CHECK_FAILED__")) res.diskCheckFailed = true;
+  if (out.includes("__SEAL_INODES_CHECK_FAILED__")) res.inodeCheckFailed = true;
+  if (out.includes("__SEAL_TMP_DISK_CHECK_FAILED__")) res.tmpDiskCheckFailed = true;
+  if (out.includes("__SEAL_TMP_INODES_CHECK_FAILED__")) res.tmpInodeCheckFailed = true;
+  return res;
+}
+
+function buildPayloadExtrasTar(releaseDir, appName, buildId) {
+  if (!releaseDir || !fileExists(releaseDir)) return null;
+  const entries = fs.readdirSync(releaseDir, { withFileTypes: true })
+    .map((entry) => entry.name)
+    .filter((name) => !["b", "r", "config.runtime.json5"].includes(name));
+  if (!entries.length) return null;
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-payload-"));
+  const tarName = `${appName || "app"}-extras-${buildId || Date.now()}.tgz`;
+  const tarPath = path.join(tmpDir, tarName);
+  const res = spawnSyncSafe("tar", ["-czf", tarPath, "-C", releaseDir, ...entries], { stdio: "pipe" });
+  if (!res.ok) {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    throw new Error(`payload extras tar failed (status=${res.status})`);
+  }
+  return { tarPath, tmpDir };
+}
+
 function shQuote(value) {
   const str = String(value);
   return "'" + str.replace(/'/g, "'\\''") + "'";
@@ -186,7 +369,7 @@ function readThinCodecHashRemote(targetCfg, { user, host, filePath }) {
   const res = sshExecTarget(targetCfg, {
     user,
     host,
-    args: ["bash", "-lc", `if [ -f ${shQuote(filePath)} ]; then (base64 -w 0 ${shQuote(filePath)} 2>/dev/null || base64 ${shQuote(filePath)} | tr -d '\\n'); fi`],
+    args: ["bash", "-c", `if [ -f ${shQuote(filePath)} ]; then (base64 -w 0 ${shQuote(filePath)} 2>/dev/null || base64 ${shQuote(filePath)} | tr -d '\\n'); fi`],
     stdio: "pipe",
   });
   if (!res.ok) return null;
@@ -204,7 +387,7 @@ function readThinRuntimeVersionRemote(targetCfg, { user, host, filePath }) {
   const res = sshExecTarget(targetCfg, {
     user,
     host,
-    args: ["bash", "-lc", `if [ -f ${shQuote(filePath)} ]; then (base64 -w 0 ${shQuote(filePath)} 2>/dev/null || base64 ${shQuote(filePath)} | tr -d '\\n'); fi`],
+    args: ["bash", "-c", `if [ -f ${shQuote(filePath)} ]; then (base64 -w 0 ${shQuote(filePath)} 2>/dev/null || base64 ${shQuote(filePath)} | tr -d '\\n'); fi`],
     stdio: "pipe",
   });
   if (!res.ok) return null;
@@ -310,22 +493,52 @@ function collectPreflightIssues(out, layout) {
   return issues;
 }
 
+function requireServiceFilesSsh(targetCfg) {
+  const { res, layout, user, host } = checkRemoteWritable(targetCfg, { requireService: true });
+  const out = `${res.stdout}\n${res.stderr}`.trim();
+  if (!res.ok) {
+    throw new Error(`ssh preflight failed${formatSshFailure(res) || (out || res.error ? `: ${out || res.error}` : "")}`);
+  }
+  const issues = collectPreflightIssues(out, layout);
+  if (issues.length) {
+    throw new Error(bootstrapHint(targetCfg, layout, user, host, issues));
+  }
+}
+
 function checkRemoteWritable(targetCfg, opts) {
   const { user, host } = sshUserHost(targetCfg);
   const layout = remoteLayout(targetCfg);
   const requireService = !(opts && opts.requireService === false);
+  const minFreeMb = resolvePreflightThreshold(targetCfg, "minFreeMb", "SEAL_PREFLIGHT_MIN_FREE_MB", 100);
+  const minFreeInodes = resolvePreflightThreshold(targetCfg, "minFreeInodes", "SEAL_PREFLIGHT_MIN_FREE_INODES", 1000);
+  const minTmpFreeMb = resolvePreflightThreshold(targetCfg, "tmpMinFreeMb", "SEAL_PREFLIGHT_TMP_MIN_FREE_MB", 100);
+  const minTmpFreeInodes = resolvePreflightThreshold(targetCfg, "tmpMinFreeInodes", "SEAL_PREFLIGHT_TMP_MIN_FREE_INODES", 1000);
+  const tmpDir = resolveTmpDir(targetCfg);
+  const requireTools = resolvePreflightTools(targetCfg);
+  const allowNoexec = resolveNoexecPolicy(targetCfg) ? 1 : 0;
+  const requireSudo = resolveSudoRequired(targetCfg) ? 1 : 0;
+  const forceSudoFail = process.env.SEAL_PREFLIGHT_FORCE_SUDO_FAIL === "1" ? 1 : 0;
   const serviceChecks = requireService
     ? `
   if [ ! -f "$RUNNER" ]; then issues+=("__SEAL_MISSING_RUNNER__"); fi
   if [ ! -f "$UNIT" ]; then issues+=("__SEAL_MISSING_UNIT__"); fi
 `
     : "";
-  const cmd = ["bash", "-lc", `
+  const cmd = ["bash", "-c", `
 ROOT=${shQuote(layout.installDir)}
 REL=${shQuote(layout.releasesDir)}
 SHARED=${shQuote(layout.sharedDir)}
 RUNNER=${shQuote(layout.runner)}
 UNIT=${shQuote(layout.serviceFile)}
+MIN_MB=${Math.trunc(minFreeMb)}
+MIN_INODES=${Math.trunc(minFreeInodes)}
+TMP_DIR=${shQuote(tmpDir)}
+TMP_MIN_MB=${Math.trunc(minTmpFreeMb)}
+TMP_MIN_INODES=${Math.trunc(minTmpFreeInodes)}
+ALLOW_NOEXEC=${allowNoexec}
+REQUIRED_TOOLS=${shQuote(requireTools.join(" "))}
+REQUIRE_SUDO=${requireSudo}
+FORCE_SUDO_FAIL=${forceSudoFail}
 issues=()
 
 if [ ! -d "$ROOT" ]; then
@@ -334,6 +547,75 @@ else
   if [ ! -w "$ROOT" ]; then issues+=("__SEAL_NOT_WRITABLE__"); fi
   if [ -d "$REL" ] && [ ! -w "$REL" ]; then issues+=("__SEAL_NOT_WRITABLE_RELEASES__"); fi
   if [ -d "$SHARED" ] && [ ! -w "$SHARED" ]; then issues+=("__SEAL_NOT_WRITABLE_SHARED__"); fi
+  if command -v df >/dev/null 2>&1; then
+    AVAIL_KB="$(df -Pk "$ROOT" 2>/dev/null | awk 'NR==2 {print $4}')"
+    if [ -n "$AVAIL_KB" ]; then
+      AVAIL_MB=$((AVAIL_KB / 1024))
+      if [ "$AVAIL_MB" -lt "$MIN_MB" ]; then
+        issues+=("__SEAL_DISK_LOW__:${AVAIL_MB}:${MIN_MB}")
+      fi
+    else
+      issues+=("__SEAL_DISK_CHECK_FAILED__")
+    fi
+    AVAIL_INODES="$(df -Pi "$ROOT" 2>/dev/null | awk 'NR==2 {print $4}')"
+    if [ -n "$AVAIL_INODES" ]; then
+      if [ "$AVAIL_INODES" -lt "$MIN_INODES" ]; then
+        issues+=("__SEAL_INODES_LOW__:${AVAIL_INODES}:${MIN_INODES}")
+      fi
+    else
+      issues+=("__SEAL_INODES_CHECK_FAILED__")
+    fi
+    if [ -d "$TMP_DIR" ]; then
+      TMP_AVAIL_KB="$(df -Pk "$TMP_DIR" 2>/dev/null | awk 'NR==2 {print $4}')"
+      if [ -n "$TMP_AVAIL_KB" ]; then
+        TMP_AVAIL_MB=$((TMP_AVAIL_KB / 1024))
+        if [ "$TMP_AVAIL_MB" -lt "$TMP_MIN_MB" ]; then
+          issues+=("__SEAL_TMP_DISK_LOW__:${TMP_AVAIL_MB}:${TMP_MIN_MB}")
+        fi
+      else
+        issues+=("__SEAL_TMP_DISK_CHECK_FAILED__")
+      fi
+      TMP_AVAIL_INODES="$(df -Pi "$TMP_DIR" 2>/dev/null | awk 'NR==2 {print $4}')"
+      if [ -n "$TMP_AVAIL_INODES" ]; then
+        if [ "$TMP_AVAIL_INODES" -lt "$TMP_MIN_INODES" ]; then
+          issues+=("__SEAL_TMP_INODES_LOW__:${TMP_AVAIL_INODES}:${TMP_MIN_INODES}")
+        fi
+      else
+        issues+=("__SEAL_TMP_INODES_CHECK_FAILED__")
+      fi
+    else
+      issues+=("__SEAL_TMP_MISSING__")
+    fi
+    if command -v findmnt >/dev/null 2>&1; then
+      if [ "$ALLOW_NOEXEC" -ne 1 ]; then
+        OPTS="$(findmnt -no OPTIONS --target "$ROOT" 2>/dev/null || true)"
+        if echo "$OPTS" | grep -q "noexec"; then
+          issues+=("__SEAL_NOEXEC__")
+        fi
+      fi
+    fi
+  else
+    issues+=("__SEAL_DISK_CHECK_FAILED__")
+    issues+=("__SEAL_INODES_CHECK_FAILED__")
+    issues+=("__SEAL_TMP_DISK_CHECK_FAILED__")
+    issues+=("__SEAL_TMP_INODES_CHECK_FAILED__")
+  fi
+  if [ -n "$REQUIRED_TOOLS" ]; then
+    for tool in $REQUIRED_TOOLS; do
+      if ! command -v "$tool" >/dev/null 2>&1; then
+        issues+=("__SEAL_TOOL_MISSING__:$tool")
+      fi
+    done
+  fi
+  if [ "$REQUIRE_SUDO" -eq 1 ]; then
+    if [ "$FORCE_SUDO_FAIL" -eq 1 ]; then
+      issues+=("__SEAL_SUDO_MISSING__")
+    else
+      if ! sudo -n true >/dev/null 2>&1; then
+        issues+=("__SEAL_SUDO_MISSING__")
+      fi
+    fi
+  fi
 ${serviceChecks}
 fi
 
@@ -352,7 +634,7 @@ function bootstrapSsh(targetCfg) {
   const { user, host } = sshUserHost(targetCfg);
   const layout = remoteLayout(targetCfg);
 
-  const sudoCheck = sshExecTarget(targetCfg, { user, host, args: ["bash", "-lc", "sudo -n true"], stdio: "pipe" });
+  const sudoCheck = sshExecTarget(targetCfg, { user, host, args: ["bash", "-c", "sudo -n true"], stdio: "pipe" });
   if (!sudoCheck.ok) {
   const owner = shQuote(`${user}:${user}`);
   const port = sshPort(targetCfg);
@@ -371,7 +653,7 @@ function bootstrapSsh(targetCfg) {
 
   // Create dirs only (no service install/start here)
   const cmd = [
-    "bash", "-lc",
+    "bash", "-c",
     [
       `sudo -n mkdir -p ${shQuote(layout.releasesDir)} ${shQuote(layout.sharedDir)} ${shQuote(`${layout.installDir}/b`)} ${shQuote(`${layout.installDir}/r`)}`,
       `sudo -n chown -R ${shQuote(`${user}:${user}`)} ${shQuote(layout.installDir)}`,
@@ -405,16 +687,35 @@ set -euo pipefail
 ROOT=${shQuote(layout.installDir)}
 if [ -x "$ROOT/b/a" ]; then
   # Thin BOOTSTRAP layout
+  REL=""
+  if [ -f "$ROOT/current.buildId" ]; then
+    BUILD_ID="$(cat "$ROOT/current.buildId" || true)"
+    if [ -n "$BUILD_ID" ] && [ -d "$ROOT/releases/$BUILD_ID" ]; then
+      REL="$ROOT/releases/$BUILD_ID"
+    fi
+  fi
   if [ -f "$ROOT/shared/config.json5" ]; then
     cp "$ROOT/shared/config.json5" "$ROOT/config.runtime.json5"
+    if [ -n "$REL" ]; then
+      cp "$ROOT/shared/config.json5" "$REL/config.runtime.json5"
+    fi
   fi
-  cd "$ROOT"
+  if [ -n "$REL" ]; then
+    cd "$REL"
+  else
+    cd "$ROOT"
+  fi
   exec "$ROOT/b/a"
 fi
 BUILD_ID="$(cat "$ROOT/current.buildId")"
 REL="$ROOT/releases/$BUILD_ID"
 if [ ! -d "$REL" ]; then
   echo "[seal] release dir not found: $REL" 1>&2
+  exit 2
+fi
+if [ ! -x "$REL/appctl" ]; then
+  echo "[seal] Missing appctl in release: $REL/appctl" 1>&2
+  echo "[seal] Fix: redeploy with --bootstrap (reinstall service/runner) or ensure full release upload." 1>&2
   exit 2
 fi
 
@@ -447,7 +748,7 @@ StandardError=journal
 WantedBy=multi-user.target
 `;
 
-  const sudoCheck = sshExecTarget(targetCfg, { user: sshUser, host, args: ["bash", "-lc", "sudo -n true"], stdio: "pipe" });
+  const sudoCheck = sshExecTarget(targetCfg, { user: sshUser, host, args: ["bash", "-c", "sudo -n true"], stdio: "pipe" });
   if (!sudoCheck.ok) {
     const sudoOut = `${sudoCheck.stdout}\n${sudoCheck.stderr}`.trim();
     const sudoLine = sudoOut.split(/\r?\n/).slice(0, 2).join(" | ");
@@ -460,7 +761,7 @@ WantedBy=multi-user.target
   }
 
   const cmd = [
-    "bash", "-lc",
+    "bash", "-c",
     `set -euo pipefail
 cat <<'EOF' > ${shQuote(layout.runner)}
 ${runnerScript}
@@ -490,7 +791,7 @@ function cleanupReleasesSsh({ targetCfg, current, policy }) {
   const layout = remoteLayout(targetCfg);
   const appName = targetCfg.appName || targetCfg.serviceName || "app";
 
-  const listCmd = ["bash", "-lc", `ls -1 ${shQuote(layout.releasesDir)} 2>/dev/null || true`];
+  const listCmd = ["bash", "-c", `ls -1 ${shQuote(layout.releasesDir)} 2>/dev/null || true`];
   const listRes = sshExecTarget(targetCfg, { user, host, args: listCmd, stdio: "pipe" });
   if (!listRes.ok) {
     warn(`Retention cleanup skipped (cannot list releases on ${host})`);
@@ -509,7 +810,7 @@ function cleanupReleasesSsh({ targetCfg, current, policy }) {
   if (!toDelete.length) return;
 
   const rmArgs = toDelete.map((name) => shQuote(`${layout.releasesDir}/${name}`)).join(" ");
-  const rmCmd = ["bash", "-lc", `rm -rf ${rmArgs}`];
+  const rmCmd = ["bash", "-c", `rm -rf ${rmArgs}`];
   const rmRes = sshExecTarget(targetCfg, { user, host, args: rmCmd, stdio: "pipe" });
   if (!rmRes.ok) {
     warn(`Retention cleanup failed on ${host} (status=${rmRes.status})`);
@@ -531,6 +832,9 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
   let payloadOnlyFallbackReason = null;
   let payloadOnlyFallbackLogged = false;
   const timeSync = timing && timing.timeSync ? timing.timeSync : (label, fn) => fn();
+  const tmpDir = resolveTmpDir(targetCfg);
+  const lock = acquireDeployLockSsh(targetCfg, tmpDir);
+  try {
   const { res: preflight, layout, user, host } = timeSync(
     "deploy.ssh.preflight",
     () => checkRemoteWritable(targetCfg, { requireService: !effectiveBootstrap })
@@ -538,6 +842,47 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
   let out = `${preflight.stdout}\n${preflight.stderr}`.trim();
   if (!preflight.ok) {
     throw new Error(`ssh preflight failed${formatSshFailure(preflight) || (out || preflight.error ? `: ${out || preflight.error}` : "")}`);
+  }
+  const resourceCheck = parsePreflightResources(out);
+  if (resourceCheck.lowDisk) {
+    const { availMb, minMb } = resourceCheck.lowDisk;
+    throw new Error(`ssh preflight failed: low disk space on target (${availMb} MB < ${minMb} MB). Free space or lower target.preflight.minFreeMb/SEAL_PREFLIGHT_MIN_FREE_MB.`);
+  }
+  if (resourceCheck.lowInodes) {
+    const { avail, min } = resourceCheck.lowInodes;
+    throw new Error(`ssh preflight failed: low inode count on target (${avail} < ${min}). Clean up files or lower target.preflight.minFreeInodes/SEAL_PREFLIGHT_MIN_FREE_INODES.`);
+  }
+  if (resourceCheck.lowTmpDisk) {
+    const { availMb, minMb } = resourceCheck.lowTmpDisk;
+    throw new Error(`ssh preflight failed: low disk space on target (${tmpDir}: ${availMb} MB < ${minMb} MB). Free space or lower target.preflight.tmpMinFreeMb/SEAL_PREFLIGHT_TMP_MIN_FREE_MB.`);
+  }
+  if (resourceCheck.lowTmpInodes) {
+    const { avail, min } = resourceCheck.lowTmpInodes;
+    throw new Error(`ssh preflight failed: low inode count on target (${tmpDir}: ${avail} < ${min}). Clean up files or lower target.preflight.tmpMinFreeInodes/SEAL_PREFLIGHT_TMP_MIN_FREE_INODES.`);
+  }
+  if (resourceCheck.tmpMissing) {
+    throw new Error(`ssh preflight failed: tmp dir missing on target (${tmpDir}). Set target.preflight.tmpDir or fix the path.`);
+  }
+  if (resourceCheck.noexecInstall) {
+    throw new Error(`ssh preflight failed: installDir mounted with noexec (${layout.installDir}). Use a different path or set target.preflight.allowNoexec=true.`);
+  }
+  if (resourceCheck.missingTools && resourceCheck.missingTools.length) {
+    throw new Error(`ssh preflight failed: missing tools on target: ${resourceCheck.missingTools.join(", ")}. Install them or set target.preflight.requireTools accordingly.`);
+  }
+  if (resourceCheck.missingSudo) {
+    throw new Error(`ssh preflight failed: passwordless sudo missing on target. Configure NOPASSWD or set target.preflight.requireSudo=false.`);
+  }
+  if (resourceCheck.diskCheckFailed) {
+    warn("SSH preflight: disk space check failed (df unavailable or unreadable).");
+  }
+  if (resourceCheck.inodeCheckFailed) {
+    warn("SSH preflight: inode check failed (df unavailable or unreadable).");
+  }
+  if (resourceCheck.tmpDiskCheckFailed) {
+    warn(`SSH preflight: tmp disk space check failed (${tmpDir}).`);
+  }
+  if (resourceCheck.tmpInodeCheckFailed) {
+    warn(`SSH preflight: tmp inode check failed (${tmpDir}).`);
   }
   let issues = collectPreflightIssues(out, layout);
   if (issues.length && !effectiveBootstrap && autoBootstrapAllowed) {
@@ -555,6 +900,48 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
     out = `${retry.res.stdout}\n${retry.res.stderr}`.trim();
     if (!retry.res.ok) {
       throw new Error(`ssh preflight failed after bootstrap${formatSshFailure(retry.res) || (out || retry.res.error ? `: ${out || retry.res.error}` : "")}`);
+    }
+    const retryResource = parsePreflightResources(out);
+    const retryTmpDir = resolveTmpDir(targetCfg);
+    if (retryResource.lowDisk) {
+      const { availMb, minMb } = retryResource.lowDisk;
+      throw new Error(`ssh preflight failed: low disk space on target (${availMb} MB < ${minMb} MB). Free space or lower target.preflight.minFreeMb/SEAL_PREFLIGHT_MIN_FREE_MB.`);
+    }
+    if (retryResource.lowInodes) {
+      const { avail, min } = retryResource.lowInodes;
+      throw new Error(`ssh preflight failed: low inode count on target (${avail} < ${min}). Clean up files or lower target.preflight.minFreeInodes/SEAL_PREFLIGHT_MIN_FREE_INODES.`);
+    }
+    if (retryResource.lowTmpDisk) {
+      const { availMb, minMb } = retryResource.lowTmpDisk;
+      throw new Error(`ssh preflight failed: low disk space on target (${retryTmpDir}: ${availMb} MB < ${minMb} MB). Free space or lower target.preflight.tmpMinFreeMb/SEAL_PREFLIGHT_TMP_MIN_FREE_MB.`);
+    }
+    if (retryResource.lowTmpInodes) {
+      const { avail, min } = retryResource.lowTmpInodes;
+      throw new Error(`ssh preflight failed: low inode count on target (${retryTmpDir}: ${avail} < ${min}). Clean up files or lower target.preflight.tmpMinFreeInodes/SEAL_PREFLIGHT_TMP_MIN_FREE_INODES.`);
+    }
+    if (retryResource.tmpMissing) {
+      throw new Error(`ssh preflight failed: tmp dir missing on target (${retryTmpDir}). Set target.preflight.tmpDir or fix the path.`);
+    }
+    if (retryResource.noexecInstall) {
+      throw new Error(`ssh preflight failed: installDir mounted with noexec (${layout.installDir}). Use a different path or set target.preflight.allowNoexec=true.`);
+    }
+    if (retryResource.missingTools && retryResource.missingTools.length) {
+      throw new Error(`ssh preflight failed: missing tools on target: ${retryResource.missingTools.join(", ")}. Install them or set target.preflight.requireTools accordingly.`);
+    }
+    if (retryResource.missingSudo) {
+      throw new Error(`ssh preflight failed: passwordless sudo missing on target. Configure NOPASSWD or set target.preflight.requireSudo=false.`);
+    }
+    if (retryResource.diskCheckFailed) {
+      warn("SSH preflight: disk space check failed (df unavailable or unreadable).");
+    }
+    if (retryResource.inodeCheckFailed) {
+      warn("SSH preflight: inode check failed (df unavailable or unreadable).");
+    }
+    if (retryResource.tmpDiskCheckFailed) {
+      warn(`SSH preflight: tmp disk space check failed (${retryTmpDir}).`);
+    }
+    if (retryResource.tmpInodeCheckFailed) {
+      warn(`SSH preflight: tmp inode check failed (${retryTmpDir}).`);
     }
     issues = collectPreflightIssues(out, layout);
   }
@@ -594,7 +981,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
     const checkRt = timeSync("deploy.ssh.check_runtime", () => sshExecTarget(targetCfg, {
       user,
       host,
-      args: ["bash", "-lc", `if [ -x ${shQuote(`${layout.installDir}/b/a`)} ] && [ -f ${shQuote(`${layout.installDir}/r/rt`)} ]; then echo __SEAL_THIN_RT_OK__; else echo __SEAL_THIN_RT_MISSING__; fi`],
+      args: ["bash", "-c", `if [ -x ${shQuote(`${layout.installDir}/b/a`)} ] && [ -f ${shQuote(`${layout.installDir}/r/rt`)} ]; then echo __SEAL_THIN_RT_OK__; else echo __SEAL_THIN_RT_MISSING__; fi`],
       stdio: "pipe",
     }));
     if (!checkRt.ok || !(checkRt.stdout || "").includes("__SEAL_THIN_RT_OK__")) {
@@ -608,7 +995,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
     const nbCheck = timeSync("deploy.ssh.check_native_bootstrap", () => sshExecTarget(targetCfg, {
       user,
       host,
-      args: ["bash", "-lc", `if [ -f ${shQuote(`${layout.installDir}/r/${THIN_NATIVE_BOOTSTRAP_FILE}`)} ]; then echo __SEAL_THIN_NB_OK__; else echo __SEAL_THIN_NB_MISSING__; fi`],
+      args: ["bash", "-c", `if [ -f ${shQuote(`${layout.installDir}/r/${THIN_NATIVE_BOOTSTRAP_FILE}`)} ]; then echo __SEAL_THIN_NB_OK__; else echo __SEAL_THIN_NB_MISSING__; fi`],
       stdio: "pipe",
     }));
     if (!nbCheck.ok || !(nbCheck.stdout || "").includes("__SEAL_THIN_NB_OK__")) {
@@ -622,7 +1009,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
     const ihCheck = timeSync("deploy.ssh.check_integrity_sidecar", () => sshExecTarget(targetCfg, {
       user,
       host,
-      args: ["bash", "-lc", `if [ -f ${shQuote(`${layout.installDir}/r/${thinIntegrityFile}`)} ]; then echo __SEAL_THIN_IH_OK__; else echo __SEAL_THIN_IH_MISSING__; fi`],
+      args: ["bash", "-c", `if [ -f ${shQuote(`${layout.installDir}/r/${thinIntegrityFile}`)} ]; then echo __SEAL_THIN_IH_OK__; else echo __SEAL_THIN_IH_MISSING__; fi`],
       stdio: "pipe",
     }));
     if (!ihCheck.ok || !(ihCheck.stdout || "").includes("__SEAL_THIN_IH_OK__")) {
@@ -730,7 +1117,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       const nbCheck = timeSync("deploy.ssh.check_native_bootstrap_reuse", () => sshExecTarget(targetCfg, {
         user,
         host,
-        args: ["bash", "-lc", `if [ -f ${shQuote(`${layout.installDir}/r/${THIN_NATIVE_BOOTSTRAP_FILE}`)} ]; then echo __SEAL_THIN_NB_OK__; else echo __SEAL_THIN_NB_MISSING__; fi`],
+        args: ["bash", "-c", `if [ -f ${shQuote(`${layout.installDir}/r/${THIN_NATIVE_BOOTSTRAP_FILE}`)} ]; then echo __SEAL_THIN_NB_OK__; else echo __SEAL_THIN_NB_MISSING__; fi`],
         stdio: "pipe",
       }));
       if (!nbCheck.ok || !(nbCheck.stdout || "").includes("__SEAL_THIN_NB_OK__")) {
@@ -748,7 +1135,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
     const cfgCheck = timeSync("deploy.ssh.check_config", () => sshExecTarget(targetCfg, {
       user,
       host,
-      args: ["bash", "-lc", `if [ -f ${remoteCfgQ} ]; then echo __SEAL_CFG_OK__; else echo __SEAL_CFG_MISSING__; fi`],
+      args: ["bash", "-c", `if [ -f ${remoteCfgQ} ]; then echo __SEAL_CFG_OK__; else echo __SEAL_CFG_MISSING__; fi`],
       stdio: "pipe",
     }));
     if (!cfgCheck.ok) {
@@ -776,6 +1163,8 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
   let res;
   if (payloadOnly) {
     info("Thin bootstrap: payload-only upload (no runtime).");
+    const extras = buildPayloadExtrasTar(releaseDir, appName, buildId);
+    let extrasRemote = null;
     const remoteTmp = `/tmp/${appName}-payload-${buildId || Date.now()}.pl`;
     const remoteTmpQ = shQuote(remoteTmp);
     info(`Uploading payload to ${host}:${remoteTmp}`);
@@ -786,6 +1175,18 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       remotePath: remoteTmp,
     }));
     if (!upPl.ok) throw new Error(`scp payload failed (status=${upPl.status})${formatSshFailure(upPl)}`);
+    if (extras) {
+      extrasRemote = `/tmp/${appName}-extras-${buildId || Date.now()}.tgz`;
+      info(`Uploading release extras to ${host}:${extrasRemote}`);
+      const upExtras = timeSync("deploy.ssh.upload_extras", () => scpToTarget(targetCfg, {
+        user,
+        host,
+        localPath: extras.tarPath,
+        remotePath: extrasRemote,
+      }));
+      fs.rmSync(extras.tmpDir, { recursive: true, force: true });
+      if (!upExtras.ok) throw new Error(`scp extras failed (status=${upExtras.status})${formatSshFailure(upExtras)}`);
+    }
 
     const cmdParts = [
       `mkdir -p ${releasesDirQ} ${sharedDirQ}`,
@@ -816,6 +1217,11 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
     const nvSrcQ = shQuote(`${rDir}/${THIN_RUNTIME_VERSION_FILE}`);
     const nvDstQ = shQuote(`${relDir}/r/${THIN_RUNTIME_VERSION_FILE}`);
     cmdParts.push(`mkdir -p ${relDirQ}/b ${relDirQ}/r`);
+    if (extrasRemote) {
+      const extrasRemoteQ = shQuote(extrasRemote);
+      cmdParts.push(`tar -xzf ${extrasRemoteQ} -C ${relDirQ}`);
+      cmdParts.push(`rm -f ${extrasRemoteQ}`);
+    }
     cmdParts.push(`cp ${bDirQ}/a ${relDirQ}/b/a`);
     cmdParts.push(`cp ${rDirQ}/rt ${relDirQ}/r/rt`);
     cmdParts.push(`if [ -f ${rDirQ}/c ]; then cp ${rDirQ}/c ${relDirQ}/r/c; fi`);
@@ -829,7 +1235,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
     cmdParts.push(`echo ${shQuote(folderName)} > ${currentFileQ}`);
     cmdParts.push(`rm -f ${remoteTmpQ}`);
 
-    const fullCmd = ["bash", "-lc", cmdParts.join(" && ")];
+    const fullCmd = ["bash", "-c", cmdParts.join(" && ")];
     res = timeSync("deploy.ssh.apply_payload", () => sshExecTarget(targetCfg, { user, host, args: fullCmd, stdio: "pipe" }));
   } else {
     if (!artifactPath) {
@@ -924,7 +1330,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
     cmdParts.push(`echo ${shQuote(folderName)} > ${currentFileQ}`);
     cmdParts.push(`rm -f ${remoteArtifactTmpQ}`);
 
-    const fullCmd = ["bash", "-lc", cmdParts.join(" && ")];
+    const fullCmd = ["bash", "-c", cmdParts.join(" && ")];
     res = timeSync("deploy.ssh.apply_release", () => sshExecTarget(targetCfg, { user, host, args: fullCmd, stdio: "pipe" }));
   }
   if (!res.ok && res.status === 99 && !payloadOnly) {
@@ -933,7 +1339,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
     const tmpCheck = sshExecTarget(targetCfg, {
       user,
       host,
-      args: ["bash", "-lc", `if [ -f ${remoteArtifactTmpQ} ]; then echo __SEAL_TMP_OK__; fi`],
+      args: ["bash", "-c", `if [ -f ${remoteArtifactTmpQ} ]; then echo __SEAL_TMP_OK__; fi`],
       stdio: "pipe",
     });
     if (!tmpCheck.ok || !(tmpCheck.stdout || "").includes("__SEAL_TMP_OK__")) {
@@ -995,7 +1401,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
     }
     retryParts.push(`echo ${shQuote(folderName)} > ${currentFileQ}`);
     retryParts.push(`rm -f ${remoteArtifactTmpQ}`);
-    res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-lc", retryParts.join(" && ")], stdio: "pipe" });
+    res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-c", retryParts.join(" && ")], stdio: "pipe" });
   }
   if (!res.ok) {
     throw new Error(`deploy ssh failed (status=${res.status})${formatSshFailure(res)}`);
@@ -1005,13 +1411,16 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
 
   cleanupReleasesSsh({ targetCfg, current: folderName, policy });
   return { layout, folderName, relDir, autoBootstrap };
+  } finally {
+    releaseDeployLockSsh(targetCfg, lock);
+  }
 }
 
 function statusSsh(targetCfg) {
   const { user, host } = sshUserHost(targetCfg);
   const unitName = `${targetCfg.serviceName}.service`;
   const unit = shQuote(unitName);
-  const res = sshExecTarget(targetCfg, { user, host, args: ["bash","-lc", `sudo -n systemctl status ${unit} --no-pager`], stdio: "pipe" });
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash","-c", `sudo -n systemctl status ${unit} --no-pager`], stdio: "pipe" });
 
   if (res.stdout) process.stdout.write(res.stdout);
   if (res.stderr) process.stderr.write(res.stderr);
@@ -1049,7 +1458,7 @@ function statusSsh(targetCfg) {
     "done",
     "printf \"%s\" \"$out\"",
   ].join("\n");
-  const pres = sshExecTarget(targetCfg, { user, host, args: ["bash","-lc", pgrepScript], stdio: "pipe" });
+  const pres = sshExecTarget(targetCfg, { user, host, args: ["bash","-c", pgrepScript], stdio: "pipe" });
   if (!pres.ok) {
     const pOut = `${pres.stdout}\n${pres.stderr}`.trim();
     warn(`pgrep failed: ${pOut || pres.error || "unknown"}`);
@@ -1072,7 +1481,7 @@ function systemctlIsActiveSsh(targetCfg) {
   const { user, host } = sshUserHost(targetCfg);
   const unitName = `${targetCfg.serviceName}.service`;
   const unit = shQuote(unitName);
-  const res = sshExecTarget(targetCfg, { user, host, args: ["bash","-lc", `sudo -n systemctl is-active ${unit}`], stdio: "pipe" });
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash","-c", `sudo -n systemctl is-active ${unit}`], stdio: "pipe" });
   const output = `${res.stdout || ""}\n${res.stderr || ""}`.trim();
   const state = output.split(/\s+/)[0] || "";
   const lower = output.toLowerCase();
@@ -1092,9 +1501,43 @@ function systemctlStatusSsh(targetCfg) {
   const { user, host } = sshUserHost(targetCfg);
   const unitName = `${targetCfg.serviceName}.service`;
   const unit = shQuote(unitName);
-  const res = sshExecTarget(targetCfg, { user, host, args: ["bash","-lc", `sudo -n systemctl status ${unit} --no-pager -l`], stdio: "pipe" });
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash","-c", `sudo -n systemctl status ${unit} --no-pager -l`], stdio: "pipe" });
   const output = `${res.stdout || ""}\n${res.stderr || ""}`.trim();
   return { ok: res.ok, output };
+}
+
+function systemctlShowSsh(targetCfg, prop) {
+  const { user, host } = sshUserHost(targetCfg);
+  const unitName = `${targetCfg.serviceName}.service`;
+  const unit = shQuote(unitName);
+  const res = sshExecTarget(targetCfg, {
+    user,
+    host,
+    args: ["bash", "-c", `sudo -n systemctl show ${unit} -p ${shQuote(prop)} --value`],
+    stdio: "pipe",
+  });
+  if (!res.ok) return "";
+  return String(res.stdout || "").trim();
+}
+
+function buildSystemdHint(statusOutput, opts, execMainStatus) {
+  const hints = [];
+  const targetLabel = (opts && opts.targetName) ? opts.targetName : "<target>";
+  if (String(statusOutput || "").toLowerCase().includes("status=200/chdir")) {
+    hints.push(`Missing WorkingDirectory/installDir. Run: seal ship ${targetLabel} --bootstrap`);
+  }
+  if (/appctl: No such file or directory|Missing appctl/i.test(statusOutput)) {
+    hints.push(`Missing release files. Run: seal ship ${targetLabel} --bootstrap`);
+  }
+  const sentinelEnabled = !!(opts && opts.sentinelEnabled);
+  const sentinelExit = Number.isFinite(Number(opts && opts.sentinelExitCode)) ? Number(opts.sentinelExitCode) : 200;
+  if (sentinelEnabled && Number(execMainStatus) === sentinelExit) {
+    hints.push(`Sentinel missing/mismatch. Run: seal sentinel install ${targetLabel} (or seal ship ${targetLabel} --bootstrap)`);
+  }
+  if (sentinelEnabled && /\[thin\] runtime invalid/i.test(statusOutput)) {
+    hints.push(`Possible sentinel block. Run: seal sentinel install ${targetLabel}`);
+  }
+  return hints.length ? `Hint: ${hints.join(" | ")}` : "";
 }
 
 function checkHttpSsh(targetCfg, url, timeoutMs) {
@@ -1146,7 +1589,9 @@ async function waitForReadySsh(targetCfg, opts = {}) {
       lastState = state.state || state.output || "";
       if (state.fatal) {
         const statusOut = systemctlStatusSsh(targetCfg);
-        throw new Error(`readiness failed: systemd ${state.state}${statusOut.output ? `\n${statusOut.output}` : ""}`);
+        const execMainStatus = systemctlShowSsh(targetCfg, "ExecMainStatus");
+        const hint = buildSystemdHint(statusOut.output || "", opts, execMainStatus);
+        throw new Error(`readiness failed: systemd ${state.state}${statusOut.output ? `\n${statusOut.output}` : ""}${hint ? `\n${hint}` : ""}`);
       }
       systemdOk = state.ok;
     }
@@ -1179,51 +1624,62 @@ async function waitForReadySsh(targetCfg, opts = {}) {
 function logsSsh(targetCfg) {
   const { user, host } = sshUserHost(targetCfg);
   const unit = shQuote(`${targetCfg.serviceName}.service`);
-  const res = sshExecTarget(targetCfg, { user, host, args: ["bash","-lc", `sudo -n journalctl -u ${unit} -n 200 -f`], stdio: "inherit" });
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash","-c", `sudo -n journalctl -u ${unit} -n 200 -f`], stdio: "inherit" });
   if (!res.ok && res.signal !== "SIGINT" && res.status !== 130) {
     throw new Error(`logs failed (status=${res.status ?? "?"})`);
   }
 }
 
+function logsSnapshotSsh(targetCfg, lines = 200) {
+  const { user, host } = sshUserHost(targetCfg);
+  const unit = shQuote(`${targetCfg.serviceName}.service`);
+  const limit = Number.isFinite(Number(lines)) && Number(lines) > 0 ? Math.trunc(Number(lines)) : 200;
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash","-c", `sudo -n journalctl -u ${unit} -n ${limit} --no-pager`], stdio: "pipe" });
+  const output = `${res.stdout || ""}\n${res.stderr || ""}`.trim();
+  return { ok: res.ok, output };
+}
+
 function enableSsh(targetCfg) {
   const { user, host } = sshUserHost(targetCfg);
   const unit = shQuote(`${targetCfg.serviceName}.service`);
-  const res = sshExecTarget(targetCfg, { user, host, args: ["bash","-lc", `sudo -n systemctl enable ${unit}`], stdio: "inherit" });
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash","-c", `sudo -n systemctl enable ${unit}`], stdio: "inherit" });
   if (!res.ok) throw new Error(`enable failed (status=${res.status})`);
 }
 
 function startSsh(targetCfg) {
+  requireServiceFilesSsh(targetCfg);
   const { user, host } = sshUserHost(targetCfg);
   const unit = shQuote(`${targetCfg.serviceName}.service`);
-  const res = sshExecTarget(targetCfg, { user, host, args: ["bash","-lc", `sudo -n systemctl start ${unit}`], stdio: "inherit" });
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash","-c", `sudo -n systemctl start ${unit}`], stdio: "inherit" });
   if (!res.ok) throw new Error(`start failed (status=${res.status})`);
 }
 
 function restartSsh(targetCfg) {
+  requireServiceFilesSsh(targetCfg);
   const { user, host } = sshUserHost(targetCfg);
   const unit = shQuote(`${targetCfg.serviceName}.service`);
-  const res = sshExecTarget(targetCfg, { user, host, args: ["bash","-lc", `sudo -n systemctl restart ${unit}`], stdio: "inherit" });
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash","-c", `sudo -n systemctl restart ${unit}`], stdio: "inherit" });
   if (!res.ok) throw new Error(`restart failed (status=${res.status})`);
 }
 
 function stopSsh(targetCfg) {
   const { user, host } = sshUserHost(targetCfg);
   const unit = shQuote(`${targetCfg.serviceName}.service`);
-  const res = sshExecTarget(targetCfg, { user, host, args: ["bash","-lc", `sudo -n systemctl stop ${unit}`], stdio: "inherit" });
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash","-c", `sudo -n systemctl stop ${unit}`], stdio: "inherit" });
   if (!res.ok) throw new Error(`stop failed (status=${res.status})`);
 }
 
 function disableSshOnly(targetCfg) {
   const { user, host } = sshUserHost(targetCfg);
   const unit = shQuote(`${targetCfg.serviceName}.service`);
-  const res = sshExecTarget(targetCfg, { user, host, args: ["bash","-lc", `sudo -n systemctl disable ${unit}`], stdio: "inherit" });
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash","-c", `sudo -n systemctl disable ${unit}`], stdio: "inherit" });
   if (!res.ok) throw new Error(`disable failed (status=${res.status})`);
 }
 
 function disableSsh(targetCfg) {
   const { user, host } = sshUserHost(targetCfg);
   const unit = shQuote(`${targetCfg.serviceName}.service`);
-  const res = sshExecTarget(targetCfg, { user, host, args: ["bash","-lc", `sudo -n systemctl disable --now ${unit}`], stdio: "inherit" });
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash","-c", `sudo -n systemctl disable --now ${unit}`], stdio: "inherit" });
   if (!res.ok) throw new Error(`stop/disable failed (status=${res.status})`);
 }
 
@@ -1271,19 +1727,19 @@ function runSshForeground(targetCfg, opts = {}) {
     "  fi",
     "fi",
     "if [ \"$RUN_AS_ROOT\" = \"1\" ]; then",
-    "  exec sudo -n bash -lc \"$RUN\"",
+    "  exec sudo -n bash -c \"$RUN\"",
     "fi",
     "exec \"$RUN\"",
   ].join("\n");
 
-  const res = sshExecTarget(targetCfg, { user, host, args: ["bash","-lc", script], stdio: "inherit", tty: true });
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash","-c", script], stdio: "inherit", tty: true });
   if (!res.ok) throw new Error(`run failed (status=${res.status})`);
 }
 
 function ensureCurrentReleaseSsh(targetCfg) {
   const { user, host } = sshUserHost(targetCfg);
   const layout = remoteLayout(targetCfg);
-  const cmd = ["bash", "-lc", `
+  const cmd = ["bash", "-c", `
 set -euo pipefail
 ROOT=${shQuote(layout.installDir)}
 if [ ! -d "$ROOT" ]; then echo "__SEAL_MISSING_ROOT__"; exit 0; fi
@@ -1320,7 +1776,7 @@ function rollbackSsh(targetCfg) {
   const layout = remoteLayout(targetCfg);
   const thinMode = resolveThinMode(targetCfg);
   const thinIntegrityFile = targetCfg && targetCfg._thinIntegrityFile ? targetCfg._thinIntegrityFile : "ih";
-  const cmd = ["bash","-lc", `
+  const cmd = ["bash","-c", `
 set -euo pipefail
 ROOT=${shQuote(layout.installDir)}
 APP=${shQuote(targetCfg.appName || targetCfg.serviceName || "app")}
@@ -1379,7 +1835,7 @@ function uninstallSsh(targetCfg) {
   const { user, host } = sshUserHost(targetCfg);
   const layout = remoteLayout(targetCfg);
   assertSafeInstallDir(layout.installDir);
-  const cmd = ["bash","-lc", `
+  const cmd = ["bash","-c", `
 set -euo pipefail
 sudo -n systemctl disable --now ${shQuote(`${targetCfg.serviceName}.service`)} || true
 sudo -n rm -f ${shQuote(layout.serviceFile)}
@@ -1395,7 +1851,7 @@ function downSsh(targetCfg) {
   const { user, host } = sshUserHost(targetCfg);
   const layout = remoteLayout(targetCfg);
   const unit = shQuote(`${targetCfg.serviceName}.service`);
-  const cmd = ["bash","-lc", `
+  const cmd = ["bash","-c", `
 set -euo pipefail
 sudo -n systemctl disable --now ${unit} || true
 sudo -n rm -f ${shQuote(layout.serviceFile)}
@@ -1415,7 +1871,7 @@ function checkConfigDriftSsh({ targetCfg, localConfigPath, showDiff = true }) {
   const exists = sshExecTarget(targetCfg, {
     user,
     host,
-    args: ["bash", "-lc", `test -f ${remoteCfgQ}`],
+    args: ["bash", "-c", `test -f ${remoteCfgQ}`],
     stdio: "pipe",
   });
   if (!exists.ok) {
@@ -1457,7 +1913,13 @@ function configDiffSsh({ targetCfg, localConfigPath }) {
 
   // Run diff -u
   const { spawnSyncSafe } = require("./spawn");
-  spawnSyncSafe("diff", ["-u", localConfigPath, tmpLocal], { stdio: "inherit" });
+  const diffRes = spawnSyncSafe("diff", ["-u", localConfigPath, tmpLocal], { stdio: "pipe" });
+  if (diffRes.stdout) process.stdout.write(diffRes.stdout);
+  if (diffRes.stderr) process.stderr.write(diffRes.stderr);
+  if (diffRes.status && diffRes.status > 1) {
+    const detail = diffRes.error || diffRes.stderr || diffRes.stdout;
+    throw new Error(`diff failed (status=${diffRes.status})${detail ? `: ${detail}` : ""}`);
+  }
 }
 
 function configPullSsh({ targetCfg, localConfigPath, apply }) {
@@ -1496,7 +1958,7 @@ function configPushSsh({ targetCfg, localConfigPath }) {
   const tmpCfgQ = shQuote(tmpCfg);
   const sharedDirQ = shQuote(layout.sharedDir);
   const remoteCfgQ = shQuote(`${layout.sharedDir}/config.json5`);
-  const cmd = ["bash","-lc", `mkdir -p ${sharedDirQ} && cp ${tmpCfgQ} ${remoteCfgQ} && rm -f ${tmpCfgQ}`];
+  const cmd = ["bash","-c", `mkdir -p ${sharedDirQ} && cp ${tmpCfgQ} ${remoteCfgQ} && rm -f ${tmpCfgQ}`];
   const res = sshExecTarget(targetCfg, { user, host, args: cmd, stdio: "inherit" });
   if (!res.ok) throw new Error(`push config failed (status=${res.status})${formatSshFailure(res)}`);
 
@@ -1508,6 +1970,7 @@ module.exports = {
   deploySsh,
   statusSsh,
   logsSsh,
+  logsSnapshotSsh,
   enableSsh,
   startSsh,
   restartSsh,

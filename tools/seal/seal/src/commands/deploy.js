@@ -296,6 +296,9 @@ async function cmdDeploy(cwd, targetArg, opts) {
       intervalMs: 1000,
       httpTimeoutMs: 2000,
     });
+    readiness.targetName = targetName;
+    readiness.sentinelEnabled = !!(sentinelCfg && sentinelCfg.enabled);
+    readiness.sentinelExitCode = sentinelCfg && sentinelCfg.exitCodeBlock ? Number(sentinelCfg.exitCodeBlock) : 200;
     hr();
     try {
       if ((targetCfg.kind || "local").toLowerCase() === "ssh") {

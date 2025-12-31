@@ -147,6 +147,114 @@
 - Blad: `bash -lc` na hoście zdalnym kończył się kodem != 0 przez `.bash_logout` (np. `clear_console`), mimo że właściwa komenda się wykonała.
   - Wymaganie: do zdalnych jednorazowych komend używaj `bash -c` (nie login shell), albo zapewnij, że `.bash_logout` zwraca 0 i nie emituje outputu.
 
+- Blad: katalog sentinela byl zakladany z permami `0710`, przez co serwis uruchamiany jako nie‑root nie mial prawa odczytu i runtime kończył się `[thin] runtime invalid`.
+  - Wymaganie: katalog sentinela ma perms `0750` i grupę `serviceGroup`; plik sentinela `0640`, a weryfikacja runtime odbywa się jako `serviceUser`.
+
+- Blad: zdalna komenda przez `ssh` (wrap `bash -lc` w jeden argument) zwracala kod != 0 mimo poprawnego wykonania (marker OK w stdout), co powodowalo fałszywy fail.
+  - Wymaganie: w krytycznych ścieżkach parsuj marker sukcesu z stdout i nie opieraj się wyłącznie na exit code; preferuj `bash -c` + upload skryptu przy dłuższych komendach.
+
+- Blad: poprawki w repozytorium nie mialy efektu, bo uruchamiany byl globalnie zainstalowany `seal` (inna wersja kodu).
+  - Wymaganie: loguj sciezke binarki i wersje CLI przy starcie; w dev/test uruchamiaj lokalny CLI (np. `node tools/seal/seal/src/cli.js`) albo `npm link`/`npx` z workspace.
+
+- Blad: testy uruchamiane jako root maskowaly problemy uprawnien (np. sentinel dir bez bitu read dla grupy).
+  - Wymaganie: krytyczne testy security uruchamiaj jako nie‑root (uid/gid), a E2E musi zawierac wariant non‑root dla sentinela.
+
+- Blad: argv0 runtimu bylo hardcoded na `node`, przez co `systemctl status`/`ps` ujawnialy technologie mimo sealowania.
+  - Wymaganie: launcher ma konfigurowalny `thin.runtimeArgv0` (domyslnie `n`, opcja `appName`), a projekty ustawiają wartosc jawnie, gdy to istotne.
+
+- Blad: deploy/ship nie wykonywal preflightu wolnego miejsca i inode na hoście, przez co upload/budowa zatrzymywały się w polowie z mało czytelnym bledem.
+  - Wymaganie: preflight SSH sprawdza wolne miejsce i inodes w `installDir` (i ewentualnie `/tmp`) oraz fail‑fast z jasnym komunikatem i hintem konfiguracji progow (`target.preflight.minFreeMb/minFreeInodes` lub `SEAL_PREFLIGHT_MIN_FREE_*`).
+
+- Blad: brak preflightu `/tmp` powodowal fail uploadu artefaktu/payload w polowie (brak miejsca lub brak katalogu).
+  - Wymaganie: preflight sprawdza `/tmp` (lub `preflight.tmpDir`) dla miejsca/inodes i istniejącego katalogu; braki = fail‑fast z instrukcja.
+
+- Blad: brak weryfikacji narzedzi na hoście (np. `tar`, `gzip`) powodowal błędy dopiero po uploadzie.
+  - Wymaganie: preflight SSH sprawdza wymagane narzedzia (`preflight.requireTools`) i fail‑fast z instrukcja instalacji.
+
+- Blad: installDir na filesystemie `noexec` powodowal nieczytelne błędy startu.
+  - Wymaganie: preflight wykrywa `noexec` dla `installDir` i failuje z instrukcją lub wymaga jawnego override (`preflight.allowNoexec`).
+
+- Blad: brak diagnostyki po niejednoznacznym błędzie powodował błądzenie użytkownika po logach.
+  - Wymaganie: istnieje komenda `seal diag` generująca paczkę diagnostyczną (check/config/status) do `seal-out/diagnostics`.
+
+- Blad: rownolegly deploy potrafil nadpisac `current.buildId` i zostawic host w polowie aktualizacji.
+  - Wymaganie: deploy ma blokade (lock) z TTL oraz jasny komunikat o kolizji.
+
+- Blad: `--json` w narzedziach zwracal obiekty z `BigInt`, co powodowalo runtime error "Do not know how to serialize a BigInt".
+  - Wymaganie: output JSON zawsze serializuje `BigInt` do string/number (jawnie), bez throw; brak = FAIL.
+
+- Blad: domyslne hardening flags (np. CET) powodowaly build fail na starszym kompilatorze.
+  - Wymaganie: przed wlaczeniem hardeningu uruchom probe kompilatora i auto‑disable z ostrzezeniem; brak = FAIL.
+
+- Blad: diagnoza runtime byla wykonywana narzedziami typu `strace`, co aktywowalo anti‑debug i dawalo falszywe "runtime invalid".
+  - Wymaganie: dokumentuj tryb diagnostyczny (jawna flaga/ENV) lub bezpieczny probe tool, a E2E weryfikuje, ze diagnoza nie uruchamia anti‑debug bez opt‑in.
+
+- Blad: długie deploye/ship konczyly sie timeoutem, zostawiajac artefakty w `/tmp` lub polowiczny stan na hoście, co psulo kolejne uruchomienia.
+  - Wymaganie: timeout musi wywolywac cleanup (lokalny i zdalny) oraz logowac, co pozostalo; artefakty w `/tmp` musza byc jednoznacznie tagowane i ignorowane/odśmiecane przy następnym deployu.
+
+- Blad: deploy przechodzil mimo „config drift”, a serwis startowal z innym configiem niz repo, co prowadzilo do nieprzewidywalnych zachowan.
+  - Wymaganie: przy drift bez jawnej flagi (`--accept-drift`/`--warn-drift`) deploy ma FAIL; zawsze loguj diff i zrodlo configu.
+
+- Blad: „auto‑bootstrap” maskowal brak prereq na hoście (np. brak runtime), przez co produkcja zachowywala sie inaczej niz stage.
+  - Wymaganie: auto‑bootstrap musi logowac, co zainstalowal i z jakiej wersji; preflight w CI sprawdza kompatybilnosc bez auto‑bootstrap.
+
+- Blad: weryfikacja runtime byla uruchamiana jako inny user niz `serviceUser`, co ukrywalo bledy uprawnien (np. brak read dla grupy).
+  - Wymaganie: wszystkie weryfikacje runtime (sentinel/launcher) uruchamiaj jako `serviceUser`, a wynik loguj wraz z uid/gid.
+
+- Blad: rozproszone defaulty (project/target/CLI) powodowaly sprzeczne ustawienia i bledne zalozenia o „domyslach”.
+  - Wymaganie: loguj „effective config” z wyroznieniem zrodla kazdej wartosci (default vs override), a konflikty = warning lub fail‑fast.
+
+- Blad: uzywanie stalego namespaceId/appId w wielu projektach powodowalo kolizje sentinela miedzy aplikacjami na tym samym hoście.
+  - Wymaganie: namespaceId i appId musza byc unikalne per aplikacja/target; domyslnie generuj per‑target i zapisuj w prywatnym cache, bez recznego kopiowania miedzy projektami.
+
+- Blad: reczne kasowanie tylko czesci artefaktow (`/b` lub `/r`) dawalo niekompletna instalacje i trudne do diagnozy bledy.
+  - Wymaganie: cleanup ma byc atomowy i obejmowac caly layout release; jesli usuwasz recznie, usun caly `installDir` lub uzyj komendy narzedzia (np. `seal clean`).
+
+- Blad: payload-only byl wlaczany, gdy runtime na hoście nie byl zgodny (brak runtime/launcher/metadata), co skutkowalo crashami po deployu.
+  - Wymaganie: payload-only tylko przy zweryfikowanej zgodnosci runtime (marker/sha), inaczej wymusz full upload; loguj powod wyboru sciezki.
+
+- Blad: bledy w `installDir` (spacje/nieabsolutna sciezka) ujawnialy sie dopiero na systemd/runnerze.
+  - Wymaganie: waliduj `installDir` przed deployem i fail‑fast; loguj skorygowana wartosc tylko gdy jest jawna decyzja uzytkownika.
+
+- Blad: po nieudanym starcie systemd nie wykonywano `reset-failed`, przez co kolejne restarty byly blokowane lub mylaco raportowane.
+  - Wymaganie: po naprawie/redeploy wykonuj `systemctl reset-failed` i loguj status przed/po.
+
+- Blad: status systemd `inactive/disabled` byl traktowany jako blad, mimo ze jest to poprawny stan dla zatrzymanego serwisu.
+  - Wymaganie: rozrozniaj stan od bledu (np. `failed`/`activating`); tylko `failed` traktuj jako błąd wymagający interwencji.
+
+- Blad: readiness weryfikowany tylko przez systemd, mimo ze serwis byl aktywny ale aplikacja nie odpowiadala (false OK).
+  - Wymaganie: readiness musi wspierac HTTP (lub healthcheck) i tryb `both`; tryb `systemd` tylko gdy aplikacja nie ma endpointu.
+
+- Blad: readiness HTTP byl wykonywany bez timeoutu lub zbyt agresywnie, co powodowalo flaky i fałszywe fail.
+  - Wymaganie: timeout i interval musza byc konfigurowalne i logowane; brak ustawien = bezpieczne defaulty.
+
+- Blad: rozne komendy (`seal ship`, `seal deploy`, `seal remote`) uzywaly innych domyslnych targetow/configow, co prowadzilo do pomylkowych deployow.
+  - Wymaganie: loguj aktywny target/config na starcie kazdej komendy, a brak jawnego targetu w trybie wielo‑targetowym = fail‑fast.
+
+- Blad: rozne profile (fast/strict) zmienialy kluczowe zabezpieczenia bez wyraznego logu, co mylilo uzytkownikow.
+  - Wymaganie: przy aktywnym profilu wypisz liste nadpisanych opcji i ich wartosci; brak = FAIL w trybie strict.
+
+- Blad: `seal check` raportowal OK, ale build/deploy uzywal innych ustawien (np. packager/target), przez co check nie wykrywal realnych bledow.
+  - Wymaganie: `seal check` musi uzywac tego samego targetu/packagera/co build; brak jawnego targetu = fail‑fast.
+
+- Blad: skrypty uruchamiane jako login shell (`bash -lc`) wykonywaly `.bashrc/.profile`, co zmienialo PATH/ENV i powodowalo nieprzewidywalne zachowanie.
+  - Wymaganie: dla automatyzacji uzywaj `bash -c` lub czystego `env -i`; loguj skuteczny PATH/ENV w trybach diagnostycznych.
+
+- Blad: brak rozgraniczenia ustawien dev vs prod powodowal, ze w prod dzialaly ustawienia debug (np. verbose/inspect), co zmniejszalo bezpieczenstwo.
+  - Wymaganie: jawny rozdzial profili (dev/prod/fast/strict), a build/deploy musza logowac aktywny profil i tryb.
+
+- Blad: stale timeouty w E2E byly niedopasowane do obciazenia maszyn, co dawalo flaky.
+  - Wymaganie: timeouty w E2E musza byc konfigurowalne przez ENV i logowane; CI ustawia wyzsze progi.
+
+- Blad: preflight nie wykrywal brakow narzedzi na hoście (np. brak `tar`/`gzip`), a bledy pojawialy sie dopiero w deployu.
+  - Wymaganie: preflight musi weryfikowac wymagane narzedzia na hoście docelowym i fail‑fast z instrukcja instalacji.
+
+- Blad: runner/deploy korzystaly z roznych `PATH`/`ENV`, przez co narzedzia znajdowaly sie w preflight, a brakowalo ich w runtime.
+  - Wymaganie: loguj i normalizuj `PATH/ENV` dla preflight/build/deploy; brak spojnoci = warning albo fail‑fast.
+
+- Blad: po ustawieniu `PR_SET_DUMPABLE=0` zapis do `/proc/self/coredump_filter` failowal z `EACCES`, co powodowalo fałszywy `[thin] runtime invalid`.
+  - Wymaganie: gdy core dump jest już zablokowany, błąd `EACCES/EPERM` przy `coredump_filter` traktuj jako OK; inne błędy = fail‑fast.
+
 - Blad: polecenia z `sudo` w trybie nieinteraktywnym wisialy na promptach hasla.
   - Wymaganie: uzywaj `sudo -n` (fail‑fast bez promptu) i wypisz instrukcje, gdy brak uprawnien.
 - Blad: długie testy/deploy wymagały sudo, ale timestamp wygasał w trakcie i proces wisiał.
@@ -2878,11 +2986,78 @@
 - Blad: output `ssh ... | tee` maskowal exit code zdalnej komendy (pipeline zwracal status `tee`), przez co bledy zdalne ginely.
   - Wymaganie: po pipeline odczytuj `${PIPESTATUS[0]}` albo nie uzywaj pipe do logowania (redirect do pliku + osobny `cat`); w testach assertuj exit code zdalnego polecenia.
 
+## Dodatkowe wnioski (batch 371-375)
+
+- Blad: po `PR_SET_DUMPABLE=0` zapis do `/proc/self/coredump_filter` zwracal `EACCES/EPERM`, a runtime traktowal to jako bledne zabezpieczenie i failowal (`[thin] runtime invalid`).
+  - Wymaganie: `EACCES/EPERM` przy `coredump_filter` po ustawieniu dumpable=0 jest akceptowalne; loguj, ale nie przerywaj startu. Dodaj E2E, ktore to wykrywa.
+
+## Dodatkowe wnioski (batch 376-380)
+
+- Blad: deploy startowal service mimo braku katalogu `WorkingDirectory` lub brakujacego `run-current.sh`, co dawalo `status=200/CHDIR` i automatyczny rollback bez jasnej diagnozy.
+  - Wymaganie: przed restartem waliduj istnienie `installDir`/`release`/`run-current.sh` na target; brak = fail‑fast z jasnym komunikatem i instrukcja naprawy. Wrapper startowy ma jawnie `cd` z kontrola bledu.
+
+## Dodatkowe wnioski (batch 381-385)
+
+- Blad: diagnostyczne artefakty (strace, tarball, logi) ladowaly w root repo lub `/tmp`, co zasmiecalo workspace i generowalo komunikaty snapshot/clean.
+  - Wymaganie: wszystkie artefakty diagnostyczne zapisywac do `seal-out/diagnostics/` (lub katalogu z `SEAL_DIAG_DIR`) i ignorowac je przez `.gitignore`; skrypty diagnostyczne nie powinny domyslnie uzywac `/tmp`.
+
+## Dodatkowe wnioski (batch 386-390)
+
+- Blad: nadmiarowe wpisy konfiguracyjne w podprojektach nadpisywaly domyslne wartosci (np. `packager`, `thin.*`, `includeDirs`) i rozjezdzaly sie z oczekiwanymi defaultami, co dawalo warningi i niespojne zachowanie.
+  - Wymaganie: trzymaj domyslne ustawienia tylko w jednym miejscu (parent/global), a w podprojektach zostawiaj tylko realne nadpisania; dodaj walidacje "effective config" (np. `seal check`) i testy, ktore wykrywaja niepotrzebne nadpisania.
+
+## Dodatkowe wnioski (batch 391-395)
+
+- Blad: w trybie thin‑split serwis startowal z CWD na `installDir`, przez co Express static nie widzial `public` z release, a UI zwracalo 404 na `/`.
+  - Wymaganie: w trybie thin ustaw CWD na katalog release lub serwuj staticy z `process.cwd()` z fallbackiem do `__dirname`; dodaj smoke‑test HTTP `/` w E2E po deployu.
+
+## Dodatkowe wnioski (batch 396-400)
+
+- Blad: readiness/monitoring uderzal w `/healthz` lub `/` bez gwarancji, ze endpoint istnieje, co dawalo falszywy FAIL mimo dzialajacej aplikacji.
+  - Wymaganie: implementuj stabilny endpoint zdrowia (np. `/healthz` lub `/api/status`) i konfiguruj `waitUrl`/monitoring tak, aby trafial w faktycznie obslugiwany URL; w razie braku HTTP sprawdzaj tylko systemd.
+
+## Dodatkowe wnioski (batch 401-405)
+
+- Blad: service padal z `status=200/CHDIR` lub `appctl: No such file`, a komunikat nie sugerowal, ze potrzebny jest `--bootstrap` lub ponowna instalacja runnera.
+  - Wymaganie: runner i readiness musza wypisywac jasny hint (np. `seal ship <target> --bootstrap`); dodaj E2E, ktore weryfikuje poprawny komunikat.
+- Blad: brak sentinela skutkowal `runtime invalid` i kodem 200 bez jednoznacznej instrukcji naprawy.
+  - Wymaganie: gdy sentinel jest wlaczony i exit code wskazuje na blokade, wypisz hint `seal sentinel install <target>`; dodaj E2E na ten przypadek.
+
+## Dodatkowe wnioski (batch 406-410)
+
+- Blad: deploy przerywal przez config drift (roznice miedzy repo a target), a uzytkownik nie wiedzial, czy pushowac config czy akceptowac drift.
+  - Wymaganie: przy drift wypisuj jasny komunikat z dwiema opcjami (`seal config push <target>` albo `--accept-drift`); dokumentuj polityke driftu i to, gdzie leza sekrety.
+
+## Dodatkowe wnioski (batch 411-415)
+
+- Blad: sentinel install/verify failowal przy `__SEAL_SENTINEL_MISSING__` i zwracal ogolny error bez kontekstu, co blokowalo automatyczna instalacje.
+  - Wymaganie: `verify` powinien interpretowac brak pliku jako stan "missing" (nie fatal), a `install` powinien kontynuowac; w komunikacie podawaj sciezke i hint instalacji.
+
+## Dodatkowe wnioski (batch 416-420)
+
+- Blad: payload‑only deploy nie kopiowal "release extras" (np. `public/`, `appctl`, `version.json`), co powodowalo brak UI i bledy `appctl: No such file`.
+  - Wymaganie: przy payload‑only zawsze przenos extras z release (wszystko poza `b/` i `r/`); w E2E sprawdz, ze `public/` i `appctl` sa obecne po payload‑only.
+
+## Dodatkowe wnioski (batch 421-425)
+
+- Blad: smoke test UI byl robiony tylko na `/`, ale aplikacja nie serwowala root lub wymagany byl inny path, co dawalo fałszywe alarmy.
+  - Wymaganie: dla UI zdefiniuj jawny endpoint health (np. `/api/status`) i testuj oba: `GET /` (jeśli istnieje) + `GET /api/status`; jeśli `/` nieobslugiwany, test nie powinien failowac.
+
 ## Dodatkowe wnioski (batch 336-340)
 
 - Blad: duplikaty nazw testow w manifeście powodowaly nadpisanie metadanych (ostatnia linia wygrywa), co ukrywalo brakujace testy.
   - Wymaganie: wykrywaj duplikaty nazw testow w manifeście i fail‑fast z lista konfliktow.
 - Zmiana: manifest E2E jest w `e2e-tests.json5` (JSON5).
+- Blad: `TMPDIR`/`SEAL_E2E_TMP_ROOT` wskazywal na katalog wewnatrz per-run tmp, a testy uzywaly `os.tmpdir()`; inne grupy sprzataly tmp i pojawial sie `ENOENT` w trakcie builda.
+  - Wymaganie: tmp dla E2E musi byc stabilny i poza run root (np. `/tmp`); cache typu `NODE_COMPILE_CACHE` nie moze zalezec od `TMPDIR`.
+- Blad: shared `node_modules` bylo symlinkiem do siebie lub `npm install` dzialal na symlinku, co dawalo `ELOOP`/braki deps.
+  - Wymaganie: instaluj do realnego katalogu, potem sync do shared cache i dopiero linkuj; wykrywaj i usuwaj self‑symlink przed uzyciem.
+- Blad: uruchomienie E2E z `sudo` nastepowalo po utworzeniu cache/log/tmp przez usera, co mieszalo ownership i dawalo `EACCES`/niedeterministyczne cleanupy.
+  - Wymaganie: eskaluj **przed** tworzeniem jakichkolwiek cache/log/tmp; loguj effective user oraz sciezki artefaktow.
+- Blad: zbyt krotki timeout wrappera ubijal suite w trakcie, bez cleanup, zostawiajac gigabajty tmp/cache.
+  - Wymaganie: timeouty dostosuj do toolsetu i `SEAL_E2E_JOBS`; uzywaj heartbeat, a cleanup uruchamiaj zawsze w `finally`/`trap`.
+- Blad: testy rownolegle wspoldzielily outDir/release lub globalny `seal-out`, a cleanup jednej grupy usuwal artefakty innych.
+  - Wymaganie: unikalny `outDir` per test/run; child‑runner nie moze czyscic globalnych katalogow (tylko swoje scope).
   - Wymaganie: JSON5 jest jedynym źródłem prawdy.
 
 ## Dodatkowe wnioski (batch 341-345)

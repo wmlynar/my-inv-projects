@@ -1,12 +1,4 @@
 {
   "appName": "nowy-styl-ui",
-  "entry": "server.js",
-  "deploy": {
-    "autoBootstrap": true
-  },
-  "build": {
-    "includeDirs": [
-      "public"
-    ]
-  }
+  "entry": "server.js"
 }

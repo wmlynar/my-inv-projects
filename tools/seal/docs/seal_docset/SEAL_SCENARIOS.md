@@ -130,6 +130,31 @@ seal deploy robot-01 --bootstrap
 
 ---
 
+## S10b) Preflight produkcyjny (dysk, /tmp, narzedzia, noexec)
+**Cel:** wykryć problemy zanim zaczniesz deploy (brak miejsca, brak narzedzi, noexec).
+
+```bash
+seal check robot-01
+```
+
+Opcje (w target):
+```json5
+{
+  "preflight": {
+    "minFreeMb": 500,
+    "minFreeInodes": 10000,
+    "tmpDir": "/tmp",
+    "tmpMinFreeMb": 200,
+    "tmpMinFreeInodes": 5000,
+    "requireTools": ["tar", "gzip"],
+    "requireSudo": true,
+    "allowNoexec": false
+  }
+}
+```
+
+---
+
 ## S11) Aktualizacja konfiguracji (deploy + runtime)
 **Cel:** zmienić config i mieć kontrolę nad driftem.
 
@@ -245,10 +270,11 @@ Uruchomione w katalogu z `seal.json5` zawierającym `projects` wykona polecenie 
 **Cel:** gdy coś padło, mieć komplet materiału do analizy.
 
 ```bash
-seal doctor
+seal diag
 # artefakty diagnostyczne:
-ls -la seal-out/run
+ls -la seal-out/diagnostics
 ```
+W paczce znajdziesz m.in. `check.txt`, `config-explain.txt`, `remote-status.txt`, `remote-logs.txt`.
 
 ---
 

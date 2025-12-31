@@ -24,6 +24,22 @@ function normalizeThinRuntimeStore(raw) {
   return null;
 }
 
+function normalizeThinRuntimeArgv0(raw) {
+  if (raw === undefined || raw === null) return "n";
+  if (typeof raw !== "string") {
+    throw new Error(`Invalid thin.runtimeArgv0: ${raw} (expected string)`);
+  }
+  const val = raw.trim();
+  if (!val) throw new Error("Invalid thin.runtimeArgv0: empty");
+  if (val.length > 64) {
+    throw new Error(`Invalid thin.runtimeArgv0: too long (${val.length} > 64)`);
+  }
+  if (/[^\x20-\x7E]/.test(val)) {
+    throw new Error(`Invalid thin.runtimeArgv0: non-ASCII`);
+  }
+  return val;
+}
+
 function normalizeThinIntegrity(raw) {
   const defaults = { enabled: false, mode: "inline", file: "ih" };
   if (raw === undefined || raw === null) return { ...defaults };
@@ -334,6 +350,12 @@ function resolveThinConfig(targetCfg, projectCfg) {
     throw new Error(`Invalid thin.runtimeStore: ${runtimeStoreRaw} (expected: memfd|tmpfile)`);
   }
 
+  const runtimeArgv0Raw =
+    tThin.runtimeArgv0 ??
+    pThin.runtimeArgv0 ??
+    null;
+  const runtimeArgv0 = normalizeThinRuntimeArgv0(runtimeArgv0Raw);
+
   const antiDebugRaw =
     tThin.antiDebug ??
     pThin.antiDebug ??
@@ -390,6 +412,7 @@ function resolveThinConfig(targetCfg, projectCfg) {
     zstdTimeoutMs,
     envMode,
     runtimeStore,
+    runtimeArgv0,
     antiDebug,
     integrity,
     appBind,

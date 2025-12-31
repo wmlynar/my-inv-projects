@@ -155,6 +155,69 @@ function localInstallLayout(targetCfg) {
   return { installDir, releasesDir, sharedDir, currentFile, runner };
 }
 
+function resolveLockTtlSecLocal(targetCfg) {
+  const cfg = targetCfg && targetCfg.preflight && typeof targetCfg.preflight === "object"
+    ? targetCfg.preflight.lockTtlSec
+    : undefined;
+  const raw = cfg !== undefined && cfg !== null ? cfg : process.env.SEAL_DEPLOY_LOCK_TTL_SEC;
+  const num = Number(raw);
+  if (!Number.isFinite(num) || num <= 0) return 900;
+  return Math.floor(num);
+}
+
+function acquireDeployLockLocal(layout, targetCfg) {
+  const lockDir = path.join(layout.installDir, ".seal-deploy.lock");
+  const ttlSec = resolveLockTtlSecLocal(targetCfg);
+  const now = Math.floor(Date.now() / 1000);
+  try {
+    fs.mkdirSync(lockDir, { recursive: false });
+    fs.writeFileSync(path.join(lockDir, "ts"), String(now), "utf-8");
+    fs.writeFileSync(path.join(lockDir, "pid"), String(process.pid), "utf-8");
+    return { lockDir };
+  } catch (e) {
+    if (!e || e.code !== "EEXIST") throw e;
+  }
+  try {
+    const tsPath = path.join(lockDir, "ts");
+    const tsRaw = fs.readFileSync(tsPath, "utf-8").trim();
+    const ts = Number(tsRaw) || 0;
+    const age = now - ts;
+    if (age > ttlSec) {
+      fs.rmSync(lockDir, { recursive: true, force: true });
+      fs.mkdirSync(lockDir, { recursive: false });
+      fs.writeFileSync(path.join(lockDir, "ts"), String(now), "utf-8");
+      fs.writeFileSync(path.join(lockDir, "pid"), String(process.pid), "utf-8");
+      return { lockDir };
+    }
+    throw new Error(`deploy lock busy (${lockDir}) age=${age}s ttl=${ttlSec}s. Wait or remove lock.`);
+  } catch (err) {
+    if (err instanceof Error) throw err;
+    throw new Error(String(err));
+  }
+}
+
+function releaseDeployLockLocal(lock) {
+  if (!lock || !lock.lockDir) return;
+  try {
+    fs.rmSync(lock.lockDir, { recursive: true, force: true });
+  } catch {
+    // ignore
+  }
+}
+
+function requireServiceFilesLocal(targetCfg) {
+  const layout = localInstallLayout(targetCfg);
+  const svc = serviceFilePath(targetCfg);
+  const issues = [];
+  if (!fileExists(layout.installDir)) issues.push(`Missing installDir: ${layout.installDir}`);
+  if (!fileExists(layout.runner)) issues.push(`Missing runner: ${layout.runner}`);
+  if (!fileExists(svc)) issues.push(`Missing systemd unit: ${svc}`);
+  if (issues.length) {
+    const targetName = targetCfg && (targetCfg.target || targetCfg.serviceName || targetCfg.appName) ? (targetCfg.target || targetCfg.serviceName || targetCfg.appName) : "<target>";
+    throw new Error(`Local service preflight failed (${issues.join("; ")}). Run: seal ship ${targetName} --bootstrap`);
+  }
+}
+
 function resolveThinMode(targetCfg) {
   if (targetCfg && typeof targetCfg._thinMode === "string") {
     return targetCfg._thinMode;
@@ -201,16 +264,35 @@ set -euo pipefail
 ROOT="${layout.installDir}"
 if [ -x "$ROOT/b/a" ]; then
   # Thin BOOTSTRAP layout
+  REL=""
+  if [ -f "$ROOT/current.buildId" ]; then
+    BUILD_ID="$(cat "$ROOT/current.buildId" || true)"
+    if [ -n "$BUILD_ID" ] && [ -d "$ROOT/releases/$BUILD_ID" ]; then
+      REL="$ROOT/releases/$BUILD_ID"
+    fi
+  fi
   if [ -f "$ROOT/shared/config.json5" ]; then
     cp "$ROOT/shared/config.json5" "$ROOT/config.runtime.json5"
+    if [ -n "$REL" ]; then
+      cp "$ROOT/shared/config.json5" "$REL/config.runtime.json5"
+    fi
   fi
-  cd "$ROOT"
+  if [ -n "$REL" ]; then
+    cd "$REL"
+  else
+    cd "$ROOT"
+  fi
   exec "$ROOT/b/a"
 fi
 BUILD_ID="$(cat "$ROOT/current.buildId")"
 REL="$ROOT/releases/$BUILD_ID"
 if [ ! -d "$REL" ]; then
   echo "[seal] release dir not found: $REL" 1>&2
+  exit 2
+fi
+if [ ! -x "$REL/appctl" ]; then
+  echo "[seal] Missing appctl in release: $REL/appctl" 1>&2
+  echo "[seal] Fix: redeploy with --bootstrap (reinstall service/runner) or ensure full release upload." 1>&2
   exit 2
 fi
 
@@ -388,6 +470,8 @@ function deployLocal({ targetCfg, artifactPath, repoConfigPath, pushConfig, poli
   ensureDir(layout.installDir);
   ensureDir(layout.releasesDir);
   ensureDir(layout.sharedDir);
+  const lock = acquireDeployLockLocal(layout, targetCfg);
+  try {
 
   const svc = serviceFilePath(targetCfg);
   if (!fileExists(svc)) {
@@ -457,6 +541,9 @@ function deployLocal({ targetCfg, artifactPath, repoConfigPath, pushConfig, poli
   cleanupLocalReleases({ targetCfg, layout, current: folderName, policy });
 
   return { layout, extractedDir, folderName };
+  } finally {
+    releaseDeployLockLocal(lock);
+  }
 }
 
 function checkConfigDriftLocal({ targetCfg, localConfigPath, showDiff = true }) {
@@ -515,12 +602,14 @@ function enableLocal(targetCfg) {
 }
 
 function startLocal(targetCfg) {
+  requireServiceFilesLocal(targetCfg);
   const ctl = systemctlArgs(targetCfg);
   const res = spawnSyncSafe(ctl[0], ctl.slice(1).concat(["start", `${targetCfg.serviceName}.service`]), { stdio: "inherit" });
   if (!res.ok) throw new Error(`start failed (status=${res.status})`);
 }
 
 function restartLocal(targetCfg) {
+  requireServiceFilesLocal(targetCfg);
   const ctl = systemctlArgs(targetCfg);
   const res = spawnSyncSafe(ctl[0], ctl.slice(1).concat(["restart", `${targetCfg.serviceName}.service`]), { stdio: "inherit" });
   if (!res.ok) throw new Error(`restart failed (status=${res.status})`);
@@ -549,6 +638,33 @@ function systemctlStatusLocal(targetCfg) {
   const res = spawnSyncSafe(ctl[0], ctl.slice(1).concat(["status", `${targetCfg.serviceName}.service`, "--no-pager", "-l"]), { stdio: "pipe" });
   const output = `${res.stdout || ""}\n${res.stderr || ""}`.trim();
   return { ok: res.ok, output };
+}
+
+function systemctlShowLocal(targetCfg, prop) {
+  const ctl = systemctlArgs(targetCfg);
+  const res = spawnSyncSafe(ctl[0], ctl.slice(1).concat(["show", `${targetCfg.serviceName}.service`, "-p", prop, "--value"]), { stdio: "pipe" });
+  if (!res.ok) return "";
+  return String(res.stdout || "").trim();
+}
+
+function buildSystemdHint(statusOutput, opts, execMainStatus) {
+  const hints = [];
+  const targetLabel = (opts && opts.targetName) ? opts.targetName : "<target>";
+  if (/status=200\/CHDIR/i.test(statusOutput)) {
+    hints.push(`Missing WorkingDirectory/installDir. Run: seal ship ${targetLabel} --bootstrap`);
+  }
+  if (/appctl: No such file or directory|Missing appctl/i.test(statusOutput)) {
+    hints.push(`Missing release files. Run: seal ship ${targetLabel} --bootstrap`);
+  }
+  const sentinelEnabled = !!(opts && opts.sentinelEnabled);
+  const sentinelExit = Number.isFinite(Number(opts && opts.sentinelExitCode)) ? Number(opts.sentinelExitCode) : 200;
+  if (sentinelEnabled && Number(execMainStatus) === sentinelExit) {
+    hints.push(`Sentinel missing/mismatch. Run: seal sentinel install ${targetLabel} (or seal ship ${targetLabel} --bootstrap)`);
+  }
+  if (sentinelEnabled && /\[thin\] runtime invalid/i.test(statusOutput)) {
+    hints.push(`Possible sentinel block. Run: seal sentinel install ${targetLabel}`);
+  }
+  return hints.length ? `Hint: ${hints.join(" | ")}` : "";
 }
 
 function checkHttpLocal(url, timeoutMs) {
@@ -619,7 +735,9 @@ async function waitForReadyLocal(targetCfg, opts = {}) {
       lastState = state.state || state.output || "";
       if (state.fatal) {
         const statusOut = systemctlStatusLocal(targetCfg);
-        throw new Error(`readiness failed: systemd ${state.state}${statusOut.output ? `\n${statusOut.output}` : ""}`);
+        const execMainStatus = systemctlShowLocal(targetCfg, "ExecMainStatus");
+        const hint = buildSystemdHint(statusOut.output || "", opts, execMainStatus);
+        throw new Error(`readiness failed: systemd ${state.state}${statusOut.output ? `\n${statusOut.output}` : ""}${hint ? `\n${hint}` : ""}`);
       }
       systemdOk = state.ok;
     }

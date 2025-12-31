@@ -22,7 +22,7 @@ const {
   writeJsonSummaryReport,
 } = require("./e2e-report");
 const { loadE2EConfig, resolveE2ERoot, resolveE2EPaths, resolveRerunFrom, isPlanMode } = require("./e2e-runner-config");
-const { resolveRunContext, setupRunCleanup } = require("./e2e-runner-fs");
+const { ensureDir, resolveRunContext, setupRunCleanup, removeDirSafe } = require("./e2e-runner-fs");
 const {
   assertEscalated,
   makeRunId,
@@ -49,6 +49,31 @@ function intersectLists(left, right) {
 
 function isNumber(value) {
   return /^[0-9]+$/.test(String(value || ""));
+}
+
+function dirHasFiles(dir) {
+  try {
+    return fs.existsSync(dir) && fs.readdirSync(dir).length > 0;
+  } catch {
+    return false;
+  }
+}
+
+function canWritePath(target) {
+  if (!target) return false;
+  let probe = target;
+  while (probe && !fs.existsSync(probe)) {
+    const parent = path.dirname(probe);
+    if (parent === probe) break;
+    probe = parent;
+  }
+  if (!probe) return false;
+  try {
+    fs.accessSync(probe, fs.constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function detectCgroupCpuLimit() {
@@ -177,8 +202,15 @@ async function main() {
     logDir,
   } = resolveE2EPaths({ env, e2eRoot, runId });
   const logRoot = logDir;
+  const summaryGroupRoot = summaryPath ? path.join(path.dirname(summaryPath), "groups", runId) : "";
+  if (summaryGroupRoot) ensureDir(summaryGroupRoot);
+  const getSummaryPath = (label, fallbackRoot) => {
+    if (summaryGroupRoot) return path.join(summaryGroupRoot, `${safeName(label)}.tsv`);
+    return path.join(fallbackRoot, ".e2e-summary.tsv");
+  };
   const failFast = normalizeFlag(env.SEAL_E2E_FAIL_FAST, "0");
   const remoteE2e = normalizeFlag(env.SEAL_E2E_SSH || env.SEAL_SHIP_SSH_E2E, "0");
+  const keepTmp = isEnabled(env, "SEAL_E2E_KEEP_TMP");
   const parallelMode = env.SEAL_E2E_PARALLEL_MODE || "groups";
   const allowedModes = new Set(["groups", "per-test"]);
   if (!allowedModes.has(parallelMode)) {
@@ -193,7 +225,15 @@ async function main() {
   const seedRootDefault = cacheUnderExample
     ? path.join(seedTmpBase, "seal-e2e-seed", seedUser)
     : path.join(cacheRoot, "e2e-seed", seedUser);
-  const seedRoot = env.SEAL_E2E_SEED_ROOT || seedRootDefault;
+  const seedRootEnv = env.SEAL_E2E_SEED_ROOT || "";
+  let seedRoot = seedRootEnv || seedRootDefault;
+  if (!seedRootEnv && !canWritePath(seedRoot)) {
+    const fallback = cacheRoot
+      ? path.join(cacheRoot, "e2e-seed", seedUser)
+      : path.join(os.tmpdir(), `seal-e2e-seed-${seedUser}-${Date.now()}`);
+    log(`WARN: seed root not writable (${seedRoot}); using ${fallback}`);
+    seedRoot = fallback;
+  }
 
   let safeRootsEnv = env.SEAL_E2E_SAFE_ROOTS || "";
   if (cacheRoot) {
@@ -227,15 +267,32 @@ async function main() {
   });
 
   let exampleRootParent = exampleRootBase || tmpRoot || os.tmpdir();
+  let createdWorkerParent = false;
   if (exampleRootParent) {
     const exampleSrc = path.join(REPO_ROOT, "tools", "seal", "example");
     if (exampleRootParent === exampleSrc || exampleRootParent.startsWith(`${exampleSrc}${path.sep}`)) {
       const base = fs.existsSync("/tmp") ? "/tmp" : "/var/tmp";
       exampleRootParent = path.join(base, "seal-e2e-workers", runId);
       fs.mkdirSync(exampleRootParent, { recursive: true });
+      createdWorkerParent = true;
       log(`WARN: exampleRootParent inside example source; using ${exampleRootParent}`);
     }
   }
+
+  const cleanupWorkerParent = () => {
+    if (!keepTmp && createdWorkerParent && exampleRootParent) {
+      removeDirSafe(exampleRootParent);
+    }
+  };
+  process.on("exit", cleanupWorkerParent);
+  process.on("SIGINT", () => {
+    cleanupWorkerParent();
+    process.exit(130);
+  });
+  process.on("SIGTERM", () => {
+    cleanupWorkerParent();
+    process.exit(143);
+  });
 
   let defaultJobs = 4;
   if (Array.isArray(os.cpus()) && os.cpus().length) {
@@ -320,6 +377,16 @@ async function main() {
   ].filter(Boolean);
   logEffectiveConfig(log, effectiveLines);
 
+  const heartbeatSec = Number(env.SEAL_E2E_RUNNER_HEARTBEAT_SEC || "0");
+  let heartbeatTimer = null;
+  if (heartbeatSec > 0) {
+    heartbeatTimer = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - runStart) / 1000);
+      log(`HEARTBEAT: e2e-parallel running (${formatDuration(elapsed)})`);
+    }, heartbeatSec * 1000);
+    if (heartbeatTimer && typeof heartbeatTimer.unref === "function") heartbeatTimer.unref();
+  }
+
   const prepareSeed = normalizeFlag(env.SEAL_E2E_PREPARE_SEED, "1") === "1";
   if (prepareSeed) {
     log("Preparing shared example seed...");
@@ -354,6 +421,7 @@ async function main() {
   if (nodeModulesRoot) {
     log(`Using shared node_modules: ${nodeModulesRoot}`);
   }
+  const sharedNodeModulesReady = nodeModulesRoot ? dirHasFiles(nodeModulesRoot) : false;
 
   const groupTests = new Map();
   const groupOrder = [];
@@ -440,9 +508,11 @@ async function main() {
   };
 
   function runGroup(group, testsList, root) {
-    const summaryFile = path.join(root, ".e2e-summary.tsv");
+    const summaryFile = getSummaryPath(group, root);
     const logDir = logRoot ? path.join(logRoot, safeName(group)) : path.join(root, ".e2e-logs");
-    const exampleDeps = nodeModulesRoot ? "0" : (env.SEAL_E2E_INSTALL_EXAMPLE_DEPS || "1");
+    const exampleDeps = (nodeModulesRoot && sharedNodeModulesReady)
+      ? "0"
+      : (env.SEAL_E2E_INSTALL_EXAMPLE_DEPS || "1");
     groupSummary[group] = summaryFile;
     log(`Group ${group}: ${testsList.join(",")} (root=${root})`);
     const childEnv = {
@@ -491,6 +561,9 @@ async function main() {
           groupStatus[group] = "failed";
           failures += 1;
         }
+        if (!keepTmp) {
+          removeDirSafe(root);
+        }
       }
       return;
     }
@@ -529,6 +602,9 @@ async function main() {
           }
         })
           .finally(() => {
+            if (!keepTmp) {
+              removeDirSafe(root);
+            }
             running.delete(group);
             if (queue.length) {
               startNext();
@@ -655,8 +731,11 @@ async function main() {
       const duration = Math.floor((Date.now() - start) / 1000);
       groupDurations[test] = duration;
       groupStatus[test] = result.code === 0 ? "ok" : "failed";
-      groupSummary[test] = path.join(root, ".e2e-summary.tsv");
+      groupSummary[test] = getSummaryPath(test, root);
       if (result.code !== 0) failures += 1;
+      if (!keepTmp) {
+        removeDirSafe(root);
+      }
     }
   }
 
@@ -694,6 +773,10 @@ async function main() {
 
   logE2EDiskSummary(env, { e2eRoot, log });
 
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+  }
+  cleanupWorkerParent();
   log("All E2E groups finished.");
   if (failures) {
     process.exit(1);

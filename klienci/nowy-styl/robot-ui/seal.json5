@@ -1,12 +1,4 @@
 {
   "appName": "robot-ui",
-  "entry": "server.js",
-  "deploy": {
-    "autoBootstrap": true
-  },
-  "build": {
-    "includeDirs": [
-      "public"
-    ]
-  }
+  "entry": "server.js"
 }

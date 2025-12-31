@@ -7,8 +7,9 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { cmdShip } = require("../src/commands/deploy");
-const { uninstallLocal } = require("../src/lib/deploy");
-const { uninstallSsh } = require("../src/lib/deploySsh");
+const { cmdCheck } = require("../src/commands/check");
+const { uninstallLocal, restartLocal } = require("../src/lib/deploy");
+const { uninstallSsh, restartSsh } = require("../src/lib/deploySsh");
 const { sshExec } = require("../src/lib/ssh");
 const { writeJson5, readJson5 } = require("../src/lib/json5io");
 const { hasCommand, delay, resolveExampleRoot, createLogger, spawnSyncWithTimeout } = require("./e2e-utils");
@@ -62,6 +63,36 @@ function systemctlUserReady() {
   const out = `${res.stdout || ""}\n${res.stderr || ""}`.trim();
   log(`SKIP: systemctl --user unavailable (${out || "status=" + res.status})`);
   return false;
+}
+
+async function testLocalPreflightResources() {
+  const backupMb = process.env.SEAL_PREFLIGHT_LOCAL_MIN_FREE_MB;
+  const backupTmpMb = process.env.SEAL_PREFLIGHT_LOCAL_TMP_MIN_FREE_MB;
+  const backupInodes = process.env.SEAL_PREFLIGHT_LOCAL_MIN_FREE_INODES;
+  const backupTmpInodes = process.env.SEAL_PREFLIGHT_LOCAL_TMP_MIN_FREE_INODES;
+  process.env.SEAL_PREFLIGHT_LOCAL_MIN_FREE_MB = "999999";
+  process.env.SEAL_PREFLIGHT_LOCAL_TMP_MIN_FREE_MB = "999999";
+  process.env.SEAL_PREFLIGHT_LOCAL_MIN_FREE_INODES = "999999999";
+  process.env.SEAL_PREFLIGHT_LOCAL_TMP_MIN_FREE_INODES = "999999999";
+  let failed = false;
+  try {
+    await cmdCheck(EXAMPLE_ROOT, null, { strict: false, verbose: false, skipRemote: true });
+  } catch (e) {
+    failed = true;
+    const errors = e && e.sealCheck && Array.isArray(e.sealCheck.errors) ? e.sealCheck.errors.join("\n") : "";
+    assert.ok(errors.includes("Low disk space on project root"), `Expected local disk preflight error, got: ${errors || e.message}`);
+    assert.ok(errors.includes("Low disk space on tmp"), `Expected local tmp preflight error, got: ${errors || e.message}`);
+  } finally {
+    if (backupMb === undefined) delete process.env.SEAL_PREFLIGHT_LOCAL_MIN_FREE_MB;
+    else process.env.SEAL_PREFLIGHT_LOCAL_MIN_FREE_MB = backupMb;
+    if (backupTmpMb === undefined) delete process.env.SEAL_PREFLIGHT_LOCAL_TMP_MIN_FREE_MB;
+    else process.env.SEAL_PREFLIGHT_LOCAL_TMP_MIN_FREE_MB = backupTmpMb;
+    if (backupInodes === undefined) delete process.env.SEAL_PREFLIGHT_LOCAL_MIN_FREE_INODES;
+    else process.env.SEAL_PREFLIGHT_LOCAL_MIN_FREE_INODES = backupInodes;
+    if (backupTmpInodes === undefined) delete process.env.SEAL_PREFLIGHT_LOCAL_TMP_MIN_FREE_INODES;
+    else process.env.SEAL_PREFLIGHT_LOCAL_TMP_MIN_FREE_INODES = backupTmpInodes;
+  }
+  assert.ok(failed, "Expected local preflight to fail when thresholds are too high");
 }
 
 function writeTargetConfig(targetName, cfg) {
@@ -324,6 +355,148 @@ async function testShipThinBootstrapReuse() {
   }
 }
 
+async function testShipRestartPreflightLocal() {
+  log("Testing restart preflight when runner missing (local)...");
+  const targetName = `ship-e2e-preflight-${Date.now()}-${process.pid}`;
+  const serviceName = `seal-example-ship-preflight-${Date.now()}`;
+  const { root: installRoot, installDir } = createSafeInstallDir("seal-ship-preflight-");
+  const targetCfg = {
+    target: targetName,
+    kind: "local",
+    host: "127.0.0.1",
+    user: "local",
+    serviceScope: "user",
+    installDir,
+    serviceName,
+    packager: "thin-split",
+    config: "local",
+  };
+
+  const targetPath = path.join(EXAMPLE_ROOT, "seal-config", "targets", `${targetName}.json5`);
+  const backup = readFileMaybe(targetPath);
+  writeTargetConfig(targetName, targetCfg);
+
+  try {
+    await shipOnce(targetCfg, { bootstrap: true, pushConfig: true, skipCheck: true, packager: "thin-split" });
+    fs.rmSync(path.join(installDir, "run-current.sh"), { force: true });
+    let failed = false;
+    try {
+      restartLocal(targetCfg);
+    } catch (e) {
+      failed = true;
+      const msg = e && e.message ? e.message : String(e);
+      assert.ok(msg.includes("Missing runner"), `Expected missing runner preflight, got: ${msg}`);
+    }
+    assert.ok(failed, "Expected restart to fail when runner missing");
+  } finally {
+    try {
+      uninstallLocal(targetCfg);
+    } catch {
+      cleanupServiceArtifacts(targetCfg);
+    }
+    cleanupTargetConfig(targetName, backup);
+    fs.rmSync(installRoot, { recursive: true, force: true });
+  }
+}
+
+async function testShipMissingAppctlLocal() {
+  log("Testing missing appctl hint (local)...");
+  const targetName = `ship-e2e-missing-appctl-${Date.now()}-${process.pid}`;
+  const serviceName = `seal-example-ship-missing-appctl-${Date.now()}`;
+  const { root: installRoot, installDir } = createSafeInstallDir("seal-ship-missing-appctl-");
+  const targetCfg = {
+    target: targetName,
+    kind: "local",
+    host: "127.0.0.1",
+    user: "local",
+    serviceScope: "user",
+    installDir,
+    serviceName,
+    packager: "thin-split",
+    config: "local",
+  };
+
+  const targetPath = path.join(EXAMPLE_ROOT, "seal-config", "targets", `${targetName}.json5`);
+  const backup = readFileMaybe(targetPath);
+  writeTargetConfig(targetName, targetCfg);
+
+  try {
+    await shipOnce(targetCfg, { bootstrap: true, pushConfig: true, skipCheck: true, packager: "thin-split" });
+    const buildId = fs.readFileSync(path.join(installDir, "current.buildId"), "utf-8").trim();
+    const relDir = path.join(installDir, "releases", buildId);
+    fs.rmSync(path.join(installDir, "b", "a"), { force: true });
+    fs.rmSync(path.join(relDir, "appctl"), { force: true });
+    const res = spawnSyncWithTimeout("bash", [path.join(installDir, "run-current.sh")], { stdio: "pipe", timeout: 8000, encoding: "utf8" });
+    const out = `${res.stdout || ""}\n${res.stderr || ""}`;
+    assert.ok(!res.ok, "Expected run-current.sh to fail when appctl missing");
+    assert.ok(out.includes("Missing appctl in release"), `Expected missing appctl hint, got: ${out.trim()}`);
+    assert.ok(out.includes("Fix: redeploy with --bootstrap"), `Expected bootstrap hint, got: ${out.trim()}`);
+  } finally {
+    try {
+      uninstallLocal(targetCfg);
+    } catch {
+      cleanupServiceArtifacts(targetCfg);
+    }
+    cleanupTargetConfig(targetName, backup);
+    fs.rmSync(installRoot, { recursive: true, force: true });
+  }
+}
+
+async function testShipSentinelHintLocal() {
+  log("Testing sentinel hint on runtime invalid (local)...");
+  const targetName = `ship-e2e-sentinel-hint-${Date.now()}-${process.pid}`;
+  const serviceName = `seal-example-ship-sentinel-hint-${Date.now()}`;
+  const { root: installRoot, installDir } = createSafeInstallDir("seal-ship-sentinel-hint-");
+  const targetCfg = {
+    target: targetName,
+    kind: "local",
+    host: "127.0.0.1",
+    user: "local",
+    serviceScope: "user",
+    installDir,
+    serviceName,
+    packager: "thin-split",
+    config: "local",
+  };
+
+  const targetPath = path.join(EXAMPLE_ROOT, "seal-config", "targets", `${targetName}.json5`);
+  const backup = readFileMaybe(targetPath);
+  writeTargetConfig(targetName, targetCfg);
+
+  try {
+    await shipOnce(targetCfg, { bootstrap: true, pushConfig: true, skipCheck: true, packager: "thin-split" });
+    const buildId = fs.readFileSync(path.join(installDir, "current.buildId"), "utf-8").trim();
+    const relDir = path.join(installDir, "releases", buildId);
+    const binPath = path.join(relDir, "b", "a");
+    const src = fs.readFileSync(binPath, "utf8");
+    const patched = src.replace(/exit\\s+0\\s*$/m, "exit 200");
+    fs.writeFileSync(binPath, patched, "utf8");
+    fs.chmodSync(binPath, 0o755);
+
+    let failed = false;
+    try {
+      await cmdShip(EXAMPLE_ROOT, targetCfg.target, {
+        restart: true,
+        wait: true,
+        waitMode: "systemd",
+      });
+    } catch (e) {
+      failed = true;
+      const msg = e && e.message ? e.message : String(e);
+      assert.ok(msg.includes("Sentinel"), `Expected sentinel hint, got: ${msg}`);
+    }
+    assert.ok(failed, "Expected readiness to fail with sentinel hint");
+  } finally {
+    try {
+      uninstallLocal(targetCfg);
+    } catch {
+      cleanupServiceArtifacts(targetCfg);
+    }
+    cleanupTargetConfig(targetName, backup);
+    fs.rmSync(installRoot, { recursive: true, force: true });
+  }
+}
+
 async function testShipRollbackLocal() {
   log("Testing seal ship rollback on readiness failure (local)...");
   const targetName = `ship-e2e-rollback-${Date.now()}-${process.pid}`;
@@ -429,6 +602,32 @@ async function testShipThinBootstrapSsh() {
   writeTargetConfig(targetName, targetCfg);
 
   try {
+    const checkPreflightBackup = targetCfg.preflight;
+    targetCfg.preflight = {
+      requireTools: ["__seal_missing_tool__"],
+      tmpDir: "/__seal_tmp_missing__",
+    };
+    writeTargetConfig(targetName, targetCfg);
+    let checkFailed = false;
+    const sudoBackup = process.env.SEAL_PREFLIGHT_FORCE_SUDO_FAIL;
+    process.env.SEAL_PREFLIGHT_FORCE_SUDO_FAIL = "1";
+    try {
+      await cmdCheck(EXAMPLE_ROOT, targetName, { strict: false, verbose: false, skipRemote: false });
+    } catch (e) {
+      checkFailed = true;
+      const errors = e && e.sealCheck && Array.isArray(e.sealCheck.errors) ? e.sealCheck.errors.join("\n") : "";
+      assert.ok(errors.includes("Missing tools"), `Expected missing tools in check errors, got: ${errors || e.message}`);
+      assert.ok(errors.includes("Tmp dir missing"), `Expected tmp dir missing in check errors, got: ${errors || e.message}`);
+      assert.ok(errors.includes("sudo"), `Expected sudo in check errors, got: ${errors || e.message}`);
+    } finally {
+      if (sudoBackup === undefined) delete process.env.SEAL_PREFLIGHT_FORCE_SUDO_FAIL;
+      else process.env.SEAL_PREFLIGHT_FORCE_SUDO_FAIL = sudoBackup;
+      if (checkPreflightBackup === undefined) delete targetCfg.preflight;
+      else targetCfg.preflight = checkPreflightBackup;
+      writeTargetConfig(targetName, targetCfg);
+    }
+    assert.ok(checkFailed, "Expected seal check to fail on missing tools/tmp");
+
     try {
       uninstallSsh(targetCfg);
     } catch (e) {
@@ -458,6 +657,19 @@ async function testShipThinBootstrapSsh() {
     assert.ok(runnerStat, "Missing runner after auto bootstrap ship (ssh)");
     assert.ok(unitStat, "Missing systemd unit after auto bootstrap ship (ssh)");
 
+    const rmRunner = sshOk(user, host, `rm -f ${shellQuote(`${installDir}/run-current.sh`)}`, sshPort);
+    assert.ok(rmRunner.ok, `Failed to remove runner before preflight test: ${rmRunner.out}`);
+    let restartFailed = false;
+    try {
+      restartSsh(targetCfg);
+    } catch (e) {
+      restartFailed = true;
+      const msg = e && e.message ? e.message : String(e);
+      assert.ok(msg.includes("Missing runner"), `Expected missing runner preflight, got: ${msg}`);
+    }
+    assert.ok(restartFailed, "Expected restart to fail when runner missing (ssh)");
+    await shipOnce(targetCfg, { bootstrap: false, pushConfig: false, skipCheck: true, packager: "thin-split" });
+
     const rtPath = `${installDir}/r/rt`;
     const plPath = `${installDir}/r/pl`;
     const rtStat1 = sshStat(user, host, rtPath, sshPort);
@@ -474,6 +686,61 @@ async function testShipThinBootstrapSsh() {
     assert.strictEqual(rtStat1.ino, rtStat2.ino, "SSH bootstrap should reuse runtime (inode changed)");
     if (plStat1.ino === plStat2.ino && plStat1.mtime === plStat2.mtime) {
       fail("SSH payload did not appear to change between ships; verify build pipeline.");
+    }
+
+    const currentBuildId = sshReadFile(user, host, `${installDir}/current.buildId`, sshPort);
+    assert.ok(currentBuildId, "Missing current.buildId after payload ship (ssh)");
+    const releaseDir = `${installDir}/releases/${currentBuildId}`;
+    const appctlStat = sshStat(user, host, `${releaseDir}/appctl`, sshPort);
+    assert.ok(appctlStat, "Missing appctl after payload-only ship (ssh)");
+    if (fs.existsSync(path.join(EXAMPLE_ROOT, "public"))) {
+      const publicStat = sshStat(user, host, `${releaseDir}/public`, sshPort);
+      assert.ok(publicStat, "Missing public assets after payload-only ship (ssh)");
+    }
+
+    const sharedPath = `${installDir}/shared/config.json5`;
+    const sharedBackupBuf = sshReadFileBase64(user, host, sharedPath, sshPort);
+    assert.ok(sharedBackupBuf, "Missing shared config for config drift test (ssh)");
+    const sharedBackupB64 = sharedBackupBuf.toString("base64");
+    try {
+      const driftText = `${sharedBackupBuf.toString("utf-8").trimEnd()}\n// seal-e2e-drift\n`;
+      const driftB64 = Buffer.from(driftText, "utf-8").toString("base64");
+      const writeDrift = sshOk(
+        user,
+        host,
+        `printf %s ${shellQuote(driftB64)} | (base64 -d 2>/dev/null || base64 -D) > ${shellQuote(sharedPath)}`,
+        sshPort
+      );
+      assert.ok(writeDrift.ok, `Failed to write config drift fixture (ssh): ${writeDrift.out}`);
+      let driftFailed = false;
+      let driftOutput = "";
+      try {
+        await captureOutput(() =>
+          cmdShip(EXAMPLE_ROOT, targetCfg.target, {
+            bootstrap: false,
+            pushConfig: false,
+            acceptDrift: false,
+            skipCheck: true,
+            packager: "thin-split",
+          })
+        );
+      } catch (e) {
+        driftFailed = true;
+        driftOutput = `${(e.captured && e.captured.out) || ""}\n${(e.captured && e.captured.err) || ""}`;
+      }
+      assert.ok(driftFailed, "Expected ship to fail on config drift (ssh)");
+      assert.ok(driftOutput.includes("seal config push"), "Expected config drift hint: seal config push");
+      assert.ok(driftOutput.includes("accept-drift"), "Expected config drift hint: --accept-drift");
+    } finally {
+      const restoreDrift = sshOk(
+        user,
+        host,
+        `printf %s ${shellQuote(sharedBackupB64)} | (base64 -d 2>/dev/null || base64 -D) > ${shellQuote(sharedPath)}`,
+        sshPort
+      );
+      if (!restoreDrift.ok) {
+        log(`WARN: failed to restore shared config after drift test: ${restoreDrift.out}`);
+      }
     }
 
     const rmRuntime = sshOk(
@@ -528,8 +795,120 @@ async function testShipThinBootstrapSsh() {
     if (!httpPort || !Number.isFinite(httpPort)) {
       throw new Error("Missing HTTP port for SSH E2E (set SEAL_SHIP_SSH_HTTP_PORT or seal-config/configs/server.json5)");
     }
-    await waitForRemoteHealth({ user, host, sshPort, port: Math.trunc(httpPort) });
-    log(`OK: remote HTTP /healthz on port ${httpPort}`);
+    const limitedHost = process.env.SEAL_E2E_LIMITED_HOST === "1";
+    const httpCheck = process.env.SEAL_SHIP_SSH_HTTP_CHECK;
+    if (httpCheck === "0" || (limitedHost && httpCheck !== "1")) {
+      log("SKIP: remote HTTP /healthz check (limited host)");
+    } else {
+      await waitForRemoteHealth({ user, host, sshPort, port: Math.trunc(httpPort) });
+      log(`OK: remote HTTP /healthz on port ${httpPort}`);
+    }
+
+    const preflightMbBackup = process.env.SEAL_PREFLIGHT_MIN_FREE_MB;
+    process.env.SEAL_PREFLIGHT_MIN_FREE_MB = "999999";
+    let preflightFailed = false;
+    try {
+      await shipOnce(targetCfg, { bootstrap: false, pushConfig: false, skipCheck: true, packager: "thin-split" });
+    } catch (e) {
+      preflightFailed = true;
+      const msg = e && e.message ? e.message : String(e);
+      assert.ok(msg.includes("low disk space"), `Expected low disk space preflight failure, got: ${msg}`);
+    } finally {
+      if (preflightMbBackup === undefined) delete process.env.SEAL_PREFLIGHT_MIN_FREE_MB;
+      else process.env.SEAL_PREFLIGHT_MIN_FREE_MB = preflightMbBackup;
+    }
+    assert.ok(preflightFailed, "Expected preflight to fail when SEAL_PREFLIGHT_MIN_FREE_MB is too high");
+
+    const preflightTmpBackup = process.env.SEAL_PREFLIGHT_TMP_MIN_FREE_MB;
+    process.env.SEAL_PREFLIGHT_TMP_MIN_FREE_MB = "999999";
+    let preflightTmpFailed = false;
+    try {
+      await shipOnce(targetCfg, { bootstrap: false, pushConfig: false, skipCheck: true, packager: "thin-split" });
+    } catch (e) {
+      preflightTmpFailed = true;
+      const msg = e && e.message ? e.message : String(e);
+      assert.ok(msg.includes("tmp") || msg.includes("/tmp"), `Expected tmp preflight failure, got: ${msg}`);
+    } finally {
+      if (preflightTmpBackup === undefined) delete process.env.SEAL_PREFLIGHT_TMP_MIN_FREE_MB;
+      else process.env.SEAL_PREFLIGHT_TMP_MIN_FREE_MB = preflightTmpBackup;
+    }
+    assert.ok(preflightTmpFailed, "Expected preflight to fail when SEAL_PREFLIGHT_TMP_MIN_FREE_MB is too high");
+
+    const sudoPreflightBackup = process.env.SEAL_PREFLIGHT_FORCE_SUDO_FAIL;
+    process.env.SEAL_PREFLIGHT_FORCE_SUDO_FAIL = "1";
+    let sudoFailed = false;
+    try {
+      await shipOnce(targetCfg, { bootstrap: false, pushConfig: false, skipCheck: true, packager: "thin-split" });
+    } catch (e) {
+      sudoFailed = true;
+      const msg = e && e.message ? e.message : String(e);
+      assert.ok(msg.includes("sudo"), `Expected sudo preflight failure, got: ${msg}`);
+    } finally {
+      if (sudoPreflightBackup === undefined) delete process.env.SEAL_PREFLIGHT_FORCE_SUDO_FAIL;
+      else process.env.SEAL_PREFLIGHT_FORCE_SUDO_FAIL = sudoPreflightBackup;
+    }
+    assert.ok(sudoFailed, "Expected preflight to fail when sudo is missing");
+
+    const toolBackup = targetCfg.preflight;
+    targetCfg.preflight = { requireTools: ["__seal_missing_tool__"] };
+    writeTargetConfig(targetName, targetCfg);
+    let toolFailed = false;
+    try {
+      await shipOnce(targetCfg, { bootstrap: false, pushConfig: false, skipCheck: true, packager: "thin-split" });
+    } catch (e) {
+      toolFailed = true;
+      const msg = e && e.message ? e.message : String(e);
+      assert.ok(msg.includes("missing tools"), `Expected missing tools preflight failure, got: ${msg}`);
+    } finally {
+      if (toolBackup === undefined) delete targetCfg.preflight;
+      else targetCfg.preflight = toolBackup;
+      writeTargetConfig(targetName, targetCfg);
+    }
+    assert.ok(toolFailed, "Expected preflight to fail for missing tools");
+
+    const tmpDirBackup = targetCfg.preflight;
+    targetCfg.preflight = { tmpDir: "/__seal_tmp_missing__" };
+    writeTargetConfig(targetName, targetCfg);
+    let tmpMissingFailed = false;
+    try {
+      await shipOnce(targetCfg, { bootstrap: false, pushConfig: false, skipCheck: true, packager: "thin-split" });
+    } catch (e) {
+      tmpMissingFailed = true;
+      const msg = e && e.message ? e.message : String(e);
+      assert.ok(msg.includes("tmp dir missing"), `Expected tmp dir missing preflight failure, got: ${msg}`);
+    } finally {
+      if (tmpDirBackup === undefined) delete targetCfg.preflight;
+      else targetCfg.preflight = tmpDirBackup;
+      writeTargetConfig(targetName, targetCfg);
+    }
+    assert.ok(tmpMissingFailed, "Expected preflight to fail for missing tmp dir");
+
+    const findmnt = sshOk(
+      user,
+      host,
+      `if command -v findmnt >/dev/null 2>&1; then findmnt -no OPTIONS --target ${shellQuote(installDir)} 2>/dev/null || true; fi`,
+      sshPort
+    );
+    if (findmnt.ok && findmnt.out.includes("noexec")) {
+      const noexecBackup = targetCfg.preflight;
+      targetCfg.preflight = { allowNoexec: false };
+      writeTargetConfig(targetName, targetCfg);
+      let noexecFailed = false;
+      try {
+        await shipOnce(targetCfg, { bootstrap: false, pushConfig: false, skipCheck: true, packager: "thin-split" });
+      } catch (e) {
+        noexecFailed = true;
+        const msg = e && e.message ? e.message : String(e);
+        assert.ok(msg.includes("noexec"), `Expected noexec preflight failure, got: ${msg}`);
+      } finally {
+        if (noexecBackup === undefined) delete targetCfg.preflight;
+        else targetCfg.preflight = noexecBackup;
+        writeTargetConfig(targetName, targetCfg);
+      }
+      assert.ok(noexecFailed, "Expected preflight to fail for noexec installDir");
+    } else {
+      log("SKIP: noexec preflight (findmnt not available or installDir has exec)");
+    }
   } finally {
     if (process.env.SEAL_SHIP_SSH_KEEP !== "1") {
       try {
@@ -550,12 +929,36 @@ async function main() {
   const sentinelBackup = disableSentinelOnDisk();
   const failures = [];
   try {
+    try {
+      await testLocalPreflightResources();
+      log("OK: testLocalPreflightResources");
+    } catch (e) {
+      failures.push({ name: "local-preflight-resources", error: e && e.stack ? e.stack : e && e.message ? e.message : String(e) });
+    }
     if (systemctlUserReady()) {
       try {
         await testShipThinBootstrapReuse();
         log("OK: testShipThinBootstrapReuse");
       } catch (e) {
         failures.push({ name: "local", error: e && e.stack ? e.stack : e && e.message ? e.message : String(e) });
+      }
+      try {
+        await testShipMissingAppctlLocal();
+        log("OK: testShipMissingAppctlLocal");
+      } catch (e) {
+        failures.push({ name: "local-missing-appctl", error: e && e.stack ? e.stack : e && e.message ? e.message : String(e) });
+      }
+      try {
+        await testShipSentinelHintLocal();
+        log("OK: testShipSentinelHintLocal");
+      } catch (e) {
+        failures.push({ name: "local-sentinel-hint", error: e && e.stack ? e.stack : e && e.message ? e.message : String(e) });
+      }
+      try {
+        await testShipRestartPreflightLocal();
+        log("OK: testShipRestartPreflightLocal");
+      } catch (e) {
+        failures.push({ name: "local-preflight", error: e && e.stack ? e.stack : e && e.message ? e.message : String(e) });
       }
       try {
         await testShipRollbackLocal();
