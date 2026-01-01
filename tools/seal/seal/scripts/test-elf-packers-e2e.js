@@ -16,8 +16,7 @@ const {
   createLogger,
   withSealedBinary,
   parseArgsEnv,
-  readReadyPayload,
-} = require("./e2e-utils");
+  readReadyPayload, resolveTmpRoot } = require("./e2e-utils");
 
 const { buildRelease } = require("../src/lib/build");
 const { loadProjectConfig, loadTargetConfig, resolveConfigName } = require("../src/lib/project");
@@ -132,7 +131,7 @@ function attemptUnpack(binPath, spec, cmd) {
   if (spec.id !== "upx") return { skip: "unpack check not supported" };
   const upxCmd = cmd || "upx";
   if (!hasCommand(upxCmd)) return { skip: "upx missing" };
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-unpack-"));
+  const tmpDir = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-unpack-"));
   const tmpPath = path.join(tmpDir, path.basename(binPath));
   try {
     fs.copyFileSync(binPath, tmpPath);
@@ -249,7 +248,7 @@ async function testElfPacker(ctx, spec) {
   if (!args) args = spec.defaultArgs.slice();
 
   log(`Building thin-split with ${spec.name}...`);
-  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), `seal-${spec.id}-`));
+  const outRoot = fs.mkdtempSync(path.join(resolveTmpRoot(), `seal-${spec.id}-`));
   try {
     const res = await withTimeout(`buildRelease(${spec.id})`, ctx.buildTimeoutMs, () =>
       buildWithProtection({

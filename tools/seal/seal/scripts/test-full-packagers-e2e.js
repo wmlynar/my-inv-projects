@@ -18,8 +18,7 @@ const {
   resolveExampleRoot,
   createLogger,
   withSealedBinary,
-  readReadyPayload,
-} = require("./e2e-utils");
+  readReadyPayload, resolveTmpRoot } = require("./e2e-utils");
 
 const EXAMPLE_ROOT = resolveExampleRoot();
 
@@ -94,7 +93,7 @@ async function buildWithPackager(packager, buildTimeoutMs) {
   const configName = resolveConfigName(targetCfg, "local");
   targetCfg.packager = packager;
 
-  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), `seal-full-${packager}-`));
+  const outRoot = fs.mkdtempSync(path.join(resolveTmpRoot(), `seal-full-${packager}-`));
   const outDir = path.join(outRoot, "seal-out");
   try {
     const res = await withTimeout(`buildRelease(${packager})`, buildTimeoutMs, () =>

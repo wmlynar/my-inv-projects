@@ -16,8 +16,7 @@ const {
   resolveExampleRoot,
   createLogger,
   withSealedBinary,
-  readReadyPayload,
-} = require("./e2e-utils");
+  readReadyPayload, resolveTmpRoot } = require("./e2e-utils");
 
 const { buildRelease } = require("../src/lib/build");
 const { loadProjectConfig, loadTargetConfig, resolveConfigName } = require("../src/lib/project");
@@ -39,7 +38,7 @@ function resolveArtifactsDir() {
   if (process.env.SEAL_E2E_LOG_DIR) {
     return path.join(process.env.SEAL_E2E_LOG_DIR, "ui-e2e");
   }
-  return path.join(os.tmpdir(), `seal-ui-e2e-${process.pid}`);
+  return path.join(resolveTmpRoot(), `seal-ui-e2e-${process.pid}`);
 }
 
 function runCmd(cmd, args, timeoutMs = 5000) {
@@ -103,7 +102,7 @@ async function checkIndexEndpoint(baseUrl) {
 }
 
 function probeCompilerFlag(cmd, flag) {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-cc-flag-"));
+  const tmpDir = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-cc-flag-"));
   const srcPath = path.join(tmpDir, "flag-test.c");
   const outPath = path.join(tmpDir, "flag-test.o");
   fs.writeFileSync(srcPath, "int main(void){return 0;}\n", "utf-8");
@@ -190,7 +189,7 @@ async function buildThinRelease(buildTimeoutMs) {
   const packager = "thin-split";
   targetCfg.packager = packager;
 
-  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-ui-split-"));
+  const outRoot = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-ui-split-"));
   const outDir = path.join(outRoot, "seal-out");
 
   try {

@@ -8,7 +8,7 @@ const path = require("path");
 
 const { buildRelease } = require("../src/lib/build");
 const { loadProjectConfig, loadTargetConfig, resolveTargetName, resolveConfigName } = require("../src/lib/project");
-const { createLogger, resolveExampleRoot } = require("./e2e-utils");
+const { createLogger, resolveExampleRoot, resolveTmpRoot } = require("./e2e-utils");
 
 const { log, fail, skip } = createLogger("decoy-e2e");
 const EXAMPLE_ROOT = resolveExampleRoot();
@@ -54,7 +54,7 @@ async function buildWithDecoy({ mode, includeDirs, scope, overwrite }) {
   projectCfg.build.includeDirs = includeDirs;
   projectCfg.build.sentinel = { enabled: false };
 
-  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-decoy-"));
+  const outDir = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-decoy-"));
   try {
     const res = await buildRelease({
       projectRoot: EXAMPLE_ROOT,

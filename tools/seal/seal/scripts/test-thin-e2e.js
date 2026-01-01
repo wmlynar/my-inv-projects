@@ -81,7 +81,7 @@ function resolveCxx() {
 
 function supportsCxx20(cxx) {
   if (!cxx) return false;
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-cxx20-"));
+  const tmpDir = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-cxx20-"));
   const srcPath = path.join(tmpDir, "cxx20.cc");
   const outPath = path.join(tmpDir, "cxx20.o");
   try {
@@ -178,7 +178,7 @@ async function buildThinRelease(buildTimeoutMs, opts = {}) {
 
   targetCfg.packager = packager;
 
-  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), packager === "thin-single" ? "seal-out-single-" : "seal-out-split-"));
+  const outRoot = fs.mkdtempSync(path.join(resolveTmpRoot(), packager === "thin-single" ? "seal-out-single-" : "seal-out-split-"));
   const outDir = path.join(outRoot, "seal-out");
 
   try {

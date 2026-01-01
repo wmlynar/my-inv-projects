@@ -15,8 +15,7 @@ const {
   resolveExampleRoot,
   createLogger,
   withSealedBinary,
-  readReadyPayload,
-} = require("./e2e-utils");
+  readReadyPayload, resolveTmpRoot } = require("./e2e-utils");
 
 const { buildRelease } = require("../src/lib/build");
 const { loadProjectConfig, loadTargetConfig, resolveConfigName } = require("../src/lib/project");
@@ -710,7 +709,7 @@ async function main() {
     log("SKIP: runtime check disabled by SEAL_STRIP_E2E_SKIP_RUN");
   }
 
-  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-strip-"));
+  const outRoot = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-strip-"));
   let failures = 0;
   try {
     log("Building thin-split with strip enabled...");

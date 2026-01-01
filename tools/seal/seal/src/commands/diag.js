@@ -23,6 +23,23 @@ function writeResult(dir, name, res) {
   fs.writeFileSync(path.join(dir, name), header + (res.output || ""), "utf-8");
 }
 
+function cleanupOldDiags(baseDir, keepCount) {
+  if (!baseDir || !fs.existsSync(baseDir)) return;
+  const entries = fs.readdirSync(baseDir, { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .map((d) => path.join(baseDir, d.name));
+  if (entries.length <= keepCount) return;
+  entries.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+  const toDelete = entries.slice(keepCount);
+  for (const dir of toDelete) {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+    } catch {
+      // ignore
+    }
+  }
+}
+
 async function cmdDiag(cwd, targetArg) {
   const projectRoot = findProjectRoot(cwd);
   const targetName = resolveTargetName(projectRoot, targetArg || null);
@@ -31,7 +48,8 @@ async function cmdDiag(cwd, targetArg) {
   const targetCfg = t.cfg;
 
   const ts = new Date().toISOString().replace(/[:.]/g, "-");
-  const diagRoot = path.join(projectRoot, "seal-out", "diagnostics", `${targetName}-${ts}`);
+  const diagBase = path.join(projectRoot, "seal-out", "diagnostics");
+  const diagRoot = path.join(diagBase, `${targetName}-${ts}`);
   ensureDir(diagRoot);
 
   const cliPath = path.join(__dirname, "..", "cli.js");
@@ -59,6 +77,11 @@ async function cmdDiag(cwd, targetArg) {
   }
 
 
+  const keepRaw = process.env.SEAL_DIAG_KEEP || "5";
+  const keepCount = Number.isFinite(Number(keepRaw)) ? Math.max(0, Math.floor(Number(keepRaw))) : 5;
+  if (keepCount > 0) {
+    cleanupOldDiags(diagBase, keepCount);
+  }
   ok(`Diagnostic bundle ready: ${diagRoot}`);
   return { dir: diagRoot };
 }

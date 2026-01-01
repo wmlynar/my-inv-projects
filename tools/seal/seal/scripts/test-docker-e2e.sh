@@ -57,7 +57,7 @@ load_e2e_config() {
 load_e2e_config
 
 # Re-derive defaults after loading config, so .env overrides are honored.
-CACHE_DIR="${SEAL_DOCKER_E2E_CACHE_DIR:-/var/tmp/seal-e2e-cache}"
+CACHE_DIR="${SEAL_DOCKER_E2E_CACHE_DIR:-$PWD/tools/seal/example/seal-out/e2e/cache/docker}"
 NODE_MODULES_CACHE="$CACHE_DIR/node_modules"
 EXAMPLE_NODE_MODULES_CACHE="$CACHE_DIR/example-node_modules"
 NPM_CACHE_DIR="$CACHE_DIR/npm"
@@ -428,10 +428,10 @@ if [ "$REMOTE_E2E" = "1" ]; then
     "${DEVICE_ARGS[@]}" \
     "${DEBUG_MOUNTS[@]}" \
     --tmpfs /run \
-    --tmpfs /tmp \
+    --tmpfs /seal-tmp \
     --tmpfs /run/lock \
     -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
-    -v "$SSH_DIR:/tmp/seal-ssh:ro" \
+    -v "$SSH_DIR:/seal-tmp/seal-ssh:ro" \
     --network "$NETWORK_NAME" \
     "$SERVER_IMAGE" >/dev/null; then
     if [ "$REMOTE_FALLBACK" = "1" ]; then
@@ -515,7 +515,7 @@ $DOCKER run --rm \
   -v "$REPO_ROOT:/workspace" \
   -v "$NODE_MODULES_CACHE:/workspace/node_modules" \
   -v "$NPM_CACHE_DIR:/root/.npm" \
-  -v "$SSH_DIR:/tmp/seal-ssh:ro" \
+  -v "$SSH_DIR:/seal-tmp/seal-ssh:ro" \
   -v "$CACHE_DIR:/root/.cache/seal" \
   -v "$PLAYWRIGHT_CACHE_DIR:/root/.cache/ms-playwright" \
   -w /workspace \

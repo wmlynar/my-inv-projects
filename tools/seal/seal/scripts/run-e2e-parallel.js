@@ -221,20 +221,31 @@ async function main() {
   const seedUser = env.SUDO_USER || env.USER || "unknown";
   const exampleSrc = path.join(REPO_ROOT, "tools", "seal", "example");
   const cacheUnderExample = cacheRoot && (cacheRoot === exampleSrc || cacheRoot.startsWith(`${exampleSrc}${path.sep}`));
-  const seedTmpBase = fs.existsSync("/tmp") ? "/tmp" : "/var/tmp";
   const seedRootDefault = cacheUnderExample
-    ? path.join(seedTmpBase, "seal-e2e-seed", seedUser)
+    ? path.join(process.cwd(), "seal-out", "e2e", "seed", seedUser)
     : path.join(cacheRoot, "e2e-seed", seedUser);
   const seedRootEnv = env.SEAL_E2E_SEED_ROOT || "";
   let seedRoot = seedRootEnv || seedRootDefault;
   if (!seedRootEnv && !canWritePath(seedRoot)) {
     const fallback = cacheRoot
       ? path.join(cacheRoot, "e2e-seed", seedUser)
-      : path.join(os.tmpdir(), `seal-e2e-seed-${seedUser}-${Date.now()}`);
+      : path.join(process.cwd(), "seal-out", "e2e", `seed-${seedUser}-${Date.now()}`);
     log(`WARN: seed root not writable (${seedRoot}); using ${fallback}`);
     seedRoot = fallback;
   }
 
+  let exampleRootParent = exampleRootBase || tmpRoot || path.join(process.cwd(), "seal-out", "e2e", "workers");
+  let createdWorkerParent = false;
+  if (exampleRootParent) {
+    const exampleSrc = path.join(REPO_ROOT, "tools", "seal", "example");
+    if (exampleRootParent === exampleSrc || exampleRootParent.startsWith(`${exampleSrc}${path.sep}`)) {
+      const base = path.join(process.cwd(), "seal-out", "e2e");
+      exampleRootParent = path.join(base, "workers", runId);
+      fs.mkdirSync(exampleRootParent, { recursive: true });
+      createdWorkerParent = true;
+      log(`WARN: exampleRootParent inside example source; using ${exampleRootParent}`);
+    }
+  }
   let safeRootsEnv = env.SEAL_E2E_SAFE_ROOTS || "";
   if (cacheRoot) {
     safeRootsEnv = safeRootsEnv ? `${safeRootsEnv}:${cacheRoot}` : cacheRoot;
@@ -247,6 +258,12 @@ async function main() {
   }
   if (exampleRootBase) {
     safeRootsEnv = safeRootsEnv ? `${safeRootsEnv}:${exampleRootBase}` : exampleRootBase;
+  }
+  if (exampleRootParent) {
+    safeRootsEnv = safeRootsEnv ? `${safeRootsEnv}:${exampleRootParent}` : exampleRootParent;
+  }
+  if (seedRoot) {
+    safeRootsEnv = safeRootsEnv ? `${safeRootsEnv}:${seedRoot}` : seedRoot;
   }
 
   setupRunCleanup({
@@ -265,19 +282,6 @@ async function main() {
     lockPath,
     isParallelChild: isEnabled(env, "SEAL_E2E_PARALLEL_CHILD"),
   });
-
-  let exampleRootParent = exampleRootBase || tmpRoot || os.tmpdir();
-  let createdWorkerParent = false;
-  if (exampleRootParent) {
-    const exampleSrc = path.join(REPO_ROOT, "tools", "seal", "example");
-    if (exampleRootParent === exampleSrc || exampleRootParent.startsWith(`${exampleSrc}${path.sep}`)) {
-      const base = fs.existsSync("/tmp") ? "/tmp" : "/var/tmp";
-      exampleRootParent = path.join(base, "seal-e2e-workers", runId);
-      fs.mkdirSync(exampleRootParent, { recursive: true });
-      createdWorkerParent = true;
-      log(`WARN: exampleRootParent inside example source; using ${exampleRootParent}`);
-    }
-  }
 
   const cleanupWorkerParent = () => {
     if (!keepTmp && createdWorkerParent && exampleRootParent) {
@@ -392,6 +396,10 @@ async function main() {
     log("Preparing shared example seed...");
     const seedEnv = {
       ...env,
+      SEAL_E2E_TMP_ROOT: "",
+      TMPDIR: "",
+      TMP: "",
+      TEMP: "",
       SEAL_E2E_SETUP_ONLY: "1",
       SEAL_E2E_EXAMPLE_ROOT: seedRoot,
       SEAL_E2E_COPY_EXAMPLE: "1",
@@ -517,6 +525,10 @@ async function main() {
     log(`Group ${group}: ${testsList.join(",")} (root=${root})`);
     const childEnv = {
       ...env,
+      SEAL_E2E_TMP_ROOT: "",
+      TMPDIR: "",
+      TMP: "",
+      TEMP: "",
       SEAL_E2E_TESTS: testsList.join(","),
       SEAL_E2E_SKIP: env.SEAL_E2E_SKIP || "",
       SEAL_E2E_CACHE_DIR: cacheRoot,

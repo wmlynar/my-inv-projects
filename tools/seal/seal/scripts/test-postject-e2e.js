@@ -6,7 +6,7 @@ const os = require("os");
 const path = require("path");
 const { resolvePostjectBin } = require("../src/lib/postject");
 const { cmdCheck } = require("../src/commands/check");
-const { createLogger, stripAnsi } = require("./e2e-utils");
+const { createLogger, stripAnsi, resolveTmpRoot } = require("./e2e-utils");
 
 const { log, fail } = createLogger("postject-e2e");
 
@@ -18,7 +18,7 @@ if (!postjectBin) {
 log(`postject bin: ${postjectBin}`);
 
 async function main() {
-  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-postject-"));
+  const tmpRoot = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-postject-"));
   const srcDir = path.join(tmpRoot, "src");
   const cfgDir = path.join(tmpRoot, "seal-config", "configs");
   const targetDir = path.join(tmpRoot, "seal-config", "targets");

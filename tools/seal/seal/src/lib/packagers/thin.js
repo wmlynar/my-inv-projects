@@ -8,6 +8,7 @@ const { spawn, spawnSync } = require("child_process");
 
 const { spawnSyncSafe } = require("../spawn");
 const { ensureDir, fileExists } = require("../fsextra");
+const { resolveTmpBase } = require("../tmp");
 const { info, warn } = require("../ui");
 const { SEAL_OUT_DIR } = require("../paths");
 const { THIN_NATIVE_BOOTSTRAP_FILE } = require("../thinPaths");
@@ -1881,7 +1882,7 @@ function e2eDumpMemoryToFile(tokens, opts = {}) {
   const maxTotal = E2E_SELF_SCAN_MAX_BYTES > 0 ? E2E_SELF_SCAN_MAX_BYTES : (opts.maxTotal || defaultMax);
   const maxRegion = E2E_SELF_SCAN_REGION_MAX_BYTES > 0 ? E2E_SELF_SCAN_REGION_MAX_BYTES : (opts.maxRegion || 262144);
   if (!Number.isFinite(maxTotal) || maxTotal <= 0) return { skip: "dump disabled" };
-  const dumpPath = opts.dumpPath || path.join(os.tmpdir(), "seal-e2e-dump-" + Date.now() + "-" + Math.random().toString(16).slice(2) + ".bin");
+  const dumpPath = opts.dumpPath || path.join(resolveTmpBase(), "seal-e2e-dump-" + Date.now() + "-" + Math.random().toString(16).slice(2) + ".bin");
   let memfd = null;
   let outfd = null;
   const maxTokenLen = Math.max(...tokens.map((t) => t.len || 0));
@@ -2573,7 +2574,7 @@ function resolveDeferPaths() {
   const name = "." + hash.slice(0, 12);
   const baseDir = path.dirname(process.execPath || process.argv[0] || process.cwd());
   const primary = path.join(baseDir, ".cache", name);
-  const fallback = path.join(os.tmpdir(), name);
+  const fallback = path.join(resolveTmpBase(), name);
   return [primary, fallback];
 }
 
@@ -3385,9 +3386,10 @@ static int make_memfd(const char *name) {
 #endif
 #elif THIN_RUNTIME_STORE == THIN_RUNTIME_STORE_TMPFILE
   umask(077);
-  const char *tmpdir = getenv("TMPDIR");
-  if (!tmpdir || !*tmpdir) tmpdir = "/tmp";
-  if (access(tmpdir, W_OK | X_OK) != 0) tmpdir = "/tmp";
+  const char *tmpdir = getenv("SEAL_TMPDIR");
+  if (!tmpdir || !*tmpdir) tmpdir = getenv("TMPDIR");
+  if (!tmpdir || !*tmpdir) tmpdir = ".";
+  if (access(tmpdir, W_OK | X_OK) != 0) tmpdir = ".";
   char tmp[PATH_MAX + 64];
   int n = snprintf(tmp, sizeof(tmp), "%s/.seal-out-thin-%d-XXXXXX", tmpdir, getpid());
   if (n < 0 || n >= (int)sizeof(tmp)) {
@@ -4826,7 +4828,7 @@ function buildLauncher(
   }
 
   function probeCompilerFlag(flag) {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-cc-flag-"));
+    const tmpDir = fs.mkdtempSync(path.join(resolveTmpBase(), "seal-cc-flag-"));
     const srcPath = path.join(tmpDir, "flag-test.c");
     const outPath = path.join(tmpDir, "flag-test.o");
     fs.writeFileSync(srcPath, "int main(void){return 0;}\n", "utf-8");

@@ -174,6 +174,10 @@ function cleanupTmpDirs(state) {
   if (cleanupExample && exampleRoot && runRoot && exampleRoot.startsWith(`${runRoot}${path.sep}`)) {
     removeDirSafe(exampleRoot);
   }
+  if (cleanupExample && exampleRoot && !state.keepTmp) {
+    const diagRoot = path.join(exampleRoot, "seal-out", "diagnostics");
+    removeDirSafe(diagRoot);
+  }
 }
 
 function registerCleanupHandlers(state) {

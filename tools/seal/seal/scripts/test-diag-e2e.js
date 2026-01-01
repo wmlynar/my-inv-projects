@@ -5,7 +5,7 @@ const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
-const { resolveExampleRoot, createLogger } = require("./e2e-utils");
+const { resolveExampleRoot, createLogger, resolveTmpRoot } = require("./e2e-utils");
 
 const { log, fail } = createLogger("diag-e2e");
 const EXAMPLE_ROOT = resolveExampleRoot();
@@ -46,6 +46,9 @@ function main() {
   for (const file of files) {
     const filePath = path.join(diagRoot, file);
     assert.ok(fs.existsSync(filePath), `Missing diag file: ${filePath}`);
+  }
+  if (process.env.SEAL_E2E_KEEP_TMP !== "1" && process.env.SEAL_E2E_KEEP_DIAG !== "1") {
+    fs.rmSync(diagRoot, { recursive: true, force: true });
   }
   log("OK: diag-e2e");
 }

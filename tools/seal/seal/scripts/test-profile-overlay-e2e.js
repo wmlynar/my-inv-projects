@@ -8,7 +8,7 @@ const path = require("path");
 
 const { buildRelease } = require("../src/lib/build");
 const { loadProjectConfig, loadTargetConfig, resolveConfigName } = require("../src/lib/project");
-const { resolveExampleRoot, createLogger, spawnSyncWithTimeout } = require("./e2e-utils");
+const { resolveExampleRoot, createLogger, spawnSyncWithTimeout, resolveTmpRoot } = require("./e2e-utils");
 
 const EXAMPLE_ROOT = resolveExampleRoot();
 const SEAL_BIN = path.resolve(__dirname, "..", "bin", "seal.js");
@@ -55,7 +55,7 @@ async function main() {
   const projectCfg = loadProjectConfig(EXAMPLE_ROOT, { profileOverlay: "fast" });
   const targetCfg = loadTargetConfig(EXAMPLE_ROOT, "local").cfg;
   const configName = resolveConfigName(targetCfg, "local");
-  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-profile-overlay-"));
+  const outRoot = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-profile-overlay-"));
   const outDir = path.join(outRoot, "seal-out");
   try {
     const res = await buildRelease({

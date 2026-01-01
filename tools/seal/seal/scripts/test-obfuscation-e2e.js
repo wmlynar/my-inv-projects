@@ -18,8 +18,7 @@ const {
   resolveExampleRoot,
   createLogger,
   withSealedBinary,
-  readReadyPayload,
-} = require("./e2e-utils");
+  readReadyPayload, resolveTmpRoot } = require("./e2e-utils");
 
 const { buildRelease } = require("../src/lib/build");
 const { loadProjectConfig, loadTargetConfig, resolveConfigName } = require("../src/lib/project");
@@ -204,7 +203,7 @@ async function buildProfile({ profile, passes, outRoot, ctx, backendTerser, fron
 async function testProfile(test, ctx) {
   const { profile, passes, run, backendTerser, frontendObfuscation } = test;
   const label = test.label || profile;
-  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), `seal-obf-${label}-`));
+  const outRoot = fs.mkdtempSync(path.join(resolveTmpRoot(), `seal-obf-${label}-`));
   try {
     const { res, timing } = await buildProfile({
       profile,

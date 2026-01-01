@@ -3,13 +3,11 @@
 
 const fs = require("fs");
 const path = require("path");
-const {
-  spawnSyncWithTimeout,
+const { spawnSyncWithTimeout,
   resolveExampleRoot,
   resolveE2ERunTimeout,
   stripAnsi,
-  createLogger,
-} = require("./e2e-utils");
+  createLogger, resolveTmpRoot } = require("./e2e-utils");
 const { removeDirSafe } = require("./e2e-runner-fs");
 const { getDirSizeBytes } = require("./e2e-runner-utils");
 
@@ -34,7 +32,7 @@ function main() {
     ? path.join(outerRunRoot, "logs", runLabel)
     : path.join(e2eRoot, "logs");
   const innerRunId = `cleanup-${process.pid}`;
-  const tmpBase = fs.existsSync("/tmp") ? "/tmp" : "/var/tmp";
+const tmpBase = resolveTmpRoot();
   const workerRoot = path.join(tmpBase, "seal-e2e-workers", innerRunId);
   const sandboxRoot = fs.mkdtempSync(path.join(tmpBase, `seal-e2e-cleanup-${process.pid}-`));
   const sandboxExample = path.join(sandboxRoot, "example");

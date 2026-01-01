@@ -528,7 +528,7 @@ function ensureHelper(ctx, name, src) {
   if (!cc) {
     throw new Error("Missing C compiler (cc/gcc)");
   }
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `seal-ad-${name}-`));
+  const dir = fs.mkdtempSync(path.join(resolveTmpRoot(), `seal-ad-${name}-`));
   const srcPath = path.join(dir, `${name}.c`);
   const outPath = path.join(dir, name);
   try {
@@ -554,7 +554,7 @@ function ensureSharedHelper(ctx, name, src, extraArgs = []) {
   if (!cc) {
     throw new Error("Missing C compiler (cc/gcc)");
   }
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `seal-ad-${name}-`));
+  const dir = fs.mkdtempSync(path.join(resolveTmpRoot(), `seal-ad-${name}-`));
   const srcPath = path.join(dir, `${name}.c`);
   const outPath = path.join(dir, `${name}.so`);
   try {
@@ -2381,7 +2381,7 @@ function runExternalDumpScan(pid, tokenBuffers) {
   if (!cmd) return { skip: "dump cmd not configured" };
   if (!hasCommand(cmd)) return { skip: `dump cmd missing: ${cmd}` };
   const rawArgs = process.env.SEAL_E2E_DUMP_ARGS || "";
-  const outPath = process.env.SEAL_E2E_DUMP_OUT || path.join(os.tmpdir(), `seal-dump-${pid || "x"}-${Date.now()}.bin`);
+  const outPath = process.env.SEAL_E2E_DUMP_OUT || path.join(resolveTmpRoot(), `seal-dump-${pid || "x"}-${Date.now()}.bin`);
   const args = parseArgsEnv(rawArgs, "SEAL_E2E_DUMP_ARGS", { empty: [] }).map((arg) =>
     arg.replace(/\{pid\}/g, String(pid || "")).replace(/\{out\}/g, outPath)
   );
@@ -2413,7 +2413,7 @@ function runExternalDumpScan(pid, tokenBuffers) {
 }
 
 function runGcoreDumpScan(pid, tokenBuffers) {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-gcore-dump-"));
+  const tmpDir = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-gcore-dump-"));
   const prefix = path.join(tmpDir, "seal-core");
   let hit = "";
   try {
@@ -2454,7 +2454,7 @@ function runDumpScan(pid, tokenBuffers) {
 function runAvmlDumpScan(pid, tokenBuffers) {
   if (process.env.SEAL_E2E_MEMDUMP !== "1") return { skip: "memdump disabled" };
   if (!hasCommand("avml")) return { skip: "avml missing" };
-  const outPath = path.join(os.tmpdir(), `seal-avml-${pid || "x"}-${Date.now()}.raw`);
+  const outPath = path.join(resolveTmpRoot(), `seal-avml-${pid || "x"}-${Date.now()}.raw`);
   const timeoutMs = resolveE2ETimeout("SEAL_E2E_MEMDUMP_TIMEOUT_MS", 120000);
   let hit = "";
   try {
@@ -2531,7 +2531,7 @@ function collectRecentFiles(rootDir, sinceMs, opts = {}) {
 function checkPerfRecordBlocked(pid) {
   if (!hasCommand("perf")) return { skip: "perf missing" };
   const strict = process.env.SEAL_E2E_STRICT_PERF === "1";
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-perf-"));
+  const tmpDir = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-perf-"));
   const dataPath = path.join(tmpDir, "perf.data");
   try {
     const res = runCmd("perf", ["record", "-p", String(pid), "-o", dataPath, "--", "sleep", "1"], 12000);
@@ -2559,7 +2559,7 @@ function checkPerfRecordBlocked(pid) {
 function checkPerfRecordAllowed(pid) {
   if (!hasCommand("perf")) return { skip: "perf missing" };
   const strict = process.env.SEAL_E2E_STRICT_TOOL_BASELINE === "1";
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-perf-"));
+  const tmpDir = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-perf-"));
   const dataPath = path.join(tmpDir, "perf.data");
   try {
     const res = runCmd("perf", ["record", "-p", String(pid), "-o", dataPath, "--", "sleep", "1"], 12000);
@@ -2940,7 +2940,7 @@ function checkStraceAttachBlockedPid(pid) {
   if (!hasCommand("strace")) return { skip: "strace not installed" };
   const isRoot = isRootUser();
   const strict = process.env.SEAL_E2E_STRICT_PTRACE === "1";
-  const logPath = path.join(os.tmpdir(), `seal-strace-attach-${pid}-${Date.now()}.log`);
+  const logPath = path.join(resolveTmpRoot(), `seal-strace-attach-${pid}-${Date.now()}.log`);
   const res = runStraceAttach(pid, logPath, 5000);
   if (res.error && res.error.code === "ETIMEDOUT") {
     if (isRoot && !strict) {
@@ -2975,7 +2975,7 @@ function checkLtraceAttachBlockedPid(pid) {
   if (!hasCommand("ltrace")) return { skip: "ltrace not installed" };
   const isRoot = isRootUser();
   const strict = process.env.SEAL_E2E_STRICT_PTRACE === "1";
-  const logPath = path.join(os.tmpdir(), `seal-ltrace-attach-${pid}-${Date.now()}.log`);
+  const logPath = path.join(resolveTmpRoot(), `seal-ltrace-attach-${pid}-${Date.now()}.log`);
   const res = runLtraceAttach(pid, logPath, 5000);
   if (res.error && res.error.code === "ETIMEDOUT") {
     if (isRoot && !strict) {
@@ -3061,7 +3061,7 @@ function checkLttngAttachBlocked(pid) {
   if (!hasCommand("lttng")) return { skip: "lttng missing" };
   const strict = process.env.SEAL_E2E_STRICT_LTTNG === "1";
   const sess = `seal-e2e-${pid}-${Date.now()}`;
-  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-lttng-"));
+  const outDir = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-lttng-"));
   try {
     let res = runCmd("lttng", ["create", sess, "--output", outDir], 8000);
     let out = `${res.stdout || ""}${res.stderr || ""}`.trim();
@@ -3093,7 +3093,7 @@ function checkLttngAttachAllowed(pid) {
   if (!hasCommand("lttng")) return { skip: "lttng missing" };
   const strict = process.env.SEAL_E2E_STRICT_TOOL_BASELINE === "1";
   const sess = `seal-e2e-${pid}-${Date.now()}`;
-  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-lttng-"));
+  const outDir = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-lttng-"));
   try {
     let res = runCmd("lttng", ["create", sess, "--output", outDir], 8000);
     let out = `${res.stdout || ""}${res.stderr || ""}`.trim();
@@ -3225,7 +3225,7 @@ function checkPinAttachBlocked(pid) {
 function checkTraceCmdBlocked(pid) {
   if (!hasCommand("trace-cmd")) return { skip: "trace-cmd missing" };
   const strict = process.env.SEAL_E2E_STRICT_TRACE_CMD === "1";
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-trace-cmd-"));
+  const tmpDir = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-trace-cmd-"));
   const outPath = path.join(tmpDir, "trace.dat");
   try {
     const res = runCmd(
@@ -3353,7 +3353,7 @@ function checkAuditctlBlocked(pid) {
 function checkCriuDumpBlocked(pid) {
   if (!hasCommand("criu")) return { skip: "criu missing" };
   const strict = process.env.SEAL_E2E_STRICT_CRIU === "1";
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-criu-"));
+  const tmpDir = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-criu-"));
   const logPath = path.join(tmpDir, "dump.log");
   try {
     const res = runCmd(
@@ -3739,7 +3739,7 @@ function runGcore(pid, outputPrefix) {
 }
 
 function checkGcoreBlocked(pid) {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-gcore-"));
+  const tmpDir = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-gcore-"));
   const prefix = path.join(tmpDir, "seal-core");
   const isRoot = isRootUser();
   const strict = process.env.SEAL_E2E_STRICT_PTRACE === "1";
@@ -4342,8 +4342,7 @@ async function runReleaseLeakChecks({ releaseDir, outDir, runTimeoutMs, helpers 
   const runUserDir = uid !== null ? path.join("/run/user", String(uid)) : "";
   const tmpRoots = Array.from(new Set([
     TMP_ROOT,
-    os.tmpdir(),
-    "/var/tmp",
+    resolveTmpRoot(),
     "/dev/shm",
     runUserDir,
     path.join(os.homedir(), ".cache"),
@@ -4558,7 +4557,7 @@ async function runReleaseBootstrapStageScan({ releaseDir, runTimeoutMs, stage, p
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
 
-  const markerPath = path.join(os.tmpdir(), `seal-bootstrap-${stage}-${Date.now()}-${Math.random().toString(16).slice(2)}.marker`);
+  const markerPath = path.join(resolveTmpRoot(), `seal-bootstrap-${stage}-${Date.now()}-${Math.random().toString(16).slice(2)}.marker`);
   try { fs.rmSync(markerPath, { force: true }); } catch {}
   const resolvedPauseMs = Number.isFinite(pauseMs) ? pauseMs : Number(process.env.SEAL_E2E_BOOTSTRAP_PAUSE_MS || "6000");
 
@@ -5149,8 +5148,8 @@ async function runReleaseBootstrapMemoryChecks({
 async function runReleaseDumpSelftest({ releaseDir, runTimeoutMs }) {
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
-  const reportPath = path.join(os.tmpdir(), `seal-report-${Date.now()}.json`);
-  const heapPath = path.join(os.tmpdir(), `seal-heap-${Date.now()}.heapsnapshot`);
+  const reportPath = path.join(resolveTmpRoot(), `seal-report-${Date.now()}.json`);
+  const heapPath = path.join(resolveTmpRoot(), `seal-heap-${Date.now()}.heapsnapshot`);
   try { fs.rmSync(reportPath, { force: true }); } catch {}
   try { fs.rmSync(heapPath, { force: true }); } catch {}
   try {
@@ -6223,7 +6222,7 @@ async function runReleaseStraceCapture({ releaseDir, runTimeoutMs, env }) {
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
 
-  const logPath = path.join(os.tmpdir(), `seal-strace-run-${Date.now()}.log`);
+  const logPath = path.join(resolveTmpRoot(), `seal-strace-run-${Date.now()}.log`);
   const baseEnv = Object.assign({}, process.env, env || {});
   const childEnv = applyReadyFileEnv(baseEnv, readyFile);
   const child = spawn(
@@ -6607,7 +6606,7 @@ async function main() {
   }
 
   const helperCtx = { helpers: {}, helperDirs: [] };
-  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-thin-ad-"));
+  const outRoot = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-thin-ad-"));
   let failures = 0;
   try {
     const helpers = {
@@ -6840,7 +6839,7 @@ async function main() {
           launcherObfuscation: false,
         })
       );
-      const markerDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-dynlink-"));
+      const markerDir = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-dynlink-"));
       try {
         const preloadMarker = path.join(markerDir, "preload.marker");
         const auditMarker = path.join(markerDir, "audit.marker");
@@ -7364,7 +7363,7 @@ async function main() {
 
       log("Testing payload tamper (byte flip)...");
       await withTimeout("payload tamper", testTimeoutMs, async () => {
-        const tamperRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-tamper-pl-"));
+        const tamperRoot = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-tamper-pl-"));
         try {
           const res = await withTimeout("buildRelease(tamper payload)", buildTimeoutMs, () =>
             buildThinSplit({ outRoot: tamperRoot, integrity: { enabled: false }, launcherObfuscation: false })
@@ -7383,7 +7382,7 @@ async function main() {
 
       log("Testing runtime tamper (byte flip)...");
       await withTimeout("runtime tamper", testTimeoutMs, async () => {
-        const tamperRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-tamper-rt-"));
+        const tamperRoot = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-tamper-rt-"));
         try {
           const res = await withTimeout("buildRelease(tamper runtime)", buildTimeoutMs, () =>
             buildThinSplit({ outRoot: tamperRoot, integrity: { enabled: false }, launcherObfuscation: false })
@@ -7402,7 +7401,7 @@ async function main() {
 
       log("Testing payload truncate (footer missing)...");
       await withTimeout("payload truncate", testTimeoutMs, async () => {
-        const tamperRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-tamper-pl-trunc-"));
+        const tamperRoot = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-tamper-pl-trunc-"));
         try {
           const res = await withTimeout("buildRelease(tamper truncate)", buildTimeoutMs, () =>
             buildThinSplit({ outRoot: tamperRoot, integrity: { enabled: false }, launcherObfuscation: false })
@@ -7422,8 +7421,8 @@ async function main() {
 
       log("Testing payload swap (appBind mismatch)...");
       await withTimeout("payload swap", testTimeoutMs, async () => {
-        const rootA = fs.mkdtempSync(path.join(os.tmpdir(), "seal-tamper-swap-a-"));
-        const rootB = fs.mkdtempSync(path.join(os.tmpdir(), "seal-tamper-swap-b-"));
+        const rootA = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-tamper-swap-a-"));
+        const rootB = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-tamper-swap-b-"));
         try {
           const resA = await withTimeout("buildRelease(swap A)", buildTimeoutMs, () =>
             buildThinSplit({
@@ -7456,8 +7455,8 @@ async function main() {
 
       log("Testing runtime swap (appBind mismatch)...");
       await withTimeout("runtime swap", testTimeoutMs, async () => {
-        const rootA = fs.mkdtempSync(path.join(os.tmpdir(), "seal-tamper-swap-rt-a-"));
-        const rootB = fs.mkdtempSync(path.join(os.tmpdir(), "seal-tamper-swap-rt-b-"));
+        const rootA = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-tamper-swap-rt-a-"));
+        const rootB = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-tamper-swap-rt-b-"));
         try {
           const resA = await withTimeout("buildRelease(swap rt A)", buildTimeoutMs, () =>
             buildThinSplit({
@@ -7490,7 +7489,7 @@ async function main() {
 
       log("Testing runtime symlink tamper...");
       await withTimeout("runtime symlink", testTimeoutMs, async () => {
-        const tamperRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-tamper-rt-symlink-"));
+        const tamperRoot = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-tamper-rt-symlink-"));
         try {
           const res = await withTimeout("buildRelease(rt symlink)", buildTimeoutMs, () =>
             buildThinSplit({ outRoot: tamperRoot, integrity: { enabled: false }, launcherObfuscation: false })
@@ -7512,7 +7511,7 @@ async function main() {
 
       log("Testing payload symlink tamper...");
       await withTimeout("payload symlink", testTimeoutMs, async () => {
-        const tamperRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-tamper-pl-symlink-"));
+        const tamperRoot = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-tamper-pl-symlink-"));
         try {
           const res = await withTimeout("buildRelease(pl symlink)", buildTimeoutMs, () =>
             buildThinSplit({ outRoot: tamperRoot, integrity: { enabled: false }, launcherObfuscation: false })
@@ -7534,7 +7533,7 @@ async function main() {
 
       log("Testing runtime hardlink tamper...");
       await withTimeout("runtime hardlink", testTimeoutMs, async () => {
-        const tamperRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-tamper-rt-hardlink-"));
+        const tamperRoot = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-tamper-rt-hardlink-"));
         try {
           const res = await withTimeout("buildRelease(rt hardlink)", buildTimeoutMs, () =>
             buildThinSplit({ outRoot: tamperRoot, integrity: { enabled: false }, launcherObfuscation: false })
@@ -7556,7 +7555,7 @@ async function main() {
 
       log("Testing payload hardlink tamper...");
       await withTimeout("payload hardlink", testTimeoutMs, async () => {
-        const tamperRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-tamper-pl-hardlink-"));
+        const tamperRoot = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-tamper-pl-hardlink-"));
         try {
           const res = await withTimeout("buildRelease(pl hardlink)", buildTimeoutMs, () =>
             buildThinSplit({ outRoot: tamperRoot, integrity: { enabled: false }, launcherObfuscation: false })
@@ -7578,7 +7577,7 @@ async function main() {
 
       log("Testing integrity sidecar missing...");
       await withTimeout("integrity sidecar missing", testTimeoutMs, async () => {
-        const tamperRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-tamper-ih-miss-"));
+        const tamperRoot = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-tamper-ih-miss-"));
         try {
           const res = await withTimeout("buildRelease(ih missing)", buildTimeoutMs, () =>
             buildThinSplit({
@@ -7602,7 +7601,7 @@ async function main() {
 
       log("Testing integrity sidecar corrupt...");
       await withTimeout("integrity sidecar corrupt", testTimeoutMs, async () => {
-        const tamperRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-tamper-ih-corrupt-"));
+        const tamperRoot = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-tamper-ih-corrupt-"));
         try {
           const res = await withTimeout("buildRelease(ih corrupt)", buildTimeoutMs, () =>
             buildThinSplit({
@@ -7691,7 +7690,7 @@ async function main() {
       await withTimeout("maps deny baseline ok", testTimeoutMs, () =>
         runReleaseOk({ releaseDir: resMaps.releaseDir, runTimeoutMs })
       );
-      const injectDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-maps-inject-"));
+      const injectDir = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-maps-inject-"));
       const injectLib = path.join(injectDir, "frida-hook.so");
       let mapsInjectOk = false;
       try {
@@ -7728,7 +7727,7 @@ async function main() {
 
       log("Testing integrity inline + ELF packer (expect build fail)...");
       await withTimeout("integrity inline conflict", buildTimeoutMs, async () => {
-        const conflictRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-integrity-inline-"));
+        const conflictRoot = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-integrity-inline-"));
         try {
           let threw = false;
           try {
@@ -7792,8 +7791,8 @@ async function main() {
       log("OK: TracerPid thread scan triggers failure");
 
       log("Testing appBind mismatch (launcher swap)...");
-      const bindRootA = fs.mkdtempSync(path.join(os.tmpdir(), "seal-thin-bind-a-"));
-      const bindRootB = fs.mkdtempSync(path.join(os.tmpdir(), "seal-thin-bind-b-"));
+      const bindRootA = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-thin-bind-a-"));
+      const bindRootB = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-thin-bind-b-"));
       try {
         const resBindA = await withTimeout("buildRelease(appBind A)", buildTimeoutMs, () =>
           buildThinSplit({

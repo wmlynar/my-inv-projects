@@ -9,7 +9,7 @@ usage() {
 Usage: e2e.sh [--local|--docker]
 
 Defaults:
-  - Uses tools/seal/example/seal-out/e2e for E2E root and cache.
+  - Uses seal-out/e2e for E2E root and cache.
   - Set SEAL_E2E_ROOT or SEAL_E2E_CACHE_DIR to override.
   - Set SEAL_E2E_RUN_MODE=single|parallel to choose runner (default: single).
 
@@ -54,7 +54,7 @@ elif [ -n "${1:-}" ]; then
   exit 1
 fi
 
-E2E_ROOT_DEFAULT="$REPO_ROOT/tools/seal/example/seal-out/e2e"
+E2E_ROOT_DEFAULT="$REPO_ROOT/seal-out/e2e"
 export SEAL_E2E_ROOT="${SEAL_E2E_ROOT:-$E2E_ROOT_DEFAULT}"
 CACHE_ROOT="${SEAL_E2E_CACHE_DIR:-$SEAL_E2E_ROOT/cache}"
 export SEAL_E2E_CACHE_DIR="$CACHE_ROOT"

@@ -8,10 +8,9 @@ const { isEnabled } = require("./e2e-runner-utils");
 
 function buildSafeRoots(env, extraRoots = []) {
   const roots = new Set();
-  const osTmp = os.tmpdir();
+  const osTmp = env.SEAL_E2E_TMP_ROOT || env.SEAL_TMPDIR || "";
   if (osTmp) roots.add(osTmp);
-  roots.add("/tmp");
-  roots.add("/var/tmp");
+  // No default /tmp or /var/tmp usage.
   roots.add("/dev/shm");
   const extras = [
     env.TMPDIR,
@@ -59,19 +58,12 @@ function prepareExampleWorkspace(options) {
   const repoRoot = options.repoRoot || "";
   const exampleSrc = path.join(repoRoot, "tools", "seal", "example");
   let exampleRootBase = options.exampleRootBase || "";
-  const hardTmp = "/tmp";
-  let fallbackExampleRoot = env.SEAL_E2E_TMP_ROOT || os.tmpdir();
+  let fallbackExampleRoot = env.SEAL_E2E_TMP_ROOT || env.SEAL_TMPDIR || path.join(process.cwd(), "seal-out", "e2e", "tmp");
   if (fallbackExampleRoot && (fallbackExampleRoot === exampleSrc || fallbackExampleRoot.startsWith(`${exampleSrc}${path.sep}`))) {
     if (typeof log === "function") {
-      log(`WARN: SEAL_E2E_TMP_ROOT is inside example source (${fallbackExampleRoot}); using ${hardTmp}.`);
+      log(`WARN: SEAL_E2E_TMP_ROOT is inside example source (${fallbackExampleRoot}); using project fallback.`);
     }
-    fallbackExampleRoot = hardTmp;
-  }
-  if (fallbackExampleRoot && (fallbackExampleRoot === exampleSrc || fallbackExampleRoot.startsWith(`${exampleSrc}${path.sep}`))) {
-    if (typeof log === "function") {
-      log(`WARN: tmp fallback is still inside example source (${fallbackExampleRoot}); using /var/tmp.`);
-    }
-    fallbackExampleRoot = "/var/tmp";
+    fallbackExampleRoot = path.join(process.cwd(), "seal-out", "e2e", "tmp");
   }
   if (exampleRootBase && (exampleRootBase === exampleSrc || exampleRootBase.startsWith(`${exampleSrc}${path.sep}`))) {
     if (typeof log === "function") {

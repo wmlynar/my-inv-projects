@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const { resolveTmpBase } = require("../lib/tmp");
 
 const { findProjectRoot } = require("../lib/paths");
 const { getSealPaths, loadProjectConfig, loadTargetConfig, resolveTargetName, resolveConfigName, getConfigFile } = require("../lib/project");
@@ -64,7 +65,8 @@ function resolveTmpDir(targetCfg) {
     ? targetCfg.preflight.tmpDir
     : null;
   const tmpDir = cfg !== undefined && cfg !== null ? String(cfg).trim() : "";
-  return tmpDir || "/tmp";
+  if (tmpDir) return tmpDir;
+  return resolveTmpBase();
 }
 
 function resolvePreflightTools(targetCfg) {
@@ -373,7 +375,7 @@ async function cmdCheck(cwd, targetArg, opts) {
   });
   checkLocalResources({
     pathLabel: "tmp",
-    pathValue: os.tmpdir(),
+    pathValue: resolveTmpBase(),
     minFreeMb: localTmpMinFreeMb,
     minFreeInodes: localTmpMinFreeInodes,
     errors,
@@ -634,7 +636,7 @@ async function cmdCheck(cwd, targetArg, opts) {
 
       if (cc) {
         const testSrc = "#include <zstd.h>\nint main(void){return 0;}\n";
-        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-check-"));
+        const tmpDir = fs.mkdtempSync(path.join(resolveTmpBase(), "seal-check-"));
         const srcPath = path.join(tmpDir, "zstd-check.c");
         fs.writeFileSync(srcPath, testSrc, "utf-8");
         const args = ["-x", "c", srcPath, "-o", "/dev/null"];

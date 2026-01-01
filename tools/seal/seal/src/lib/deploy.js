@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const { resolveTmpBase } = require("./tmp");
 const http = require("http");
 const https = require("https");
 const crypto = require("crypto");
@@ -147,7 +148,9 @@ function serviceFilePath(targetCfg) {
 }
 
 function localInstallLayout(targetCfg) {
-  const installDir = expandHome(targetCfg.installDir || path.join(os.tmpdir(), "seal-sandbox", targetCfg.appName || "app"));
+  const installDir = expandHome(
+    targetCfg.installDir || path.join(resolveTmpBase(), "seal-sandbox", targetCfg.appName || "app")
+  );
   const releasesDir = path.join(installDir, "releases");
   const sharedDir = path.join(installDir, "shared");
   const currentFile = path.join(installDir, "current.buildId");

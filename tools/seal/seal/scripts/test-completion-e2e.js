@@ -6,7 +6,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { spawnSync } = require("child_process");
-const { hasCommand, createLogger } = require("./e2e-utils");
+const { hasCommand, createLogger, resolveTmpRoot } = require("./e2e-utils");
 
 const { log, fail, skip } = createLogger("completion-e2e");
 
@@ -30,7 +30,7 @@ function writeFile(filePath, content) {
 }
 
 function ensureProjectRoot() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "seal-completion-e2e-"));
+  const root = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-completion-e2e-"));
   writeFile(path.join(root, "seal.json5"), "{ appName: \"app\" }\n");
   writeFile(path.join(root, "seal-config", "targets", "alpha.json5"), "{ host: \"127.0.0.1\" }\n");
   writeFile(path.join(root, "seal-config", "targets", "beta.json5"), "{ host: \"127.0.0.2\" }\n");

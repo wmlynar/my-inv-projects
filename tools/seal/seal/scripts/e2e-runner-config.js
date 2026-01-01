@@ -10,7 +10,7 @@ function resolveE2ERoot(options) {
   if (env.SEAL_E2E_ROOT) return env.SEAL_E2E_ROOT;
   const repoRoot = options.repoRoot || "";
   if (!repoRoot) return "";
-  return path.join(repoRoot, "tools", "seal", "example", "seal-out", "e2e");
+  return path.join(repoRoot, "seal-out", "e2e");
 }
 
 function loadE2EConfig(env, options) {

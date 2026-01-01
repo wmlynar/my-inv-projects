@@ -10,6 +10,10 @@ const { spawn, spawnSync } = require("child_process");
 const SKIP_CODE = 77;
 const DEFAULT_SPAWN_TIMEOUT_MS = 15000;
 
+function ensureDir(dirPath) {
+  fs.mkdirSync(dirPath, { recursive: true });
+}
+
 function resolveCommand(cmd) {
   if (!cmd) return null;
   const str = String(cmd);
@@ -61,9 +65,17 @@ function resolveE2ETimeoutScale() {
 }
 
 function resolveTmpRoot() {
-  const envRoot = process.env.SEAL_E2E_TMP_ROOT || process.env.TMPDIR || process.env.TMP || process.env.TEMP;
-  if (envRoot) return envRoot;
-  return os.tmpdir();
+  const envRoot = process.env.SEAL_TMPDIR || process.env.SEAL_E2E_TMP_ROOT || process.env.TMPDIR || process.env.TMP || process.env.TEMP;
+  if (envRoot) {
+    const resolved = path.resolve(envRoot);
+    if (!resolved.startsWith("/tmp") && !resolved.startsWith("/var/tmp")) {
+      ensureDir(resolved);
+      return resolved;
+    }
+  }
+  const fallback = path.join(process.cwd(), "seal-out", "e2e", "tmp");
+  ensureDir(fallback);
+  return fallback;
 }
 
 function resolveE2ETimeout(envKey, defaultMs) {
@@ -87,7 +99,7 @@ function makeReadyFile(label) {
     .toLowerCase()
     .replace(/[^a-z0-9_-]+/g, "");
   const name = `${safeLabel}-ready-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.json`;
-  return path.join(os.tmpdir(), name);
+  return path.join(resolveTmpRoot(), name);
 }
 
 function applyReadyFileEnv(env, readyFile) {

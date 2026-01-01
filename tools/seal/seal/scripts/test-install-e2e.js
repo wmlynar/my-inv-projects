@@ -6,7 +6,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { spawnSync } = require("child_process");
-const { createLogger } = require("./e2e-utils");
+const { createLogger, resolveTmpRoot } = require("./e2e-utils");
 
 const { log, fail, skip } = createLogger("install-e2e");
 
@@ -59,7 +59,7 @@ function run() {
     throw new Error(`install.sh not found: ${installScript}`);
   }
 
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "seal-install-e2e-"));
+  const home = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-install-e2e-"));
   const keepHome = process.env.SEAL_INSTALL_E2E_KEEP === "1";
   try {
     const env = { ...process.env };

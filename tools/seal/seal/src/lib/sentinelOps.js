@@ -2,6 +2,7 @@
 
 const fs = require("fs");
 const os = require("os");
+const { resolveTmpBase } = require("./tmp");
 const path = require("path");
 const crypto = require("crypto");
 
@@ -21,7 +22,7 @@ const { buildFingerprintHash, resolveAutoLevel, normalizeCpuIdSource } = require
 const FLAG_REQUIRE_XATTR = 0x0001;
 const FLAG_L4_INCLUDE_PUID = 0x0002;
 const FLAG_INCLUDE_CPUID = 0x0004;
-const TMPDIR_EXPR = "${TMPDIR:-/tmp}";
+const TMPDIR_EXPR = "${SEAL_TMPDIR:-${TMPDIR:-$PWD}}";
 
 function shQuote(value) {
   const str = String(value);
@@ -72,6 +73,16 @@ function resolveInstallDir(targetCfg) {
   if (targetCfg && targetCfg.installDir) return targetCfg.installDir;
   const appName = targetCfg && (targetCfg.appName || targetCfg.serviceName) ? (targetCfg.appName || targetCfg.serviceName) : "app";
   return `/home/admin/apps/${appName}`;
+}
+
+function resolveRemoteTmpDir(targetCfg) {
+  const cfg = targetCfg && targetCfg.preflight && typeof targetCfg.preflight === "object"
+    ? targetCfg.preflight.tmpDir
+    : null;
+  const tmpDir = cfg !== undefined && cfg !== null ? String(cfg).trim() : "";
+  if (tmpDir) return tmpDir;
+  const installDir = targetCfg && targetCfg.installDir ? String(targetCfg.installDir) : "";
+  return installDir ? `${installDir}/.seal-tmp` : ".seal-tmp";
 }
 
 function resolveLauncherPath(targetCfg) {
@@ -245,7 +256,7 @@ fi
 
 TMPDIR_SAFE="${TMPDIR_EXPR}"
 if [ ! -d "$TMPDIR_SAFE" ] || [ ! -w "$TMPDIR_SAFE" ] || [ ! -x "$TMPDIR_SAFE" ]; then
-  TMPDIR_SAFE="/tmp"
+  TMPDIR_SAFE="$PWD"
 fi
 TMP="$(mktemp -d "$TMPDIR_SAFE/.seal-cpuid-XXXXXX")"
 cleanup() { rm -rf "$TMP"; }
@@ -692,13 +703,13 @@ function installSentinelSsh({ targetCfg, sentinelCfg, force, insecure, skipVerif
   const expiresAtSec = resolveExpiresAtSec({ sentinelCfg, nowSec });
   const blob = packBlob({ level, flags, installId, fpHash, expiresAtSec }, sentinelCfg.anchor);
 
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-"));
+  const tmpDir = fs.mkdtempSync(path.join(resolveTmpBase(), "seal-sentinel-"));
   const tmpLocal = path.join(tmpDir, "blob");
   fs.writeFileSync(tmpLocal, blob, { mode: 0o600 });
 
   const remoteTag = String(targetCfg.serviceName || targetCfg.appName || "app").replace(/[^a-zA-Z0-9_.-]/g, "_");
   const tmpSuffix = crypto.randomBytes(4).toString("hex");
-  const tmpRemote = `/tmp/.${remoteTag}-s-${Date.now()}-${tmpSuffix}`;
+  const tmpRemote = `${resolveRemoteTmpDir(targetCfg)}/.${remoteTag}-s-${Date.now()}-${tmpSuffix}`;
   const up = scpToTarget(targetCfg, { user, host, localPath: tmpLocal, remotePath: tmpRemote });
   fs.rmSync(tmpDir, { recursive: true, force: true });
   if (!up.ok) throw new Error(`sentinel scp failed (status=${up.status})${formatSshFailure(up)}`);
@@ -881,7 +892,7 @@ echo "NOW_EPOCH=$(date +%s)"
     throw new Error(`sentinel verify failed (status=${res.status})${formatSshFailure(res) || (out.trim() ? `: ${out.trim()}` : "")}`);
   }
 
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-sentinel-"));
+  const tmpDir = fs.mkdtempSync(path.join(resolveTmpBase(), "seal-sentinel-"));
   const tmpLocal = path.join(tmpDir, "blob");
   const get = scpFromTarget(targetCfg, { user, host, remotePath: file, localPath: tmpLocal });
   if (!get.ok) {
@@ -1187,7 +1198,7 @@ XATTR_NOTE=""
 XATTR_SUDO=0
 TMPDIR_SAFE="${TMPDIR_EXPR}"
 if [ ! -d "$TMPDIR_SAFE" ] || [ ! -w "$TMPDIR_SAFE" ] || [ ! -x "$TMPDIR_SAFE" ]; then
-  TMPDIR_SAFE="/tmp"
+  TMPDIR_SAFE="$PWD"
 fi
 if [ -n "$BASE_DIR" ] && [ -d "$BASE_DIR" ]; then
   if [ -w "$BASE_DIR" ] && [ -x "$BASE_DIR" ]; then
@@ -1257,7 +1268,7 @@ elif command -v setfattr >/dev/null 2>&1 && command -v getfattr >/dev/null 2>&1;
   if [ "$XATTR_SUDO" = "1" ]; then
     TMPDIR_SAFE="${TMPDIR_EXPR}"
     if [ ! -d "$TMPDIR_SAFE" ] || [ ! -w "$TMPDIR_SAFE" ] || [ ! -x "$TMPDIR_SAFE" ]; then
-      TMPDIR_SAFE="/tmp"
+      TMPDIR_SAFE="$PWD"
     fi
     sudo -n env TMPDIR="$TMPDIR_SAFE" sh -lc '
 set -e
@@ -1265,7 +1276,7 @@ XATTR_OK=0
 XATTR_ERR=""
 TMPDIR_SAFE="${TMPDIR_EXPR}"
 if [ ! -d "$TMPDIR_SAFE" ] || [ ! -w "$TMPDIR_SAFE" ] || [ ! -x "$TMPDIR_SAFE" ]; then
-  TMPDIR_SAFE="/tmp"
+  TMPDIR_SAFE="$PWD"
 fi
 tmp="$(mktemp "'"$XATTR_PATH"'/.seal-xattr-XXXXXX")" || tmp="$(mktemp "$TMPDIR_SAFE/.seal-xattr-XXXXXX")"
 if setfattr -n user.seal_test -v 1 "$tmp" 2>/dev/null; then
@@ -1287,7 +1298,7 @@ echo "XATTR_PATH='"$XATTR_PATH"'"
   else
     TMPDIR_SAFE="${TMPDIR_EXPR}"
     if [ ! -d "$TMPDIR_SAFE" ] || [ ! -w "$TMPDIR_SAFE" ] || [ ! -x "$TMPDIR_SAFE" ]; then
-      TMPDIR_SAFE="/tmp"
+      TMPDIR_SAFE="$PWD"
     fi
     tmp="$(mktemp "$XATTR_PATH/.seal-xattr-XXXXXX")" || tmp="$(mktemp "$TMPDIR_SAFE/.seal-xattr-XXXXXX")"
     if setfattr -n user.seal_test -v 1 "$tmp" 2>/dev/null; then
@@ -1350,7 +1361,7 @@ LEASE_BODY_TRUNC=0
 if [ -n "$EXT_LEASE_URL" ]; then
   TMPDIR_SAFE="${TMPDIR_EXPR}"
   if [ ! -d "$TMPDIR_SAFE" ] || [ ! -w "$TMPDIR_SAFE" ] || [ ! -x "$TMPDIR_SAFE" ]; then
-    TMPDIR_SAFE="/tmp"
+    TMPDIR_SAFE="$PWD"
   fi
   tm_ms="$EXT_LEASE_TIMEOUT_MS"
   if [ -z "$tm_ms" ] || [ "$tm_ms" -le 0 ] 2>/dev/null; then

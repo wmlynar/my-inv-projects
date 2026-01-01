@@ -16,8 +16,7 @@ const {
   resolveExampleRoot,
   createLogger,
   withSealedBinary,
-  readReadyPayload,
-} = require("./e2e-utils");
+  readReadyPayload, resolveTmpRoot } = require("./e2e-utils");
 
 const { buildRelease } = require("../src/lib/build");
 const { loadProjectConfig, loadTargetConfig, resolveConfigName } = require("../src/lib/project");
@@ -30,7 +29,7 @@ const EXAMPLE_ROOT = resolveExampleRoot();
 const { log, fail } = createLogger("sentinel-e2e");
 
 function resolveWritableTmpBase() {
-  const candidates = ["/tmp", "/var/tmp", os.tmpdir()];
+  const candidates = [resolveTmpRoot()];
   for (const base of candidates) {
     try {
       fs.accessSync(base, fs.constants.W_OK | fs.constants.X_OK);
@@ -39,7 +38,7 @@ function resolveWritableTmpBase() {
       // try next
     }
   }
-  return os.tmpdir();
+  return resolveTmpRoot();
 }
 
 const TMP_BASE = resolveWritableTmpBase();
@@ -582,6 +581,10 @@ async function testSentinelBasics(ctx) {
       try {
         fs.chmodSync(path.join(releaseDir, "seal-example"), 0o755);
       } catch {}
+      try {
+        fs.chownSync(baseDir, 0, nonRoot.gid);
+        fs.chmodSync(baseDir, 0o710);
+      } catch {}
       installSentinelBlob({
         baseDir,
         namespaceId,
@@ -601,6 +604,9 @@ async function testSentinelBasics(ctx) {
       });
 
       log("Case: sentinel dir group-readable -> expect OK for non-root");
+      try {
+        fs.chmodSync(baseDir, 0o750);
+      } catch {}
       installSentinelBlob({
         baseDir,
         namespaceId,

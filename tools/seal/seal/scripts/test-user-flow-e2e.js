@@ -18,8 +18,7 @@ const {
   createLogger,
   terminateChild,
   spawnSyncWithTimeout,
-  readReadyPayload,
-} = require("./e2e-utils");
+  readReadyPayload, resolveTmpRoot } = require("./e2e-utils");
 const { readJson5, writeJson5 } = require("../src/lib/json5io");
 
 const EXAMPLE_ROOT = resolveExampleRoot();
@@ -28,9 +27,7 @@ const SEAL_BIN = path.resolve(__dirname, "..", "bin", "seal.js");
 const { log, error } = createLogger("user-flow-e2e");
 
 function pickTmpBase() {
-  if (fs.existsSync("/tmp")) return "/tmp";
-  if (fs.existsSync("/var/tmp")) return "/var/tmp";
-  return os.tmpdir();
+  return resolveTmpRoot();
 }
 
 function fail(msg) {

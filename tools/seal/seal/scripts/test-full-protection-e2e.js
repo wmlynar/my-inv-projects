@@ -17,8 +17,7 @@ const {
   resolveExampleRoot,
   createLogger,
   withSealedBinary,
-  readReadyPayload,
-} = require("./e2e-utils");
+  readReadyPayload, resolveTmpRoot } = require("./e2e-utils");
 
 const { buildRelease } = require("../src/lib/build");
 const { loadProjectConfig, loadTargetConfig, resolveConfigName } = require("../src/lib/project");
@@ -179,7 +178,7 @@ async function buildFullRelease(buildTimeoutMs) {
   const configName = resolveConfigName(targetCfg, "local");
 
   const appName = projectCfg.appName || "seal-example";
-  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-full-sentinel-"));
+  const baseDir = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-full-sentinel-"));
   ensureBaseDirOwned(baseDir);
 
   projectCfg.build = projectCfg.build || {};
@@ -221,7 +220,7 @@ async function buildFullRelease(buildTimeoutMs) {
 
   targetCfg.packager = "thin-split";
 
-  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-full-protection-"));
+  const outRoot = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-full-protection-"));
   const outDir = path.join(outRoot, "seal-out");
   try {
     const res = await withTimeout("buildRelease(full-protection)", buildTimeoutMs, () =>

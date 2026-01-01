@@ -16,8 +16,7 @@ const {
   resolveExampleRoot,
   createLogger,
   withSealedBinary,
-  readReadyPayload,
-} = require("./e2e-utils");
+  readReadyPayload, resolveTmpRoot } = require("./e2e-utils");
 
 const { buildRelease } = require("../src/lib/build");
 const { loadProjectConfig, loadTargetConfig, resolveConfigName } = require("../src/lib/project");
@@ -83,7 +82,7 @@ function getCpuIdAsm() {
   const cc = resolveCc();
   if (!cc) return { value: "", error: "Missing C compiler" };
 
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-cpuid-"));
+  const tmpDir = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-cpuid-"));
   const srcPath = path.join(tmpDir, "cpuid.c");
   const outPath = path.join(tmpDir, "cpuid");
   const src = `#include <stdio.h>
@@ -294,7 +293,7 @@ async function buildWithProtection({ protection, outRoot, packager, build }) {
 
 async function testStringObfuscationMeta(ctx) {
   log("Building thin-split with stringObfuscation metadata...");
-  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-protection-meta-"));
+  const outRoot = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-protection-meta-"));
   try {
     const res = await withTimeout("buildRelease(meta)", ctx.buildTimeoutMs, () =>
       buildWithProtection({
@@ -313,7 +312,7 @@ async function testStringObfuscationMeta(ctx) {
 
 async function testBackendTerser(ctx) {
   log("Building thin-split with backend terser...");
-  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-protection-terser-"));
+  const outRoot = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-protection-terser-"));
   try {
     const res = await withTimeout("buildRelease(terser)", ctx.buildTimeoutMs, () =>
       buildWithProtection({
@@ -337,7 +336,7 @@ async function testBackendTerser(ctx) {
 
 async function testMaxRuntime(ctx) {
   log("Building thin-split with max obfuscation...");
-  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-protection-max-"));
+  const outRoot = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-protection-max-"));
   try {
     const res = await withTimeout("buildRelease(max)", ctx.buildTimeoutMs, () =>
       buildWithProtection({
@@ -363,8 +362,8 @@ async function testMaxRuntime(ctx) {
 
 async function testElfPacker(ctx) {
   log("Building thin-split with ELF packer...");
-  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-protection-elf-"));
-  const toolRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-elf-tool-"));
+  const outRoot = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-protection-elf-"));
+  const toolRoot = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-elf-tool-"));
   try {
     const packerPath = makeFakeElfPacker(toolRoot);
     const res = await withTimeout("buildRelease(elf)", ctx.buildTimeoutMs, () =>
@@ -428,7 +427,7 @@ async function testFullProtection(ctx) {
     return;
   }
 
-  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-full-guard-"));
+  const baseDir = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-full-guard-"));
   const namespaceId = "00112233445566778899aabbccddeeff";
   const appId = baseCfg.appName || "seal-example";
 
@@ -450,7 +449,7 @@ async function testFullProtection(ctx) {
 
   const targetCfg = loadTargetConfig(EXAMPLE_ROOT, "local").cfg;
   const configName = resolveConfigName(targetCfg, "local");
-  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-full-protection-"));
+  const outRoot = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-full-protection-"));
   const outDir = path.join(outRoot, "seal-out");
 
   try {

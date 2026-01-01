@@ -4,7 +4,7 @@
 const fs = require("fs");
 const path = require("path");
 const { readJson5, writeJson5 } = require("../src/lib/json5io");
-const { createLogger, stripAnsi, resolveExampleRoot, spawnSyncWithTimeout } = require("./e2e-utils");
+const { createLogger, stripAnsi, resolveExampleRoot, spawnSyncWithTimeout, resolveTmpRoot } = require("./e2e-utils");
 
 const { log, fail } = createLogger("compat-e2e");
 const EXAMPLE_ROOT = resolveExampleRoot();

@@ -155,8 +155,9 @@ function resolvePlaywrightRoots(env) {
   return Array.from(roots);
 }
 
-function resolveDockerCacheRoot(env) {
-  const cand = env.SEAL_DOCKER_E2E_CACHE_DIR || "/var/tmp/seal-e2e-cache";
+function resolveDockerCacheRoot(env, outDir) {
+  const fallback = outDir ? path.join(outDir, "e2e", "cache", "docker") : path.join(process.cwd(), "seal-out", "e2e", "cache", "docker");
+  const cand = env.SEAL_DOCKER_E2E_CACHE_DIR || fallback;
   return resolvePath(cand);
 }
 
@@ -201,7 +202,7 @@ async function cmdCacheClean(cwd, scopeArg, options = {}) {
     safeRemove("e2e concurrent runs (seal-out/e2e/concurrent-runs)", e2eRoot ? path.join(e2eRoot, "concurrent-runs") : "", state);
   }
   if (scopes.has("docker")) {
-    safeRemove("docker e2e cache (SEAL_DOCKER_E2E_CACHE_DIR)", resolveDockerCacheRoot(env), state);
+    safeRemove("docker e2e cache (SEAL_DOCKER_E2E_CACHE_DIR)", resolveDockerCacheRoot(env, outDir), state);
   }
   if (scopes.has("global")) {
     for (const p of resolveGlobalCacheRoots(env)) {

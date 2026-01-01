@@ -12,7 +12,7 @@ const { uninstallLocal, restartLocal } = require("../src/lib/deploy");
 const { uninstallSsh, restartSsh } = require("../src/lib/deploySsh");
 const { sshExec } = require("../src/lib/ssh");
 const { writeJson5, readJson5 } = require("../src/lib/json5io");
-const { hasCommand, delay, resolveExampleRoot, createLogger, spawnSyncWithTimeout } = require("./e2e-utils");
+const { hasCommand, delay, resolveExampleRoot, createLogger, spawnSyncWithTimeout, resolveTmpRoot } = require("./e2e-utils");
 const { THIN_NATIVE_BOOTSTRAP_FILE } = require("../src/lib/thinPaths");
 
 const EXAMPLE_ROOT = resolveExampleRoot();
@@ -171,7 +171,7 @@ function cleanupServiceArtifacts(targetCfg) {
 }
 
 function createSafeInstallDir(prefix) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  const root = fs.mkdtempSync(path.join(resolveTmpRoot(), prefix));
   const installDir = path.join(root, "install");
   fs.mkdirSync(installDir, { recursive: true });
   return { root, installDir };
@@ -626,7 +626,7 @@ async function testShipThinBootstrapSsh() {
       else targetCfg.preflight = checkPreflightBackup;
       writeTargetConfig(targetName, targetCfg);
     }
-    assert.ok(checkFailed, "Expected seal check to fail on missing tools/tmp");
+    assert.ok(checkFailed, "Expected seal check to fail on missing tools tmp dir");
 
     try {
       uninstallSsh(targetCfg);
@@ -827,7 +827,7 @@ async function testShipThinBootstrapSsh() {
     } catch (e) {
       preflightTmpFailed = true;
       const msg = e && e.message ? e.message : String(e);
-      assert.ok(msg.includes("tmp") || msg.includes("/tmp"), `Expected tmp preflight failure, got: ${msg}`);
+      assert.ok(msg.includes("tmp"), `Expected tmp preflight failure, got: ${msg}`);
     } finally {
       if (preflightTmpBackup === undefined) delete process.env.SEAL_PREFLIGHT_TMP_MIN_FREE_MB;
       else process.env.SEAL_PREFLIGHT_TMP_MIN_FREE_MB = preflightTmpBackup;

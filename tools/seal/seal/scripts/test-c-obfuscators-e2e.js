@@ -16,8 +16,7 @@ const {
   createLogger,
   withSealedBinary,
   parseArgsEnv,
-  readReadyPayload,
-} = require("./e2e-utils");
+  readReadyPayload, resolveTmpRoot } = require("./e2e-utils");
 
 const { buildRelease } = require("../src/lib/build");
 const { loadProjectConfig, loadTargetConfig, resolveConfigName } = require("../src/lib/project");
@@ -141,7 +140,7 @@ async function testObfuscator(ctx, spec) {
   if (!args) args = spec.defaultArgs.slice();
 
   log(`Building with cObfuscator=${spec.id} (${cmd})...`);
-  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), "seal-c-obf-"));
+  const outRoot = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-c-obf-"));
 
   try {
     const res = await withTimeout(`buildRelease(${spec.id})`, ctx.buildTimeoutMs, () =>

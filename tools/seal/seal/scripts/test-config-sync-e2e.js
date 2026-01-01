@@ -10,7 +10,7 @@ const { cmdConfigAdd, cmdConfigDiff, cmdConfigPull, cmdConfigPush } = require(".
 const { bootstrapSsh } = require("../src/lib/deploySsh");
 const { sshExec, scpFrom, formatSshFailure } = require("../src/lib/ssh");
 const { readJson5, writeJson5 } = require("../src/lib/json5io");
-const { hasCommand, resolveExampleRoot, createLogger } = require("./e2e-utils");
+const { hasCommand, resolveExampleRoot, createLogger, resolveTmpRoot } = require("./e2e-utils");
 
 const EXAMPLE_ROOT = resolveExampleRoot();
 const { log, fail, skip } = createLogger("config-sync-e2e");
@@ -151,8 +151,8 @@ async function main() {
   };
   const targetPath = path.join(EXAMPLE_ROOT, "seal-config", "targets", `${targetName}.json5`);
   const targetBackup = readFileMaybe(targetPath);
-  const tmpPullPath = path.join(os.tmpdir(), `${serviceName}-remote-config.json5`);
-  const remoteBackupPath = path.join(os.tmpdir(), `${targetName}-remote-config.json5`);
+  const tmpPullPath = path.join(resolveTmpRoot(), `${serviceName}-remote-config.json5`);
+  const remoteBackupPath = path.join(resolveTmpRoot(), `${targetName}-remote-config.json5`);
   let hadRemoteBackup = false;
 
   try {

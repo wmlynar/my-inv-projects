@@ -2,6 +2,7 @@
 
 const path = require("path");
 const os = require("os");
+const { resolveTmpBase } = require("./tmp");
 const fs = require("fs");
 const crypto = require("crypto");
 
@@ -94,7 +95,9 @@ function resolveTmpDir(targetCfg) {
     ? targetCfg.preflight.tmpDir
     : null;
   const tmpDir = cfg !== undefined && cfg !== null ? String(cfg).trim() : "";
-  return tmpDir || "/tmp";
+  if (tmpDir) return tmpDir;
+  const installDir = targetCfg && targetCfg.installDir ? String(targetCfg.installDir) : "";
+  return installDir ? `${installDir}/.seal-tmp` : ".seal-tmp";
 }
 
 function resolvePreflightTools(targetCfg) {
@@ -147,7 +150,7 @@ function parseLockResult(out) {
 function acquireDeployLockSsh(targetCfg, tmpDir) {
   const { user, host } = sshUserHost(targetCfg);
   const ttlSec = resolveLockTtlSec(targetCfg);
-  const lockBase = `${tmpDir || "/tmp"}/seal-deploy-${targetCfg.serviceName || targetCfg.appName || "app"}.lock`;
+  const lockBase = `${tmpDir || ".seal-tmp"}/seal-deploy-${targetCfg.serviceName || targetCfg.appName || "app"}.lock`;
   const cmd = [
     "bash",
     "-c",
@@ -251,7 +254,7 @@ function buildPayloadExtrasTar(releaseDir, appName, buildId) {
     .map((entry) => entry.name)
     .filter((name) => !["b", "r", "config.runtime.json5"].includes(name));
   if (!entries.length) return null;
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "seal-payload-"));
+  const tmpDir = fs.mkdtempSync(path.join(resolveTmpBase(), "seal-payload-"));
   const tarName = `${appName || "app"}-extras-${buildId || Date.now()}.tgz`;
   const tarPath = path.join(tmpDir, tarName);
   const res = spawnSyncSafe("tar", ["-czf", tarPath, "-C", releaseDir, ...entries], { stdio: "pipe" });
@@ -1148,8 +1151,9 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
   }
 
   const appName = targetCfg.appName || targetCfg.serviceName || "app";
+  const remoteTmpDir = resolveTmpDir(targetCfg);
   const base = artifactPath ? path.basename(artifactPath) : `${appName}-${buildId || "release"}.tgz`;
-  const remoteArtifactTmp = `/tmp/${base}`;
+  const remoteArtifactTmp = `${remoteTmpDir}/${base}`;
   const remoteArtifactTmpQ = shQuote(remoteArtifactTmp);
   const fromTar = artifactPath ? readArtifactFolderName(artifactPath) : null;
   const folderName = fromTar || base.replace(/\.tgz$/, "");
@@ -1165,7 +1169,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
     info("Thin bootstrap: payload-only upload (no runtime).");
     const extras = buildPayloadExtrasTar(releaseDir, appName, buildId);
     let extrasRemote = null;
-    const remoteTmp = `/tmp/${appName}-payload-${buildId || Date.now()}.pl`;
+    const remoteTmp = `${remoteTmpDir}/${appName}-payload-${buildId || Date.now()}.pl`;
     const remoteTmpQ = shQuote(remoteTmp);
     info(`Uploading payload to ${host}:${remoteTmp}`);
     const upPl = timeSync("deploy.ssh.upload_payload", () => scpToTarget(targetCfg, {
@@ -1176,7 +1180,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
     }));
     if (!upPl.ok) throw new Error(`scp payload failed (status=${upPl.status})${formatSshFailure(upPl)}`);
     if (extras) {
-      extrasRemote = `/tmp/${appName}-extras-${buildId || Date.now()}.tgz`;
+      extrasRemote = `${remoteTmpDir}/${appName}-extras-${buildId || Date.now()}.tgz`;
       info(`Uploading release extras to ${host}:${extrasRemote}`);
       const upExtras = timeSync("deploy.ssh.upload_extras", () => scpToTarget(targetCfg, {
         user,
@@ -1192,7 +1196,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       `mkdir -p ${releasesDirQ} ${sharedDirQ}`,
     ];
     if (shouldPushConfig) {
-      const tmpCfg = `/tmp/${targetCfg.serviceName}-config.json5`;
+      const tmpCfg = `${remoteTmpDir}/${targetCfg.serviceName}-config.json5`;
       const tmpCfgQ = shQuote(tmpCfg);
       info(`Uploading config to ${host}:${tmpCfg}`);
       const upCfg = timeSync("deploy.ssh.upload_config", () => scpToTarget(targetCfg, {
@@ -1259,7 +1263,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
     // Config: only overwrite if explicit or missing
     if (shouldPushConfig) {
       // upload repo config to tmp then move into shared
-      const tmpCfg = `/tmp/${targetCfg.serviceName}-config.json5`;
+      const tmpCfg = `${remoteTmpDir}/${targetCfg.serviceName}-config.json5`;
       const tmpCfgQ = shQuote(tmpCfg);
       info(`Uploading config to ${host}:${tmpCfg}`);
       const upCfg = timeSync("deploy.ssh.upload_config", () => scpToTarget(targetCfg, {
@@ -1348,7 +1352,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       if (!upRetry.ok) throw new Error(`scp failed (status=${upRetry.status})${formatSshFailure(upRetry)}`);
     }
 
-    const tmpCfg = `/tmp/${targetCfg.serviceName}-config.json5`;
+    const tmpCfg = `${resolveTmpDir(targetCfg)}/${targetCfg.serviceName}-config.json5`;
     const tmpCfgQ = shQuote(tmpCfg);
     info(`Uploading config to ${host}:${tmpCfg}`);
     const upCfg = scpToTarget(targetCfg, { user, host, localPath: repoConfigPath, remotePath: tmpCfg });
@@ -1883,7 +1887,7 @@ function checkConfigDriftSsh({ targetCfg, localConfigPath, showDiff = true }) {
     };
   }
 
-  const tmpLocal = path.join(os.tmpdir(), `${targetCfg.serviceName || targetCfg.appName || "app"}-remote-config.json5`);
+  const tmpLocal = path.join(resolveTmpBase(), `${targetCfg.serviceName || targetCfg.appName || "app"}-remote-config.json5`);
   ensureDir(path.dirname(tmpLocal));
   const get = scpFromTarget(targetCfg, { user, host, remotePath: remoteCfg, localPath: tmpLocal });
   if (!get.ok) return { status: "error", message: `scp remote config failed${formatSshFailure(get)}` };
@@ -1904,7 +1908,7 @@ function checkConfigDriftSsh({ targetCfg, localConfigPath, showDiff = true }) {
 function configDiffSsh({ targetCfg, localConfigPath }) {
   const { user, host } = sshUserHost(targetCfg);
   const layout = remoteLayout(targetCfg);
-  const tmpLocal = path.join(os.tmpdir(), `${targetCfg.serviceName}-remote-config.json5`);
+  const tmpLocal = path.join(resolveTmpBase(), `${targetCfg.serviceName}-remote-config.json5`);
   ensureDir(path.dirname(tmpLocal));
   // Download remote config (best effort)
   const remoteCfg = `${layout.sharedDir}/config.json5`;
@@ -1927,7 +1931,7 @@ function configPullSsh({ targetCfg, localConfigPath, apply }) {
   const layout = remoteLayout(targetCfg);
   const remoteCfg = `${layout.sharedDir}/config.json5`;
 
-  const tmpLocal = apply ? localConfigPath : path.join(os.tmpdir(), `${targetCfg.serviceName}-remote-config.json5`);
+  const tmpLocal = apply ? localConfigPath : path.join(resolveTmpBase(), `${targetCfg.serviceName}-remote-config.json5`);
   ensureDir(path.dirname(tmpLocal));
   const get = scpFromTarget(targetCfg, { user, host, remotePath: remoteCfg, localPath: tmpLocal });
   if (!get.ok) throw new Error(`scp remote config failed${formatSshFailure(get)}`);
@@ -1951,7 +1955,7 @@ function configPushSsh({ targetCfg, localConfigPath }) {
   if (issues.length) {
     throw new Error(bootstrapHint(targetCfg, layout, user, host, issues));
   }
-  const tmpCfg = `/tmp/${targetCfg.serviceName}-config.json5`;
+  const tmpCfg = `${resolveTmpDir(targetCfg)}/${targetCfg.serviceName}-config.json5`;
   const up = scpToTarget(targetCfg, { user, host, localPath: localConfigPath, remotePath: tmpCfg });
   if (!up.ok) throw new Error(`scp config failed${formatSshFailure(up)}`);
 

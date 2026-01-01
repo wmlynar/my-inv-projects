@@ -19,7 +19,7 @@ const {
   logRerunHint,
   writeJsonSummaryReport,
 } = require("./e2e-report");
-const { hasCommand } = require("./e2e-utils");
+const { hasCommand, resolveTmpRoot } = require("./e2e-utils");
 const { loadE2EConfig, resolveE2ERoot, resolveE2EPaths, resolveRerunFrom, isPlanMode } = require("./e2e-runner-config");
 const { ensureDir, resolveRunContext, setupRunCleanup, removeDirSafe } = require("./e2e-runner-fs");
 const {
@@ -430,7 +430,7 @@ async function main() {
   ensureDir(npmCacheDir);
   {
     // Avoid TMPDIR overrides that point into per-run temp roots.
-    const compileRoot = path.join("/tmp", "seal-e2e-compile-cache");
+    const compileRoot = path.join(resolveTmpRoot(), "seal-e2e-compile-cache");
     const compileCache = path.join(compileRoot, String(process.pid));
     ensureDir(compileCache);
     env.NODE_COMPILE_CACHE = compileCache;
