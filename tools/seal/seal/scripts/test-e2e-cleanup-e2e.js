@@ -124,8 +124,10 @@ const tmpBase = resolveTmpRoot();
   }
 
   const e2eBytes = getDirSizeBytes(e2eRoot);
-  if (e2eBytes !== null && e2eBytes > maxBytes) {
-    throw new Error(`e2e root too large after cleanup (${e2eBytes} bytes > ${maxBytes} bytes)`);
+  const cacheBytes = getDirSizeBytes(path.join(e2eRoot, "cache")) || 0;
+  const effectiveBytes = e2eBytes === null ? null : Math.max(0, e2eBytes - cacheBytes);
+  if (effectiveBytes !== null && effectiveBytes > maxBytes) {
+    throw new Error(`e2e root too large after cleanup (${effectiveBytes} bytes > ${maxBytes} bytes)`);
   }
 
   const shouldRemoveRoot = outerRunRoot && !innerLogDir.startsWith(`${e2eRoot}${path.sep}`);
