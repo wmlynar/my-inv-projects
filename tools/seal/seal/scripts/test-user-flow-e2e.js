@@ -56,6 +56,10 @@ function shellQuote(value) {
 }
 
 function systemctlUserReady() {
+  if (process.env.SEAL_E2E_HOME_ISOLATED === "1") {
+    log("SKIP: systemctl --user disabled when SEAL_E2E_HOME_ISOLATED=1");
+    return false;
+  }
   const res = spawnSyncWithTimeout("systemctl", ["--user", "show-environment"], {
     stdio: "pipe",
     encoding: "utf-8",

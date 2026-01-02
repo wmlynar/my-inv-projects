@@ -1,5 +1,11 @@
 "use strict";
 
 const THIN_NATIVE_BOOTSTRAP_FILE = "n";
+const THIN_TPM_SEAL_PUB_FILE = "tp";
+const THIN_TPM_SEAL_PRIV_FILE = "tk";
 
-module.exports = { THIN_NATIVE_BOOTSTRAP_FILE };
+module.exports = {
+  THIN_NATIVE_BOOTSTRAP_FILE,
+  THIN_TPM_SEAL_PUB_FILE,
+  THIN_TPM_SEAL_PRIV_FILE,
+};

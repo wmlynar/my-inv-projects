@@ -225,12 +225,15 @@ function applySecurityProfile(cfg, rawCfg) {
 
   const rawNative = getPath(rawCfg, ["build", "thin", "nativeBootstrap"]);
   if (!hasPath(rawCfg, ["build", "thin", "nativeBootstrap"])) {
-    thin.nativeBootstrap = { enabled: true };
+    thin.nativeBootstrap = { enabled: true, wipeSource: true };
   } else if (rawNative === true) {
-    thin.nativeBootstrap = { enabled: true };
+    thin.nativeBootstrap = { enabled: true, wipeSource: true };
   } else if (thin.nativeBootstrap && typeof thin.nativeBootstrap === "object" && !Array.isArray(thin.nativeBootstrap)) {
     if (!hasPath(rawCfg, ["build", "thin", "nativeBootstrap", "enabled"])) {
       thin.nativeBootstrap.enabled = true;
+    }
+    if (!hasPath(rawCfg, ["build", "thin", "nativeBootstrap", "wipeSource"])) {
+      thin.nativeBootstrap.wipeSource = true;
     }
   }
 
@@ -276,6 +279,30 @@ function applySecurityProfile(cfg, rawCfg) {
   } else if (protection.strip && typeof protection.strip === "object" && !Array.isArray(protection.strip)) {
     if (!hasPath(rawCfg, ["build", "protection", "strip", "enabled"])) {
       protection.strip.enabled = true;
+    }
+  }
+
+  if (profile === "max") {
+    if (!hasPath(rawCfg, ["build", "packager"])) {
+      cfg.build.packager = "thin-split";
+    }
+    if (!hasPath(rawCfg, ["build", "decoy"])) {
+      cfg.build.decoy = {
+        mode: "soft",
+        scope: "backend",
+        sourceDir: "decoy",
+        overwrite: false,
+        generator: "basic",
+      };
+    }
+    if (!hasPath(rawCfg, ["build", "watermark"])) {
+      cfg.build.watermark = {
+        enabled: true,
+        mode: "auto",
+        length: 24,
+        prefix: "wm",
+        style: "plain",
+      };
     }
   }
 }
@@ -379,6 +406,15 @@ function loadProjectConfig(projectRoot, opts) {
       generator: "off",
     };
   }
+  if (cfg.build.watermark === undefined) {
+    cfg.build.watermark = {
+      enabled: false,
+      mode: "auto",
+      length: 24,
+      prefix: "wm",
+      style: "plain",
+    };
+  }
 
   if (hasPath(rawCfg, ["deploy"])) {
     const rawDeploy = rawCfg.deploy;
@@ -395,6 +431,9 @@ function loadProjectConfig(projectRoot, opts) {
   }
   if (cfg.deploy.autoBootstrap === undefined) {
     cfg.deploy.autoBootstrap = true;
+  }
+  if (cfg.deploy.systemdHardening === undefined) {
+    cfg.deploy.systemdHardening = "baseline";
   }
 
   // Protection: enabled by default. Attempts to reduce "casual" inspection of executables/bundles.
@@ -413,7 +452,7 @@ function loadProjectConfig(projectRoot, opts) {
         pack: true,
       },
       strip: {
-        enabled: false,
+        enabled: true,
         cmd: "strip",
       },
       elfPacker: {

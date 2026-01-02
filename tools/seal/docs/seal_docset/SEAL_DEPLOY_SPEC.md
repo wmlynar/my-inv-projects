@@ -1,7 +1,7 @@
 # SEAL-DEPLOY – Dokument wymagań i standard jakości (v0.5)
 > **Cel dokumentu:** zdefiniować kompletne wymagania dla narzędzia **seal-deploy** (dalej: **Seal**) oraz powiązanego **standardu jakości** dla aplikacji, które będą „sealowane” i wdrażane na środowiska wrogie (serwer/robot offline). Dokument jest podstawą implementacji.
 >
-> **Priorytet (P0):** Seal istnieje przede wszystkim po to, aby **wdrażać aplikacje Node.js na serwer/robota w postaci „sealed” (zaciemnionej, spakowanej) tak, żeby osoby mające dostęp do hosta miały maksymalnie utrudniony odczyt logiki/backendowego kodu źródłowego**. Wszystkie pozostałe elementy (systemd, `appctl`, standard jakości, UI fallback) są podporządkowane temu, aby sealed wdrożenia były **stabilne i serwisowalne** mimo obfuskacji.
+> **Priorytet (P0):** Seal istnieje przede wszystkim po to, aby **wdrażać aplikacje Node.js na serwer/robota w postaci „sealed” (zaciemnionej, spakowanej) tak, żeby osoby mające dostęp do hosta miały maksymalnie utrudniony odczyt logiki/backendowego kodu źródłowego** — czyli chronić własnosc intelektualna przed latwym „wyciekiem”. Wszystkie pozostałe elementy (systemd, `appctl`, standard jakości, UI fallback) są podporządkowane temu, aby sealed wdrożenia były **stabilne i serwisowalne** mimo obfuskacji.
 
 ---
 
@@ -1241,6 +1241,14 @@ Celem sample-app jest:
 }
 ```
 
+Uwagi:
+- `seal verify` uzywa `forbidGlobs` i `forbidStrings` jako twardej bramki.
+- Dla packagerow `sea`/`bundle`/`none`/`thin-split` uruchamia `strings` + `rg/grep` na artefaktach binarnych/loaderze.
+- Brak narzedzi do skanu (`strings`, `rg`/`grep`) = FAIL, jesli `forbidStrings` jest ustawione.
+- `seal verify --watermark` wypisuje `watermark.hash` z `manifest.json` (jesli watermark wlaczony).
+- `seal verify --json` wypisuje raport JSON; raport jest zapisywany do `seal-out/run/verify-report.json`.
+- `seal deploy` uruchamia `seal verify` jako preflight (wylaczenie: `verify.enforce=false` lub `--skip-verify`).
+
 ---
 
 ## 24. Specyfikacja CLI (komendy, parametry, wyjścia, exit codes)
@@ -1358,6 +1366,7 @@ Alias (MAY): `seal wizard`.
 **Flagi:**
 - `--config <config>`: override konwencji `config == target`.
 - `--skip-check`: pomija `seal check` (tylko dla power-userów).
+- `--skip-verify`: pomija preflight `seal verify` (tylko świadomie).
 - `--artifact-only`: nie rozpakowuje do `seal-out/release/` (tylko `seal-out/*.tgz`).
 - `--out <dir>`: docelowy katalog dla rozpakowanego release (alternatywa dla `seal-out/`).
 
@@ -1368,6 +1377,8 @@ Alias (MAY): `seal wizard`.
 
 - bez argumentów: weryfikuje ostatni build (metadane z 24.2),
 - `--explain`: wypisuje czytelną checklistę (co sprawdzono i dlaczego).
+- `--watermark`: wypisuje `watermark.hash` z `manifest.json` (jeśli watermark włączony).
+- `--json`: raport JSON (machine‑readable); dodatkowo zapisuje `seal-out/run/verify-report.json`.
 
 ---
 
@@ -1400,6 +1411,7 @@ Alias (MAY): `seal wizard`.
 **Flagi (skrót):**
 - `--bootstrap`: przygotowanie serwera (katalogi + uprawnienia; po udanym deployu instalacja runnera + unit, bez autostartu).
 - `--push-config`: świadomie nadpisuje `shared/config.json5` na serwerze wersją z repo.
+- `--skip-verify`: pomija preflight `seal verify` (tylko świadomie).
 - `--profile-overlay <name>` / `--fast`: tymczasowe nadpisania builda.
   - `--fast` jest celowym skrótem pod szybkie iteracje w trakcie developmentu (krótsze cykle deployu).
   - Na końcowym etapie developmentu rekomendowane są pełne buildy bez `--fast`.
@@ -1413,7 +1425,7 @@ Alias (MAY): `seal wizard`.
 - generuje `seal-out/run/`.
 
 **Flagi (skrót):**
-- `--bootstrap`, `--push-config`, `--artifact <path>`, `--restart`, `--wait-*`.
+- `--bootstrap`, `--push-config`, `--artifact <path>`, `--restart`, `--wait-*`, `--skip-verify`.
 
 ---
 
@@ -1719,6 +1731,18 @@ Uwagi:
 - katalog instalacji znika,
 - `--keep-config` zachowuje config (jeśli był).
 
+### 27.15. Mapowanie REQ -> testy/DoD (skrot)
+
+> To jest szybka mapa. Rozszerzaj ja, gdy dodajesz nowe REQ lub testy.
+
+| Obszar REQ | Pokrycie testowe / DoD |
+| --- | --- |
+| `REQ-P0`, `REQ-SEA` | 27.4 (release+verify), 27.5 (run-local), 27.6 (deploy) |
+| `REQ-SEC` | 27.4 (verify) + testy advanced (SEAL_E2E_RUNBOOK) |
+| `REQ-CLI` | 27.1-27.3 (init/check) + UX/CLI w SEAL_DEPLOY_REFERENCE |
+| `REQ-OPS`, `REQ-DEP` | 27.6-27.14 (deploy/rollback/uninstall) |
+| `REQ-STD` | zgodnosc z SEAL_STANDARD (manual checklist + review) |
+
 ---
 
 ## 28. Plan implementacji (milestones)
@@ -1781,7 +1805,14 @@ Przykład (aktualny dla v0.5):
       zstdTimeoutMs: 120000,
       envMode: "denylist",    // denylist | allowlist
       runtimeStore: "memfd",  // memfd | tmpfile
-      nativeBootstrap: { enabled: false, mode: "compile" }, // thin-split only: native addon (ExternalString + MADV_DONTDUMP/mlock + native CJS compile, requires C++20)
+      nativeBootstrap: { enabled: false, mode: "compile", wipeSource: true }, // thin-split only: native addon (ExternalString + MADV_DONTDUMP/mlock + native CJS compile, requires C++20)
+      payloadProtection: { // opcjonalne szyfrowanie payloadu (r/pl)
+        enabled: false,
+        provider: "secret", // secret | tpm2
+        secret: { path: "/run/seal/secret.bin", maxBytes: 4096 },
+        tpm2: { bank: "sha256", pcrs: [0, 2, 4, 7] },
+        bind: { iface: "eth0", mac: "aa:bb:cc:dd:ee:ff", ip: "192.168.1.10" },
+      },
       appBind: { enabled: true }, // bind launcher to runtime/payload (use value for stable project ID)
       launcherHardening: true,    // CET/RELRO/PIE/stack-protector/fortify
       launcherHardeningCET: true, // CET only; disable for older clang (e.g., O-LLVM)
@@ -1820,7 +1851,7 @@ Przykład (aktualny dla v0.5):
       enabled: true,
       seaMain: { pack: true, method: "brotli", chunkSize: 8000 },
       bundle: { pack: true },
-      strip: { enabled: false, cmd: "strip", args: ["--strip-all"] }, // strip | llvm-strip | eu-strip | sstrip
+      strip: { enabled: true, cmd: "strip", args: ["--strip-all"] }, // strip | llvm-strip | eu-strip | sstrip
       // ELF packers/protectors (rekomendowane: kiteshield → midgetpack → upx):
       elfPacker: { tool: "kiteshield", cmd: "kiteshield", args: ["-n", "{in}", "{out}"] },
       // Source-level string obfuscation libs (informacyjne, manualna integracja):
@@ -1831,12 +1862,16 @@ Przykład (aktualny dla v0.5):
       // nativeBootstrapObfuscator: { cmd: "/path/to/obfuscating-clang++", args: ["-mllvm", "-fla", "-mllvm", "-sub"] },
     },
 
+    // Watermark (unikalny marker backendu)
+    watermark: { enabled: false, mode: "auto", length: 24, prefix: "wm", style: "plain" },
+
     // Katalogi kopiowane 1:1 do release (np. static assets, dane)
     includeDirs: ["public", "data"],
 
   },
   deploy: {
     autoBootstrap: true, // auto bootstrap, gdy SSH target nieprzygotowany
+    systemdHardening: "baseline", // false | true | "baseline" | "strict" | "sandbox" | { ... }
   },
 }
 ```
@@ -1859,6 +1894,7 @@ Przykład (aktualny dla v0.5):
 - `build.thin.level`: `low` | `medium` | `high`.
 - `build.thin.appBind`: domyślnie `{ enabled: true }`.
 - `build.thin.nativeBootstrap`: domyślnie `{ enabled: false }` (tylko thin-split, addon trafia do `r/n`).
+- `build.thin.nativeBootstrap.wipeSource`: domyślnie `true` (nadpisuje bufor źródła po native compile; w testach E2E możesz wyłączyć).
 - `build.thin.launcherHardening`: domyślnie `true`.
 - `build.thin.launcherHardeningCET`: domyślnie `true` (jeśli compiler nie wspiera `-fcf-protection=full`, build fail‑fast; wyłącz ręcznie).
 - `build.thin.launcherObfuscation`: domyślnie `true` (wymaga `build.protection.cObfuscator`).
@@ -1867,10 +1903,13 @@ Przykład (aktualny dla v0.5):
 - `build.thin.antiDebug.seccompNoDebug`: domyślnie `{ enabled: true, mode: "errno", aggressive: false }`.
 - `build.thin.antiDebug.coreDump`: domyślnie `true`.
 - `build.thin.antiDebug.loaderGuard`: domyślnie `true`.
+- `build.thin.antiDebug.hypervisor`: domyślnie `false` (wymaga CPUID hypervisor bit, x86).
 - `build.frontendObfuscation`: domyślnie `{ enabled: true, profile: "balanced" }` (frontend nie dziedziczy profilu z backendu).
 - `build.frontendMinify`: domyślnie `{ enabled: true, level: "safe", html: true, css: true }`.
-- `build.protection`: domyślnie `{ enabled: true, seaMain:{pack:true,method:"brotli",chunkSize:8000}, bundle:{pack:true}, strip:{enabled:false,cmd:"strip"}, elfPacker:{tool:"kiteshield",cmd:"kiteshield",args:["-n","{in}","{out}"]}, cObfuscator:{tool:"obfuscator-llvm",cmd:"ollvm-clang",args:["-mllvm","-fla","-mllvm","-sub"]} }`.
+- `build.protection`: domyślnie `{ enabled: true, seaMain:{pack:true,method:"brotli",chunkSize:8000}, bundle:{pack:true}, strip:{enabled:true,cmd:"strip"}, elfPacker:{tool:"kiteshield",cmd:"kiteshield",args:["-n","{in}","{out}"]}, cObfuscator:{tool:"obfuscator-llvm",cmd:"ollvm-clang",args:["-mllvm","-fla","-mllvm","-sub"]} }`.
 - `build.protection.strip.cmd`: `strip` | `llvm-strip` | `eu-strip` | `sstrip` (domyślnie `strip`).
+- `build.watermark`: domyślnie `{ enabled: false, mode: "auto", length: 24, prefix: "wm", style: "plain" }`.
+- `deploy.systemdHardening`: domyślnie `"baseline"` (wyłączenie: `false`). Profile: `baseline|strict|sandbox`.
 - `build.protection.strip.args`: opcjonalne argumenty dla strip (placeholder `{in}` podstawia ścieżkę binarki); jeśli nie podasz — używane jest `--strip-all`.
 - `build.protection.elfPacker.tool`: packer/protector ELF: `kiteshield` | `midgetpack` | `upx` (domyślnie `kiteshield`).
 - `build.protection.elfPacker.cmd`: nadpisuje nazwę komendy (np. pełna ścieżka).
@@ -1881,6 +1920,7 @@ Przykład (aktualny dla v0.5):
 - `build.protection.cObfuscator.args`: **wymagane**; argumenty obfuscatora (np. `-mllvm -fla -mllvm -sub`). Brak args = błąd.
 - `build.protection.nativeBootstrapObfuscator.cmd`: obfuscating C++ compiler dla native bootstrap (addon thin); używane tylko, gdy `thin.nativeBootstrap.enabled=true`.
 - `build.protection.nativeBootstrapObfuscator.args`: **wymagane**, jeśli `nativeBootstrapObfuscator` ustawione; argumenty obfuscatora (np. `-mllvm -fla -mllvm -sub`).
+- `verify.enforce`: domyślnie `true` (preflight `seal verify` przed deployem).
 
 ### 29.4. Polityka (`seal.json5#policy`)
 
@@ -1915,6 +1955,11 @@ Przykład (minimalny, poglądowy):
       ".git/**",
       "**/*.ts",
       "**/*.map" // w profilu prod dodatkowo fail
+    ],
+    forbidStrings: [
+      "/home/",
+      "/Users/",
+      "file://"
     ]
   }
 }
@@ -1953,15 +1998,14 @@ ExecStart={{INSTALL_DIR}}/run-current.sh
 Restart=on-failure
 RestartSec=2
 
-# Baseline: utrudnij wtrysk flag runtime przez zmienne środowiskowe
-UnsetEnvironment=NODE_OPTIONS
-Environment=NODE_OPTIONS=
-
 # Logi
 StandardOutput=journal
 StandardError=journal
 
-# Hardening (domyślnie umiarkowany; rozszerzenia opcjonalne)
+# Hardening (opcjonalne; sterowane przez deploy.systemdHardening)
+# Baseline:
+UnsetEnvironment=NODE_OPTIONS
+Environment=NODE_OPTIONS=
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
@@ -1971,12 +2015,16 @@ LimitCORE=0
 WantedBy=multi-user.target
 ```
 
-### 30.3. Hardening opcjonalny (flagi)
-- Seal powinien umożliwiać (w bootstrapie lub w target) włączenie mocniejszych opcji systemd:
-  - `ProtectSystem=strict`
-  - `ReadWritePaths=` (np. `{{INSTALL_DIR}}/shared` i/lub `/var/lib/{{APP}}`)
-  - `RestrictAddressFamilies=`
-  - `MemoryMax=`
+### 30.3. Hardening opcjonalny (deploy.systemdHardening)
+- `deploy.systemdHardening="baseline"` (domyślnie) → wstawia blok „Baseline” (powyżej).
+- `deploy.systemdHardening=false` → brak dodatkowych flag.
+- `deploy.systemdHardening=true` / `"baseline"` → wstawia blok „Baseline” (powyżej).
+- `deploy.systemdHardening="strict"` → baseline + ostrzejsze ograniczenia (m.in. `ProtectSystem`, `DevicePolicy=closed`, `CapabilityBoundingSet=`).
+- `deploy.systemdHardening="sandbox"` → strict + twarde sandboxowanie (`ProtectSystem=strict`, `PrivateUsers=true`, `ProtectProc=invisible`, `ProcSubset=pid`, ograniczone `RestrictAddressFamilies`).
+- Wariant obiektowy umożliwia `readWritePaths`, `readOnlyPaths`, `protectHome`, `extra`, itp.
+- Dodatkowe opcje: `protectSystem`, `protectProc`, `procSubset`, `privateUsers`, `restrictAddressFamilies`, `systemCallFilter`, `systemCallErrorNumber`.
+- `autoPaths`: `none|install|common` (auto-`ReadWritePaths` dla `<installDir>` i typowych katalogow `shared/data/logs`).
+- Dla `serviceScope=user` część flag może być ignorowana przez systemd (zalecany `serviceScope=system` dla pełnego hardeningu).
 
 ---
 

@@ -13,7 +13,7 @@ const { info, warn, err, ok } = require("./ui");
 const { getSealPaths } = require("./project");
 const { spawnSyncSafe } = require("./spawn");
 const { renderAppctl } = require("./appctl");
-const { applyDecoy } = require("./decoy");
+const { applyDecoy, normalizeDecoyConfig } = require("./decoy");
 const { packSea } = require("./packagers/sea");
 const { packFallback } = require("./packagers/fallback");
 const { packThin, applyLauncherSelfHash } = require("./packagers/thin");
@@ -97,6 +97,134 @@ function resolveConsoleMode(raw) {
     return { mode: "errors-only", warning: null };
   }
   return { mode: "full", warning: `Unknown build.consoleMode "${raw}", using "full"` };
+}
+
+function normalizeWatermarkConfig(raw) {
+  const defaults = {
+    enabled: false,
+    mode: "auto",
+    length: 24,
+    prefix: "wm",
+    style: "plain",
+    token: null,
+    salt: null,
+  };
+  if (raw === undefined || raw === null) return { ...defaults };
+  if (typeof raw === "boolean") return { ...defaults, enabled: raw };
+  if (typeof raw === "string") {
+    const token = raw.trim();
+    if (!token) throw new Error("Invalid build.watermark: empty string");
+    if (/[^\x20-\x7E]/.test(token)) {
+      throw new Error("Invalid build.watermark: non-ASCII token");
+    }
+    return { ...defaults, enabled: true, mode: "fixed", token };
+  }
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("Invalid build.watermark: expected boolean|string|object");
+  }
+  const enabledRaw = raw.enabled;
+  if (enabledRaw === false) return { ...defaults, enabled: false };
+  const tokenRaw = raw.token ?? raw.value ?? raw.id ?? null;
+  const token = tokenRaw !== null && tokenRaw !== undefined ? String(tokenRaw).trim() : null;
+  if (token !== null && token !== undefined) {
+    if (!token) throw new Error("Invalid build.watermark.token: empty");
+    if (/[^\x20-\x7E]/.test(token)) {
+      throw new Error("Invalid build.watermark.token: non-ASCII");
+    }
+  }
+  const modeRaw = raw.mode !== undefined && raw.mode !== null ? String(raw.mode).trim().toLowerCase() : null;
+  let mode = modeRaw || (token ? "fixed" : defaults.mode);
+  if (mode === "client") mode = "target";
+  if (!["auto", "build", "target", "random", "fixed"].includes(mode)) {
+    throw new Error(`Invalid build.watermark.mode: ${raw.mode} (expected: auto|build|target|random|fixed)`);
+  }
+  let style = defaults.style;
+  if (raw.stealth === true) style = "stealth";
+  if (raw.style !== undefined && raw.style !== null) {
+    const styleRaw = String(raw.style).trim().toLowerCase();
+    if (!["plain", "stealth"].includes(styleRaw)) {
+      throw new Error(`Invalid build.watermark.style: ${raw.style} (expected: plain|stealth)`);
+    }
+    style = styleRaw;
+  }
+  const lengthRaw = raw.length !== undefined ? Number(raw.length) : defaults.length;
+  if (!Number.isFinite(lengthRaw) || lengthRaw < 8 || lengthRaw > 128) {
+    throw new Error(`Invalid build.watermark.length: ${raw.length} (expected 8..128)`);
+  }
+  const length = Math.floor(lengthRaw);
+  const prefix = raw.prefix !== undefined ? String(raw.prefix) : defaults.prefix;
+  if (prefix && /\s/.test(prefix)) {
+    throw new Error(`Invalid build.watermark.prefix: ${prefix} (whitespace not allowed)`);
+  }
+  if (prefix && /[^\x20-\x7E]/.test(prefix)) {
+    throw new Error(`Invalid build.watermark.prefix: ${prefix} (non-ASCII)`);
+  }
+  const salt = raw.salt !== undefined && raw.salt !== null ? String(raw.salt) : null;
+  const enabled = enabledRaw !== undefined ? !!enabledRaw : (token ? true : defaults.enabled);
+  return { enabled, mode, length, prefix, style, token, salt };
+}
+
+function resolveWatermarkToken(cfg, { buildId, projectCfg, targetCfg }) {
+  if (!cfg || !cfg.enabled) return { token: null, source: null };
+  if (cfg.token) return { token: cfg.token, source: "config" };
+  if (cfg.mode === "fixed") {
+    throw new Error("build.watermark.mode=fixed requires build.watermark.token");
+  }
+  const targetName = targetCfg && (targetCfg.target || targetCfg.config || targetCfg.serviceName)
+    ? String(targetCfg.target || targetCfg.config || targetCfg.serviceName)
+    : "";
+  const appName = projectCfg && projectCfg.appName ? String(projectCfg.appName) : "";
+  const seedParts = [];
+  if (cfg.mode === "build") {
+    seedParts.push(buildId);
+  } else if (cfg.mode === "target") {
+    if (targetName) seedParts.push(targetName);
+    if (appName) seedParts.push(appName);
+  } else if (cfg.mode === "auto") {
+    if (buildId) seedParts.push(buildId);
+    if (targetName) seedParts.push(targetName);
+    if (appName) seedParts.push(appName);
+  }
+  if (!seedParts.length) seedParts.push(buildId);
+  if (cfg.mode === "random") {
+    const bytes = crypto.randomBytes(Math.ceil(cfg.length / 2));
+    const tokenBody = bytes.toString("hex").slice(0, cfg.length);
+    const prefix = cfg.prefix ? `${cfg.prefix}-` : "";
+    return { token: prefix + tokenBody, source: "random" };
+  }
+  const seed = seedParts.join("|") + (cfg.salt ? `|${cfg.salt}` : "");
+  const hash = crypto.createHash("sha256").update(seed).digest("hex");
+  const tokenBody = hash.slice(0, cfg.length);
+  const prefix = cfg.prefix ? `${cfg.prefix}-` : "";
+  return { token: prefix + tokenBody, source: cfg.mode };
+}
+
+function renderStealthWatermark(token) {
+  const seed = crypto.randomBytes(16);
+  const mask = crypto.createHash("sha256").update(seed).digest();
+  const tokenBuf = Buffer.from(String(token), "utf8");
+  const enc = Buffer.alloc(tokenBuf.length);
+  for (let i = 0; i < tokenBuf.length; i++) {
+    enc[i] = tokenBuf[i] ^ mask[i % mask.length];
+  }
+  const seedA = Array.from(seed.slice(0, 8));
+  const seedB = Array.from(seed.slice(8));
+  const parts = [];
+  const chunkSize = 8;
+  for (let i = 0; i < enc.length; i += chunkSize) {
+    parts.push(Array.from(enc.slice(i, i + chunkSize)));
+  }
+  return `(()=>{const a=${JSON.stringify(seedA)};const b=${JSON.stringify(seedB)};const seed=Buffer.from(a.concat(b));const m=require("crypto").createHash("sha256").update(seed).digest();const parts=${JSON.stringify(parts)};let enc=[];for(const p of parts){enc=enc.concat(p);}let out="";for(let i=0;i<enc.length;i++){out+=String.fromCharCode(enc[i]^m[i % m.length]);}globalThis.__SEAL_WM__=out;})();\n`;
+}
+
+function applyWatermark(bundlePath, stageDir, token, style) {
+  const out = path.join(stageDir, "bundle.wm.cjs");
+  const banner = style === "stealth"
+    ? renderStealthWatermark(token)
+    : `globalThis.__SEAL_WM__=${JSON.stringify(String(token))};\n`;
+  const src = fs.readFileSync(bundlePath, "utf8");
+  fs.writeFileSync(out, banner + src, "utf8");
+  return out;
 }
 
 function obfuscationOptions(profile) {
@@ -205,6 +333,60 @@ function resolveBackendTerser(raw, profile) {
     mangle,
     format,
   };
+}
+
+function assertMaxSecurityProfile({ packagerSpec, thinCfg, protectionCfg, decoyCfg, watermarkCfg }) {
+  const issues = [];
+  if (!packagerSpec || packagerSpec.label !== "thin-split") {
+    issues.push("packager must be thin-split (set build.packager=thin-split)");
+  }
+  if (!thinCfg?.antiDebug?.enabled) {
+    issues.push("thin.antiDebug must be enabled");
+  } else {
+    if (!thinCfg.antiDebug.ptraceGuard?.enabled) {
+      issues.push("thin.antiDebug.ptraceGuard must be enabled");
+    }
+    if (!thinCfg.antiDebug.seccompNoDebug?.enabled) {
+      issues.push("thin.antiDebug.seccompNoDebug must be enabled");
+    }
+    if (!thinCfg.antiDebug.coreDump) {
+      issues.push("thin.antiDebug.coreDump must be enabled");
+    }
+    if (!thinCfg.antiDebug.loaderGuard) {
+      issues.push("thin.antiDebug.loaderGuard must be enabled");
+    }
+  }
+  if (!thinCfg?.snapshotGuard?.enabled) {
+    issues.push("thin.snapshotGuard must be enabled");
+  }
+  if (!thinCfg?.integrity?.enabled) {
+    issues.push("thin.integrity must be enabled");
+  }
+  if (!thinCfg?.nativeBootstrap?.enabled) {
+    issues.push("thin.nativeBootstrap must be enabled");
+  }
+  if (!protectionCfg || protectionCfg.enabled === false) {
+    issues.push("build.protection must be enabled");
+  } else {
+    if (!protectionCfg.stripSymbols) {
+      issues.push("build.protection.strip must be enabled");
+    }
+    if (!protectionCfg.elfPacker) {
+      issues.push("build.protection.elfPacker must be configured");
+    }
+    if (!protectionCfg.cObfuscator) {
+      issues.push("build.protection.cObfuscator must be configured");
+    }
+  }
+  if (!decoyCfg || !decoyCfg.enabled) {
+    issues.push("build.decoy must be enabled (mode=soft|wrapper)");
+  }
+  if (!watermarkCfg || !watermarkCfg.enabled) {
+    issues.push("build.watermark must be enabled");
+  }
+  if (issues.length) {
+    throw new Error(`securityProfile=max requires:\n- ${issues.join("\n- ")}`);
+  }
 }
 
 function loadTerser() {
@@ -913,6 +1095,10 @@ function writeVersion(releaseDir, versionObj) {
   writeJson(path.join(releaseDir, "version.json"), versionObj);
 }
 
+function writeManifest(releaseDir, manifestObj) {
+  writeJson(path.join(releaseDir, "manifest.json"), manifestObj);
+}
+
 function writeRuntimeVersion(releaseDir) {
   const rDir = path.join(releaseDir, "r");
   if (!fileExists(rDir)) return;
@@ -948,6 +1134,9 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   info(`Entry: ${projectCfg.entry}`);
   let thinCfg = resolveThinConfig(targetCfg, projectCfg);
   const packagerSpec = normalizePackager(packagerOverride || targetCfg.packager || projectCfg.build.packager || "auto");
+  const securityProfile = String(projectCfg.build.securityProfile || "").trim().toLowerCase();
+  const watermarkCfg = normalizeWatermarkConfig(projectCfg.build.watermark);
+  const watermarkRes = resolveWatermarkToken(watermarkCfg, { buildId, projectCfg, targetCfg });
   const compatNotes = new Set();
   if (packagerSpec.kind === "thin") {
     const thinCompat = applyThinCompatibility(packagerSpec.label, thinCfg);
@@ -999,6 +1188,14 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
     stripConsole,
   }));
   ok(`Bundle OK (esbuild${backendMinify ? ", minify" : ""})`);
+  if (watermarkCfg.enabled) {
+    if (!watermarkRes.token) {
+      throw new Error("build.watermark enabled but token is missing");
+    }
+    info("Watermark...");
+    bundlePath = timeSync("build.watermark", () => applyWatermark(bundlePath, stageDir, watermarkRes.token, watermarkCfg.style));
+    ok(`Watermark OK (${watermarkRes.source || "auto"})`);
+  }
   let backendTerser = { enabled: !!backendTerserCfg.enabled, ok: false, skipped: true, reason: "disabled" };
   if (backendTerserCfg.enabled) {
     info("Backend terser...");
@@ -1038,6 +1235,16 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   let protectionCfg = resolveProtectionConfig(projectCfg);
   const hardEnabled = protectionCfg.enabled !== false;
   const hardCfg = protectionCfg;
+  const decoyCfg = normalizeDecoyConfig(projectCfg.build.decoy);
+  if (securityProfile === "max") {
+    assertMaxSecurityProfile({
+      packagerSpec,
+      thinCfg,
+      protectionCfg,
+      decoyCfg,
+      watermarkCfg,
+    });
+  }
 
   // Default protection: pack the SEA main script into a compressed loader.
   // This avoids having plain-text JS inside the executable, while staying compatible.
@@ -1117,6 +1324,7 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
       appBind: thinCfg.appBind,
       snapshotGuard: thinCfg.snapshotGuard,
       nativeBootstrap: thinCfg.nativeBootstrap,
+      payloadProtection: thinCfg.payloadProtection,
       nativeBootstrapObfuscator,
       projectRoot,
       targetName: targetCfg.target || targetCfg.config || "default",
@@ -1334,6 +1542,25 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
   const createdAt = new Date().toISOString();
   const appVersion = readAppVersion(projectRoot) || "0.0.0";
   writeVersion(releaseDir, { version: appVersion, appName, buildId, createdAt });
+  const watermarkHash = (watermarkCfg.enabled && watermarkRes.token)
+    ? crypto.createHash("sha256").update(watermarkRes.token).digest("hex")
+    : null;
+  writeManifest(releaseDir, {
+    app: appName,
+    appName,
+    buildId,
+    buildTime: createdAt,
+    createdAt,
+    version: appVersion,
+    packager: packagerUsed,
+    watermark: watermarkHash ? {
+      enabled: true,
+      hash: watermarkHash,
+      mode: watermarkCfg.mode,
+      source: watermarkRes.source,
+      style: watermarkCfg.style,
+    } : { enabled: false },
+  });
   writeRuntimeVersion(releaseDir);
 
   const meta = {
@@ -1351,6 +1578,16 @@ async function buildRelease({ projectRoot, projectCfg, targetCfg, configName, pa
     frontendObfuscation: frontendResult,
     frontendMinify: minifyResult,
     decoy: decoyResult,
+    watermark: watermarkCfg.enabled ? {
+      enabled: true,
+      token: watermarkRes.token,
+      hash: watermarkHash,
+      mode: watermarkCfg.mode,
+      source: watermarkRes.source,
+      length: watermarkCfg.length,
+      prefix: watermarkCfg.prefix,
+      style: watermarkCfg.style,
+    } : { enabled: false },
     protection,
   };
   writeMeta(baseOutDir, meta);

@@ -2,7 +2,10 @@
 
 > Ten plik jest „wejściówką” do docsetu SEAL.
 
-**Wersja repo/CLI:** `0.6.0` (to jest wersja komendy `seal`). Docset poniżej opisuje „v0.5” jako poziom stabilności i zakres funkcji.
+**Wersje (kompatybilność):**
+- **CLI (seal):** `0.6.0`
+- **Docset:** `0.5.x` (poziom stabilności i zakres funkcji)
+- **Dokumenty stałe:** `SEAL_STANDARD v1.3`, `SEAL_CONTRACT_AI v1.3`
 
 ## Pliki w docsecie (linki)
 
@@ -14,6 +17,7 @@
 - [SEAL_E2E_FRAMEWORK_SPEC.md](SEAL_E2E_FRAMEWORK_SPEC.md)
 - [SEAL_E2E_RUNBOOK.md](SEAL_E2E_RUNBOOK.md)
 - [SEAL_CACHE_GUIDE.md](SEAL_CACHE_GUIDE.md)
+- [SEAL_ENV_FLAGS_REFERENCE.md](SEAL_ENV_FLAGS_REFERENCE.md)
 - [SEAL_CONTRACT_AI.md](SEAL_CONTRACT_AI.md)
 - [SEAL_PITFALLS.md](SEAL_PITFALLS.md)
 - [SEAL_PACKAGER_THIN_SPEC_SCALONA.md](SEAL_PACKAGER_THIN_SPEC_SCALONA.md)
@@ -21,6 +25,15 @@
 - [SEAL_CHANGELOG.md](SEAL_CHANGELOG.md)
 
 **TL;DR review checklist:** zob. poczatek `SEAL_PITFALLS.md` + `SEAL_STANDARD.md` (sekcja “TL;DR dla review”).
+
+## Dokumenty dodatkowe / robocze (poza rdzeniem docsetu)
+
+- [SEAL_SENTINEL_SPEC_FINAL_v1.0.md](SEAL_SENTINEL_SPEC_FINAL_v1.0.md) – specyfikacja sentinela (MVP‑ready)
+- [SEAL_E2E_QUEUE.md](SEAL_E2E_QUEUE.md) – szkic kolejki E2E (draft)
+- [SEAL_E2E_ADVANCED_RUN_SUMMARY.md](SEAL_E2E_ADVANCED_RUN_SUMMARY.md) – notatka z uruchomień advanced E2E
+- [SEAL_ANTI_REVERSE_ENGINEERING_APPENDIX_A.md](SEAL_ANTI_REVERSE_ENGINEERING_APPENDIX_A.md) – appendix (verbatim)
+- [SEAL_ANTI_REVERSE_ENGINEERING_APPENDIX_B.md](SEAL_ANTI_REVERSE_ENGINEERING_APPENDIX_B.md) – appendix (verbatim)
+- [SEAL_ANTI_REVERSE_ENGINEERING_APPENDIX_C.md](SEAL_ANTI_REVERSE_ENGINEERING_APPENDIX_C.md) – appendix (verbatim)
 
 ## Co jest w docsecie
 
@@ -33,6 +46,7 @@ Docset v0.5 składa się z:
 - **SEAL_STANDARD v1.3** – standard jakości aplikacji sealowanych.
 - **SEAL_E2E_FRAMEWORK_SPEC v0.1** – specyfikacja frameworka testow E2E (wspolne API i enforcement).
 - **SEAL_CACHE_GUIDE v0.5** – mapa cache w Seal + polityka sprzatania i retencji.
+- **SEAL_ENV_FLAGS_REFERENCE v0.5** – sciaga flag ENV (timeouty, E2E, docker).
 - **SEAL_CONTRACT_AI v1.3** – krótki kontrakt „promptable” dla generatorów kodu.
 - **SEAL_PITFALLS v0.5** – lista realnych błędów do uniknięcia + wymagania zapobiegawcze.
 - **SEAL_PACKAGER_THIN_SPEC_SCALONA** – specyfikacja packagera `thin-split` (BOOTSTRAP).
@@ -52,6 +66,13 @@ Docset v0.5 składa się z:
 3) Jeśli implementujesz narzędzie albo potrzebujesz precyzji: **SEAL_DEPLOY_SPEC**.
 4) Jeśli implementujesz narzędzie i chcesz gotowe szablony: **SEAL_DEPLOY_REFERENCE**.
 5) Jeśli piszesz/generujesz aplikację: **SEAL_CONTRACT_AI** + **SEAL_STANDARD**.
+
+## Kto co czyta (szybka mapa)
+
+- **Dev aplikacji:** `SEAL_QUICK_START.md`, `SEAL_SCENARIOS.md`, `SEAL_CONTRACT_AI.md`, `SEAL_STANDARD.md`
+- **Deployer / ops:** `SEAL_DEPLOY_SPEC.md`, `SEAL_DEPLOY_REFERENCE.md`, `SEAL_CACHE_GUIDE.md`, `SEAL_PITFALLS.md`
+- **QA / E2E:** `SEAL_E2E_FRAMEWORK_SPEC.md`, `SEAL_E2E_RUNBOOK.md`, `SEAL_PITFALLS.md`
+- **Security / hardening:** `SEAL_PACKAGER_THIN_SPEC_SCALONA.md`, `SEAL_ANTI_REVERSE_ENGINEERING.md`, `SEAL_SENTINEL_SPEC_FINAL_v1.0.md`
 
 ## Najważniejsze zmiany mentalne w v0.5
 

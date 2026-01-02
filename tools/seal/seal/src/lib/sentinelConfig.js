@@ -15,6 +15,7 @@ const DEFAULT_SENTINEL = {
   appId: "auto",
   namespaceId: "auto",
   cpuIdSource: "auto",
+  l4IncludePuid: true,
   storage: { baseDir: "/var/lib", mode: "file" },
   exitCodeBlock: 200,
   checkIntervalMs: 60000,
@@ -162,6 +163,84 @@ function normalizeCpuIdSource(value) {
   throw new Error(`Invalid sentinel cpuIdSource: ${value}`);
 }
 
+function normalizeUsbId(raw, label) {
+  const value = String(raw || "").trim().toLowerCase().replace(/^0x/, "");
+  if (!/^[0-9a-f]{4}$/.test(value)) {
+    throw new Error(`Invalid sentinel externalAnchor.usb.${label}: ${raw} (expected 4 hex chars)`);
+  }
+  return value;
+}
+
+function normalizeExternalAnchor(raw) {
+  const cfg = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  const type = String(cfg.type || "none").trim().toLowerCase();
+  if (type === "none") return { type: "none" };
+  if (type === "usb") {
+    const usb = cfg.usb && typeof cfg.usb === "object" && !Array.isArray(cfg.usb) ? cfg.usb : {};
+    const vid = normalizeUsbId(usb.vid, "vid");
+    const pid = normalizeUsbId(usb.pid, "pid");
+    const serialRaw = usb.serial !== undefined && usb.serial !== null ? String(usb.serial) : "";
+    const serial = serialRaw.trim();
+    if (serial && /[^\x20-\x7E]/.test(serial)) {
+      throw new Error(`Invalid sentinel externalAnchor.usb.serial: ${usb.serial} (non-ASCII)`);
+    }
+    return { type: "usb", usb: { vid, pid, serial } };
+  }
+  if (type === "file") {
+    const file = cfg.file && typeof cfg.file === "object" && !Array.isArray(cfg.file) ? cfg.file : {};
+    const pathRaw = file.path !== undefined && file.path !== null ? String(file.path) : "";
+    const filePath = pathRaw.trim();
+    if (!filePath) throw new Error("Invalid sentinel externalAnchor.file.path: empty");
+    if (!path.isAbsolute(filePath) || /\s/.test(filePath)) {
+      throw new Error(`Invalid sentinel externalAnchor.file.path: ${filePath}`);
+    }
+    return { type: "file", file: { path: filePath } };
+  }
+  if (type === "lease") {
+    const lease = cfg.lease && typeof cfg.lease === "object" && !Array.isArray(cfg.lease) ? cfg.lease : {};
+    const urlRaw = lease.url !== undefined && lease.url !== null ? String(lease.url) : "";
+    const url = urlRaw.trim();
+    if (!url) throw new Error("Invalid sentinel externalAnchor.lease.url: empty");
+    if (/\s/.test(url)) {
+      throw new Error(`Invalid sentinel externalAnchor.lease.url: ${url}`);
+    }
+    const timeoutMsRaw = lease.timeoutMs !== undefined && lease.timeoutMs !== null ? Number(lease.timeoutMs) : 1500;
+    if (!Number.isFinite(timeoutMsRaw) || timeoutMsRaw <= 0) {
+      throw new Error(`Invalid sentinel externalAnchor.lease.timeoutMs: ${lease.timeoutMs}`);
+    }
+    const maxBytesRaw = lease.maxBytes !== undefined && lease.maxBytes !== null ? Number(lease.maxBytes) : 4096;
+    if (!Number.isFinite(maxBytesRaw) || maxBytesRaw <= 0) {
+      throw new Error(`Invalid sentinel externalAnchor.lease.maxBytes: ${lease.maxBytes}`);
+    }
+    return { type: "lease", lease: { url, timeoutMs: Math.trunc(timeoutMsRaw), maxBytes: Math.trunc(maxBytesRaw) } };
+  }
+  if (type === "tpm2") {
+    const tpm2 = cfg.tpm2 && typeof cfg.tpm2 === "object" && !Array.isArray(cfg.tpm2) ? cfg.tpm2 : {};
+    const bankRaw = tpm2.bank !== undefined && tpm2.bank !== null ? String(tpm2.bank) : "sha256";
+    const bank = bankRaw.trim().toLowerCase();
+    if (!["sha1", "sha256", "sha384", "sha512"].includes(bank)) {
+      throw new Error(`Invalid sentinel externalAnchor.tpm2.bank: ${tpm2.bank} (expected sha1|sha256|sha384|sha512)`);
+    }
+    const pcrsRaw = tpm2.pcrs !== undefined && tpm2.pcrs !== null ? tpm2.pcrs : [0, 2, 4, 7];
+    const pcrs = Array.isArray(pcrsRaw) ? pcrsRaw : String(pcrsRaw).split(/[, ]+/);
+    const parsed = [];
+    for (const entry of pcrs) {
+      if (entry === "" || entry === null || entry === undefined) continue;
+      const n = Number(entry);
+      if (!Number.isFinite(n) || n < 0 || n > 23) {
+        throw new Error(`Invalid sentinel externalAnchor.tpm2.pcrs: ${entry} (expected 0..23)`);
+      }
+      parsed.push(Math.trunc(n));
+    }
+    if (!parsed.length) {
+      throw new Error("Invalid sentinel externalAnchor.tpm2.pcrs: empty");
+    }
+    const unique = Array.from(new Set(parsed)).sort((a, b) => a - b);
+    return { type: "tpm2", tpm2: { bank, pcrs: unique } };
+  }
+  throw new Error(`Invalid sentinel externalAnchor.type: ${cfg.type} (expected: none|usb|file|lease|tpm2)`);
+}
+
 function isRidStable(rid, fstype) {
   if (!rid) return false;
   if (fstype === "overlay" || fstype === "tmpfs" || fstype === "ramfs") return false;
@@ -170,7 +249,9 @@ function isRidStable(rid, fstype) {
 
 function resolveAutoLevel(hostInfo) {
   if (!hostInfo) throw new Error("Missing host info for auto level");
-  return isRidStable(hostInfo.rid, hostInfo.fstype) ? 2 : 1;
+  const stableRid = isRidStable(hostInfo.rid, hostInfo.fstype);
+  if (stableRid && hostInfo.puid) return 3;
+  return stableRid ? 2 : 1;
 }
 
 function parseExpiresAtSec(value) {
@@ -332,13 +413,24 @@ function resolveSentinelConfig({ projectRoot, projectCfg, targetCfg, targetName,
     throw new Error(`Sentinel storage.mode not supported in MVP: ${mode}`);
   }
 
-  const externalAnchor = cfg.externalAnchor || { type: "none" };
-  const anchorType = String(externalAnchor.type || "none").toLowerCase();
-  if (anchorType !== "none") {
-    throw new Error(`Sentinel externalAnchor not supported in MVP: ${anchorType}`);
+  const externalAnchor = normalizeExternalAnchor(cfg.externalAnchor);
+  let level = normalizeLevel(cfg.level);
+  const hasExternalAnchor = externalAnchor.type && externalAnchor.type !== "none";
+  if (level === "auto" && hasExternalAnchor) {
+    level = 4;
   }
+  if (hasExternalAnchor && level !== 4) {
+    throw new Error("sentinel externalAnchor requires level=4");
+  }
+  if (!hasExternalAnchor && level === 4) {
+    throw new Error("sentinel level=4 requires externalAnchor");
+  }
+  const l4IncludePuidRaw = cfg.l4IncludePuid;
+  if (l4IncludePuidRaw !== undefined && typeof l4IncludePuidRaw !== "boolean") {
+    throw new Error(`Invalid sentinel l4IncludePuid: ${l4IncludePuidRaw} (expected boolean)`);
+  }
+  const l4IncludePuid = !!l4IncludePuidRaw;
 
-  const level = normalizeLevel(cfg.level);
   const cpuIdSource = normalizeCpuIdSource(cfg.cpuIdSource);
   const exitCodeBlock = normalizeExitCode(cfg.exitCodeBlock ?? DEFAULT_SENTINEL.exitCodeBlock);
   const checkIntervalMs = normalizeCheckIntervalMs(cfg.checkIntervalMs, DEFAULT_SENTINEL.checkIntervalMs);
@@ -363,7 +455,8 @@ function resolveSentinelConfig({ projectRoot, projectCfg, targetCfg, targetName,
     exitCodeBlock,
     checkIntervalMs,
     timeLimit,
-    externalAnchor: { type: anchorType },
+    externalAnchor,
+    l4IncludePuid,
     anchor,
     opaqueDir,
     opaqueFile,

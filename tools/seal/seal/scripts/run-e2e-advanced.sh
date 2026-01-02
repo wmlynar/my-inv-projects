@@ -95,7 +95,7 @@ if [ -z "${SEAL_E2E_STRICT_CORE_BASELINE:-}" ] && [ "$(id -u)" -eq 0 ]; then
 fi
 
 # Default to the strict anti-debug subset unless SEAL_E2E_TESTS is provided.
-set_default SEAL_E2E_TESTS "thin-anti-debug,thin-anti-debug-dump"
+set_default SEAL_E2E_TESTS "thin-anti-debug,thin-anti-debug-dump,protection,elf-packers"
 set_default SEAL_E2E_TOOLSET "full"
 
 set_default SEAL_E2E_ENV_CHECKS "1"
@@ -113,6 +113,7 @@ set_default SEAL_E2E_STRICT_SYSCTL "1"
 set_default SEAL_E2E_STRICT_DENY_ENV "1"
 set_default SEAL_E2E_STRICT_ENV_SCRUB_EXT "1"
 set_default SEAL_E2E_STRICT_LD_SO_PRELOAD "1"
+set_default SEAL_E2E_STRICT_EXTRACT "1"
 set_default SEAL_E2E_STRICT_NODE_MEMFD "1"
 set_default SEAL_E2E_STRICT_DYNLINK "1"
 set_default SEAL_E2E_STRICT_CORE_FILTER "1"

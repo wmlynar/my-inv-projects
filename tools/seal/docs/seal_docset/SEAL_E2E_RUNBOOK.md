@@ -9,6 +9,13 @@ Ten dokument opisuje, jak uruchamiac testy E2E w kilku trybach: Docker (2 konten
 - Lokalnie, advanced anti-debug + dump: `tools/seal/seal/scripts/run-e2e-advanced.sh --local`
 - Plan tylko (lista testow, bez uruchamiania): `tools/seal/seal/scripts/e2e.sh --local --plan`
 
+## Srodowisko i wersje (checklist)
+
+- OS / kernel (loguj `uname -a`)
+- Node / npm (loguj `node -v`, `npm -v`)
+- Docker (jesli uzywasz trybu docker): `docker --version`
+- Toolset advanced (jesli wlaczasz anti-debug): `gdb --version`, `lldb --version`, `perf --version`
+
 ## Wspolne przygotowanie (wszystkie tryby)
 
 1) Opcjonalny plik konfiguracyjny E2E:
@@ -21,6 +28,7 @@ Ten dokument opisuje, jak uruchamiac testy E2E w kilku trybach: Docker (2 konten
    `tools/seal/seal/scripts/run-with-idle-timeout.sh 300 tools/seal/seal/scripts/e2e.sh --local`
 5) E2E loguje heartbeat co N sekund (domyslnie 60) aby watchdog nie ubijal
    dlugich etapow: `SEAL_E2E_RUNNER_HEARTBEAT_SEC=60` (0 = wylacz).
+6) Lista flag ENV: `SEAL_ENV_FLAGS_REFERENCE.md` (skrot + linki do kontekstu).
 
 ## Krytyczne: higiena dysku i tmp
 
@@ -168,6 +176,7 @@ Poza Dockerem musisz ustawic target SSH:
 6) Strict tryb (SKIP -> FAIL):
    - Wlacz wybrane: `SEAL_E2E_STRICT_* = 1`.
    - Dla dump fixture: `SEAL_E2E_STRICT_JS_DUMP_FIXTURE=1`.
+   - Dla ekstrakcji/strings: `SEAL_E2E_STRICT_EXTRACT=1`.
 
 ## Dodatkowe przydatne tryby runnera
 

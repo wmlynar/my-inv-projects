@@ -70,6 +70,7 @@ W logach aplikacji powinieneś widzieć, że czyta `config.runtime.json5`.
 > **Tip:** jeśli `seal check` wygląda na „zawieszony”, uruchom `seal check --verbose` (pokazuje output narzędzi) lub zwiększ timeouty: `SEAL_CHECK_CC_TIMEOUT_MS=60000`. Możesz też wskazać kompilator: `seal check --cc gcc`.
 > **Tip:** jeśli inne komendy wyglądają na „wiszące”, ustaw globalny timeout dla wszystkich subprocessów:
 > - `SEAL_SPAWN_TIMEOUT_MS=60000` (alias: `SEAL_CMD_TIMEOUT_MS`)
+> **Tip:** lista flag ENV (skrot + linki): `SEAL_ENV_FLAGS_REFERENCE.md`.
 
 ---
 
@@ -93,6 +94,7 @@ Domyślnie `seal release`:
 - buduje artefakt do `seal-out/<app>-<buildId>.tgz`,
 - rozpakowuje build do `seal-out/release/` (zawsze tylko ostatni release).
 - czyści `seal-out/` przed buildem (jak `target/`), z wyjątkiem `seal-out/cache/` (thin cache), więc zawsze zostaje tylko ostatni build.
+- uruchamia `seal verify` jako preflight (raport: `seal-out/run/verify-report.json`).
 
 **Packagery (kolejność rekomendowana):** `thin-split`, `sea`, `bundle`, `none` (raw bundle + wrapper; bez protection) (`auto` = `thin-split`).
 
@@ -113,6 +115,8 @@ Jeśli chcesz mieć czytelne wytłumaczenie „co sprawdzono”:
 ```bash
 seal verify --explain
 ```
+
+> **Uwaga:** `seal release` robi verify automatycznie (chyba że użyjesz `--skip-verify`), więc krok B to głównie powtórka z innym formatem wyjścia (`--explain`/`--json`).
 
 ### Krok C: przejrzyj artefakt
 

@@ -16,6 +16,16 @@
 
 namespace seal_thin_native {
 
+#if defined(_MSC_VER)
+__declspec(noinline)
+static void wipe_bytes(void *ptr, size_t len) {
+  volatile unsigned char *p = reinterpret_cast<volatile unsigned char *>(ptr);
+  while (len--) {
+    *p++ = 0;
+  }
+}
+#elif defined(__GNUC__) || defined(__clang__)
+__attribute__((noinline, used))
 static void wipe_bytes(void *ptr, size_t len) {
 #if defined(__GLIBC__) && defined(__GLIBC_PREREQ)
 #if __GLIBC_PREREQ(2, 25)
@@ -32,7 +42,16 @@ static void wipe_bytes(void *ptr, size_t len) {
     *p++ = 0;
   }
 #endif
+  __asm__ __volatile__("" : : "r"(ptr) : "memory");
 }
+#else
+static void wipe_bytes(void *ptr, size_t len) {
+  volatile unsigned char *p = reinterpret_cast<volatile unsigned char *>(ptr);
+  while (len--) {
+    *p++ = 0;
+  }
+}
+#endif
 
 static void best_effort_protect(void *ptr, size_t len) {
   if (!ptr || len == 0) return;
@@ -125,6 +144,9 @@ class ExternalOneByteResource : public v8::String::ExternalOneByteStringResource
   ExternalOneByteResource(char *data, size_t len) : data_(data), len_(len) {}
   const char *data() const override { return data_; }
   size_t length() const override { return len_; }
+  void Wipe() {
+    if (data_) wipe_bytes(data_, len_);
+  }
   void Dispose() override {
     if (data_) {
       wipe_bytes(data_, len_);
@@ -144,6 +166,9 @@ class ExternalTwoByteResource : public v8::String::ExternalStringResource {
   ExternalTwoByteResource(uint16_t *data, size_t len) : data_(data), len_(len) {}
   const uint16_t *data() const override { return data_; }
   size_t length() const override { return len_; }
+  void Wipe() {
+    if (data_) wipe_bytes(data_, len_ * sizeof(uint16_t));
+  }
   void Dispose() override {
     if (data_) {
       wipe_bytes(data_, len_ * sizeof(uint16_t));
@@ -158,7 +183,24 @@ class ExternalTwoByteResource : public v8::String::ExternalStringResource {
   size_t len_;
 };
 
-static bool ReadExternalStringFromFdInternal(v8::Isolate *isolate, int fd, v8::Local<v8::String> *out) {
+struct ExternalWipe {
+  ExternalOneByteResource *one;
+  ExternalTwoByteResource *two;
+  ExternalWipe() : one(nullptr), two(nullptr) {}
+  void Wipe() {
+    if (one) one->Wipe();
+    if (two) two->Wipe();
+  }
+};
+
+static bool ReadExternalStringFromFdInternal(v8::Isolate *isolate,
+                                             int fd,
+                                             v8::Local<v8::String> *out,
+                                             ExternalWipe *wipe) {
+  if (wipe) {
+    wipe->one = nullptr;
+    wipe->two = nullptr;
+  }
   if (!out) {
     (void)close(fd);
     throw_error(isolate, "invalid output");
@@ -199,11 +241,70 @@ static bool ReadExternalStringFromFdInternal(v8::Isolate *isolate, int fd, v8::L
   }
   (void)close(fd);
 
+  if (wipe) {
+    if (is_ascii(raw, len)) {
+      v8::Local<v8::String> str;
+      if (!v8::String::NewFromOneByte(
+            isolate,
+            reinterpret_cast<const uint8_t *>(raw),
+            v8::NewStringType::kNormal,
+            static_cast<int>(len)).ToLocal(&str)) {
+        wipe_bytes(raw, len);
+        munmap(raw, len);
+        throw_error(isolate, "string alloc failed");
+        return false;
+      }
+      wipe_bytes(raw, len);
+      munmap(raw, len);
+      *out = str;
+      return true;
+    }
+
+    if (len > SIZE_MAX / sizeof(uint16_t)) {
+      wipe_bytes(raw, len);
+      munmap(raw, len);
+      throw_error(isolate, "size overflow");
+      return false;
+    }
+
+    void *out_map = mmap(nullptr, len * sizeof(uint16_t), PROT_READ | PROT_WRITE,
+                         MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (out_map == MAP_FAILED) {
+      wipe_bytes(raw, len);
+      munmap(raw, len);
+      throw_error(isolate, "mmap failed");
+      return false;
+    }
+
+    uint16_t *utf16 = reinterpret_cast<uint16_t *>(out_map);
+    size_t out_len = utf8_to_utf16(raw, len, utf16);
+    wipe_bytes(raw, len);
+    munmap(raw, len);
+
+    v8::Local<v8::String> str;
+    if (!v8::String::NewFromTwoByte(
+          isolate,
+          reinterpret_cast<const uint16_t *>(utf16),
+          v8::NewStringType::kNormal,
+          static_cast<int>(out_len)).ToLocal(&str)) {
+      wipe_bytes(utf16, out_len * sizeof(uint16_t));
+      munmap(utf16, out_len * sizeof(uint16_t));
+      throw_error(isolate, "string alloc failed");
+      return false;
+    }
+    wipe_bytes(utf16, out_len * sizeof(uint16_t));
+    munmap(utf16, out_len * sizeof(uint16_t));
+    *out = str;
+    return true;
+  }
+
   if (is_ascii(raw, len)) {
     best_effort_protect(raw, len);
     ExternalOneByteResource *res = new ExternalOneByteResource(reinterpret_cast<char *>(raw), len);
+    if (wipe) wipe->one = res;
     v8::Local<v8::String> str;
     if (!v8::String::NewExternalOneByte(isolate, res).ToLocal(&str)) {
+      if (wipe) wipe->one = nullptr;
       res->Dispose();
       throw_error(isolate, "external string failed");
       return false;
@@ -235,8 +336,10 @@ static bool ReadExternalStringFromFdInternal(v8::Isolate *isolate, int fd, v8::L
 
   best_effort_protect(utf16, out_len * sizeof(uint16_t));
   ExternalTwoByteResource *res = new ExternalTwoByteResource(utf16, out_len);
+  if (wipe) wipe->two = res;
   v8::Local<v8::String> str;
   if (!v8::String::NewExternalTwoByte(isolate, res).ToLocal(&str)) {
+    if (wipe) wipe->two = nullptr;
     res->Dispose();
     throw_error(isolate, "external string failed");
     return false;
@@ -261,7 +364,7 @@ static void ReadExternalStringFromFd(const v8::FunctionCallbackInfo<v8::Value> &
   }
 
   v8::Local<v8::String> str;
-  if (!ReadExternalStringFromFdInternal(isolate, fd, &str)) return;
+  if (!ReadExternalStringFromFdInternal(isolate, fd, &str, nullptr)) return;
   args.GetReturnValue().Set(str);
 }
 
@@ -282,7 +385,13 @@ static void CompileCjsFromFd(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   v8::Local<v8::Context> context = isolate->GetCurrentContext();
   v8::Local<v8::String> source;
-  if (!ReadExternalStringFromFdInternal(isolate, fd, &source)) return;
+  bool wipe_source = false;
+  if (args.Length() > 2) {
+    wipe_source = args[2]->BooleanValue(isolate);
+  }
+  ExternalWipe wipe;
+  ExternalWipe *wipe_ptr = wipe_source ? &wipe : nullptr;
+  if (!ReadExternalStringFromFdInternal(isolate, fd, &source, wipe_ptr)) return;
 
   v8::Local<v8::String> resource_name;
   if (!args[1]->ToString(context).ToLocal(&resource_name)) {
@@ -310,6 +419,9 @@ static void CompileCjsFromFd(const v8::FunctionCallbackInfo<v8::Value> &args) {
     0,
     nullptr
   );
+  if (wipe_source) {
+    wipe.Wipe();
+  }
   v8::Local<v8::Function> fn;
   if (!maybe_fn.ToLocal(&fn)) {
     throw_error(isolate, "compile failed");

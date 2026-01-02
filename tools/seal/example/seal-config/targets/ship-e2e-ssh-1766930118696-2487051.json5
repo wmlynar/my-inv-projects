@@ -7,5 +7,10 @@
   "installDir": "/home/admin/tmp/test",
   "serviceName": "start-test-service",
   "packager": "thin-split",
-  "config": "server"
+  "config": "server",
+  "readiness": {
+    "enabled": true,
+    "mode": "both",
+    "url": "http://127.0.0.1:3333/api/status"
+  }
 }

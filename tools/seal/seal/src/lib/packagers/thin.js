@@ -11,7 +11,11 @@ const { ensureDir, fileExists } = require("../fsextra");
 const { resolveTmpBase } = require("../tmp");
 const { info, warn } = require("../ui");
 const { SEAL_OUT_DIR } = require("../paths");
-const { THIN_NATIVE_BOOTSTRAP_FILE } = require("../thinPaths");
+const {
+  THIN_NATIVE_BOOTSTRAP_FILE,
+  THIN_TPM_SEAL_PUB_FILE,
+  THIN_TPM_SEAL_PRIV_FILE,
+} = require("../thinPaths");
 
 const THIN_VERSION = 1;
 const THIN_FOOTER_LEN = 32;
@@ -22,6 +26,13 @@ const CODEC_BIN_MAGIC = Buffer.from("SLCB");
 const CODEC_BIN_VERSION = 1;
 const CODEC_BIN_HASH_LEN = 32;
 const CODEC_BIN_LEN = 4 + 1 + 1 + 2 + CODEC_BIN_HASH_LEN;
+const PL_ENC_MAGIC = Buffer.from("SLPE");
+const PL_ENC_VERSION = 1;
+const PL_ENC_SALT_LEN = 16;
+const PL_ENC_NONCE_LEN = 16;
+const PL_ENC_TAG_LEN = 32;
+const PL_ENC_HEADER_LEN = 4 + 1 + 1 + 2 + PL_ENC_SALT_LEN + PL_ENC_NONCE_LEN + PL_ENC_TAG_LEN;
+const PL_ENC_KEY_LABEL = Buffer.from("seal-pl-key-v1", "utf8");
 const THIN_LEVELS = {
   low: { chunkSize: 2 * 1024 * 1024, zstdLevel: 1 },
   medium: { chunkSize: 512 * 1024, zstdLevel: 2 },
@@ -544,6 +555,176 @@ async function encodeContainer(rawBuf, codecState, chunkSize, zstdLevel, opts = 
   return Buffer.concat([...chunks, maskedIndex, maskedFooter]);
 }
 
+function wipeBuffer(buf) {
+  if (!Buffer.isBuffer(buf)) return;
+  try { buf.fill(0); } catch {}
+}
+
+function buildPayloadBindData(bindCfg) {
+  const enabled = bindCfg && bindCfg.enabled === true;
+  const iface = enabled ? String(bindCfg.iface || "") : "";
+  const mac = enabled ? String(bindCfg.mac || "") : "";
+  const ip = enabled ? String(bindCfg.ip || "") : "";
+  const data = Buffer.from(`${iface}\n${mac}\n${ip}\n`, "utf8");
+  return { iface, mac, ip, data };
+}
+
+function derivePayloadKey(baseKey, salt, bindData) {
+  const baseHash = crypto.createHash("sha256").update(baseKey).digest();
+  const key = crypto.createHash("sha256")
+    .update(PL_ENC_KEY_LABEL)
+    .update(baseHash)
+    .update(salt)
+    .update(bindData)
+    .digest();
+  wipeBuffer(baseHash);
+  return key;
+}
+
+function xorPayloadStream(buf, key, nonce) {
+  const out = Buffer.from(buf);
+  const counterBuf = Buffer.alloc(8);
+  let counter = 0n;
+  let offset = 0;
+  while (offset < out.length) {
+    writeU64LE(counterBuf, 0, counter);
+    const block = crypto.createHash("sha256")
+      .update(key)
+      .update(nonce)
+      .update(counterBuf)
+      .digest();
+    const take = Math.min(block.length, out.length - offset);
+    for (let i = 0; i < take; i++) {
+      out[offset + i] ^= block[i];
+    }
+    offset += take;
+    counter += 1n;
+  }
+  return out;
+}
+
+function readSecretFile(secretPath, maxBytes) {
+  let stat;
+  try {
+    stat = fs.lstatSync(secretPath);
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err);
+    throw new Error(`payloadProtection secret read failed: ${msg}`);
+  }
+  if (!stat.isFile() || stat.isSymbolicLink()) {
+    throw new Error(`payloadProtection secret invalid: ${secretPath}`);
+  }
+  if (stat.size <= 0) {
+    throw new Error(`payloadProtection secret empty: ${secretPath}`);
+  }
+  if (stat.size > maxBytes) {
+    throw new Error(`payloadProtection secret too large (${stat.size} > ${maxBytes})`);
+  }
+  const buf = fs.readFileSync(secretPath);
+  if (buf.length === 0) {
+    throw new Error(`payloadProtection secret empty: ${secretPath}`);
+  }
+  if (buf.length > maxBytes) {
+    throw new Error(`payloadProtection secret too large (${buf.length} > ${maxBytes})`);
+  }
+  return buf;
+}
+
+function runTpm2Command(cmd, args, opts = {}) {
+  const res = spawnSyncSafe(cmd, args, { stdio: "pipe", ...opts });
+  if (!res.ok) {
+    const out = `${res.stdout || ""}${res.stderr || ""}`.trim();
+    const suffix = out ? `: ${out}` : "";
+    throw new Error(`${cmd} failed (status=${res.status ?? "?"})${suffix}`);
+  }
+  return res;
+}
+
+function sealPayloadKeyTpm2({ keyBuf, rDir, tpm2Cfg }) {
+  const tpm2Tools = [
+    "tpm2_createpolicy",
+    "tpm2_createprimary",
+    "tpm2_create",
+  ];
+  for (const tool of tpm2Tools) {
+    if (!hasCommand(tool)) {
+      throw new Error(`payloadProtection tpm2 requires ${tool} in PATH`);
+    }
+  }
+  if (!fileExists("/dev/tpm0")
+    && !fileExists("/dev/tpmrm0")
+    && !fileExists("/sys/class/tpm/tpm0")
+    && !fileExists("/sys/class/tpm/tpmrm0")) {
+    throw new Error("payloadProtection tpm2 device missing");
+  }
+  const bank = tpm2Cfg && tpm2Cfg.bank ? String(tpm2Cfg.bank) : "sha256";
+  const pcrs = tpm2Cfg && Array.isArray(tpm2Cfg.pcrs) ? tpm2Cfg.pcrs : [0, 2, 4, 7];
+  const pcrList = pcrs.map((p) => String(p)).join(",");
+
+  ensureDir(rDir);
+  const pubOut = path.join(rDir, THIN_TPM_SEAL_PUB_FILE);
+  const privOut = path.join(rDir, THIN_TPM_SEAL_PRIV_FILE);
+
+  const tmpDir = fs.mkdtempSync(path.join(resolveTmpBase(), "seal-tpm-"));
+  try {
+    const keyPath = path.join(tmpDir, "key.bin");
+    const policyPath = path.join(tmpDir, "policy.bin");
+    const primaryPath = path.join(tmpDir, "primary.ctx");
+    const pubTmp = path.join(tmpDir, "seal.pub");
+    const privTmp = path.join(tmpDir, "seal.priv");
+
+    fs.writeFileSync(keyPath, keyBuf, { mode: 0o600 });
+    if (pcrList) {
+      runTpm2Command("tpm2_createpolicy", ["--policy-pcr", "-l", `${bank}:${pcrList}`, "-L", policyPath]);
+    }
+    runTpm2Command("tpm2_createprimary", ["-C", "o", "-g", "sha256", "-G", "rsa", "-c", primaryPath]);
+    const createArgs = [
+      "-C", primaryPath,
+      "-g", "sha256",
+      "-G", "keyedhash",
+      "-u", pubTmp,
+      "-r", privTmp,
+      "-i", keyPath,
+    ];
+    if (pcrList) {
+      createArgs.push("-L", policyPath);
+    }
+    runTpm2Command("tpm2_create", createArgs);
+    fs.copyFileSync(pubTmp, pubOut);
+    fs.copyFileSync(privTmp, privOut);
+  } finally {
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch {
+      // best-effort cleanup
+    }
+  }
+}
+
+function encryptPayloadContainer(containerBuf, opts) {
+  if (!opts || !Buffer.isBuffer(opts.baseKey)) {
+    throw new Error("payloadProtection missing base key");
+  }
+  const salt = crypto.randomBytes(PL_ENC_SALT_LEN);
+  const nonce = crypto.randomBytes(PL_ENC_NONCE_LEN);
+  const key = derivePayloadKey(opts.baseKey, salt, opts.bindData);
+  const cipher = xorPayloadStream(containerBuf, key, nonce);
+  const tag = crypto.createHmac("sha256", key).update(nonce).update(cipher).digest();
+
+  const header = Buffer.alloc(PL_ENC_HEADER_LEN);
+  PL_ENC_MAGIC.copy(header, 0);
+  header[4] = PL_ENC_VERSION;
+  header[5] = 0;
+  header.writeUInt16LE(0, 6);
+  salt.copy(header, 8);
+  nonce.copy(header, 8 + PL_ENC_SALT_LEN);
+  tag.copy(header, 8 + PL_ENC_SALT_LEN + PL_ENC_NONCE_LEN);
+
+  wipeBuffer(key);
+  wipeBuffer(opts.baseKey);
+  return Buffer.concat([header, cipher]);
+}
+
 function buildAioFooter({ codecState, runtimeOff, runtimeLen, payloadOff, payloadLen, appBindValue }) {
   const footer = Buffer.allocUnsafe(THIN_AIO_FOOTER_LEN);
   footer.writeUInt32LE(THIN_VERSION, 0);
@@ -672,6 +853,16 @@ function renderSentinelDefs(sentinelCfg) {
 #define SENTINEL_CPUID_MODE 0
 #define SENTINEL_TIME_FALLBACK_ABS 0ull
 #define SENTINEL_TIME_ENFORCE_MISMATCH 0
+#define SENTINEL_EXT_TYPE 0
+static const char SENTINEL_EXT_USB_VID[] = "";
+static const char SENTINEL_EXT_USB_PID[] = "";
+static const char SENTINEL_EXT_USB_SERIAL[] = "";
+static const char SENTINEL_EXT_FILE_PATH[] = "";
+static const char SENTINEL_EXT_LEASE_URL[] = "";
+#define SENTINEL_EXT_LEASE_TIMEOUT_MS 0
+#define SENTINEL_EXT_LEASE_MAX 0
+static const char SENTINEL_EXT_TPM_BANK[] = "";
+static const char SENTINEL_EXT_TPM_PCRS[] = "";
 `;
   }
   if (!Buffer.isBuffer(sentinelCfg.anchor)) {
@@ -690,16 +881,40 @@ function renderSentinelDefs(sentinelCfg) {
   const fallbackAbs = Number.isFinite(fallbackAbsRaw) && fallbackAbsRaw > 0
     ? `${Math.floor(fallbackAbsRaw)}ull`
     : "0ull";
+  const externalAnchor = sentinelCfg.externalAnchor || { type: "none" };
+  const extType = String(externalAnchor.type || "none").toLowerCase();
+  const extTypeId = extType === "usb"
+    ? 1
+    : (extType === "file"
+      ? 2
+      : (extType === "lease"
+        ? 3
+        : (extType === "tpm2" ? 4 : 0)));
+  const usbCfg = externalAnchor.usb || {};
+  const fileCfg = externalAnchor.file || {};
+  const leaseCfg = externalAnchor.lease || {};
+  const tpm2Cfg = externalAnchor.tpm2 || {};
+  const tpm2Pcrs = Array.isArray(tpm2Cfg.pcrs) ? tpm2Cfg.pcrs.map((v) => String(v)).join(",") : "";
   return `#define SENTINEL_ENABLED 1
 #define SENTINEL_EXIT_BLOCK ${exitCode}
 #define SENTINEL_CPUID_MODE ${cpuIdMode}
 #define SENTINEL_TIME_FALLBACK_ABS ${fallbackAbs}
 #define SENTINEL_TIME_ENFORCE_MISMATCH ${enforceMismatch ? 1 : 0}
+#define SENTINEL_EXT_TYPE ${extTypeId}
 static const uint8_t SENTINEL_ANCHOR[] = { ${toCBytes(sentinelCfg.anchor)} };
 #define SENTINEL_ANCHOR_LEN ((size_t)sizeof(SENTINEL_ANCHOR))
 static const char SENTINEL_BASE_DIR[] = ${toCString(baseDir)};
 static const char SENTINEL_DIR[] = ${toCString(sentinelCfg.opaqueDir)};
 static const char SENTINEL_FILE[] = ${toCString(sentinelCfg.opaqueFile)};
+static const char SENTINEL_EXT_USB_VID[] = ${toCString(usbCfg.vid || "")};
+static const char SENTINEL_EXT_USB_PID[] = ${toCString(usbCfg.pid || "")};
+static const char SENTINEL_EXT_USB_SERIAL[] = ${toCString(usbCfg.serial || "")};
+static const char SENTINEL_EXT_FILE_PATH[] = ${toCString(fileCfg.path || "")};
+static const char SENTINEL_EXT_LEASE_URL[] = ${toCString(leaseCfg.url || "")};
+#define SENTINEL_EXT_LEASE_TIMEOUT_MS ${Number.isFinite(Number(leaseCfg.timeoutMs)) ? Math.floor(Number(leaseCfg.timeoutMs)) : 1500}
+#define SENTINEL_EXT_LEASE_MAX ${Number.isFinite(Number(leaseCfg.maxBytes)) ? Math.floor(Number(leaseCfg.maxBytes)) : 4096}
+static const char SENTINEL_EXT_TPM_BANK[] = ${toCString(tpm2Cfg.bank || "")};
+static const char SENTINEL_EXT_TPM_PCRS[] = ${toCString(tpm2Pcrs)};
 `;
 }
 
@@ -711,8 +926,10 @@ function renderSentinelCode() {
 #define SENTINEL_BLOB_LEN_V2 84u
 #define SENTINEL_MASK_LEN_V2 80u
 #define SENTINEL_BLOB_LEN_MAX SENTINEL_BLOB_LEN_V2
+#define FLAG_L4_INCLUDE_PUID 0x0002u
 #define FLAG_INCLUDE_CPUID 0x0004u
 #define SENTINEL_PAD_HASHES 2u
+#define SENTINEL_EXT_FILE_MAX 4096u
 
 typedef struct {
   uint8_t data[64];
@@ -897,6 +1114,306 @@ static int read_text(const char *path, char *out, size_t out_len) {
   return out[0] ? 0 : -1;
 }
 
+static int hex_encode(const uint8_t *in, size_t len, char *out, size_t out_len) {
+  static const char *hex = "0123456789abcdef";
+  if (out_len < (len * 2 + 1)) return -1;
+  for (size_t i = 0; i < len; i++) {
+    out[i * 2] = hex[(in[i] >> 4) & 0x0f];
+    out[i * 2 + 1] = hex[in[i] & 0x0f];
+  }
+  out[len * 2] = 0;
+  return 0;
+}
+
+static int sha256_file(const char *path, uint8_t out[32], size_t *out_size) {
+  struct stat st;
+  if (lstat(path, &st) != 0) return -1;
+  if (!S_ISREG(st.st_mode) || S_ISLNK(st.st_mode)) return -1;
+  int fd = open(path, O_RDONLY | O_CLOEXEC);
+  if (fd < 0) return -1;
+  sha256_ctx ctx;
+  sha256_init(&ctx);
+  uint8_t buf[4096];
+  ssize_t r = 0;
+  while ((r = read(fd, buf, sizeof(buf))) > 0) {
+    sha256_update(&ctx, buf, (size_t)r);
+  }
+  close(fd);
+  if (r < 0) return -1;
+  sha256_final(&ctx, out);
+  if (out_size) *out_size = (size_t)st.st_size;
+  return 0;
+}
+
+static int compute_file_eah(char *out, size_t out_len) {
+  if (!SENTINEL_EXT_FILE_PATH[0]) return -1;
+  uint8_t file_hash[32];
+  size_t file_size = 0;
+  if (sha256_file(SENTINEL_EXT_FILE_PATH, file_hash, &file_size) != 0) return -1;
+  if (file_size > SENTINEL_EXT_FILE_MAX) {
+    uint8_t hash2[32];
+    sha256_hash(file_hash, sizeof(file_hash), hash2);
+    return hex_encode(hash2, sizeof(hash2), out, out_len);
+  }
+  return hex_encode(file_hash, sizeof(file_hash), out, out_len);
+}
+
+static int compute_usb_eah(char *out, size_t out_len) {
+  if (!SENTINEL_EXT_USB_VID[0] || !SENTINEL_EXT_USB_PID[0]) return -1;
+  DIR *dp = opendir("/sys/bus/usb/devices");
+  if (!dp) return -1;
+  struct dirent *ent;
+  char path_buf[PATH_MAX + 1];
+  char vid[16] = { 0 };
+  char pid[16] = { 0 };
+  char serial[128] = { 0 };
+  int found = 0;
+  while ((ent = readdir(dp)) != NULL) {
+    if (ent->d_name[0] == '.') continue;
+    if (snprintf(path_buf, sizeof(path_buf), "/sys/bus/usb/devices/%s/idVendor", ent->d_name) < 0) continue;
+    if (read_text(path_buf, vid, sizeof(vid)) != 0) continue;
+    if (snprintf(path_buf, sizeof(path_buf), "/sys/bus/usb/devices/%s/idProduct", ent->d_name) < 0) continue;
+    if (read_text(path_buf, pid, sizeof(pid)) != 0) continue;
+    str_to_lower(vid);
+    str_to_lower(pid);
+    if (strcmp(vid, SENTINEL_EXT_USB_VID) != 0) continue;
+    if (strcmp(pid, SENTINEL_EXT_USB_PID) != 0) continue;
+    if (SENTINEL_EXT_USB_SERIAL[0]) {
+      if (snprintf(path_buf, sizeof(path_buf), "/sys/bus/usb/devices/%s/serial", ent->d_name) < 0) continue;
+      if (read_text(path_buf, serial, sizeof(serial)) != 0) continue;
+      if (strcmp(serial, SENTINEL_EXT_USB_SERIAL) != 0) continue;
+    }
+    found = 1;
+    break;
+  }
+  closedir(dp);
+  if (!found) return -1;
+  char anchor[256];
+  int n = snprintf(anchor, sizeof(anchor), "usb\\nvid=%s\\npid=%s\\nserial=%s\\n",
+    SENTINEL_EXT_USB_VID,
+    SENTINEL_EXT_USB_PID,
+    SENTINEL_EXT_USB_SERIAL);
+  if (n < 0 || (size_t)n >= sizeof(anchor)) return -1;
+  uint8_t hash[32];
+  sha256_hash((uint8_t *)anchor, (size_t)n, hash);
+  return hex_encode(hash, sizeof(hash), out, out_len);
+}
+
+static char *sentinel_shell_quote(const char *value) {
+  if (!value) return NULL;
+  size_t len = strlen(value);
+  size_t max_len = len * 5 + 3;
+  char *out = (char *)malloc(max_len);
+  if (!out) return NULL;
+  size_t pos = 0;
+  out[pos++] = 39;
+  for (size_t i = 0; i < len; i++) {
+    if (value[i] == 39) {
+      if (pos + 5 >= max_len) {
+        free(out);
+        return NULL;
+      }
+      out[pos++] = 39;
+      out[pos++] = '"';
+      out[pos++] = 39;
+      out[pos++] = '"';
+      out[pos++] = 39;
+    } else {
+      if (pos + 1 >= max_len) {
+        free(out);
+        return NULL;
+      }
+      out[pos++] = value[i];
+    }
+  }
+  if (pos + 2 > max_len) {
+    free(out);
+    return NULL;
+  }
+  out[pos++] = 39;
+  out[pos] = 0;
+  return out;
+}
+
+static int sentinel_hash_pipe(FILE *fp, uint8_t out[32], size_t *out_len, size_t max_bytes) {
+  if (!fp || !out || max_bytes == 0) return -1;
+  sha256_ctx ctx;
+  sha256_init(&ctx);
+  uint8_t buf[512];
+  size_t total = 0;
+  int overflow = 0;
+  size_t r = 0;
+  while ((r = fread(buf, 1, sizeof(buf), fp)) > 0) {
+    total += r;
+    if (!overflow) {
+      if (total > max_bytes) {
+        overflow = 1;
+      } else {
+        sha256_update(&ctx, buf, r);
+      }
+    }
+  }
+  if (ferror(fp) || overflow || total == 0) return -1;
+  sha256_final(&ctx, out);
+  if (out_len) *out_len = total;
+  return 0;
+}
+
+static int compute_lease_eah_cmd(const char *cmd, char *out, size_t out_len) {
+  FILE *fp = popen(cmd, "r");
+  if (!fp) return -1;
+  uint8_t hash[32];
+  int rc = sentinel_hash_pipe(fp, hash, NULL, (size_t)SENTINEL_EXT_LEASE_MAX);
+  int status = pclose(fp);
+  if (rc != 0 || status != 0) return -1;
+  return hex_encode(hash, sizeof(hash), out, out_len);
+}
+
+static int compute_lease_eah(char *out, size_t out_len) {
+  if (!SENTINEL_EXT_LEASE_URL[0]) return -1;
+  if (SENTINEL_EXT_LEASE_MAX == 0) return -1;
+  int timeout_ms = SENTINEL_EXT_LEASE_TIMEOUT_MS > 0 ? SENTINEL_EXT_LEASE_TIMEOUT_MS : 1500;
+  int timeout_s = timeout_ms / 1000;
+  if (timeout_ms % 1000) timeout_s += 1;
+  if (timeout_s <= 0) timeout_s = 1;
+  char *qurl = sentinel_shell_quote(SENTINEL_EXT_LEASE_URL);
+  if (!qurl) return -1;
+  size_t cmd_len = strlen(qurl) + 128;
+  char *cmd = (char *)malloc(cmd_len);
+  if (!cmd) {
+    free(qurl);
+    return -1;
+  }
+  int rc = -1;
+  int n = snprintf(cmd, cmd_len, "curl -fsL --max-time %d %s 2>/dev/null", timeout_s, qurl);
+  if (n > 0 && (size_t)n < cmd_len) {
+    rc = compute_lease_eah_cmd(cmd, out, out_len);
+  }
+  if (rc != 0) {
+    n = snprintf(cmd, cmd_len, "wget -q -O - --timeout=%d %s 2>/dev/null", timeout_s, qurl);
+    if (n > 0 && (size_t)n < cmd_len) {
+      rc = compute_lease_eah_cmd(cmd, out, out_len);
+    }
+  }
+  free(cmd);
+  free(qurl);
+  return rc;
+}
+
+static int sentinel_hex_nibble(char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'a' && c <= 'f') return 10 + (c - 'a');
+  if (c >= 'A' && c <= 'F') return 10 + (c - 'A');
+  return -1;
+}
+
+static int sentinel_hex_to_bytes(const char *hex, size_t hex_len, uint8_t *out, size_t out_len) {
+  if (!hex || (hex_len % 2) != 0) return -1;
+  size_t bytes = hex_len / 2;
+  if (bytes > out_len) return -1;
+  for (size_t i = 0; i < bytes; i++) {
+    int hi = sentinel_hex_nibble(hex[i * 2]);
+    int lo = sentinel_hex_nibble(hex[i * 2 + 1]);
+    if (hi < 0 || lo < 0) return -1;
+    out[i] = (uint8_t)((hi << 4) | lo);
+  }
+  return (int)bytes;
+}
+
+static size_t sentinel_count_pcrs(const char *list) {
+  if (!list || !list[0]) return 0;
+  size_t count = 0;
+  int in_num = 0;
+  for (const char *p = list; ; p++) {
+    char c = *p;
+    if (c >= '0' && c <= '9') {
+      if (!in_num) {
+        in_num = 1;
+        count++;
+      }
+    } else if (c == ',' || c == 0) {
+      in_num = 0;
+      if (c == 0) break;
+    } else {
+      return 0;
+    }
+  }
+  return count;
+}
+
+static size_t sentinel_tpm_digest_len(const char *bank) {
+  if (!bank || !bank[0]) return 0;
+  if (strcmp(bank, "sha1") == 0) return 20;
+  if (strcmp(bank, "sha256") == 0) return 32;
+  if (strcmp(bank, "sha384") == 0) return 48;
+  if (strcmp(bank, "sha512") == 0) return 64;
+  return 0;
+}
+
+static int compute_tpm2_eah(char *out, size_t out_len) {
+  if (!SENTINEL_EXT_TPM_BANK[0] || !SENTINEL_EXT_TPM_PCRS[0]) return -1;
+  size_t expected = sentinel_count_pcrs(SENTINEL_EXT_TPM_PCRS);
+  size_t digest_len = sentinel_tpm_digest_len(SENTINEL_EXT_TPM_BANK);
+  if (expected == 0 || digest_len == 0) return -1;
+  size_t sel_len = strlen(SENTINEL_EXT_TPM_BANK) + strlen(SENTINEL_EXT_TPM_PCRS) + 2;
+  char *sel = (char *)malloc(sel_len);
+  if (!sel) return -1;
+  int sel_n = snprintf(sel, sel_len, "%s:%s", SENTINEL_EXT_TPM_BANK, SENTINEL_EXT_TPM_PCRS);
+  if (sel_n <= 0 || (size_t)sel_n >= sel_len) {
+    free(sel);
+    return -1;
+  }
+  char *qsel = sentinel_shell_quote(sel);
+  free(sel);
+  if (!qsel) return -1;
+  size_t cmd_len = strlen(qsel) + 64;
+  char *cmd = (char *)malloc(cmd_len);
+  if (!cmd) {
+    free(qsel);
+    return -1;
+  }
+  int n = snprintf(cmd, cmd_len, "tpm2_pcrread %s 2>/dev/null", qsel);
+  free(qsel);
+  if (n <= 0 || (size_t)n >= cmd_len) {
+    free(cmd);
+    return -1;
+  }
+  FILE *fp = popen(cmd, "r");
+  free(cmd);
+  if (!fp) return -1;
+  sha256_ctx ctx;
+  sha256_init(&ctx);
+  char line[512];
+  size_t found = 0;
+  while (fgets(line, sizeof(line), fp)) {
+    char *p = strstr(line, "0x");
+    if (!p) continue;
+    p += 2;
+    size_t hex_len = 0;
+    while (isxdigit((unsigned char)p[hex_len])) hex_len++;
+    if (hex_len != digest_len * 2) continue;
+    if (found >= expected) continue;
+    uint8_t buf[64];
+    int bytes = sentinel_hex_to_bytes(p, hex_len, buf, sizeof(buf));
+    if (bytes <= 0 || (size_t)bytes != digest_len) continue;
+    sha256_update(&ctx, buf, digest_len);
+    found++;
+  }
+  int status = pclose(fp);
+  if (status != 0 || found < expected) return -1;
+  uint8_t hash[32];
+  sha256_final(&ctx, hash);
+  return hex_encode(hash, sizeof(hash), out, out_len);
+}
+
+static int compute_external_eah(char *out, size_t out_len) {
+  if (SENTINEL_EXT_TYPE == 1) return compute_usb_eah(out, out_len);
+  if (SENTINEL_EXT_TYPE == 2) return compute_file_eah(out, out_len);
+  if (SENTINEL_EXT_TYPE == 3) return compute_lease_eah(out, out_len);
+  if (SENTINEL_EXT_TYPE == 4) return compute_tpm2_eah(out, out_len);
+  return -1;
+}
+
 static int read_cpuinfo_value(const char *key, char *out, size_t out_len) {
   FILE *fp = fopen("/proc/cpuinfo", "r");
   if (!fp) return -1;
@@ -1044,7 +1561,7 @@ static int get_root_rid(char *out, size_t out_len) {
   return 0;
 }
 
-static int build_fingerprint(uint8_t level, const char *mid, const char *rid, const char *cpuid, int include_cpuid, char *out, size_t out_len) {
+static int build_fingerprint(uint8_t level, const char *mid, const char *rid, const char *puid, const char *eah, const char *cpuid, int include_cpuid, int include_puid, char *out, size_t out_len) {
   size_t pos = 0;
   int n = -1;
   if (level == 0) {
@@ -1073,6 +1590,37 @@ static int build_fingerprint(uint8_t level, const char *mid, const char *rid, co
       if (n < 0 || (size_t)n >= out_len - pos) return -1;
       pos += (size_t)n;
     }
+  } else if (level == 3) {
+    if (!mid || !mid[0] || !rid || !rid[0] || !puid || !puid[0]) return -1;
+    n = snprintf(out + pos, out_len - pos, "v3\\nmid=%s\\nrid=%s\\npuid=%s\\n", mid, rid, puid);
+    if (n < 0 || (size_t)n >= out_len - pos) return -1;
+    pos += (size_t)n;
+    if (include_cpuid) {
+      if (!cpuid || !cpuid[0]) return -1;
+      n = snprintf(out + pos, out_len - pos, "cpuid=%s\\n", cpuid);
+      if (n < 0 || (size_t)n >= out_len - pos) return -1;
+      pos += (size_t)n;
+    }
+  } else if (level == 4) {
+    if (!mid || !mid[0] || !rid || !rid[0] || !eah || !eah[0]) return -1;
+    n = snprintf(out + pos, out_len - pos, "v4\\nmid=%s\\nrid=%s\\n", mid, rid);
+    if (n < 0 || (size_t)n >= out_len - pos) return -1;
+    pos += (size_t)n;
+    if (include_cpuid) {
+      if (!cpuid || !cpuid[0]) return -1;
+      n = snprintf(out + pos, out_len - pos, "cpuid=%s\\n", cpuid);
+      if (n < 0 || (size_t)n >= out_len - pos) return -1;
+      pos += (size_t)n;
+    }
+    if (include_puid) {
+      if (!puid || !puid[0]) return -1;
+      n = snprintf(out + pos, out_len - pos, "puid=%s\\n", puid);
+      if (n < 0 || (size_t)n >= out_len - pos) return -1;
+      pos += (size_t)n;
+    }
+    n = snprintf(out + pos, out_len - pos, "eah=%s\\n", eah);
+    if (n < 0 || (size_t)n >= out_len - pos) return -1;
+    pos += (size_t)n;
   } else {
     return -1;
   }
@@ -1225,17 +1773,28 @@ static int sentinel_check(void) {
   } else {
     goto done;
   }
-  if (level > 2) goto done;
-  if ((flags & ~FLAG_INCLUDE_CPUID) != 0) goto done;
+  if (level > 4) goto done;
+  if ((flags & ~(FLAG_L4_INCLUDE_PUID | FLAG_INCLUDE_CPUID)) != 0) goto done;
   int include_cpuid = (flags & FLAG_INCLUDE_CPUID) ? 1 : 0;
+  int include_puid = (flags & FLAG_L4_INCLUDE_PUID) ? 1 : 0;
 
   char mid[128] = { 0 };
   char rid[256] = { 0 };
+  char puid[128] = { 0 };
+  char eah[128] = { 0 };
   if (level >= 1) {
     if (read_text("/etc/machine-id", mid, sizeof(mid)) != 0) goto done;
   }
   if (level >= 2) {
     if (get_root_rid(rid, sizeof(rid)) != 0) goto done;
+  }
+  if (level >= 3) {
+    if (read_text("/sys/class/dmi/id/product_uuid", puid, sizeof(puid)) != 0) goto done;
+  }
+  if (level == 4) {
+    if (SENTINEL_EXT_TYPE == 0) goto done;
+    if (compute_external_eah(eah, sizeof(eah)) != 0) goto done;
+    if (include_puid && !puid[0]) goto done;
   }
 
   char cpuid[128] = { 0 };
@@ -1273,7 +1832,7 @@ static int sentinel_check(void) {
   }
 
   char fp[512];
-  if (build_fingerprint(level, mid, rid, cpuid, include_cpuid, fp, sizeof(fp)) != 0) goto done;
+  if (build_fingerprint(level, mid, rid, puid, eah, cpuid, include_cpuid, include_puid, fp, sizeof(fp)) != 0) goto done;
   uint8_t fp_now[32];
   sha256_hash((uint8_t *)fp, strlen(fp), fp_now);
 
@@ -1317,6 +1876,191 @@ static int sentinel_check(void) {
 `;
 }
 
+function renderPayloadSha256Code() {
+  return `
+typedef struct {
+  uint8_t data[64];
+  uint32_t datalen;
+  uint64_t bitlen;
+  uint32_t state[8];
+} sha256_ctx;
+
+static const uint32_t sha256_k[64] = {
+  0x428a2f98u, 0x71374491u, 0xb5c0fbcfu, 0xe9b5dba5u,
+  0x3956c25bu, 0x59f111f1u, 0x923f82a4u, 0xab1c5ed5u,
+  0xd807aa98u, 0x12835b01u, 0x243185beu, 0x550c7dc3u,
+  0x72be5d74u, 0x80deb1feu, 0x9bdc06a7u, 0xc19bf174u,
+  0xe49b69c1u, 0xefbe4786u, 0x0fc19dc6u, 0x240ca1ccu,
+  0x2de92c6fu, 0x4a7484aau, 0x5cb0a9dcu, 0x76f988dau,
+  0x983e5152u, 0xa831c66du, 0xb00327c8u, 0xbf597fc7u,
+  0xc6e00bf3u, 0xd5a79147u, 0x06ca6351u, 0x14292967u,
+  0x27b70a85u, 0x2e1b2138u, 0x4d2c6dfcu, 0x53380d13u,
+  0x650a7354u, 0x766a0abbu, 0x81c2c92eu, 0x92722c85u,
+  0xa2bfe8a1u, 0xa81a664bu, 0xc24b8b70u, 0xc76c51a3u,
+  0xd192e819u, 0xd6990624u, 0xf40e3585u, 0x106aa070u,
+  0x19a4c116u, 0x1e376c08u, 0x2748774cu, 0x34b0bcb5u,
+  0x391c0cb3u, 0x4ed8aa4au, 0x5b9cca4fu, 0x682e6ff3u,
+  0x748f82eeu, 0x78a5636fu, 0x84c87814u, 0x8cc70208u,
+  0x90befffau, 0xa4506cebu, 0xbef9a3f7u, 0xc67178f2u
+};
+
+static uint32_t rotr32(uint32_t a, uint32_t b) {
+  return (a >> b) | (a << (32 - b));
+}
+
+static void sha256_transform(sha256_ctx *ctx, const uint8_t data[]) {
+  uint32_t a, b, c, d, e, f, g, h, t1, t2, m[64];
+  for (uint32_t i = 0, j = 0; i < 16; i++, j += 4) {
+    m[i] = ((uint32_t)data[j] << 24)
+      | ((uint32_t)data[j + 1] << 16)
+      | ((uint32_t)data[j + 2] << 8)
+      | ((uint32_t)data[j + 3]);
+  }
+  for (uint32_t i = 16; i < 64; i++) {
+    uint32_t s0 = rotr32(m[i - 15], 7) ^ rotr32(m[i - 15], 18) ^ (m[i - 15] >> 3);
+    uint32_t s1 = rotr32(m[i - 2], 17) ^ rotr32(m[i - 2], 19) ^ (m[i - 2] >> 10);
+    m[i] = m[i - 16] + s0 + m[i - 7] + s1;
+  }
+
+  a = ctx->state[0];
+  b = ctx->state[1];
+  c = ctx->state[2];
+  d = ctx->state[3];
+  e = ctx->state[4];
+  f = ctx->state[5];
+  g = ctx->state[6];
+  h = ctx->state[7];
+
+  for (uint32_t i = 0; i < 64; i++) {
+    uint32_t S1 = rotr32(e, 6) ^ rotr32(e, 11) ^ rotr32(e, 25);
+    uint32_t ch = (e & f) ^ (~e & g);
+    t1 = h + S1 + ch + sha256_k[i] + m[i];
+    uint32_t S0 = rotr32(a, 2) ^ rotr32(a, 13) ^ rotr32(a, 22);
+    uint32_t maj = (a & b) ^ (a & c) ^ (b & c);
+    t2 = S0 + maj;
+
+    h = g;
+    g = f;
+    f = e;
+    e = d + t1;
+    d = c;
+    c = b;
+    b = a;
+    a = t1 + t2;
+  }
+
+  ctx->state[0] += a;
+  ctx->state[1] += b;
+  ctx->state[2] += c;
+  ctx->state[3] += d;
+  ctx->state[4] += e;
+  ctx->state[5] += f;
+  ctx->state[6] += g;
+  ctx->state[7] += h;
+}
+
+static void sha256_init(sha256_ctx *ctx) {
+  ctx->datalen = 0;
+  ctx->bitlen = 0;
+  ctx->state[0] = 0x6a09e667u;
+  ctx->state[1] = 0xbb67ae85u;
+  ctx->state[2] = 0x3c6ef372u;
+  ctx->state[3] = 0xa54ff53au;
+  ctx->state[4] = 0x510e527fu;
+  ctx->state[5] = 0x9b05688cu;
+  ctx->state[6] = 0x1f83d9abu;
+  ctx->state[7] = 0x5be0cd19u;
+}
+
+static void sha256_update(sha256_ctx *ctx, const uint8_t *data, size_t len) {
+  for (size_t i = 0; i < len; i++) {
+    ctx->data[ctx->datalen] = data[i];
+    ctx->datalen++;
+    if (ctx->datalen == 64) {
+      sha256_transform(ctx, ctx->data);
+      ctx->bitlen += 512;
+      ctx->datalen = 0;
+    }
+  }
+}
+
+static void sha256_final(sha256_ctx *ctx, uint8_t hash[]) {
+  size_t i = ctx->datalen;
+  if (ctx->datalen < 56) {
+    ctx->data[i++] = 0x80;
+    while (i < 56) ctx->data[i++] = 0x00;
+  } else {
+    ctx->data[i++] = 0x80;
+    while (i < 64) ctx->data[i++] = 0x00;
+    sha256_transform(ctx, ctx->data);
+    memset(ctx->data, 0, 56);
+  }
+
+  ctx->bitlen += (uint64_t)ctx->datalen * 8u;
+  ctx->data[63] = (uint8_t)(ctx->bitlen);
+  ctx->data[62] = (uint8_t)(ctx->bitlen >> 8);
+  ctx->data[61] = (uint8_t)(ctx->bitlen >> 16);
+  ctx->data[60] = (uint8_t)(ctx->bitlen >> 24);
+  ctx->data[59] = (uint8_t)(ctx->bitlen >> 32);
+  ctx->data[58] = (uint8_t)(ctx->bitlen >> 40);
+  ctx->data[57] = (uint8_t)(ctx->bitlen >> 48);
+  ctx->data[56] = (uint8_t)(ctx->bitlen >> 56);
+  sha256_transform(ctx, ctx->data);
+
+  for (i = 0; i < 4; i++) {
+    hash[i]      = (uint8_t)((ctx->state[0] >> (24 - i * 8)) & 0xff);
+    hash[i + 4]  = (uint8_t)((ctx->state[1] >> (24 - i * 8)) & 0xff);
+    hash[i + 8]  = (uint8_t)((ctx->state[2] >> (24 - i * 8)) & 0xff);
+    hash[i + 12] = (uint8_t)((ctx->state[3] >> (24 - i * 8)) & 0xff);
+    hash[i + 16] = (uint8_t)((ctx->state[4] >> (24 - i * 8)) & 0xff);
+    hash[i + 20] = (uint8_t)((ctx->state[5] >> (24 - i * 8)) & 0xff);
+    hash[i + 24] = (uint8_t)((ctx->state[6] >> (24 - i * 8)) & 0xff);
+    hash[i + 28] = (uint8_t)((ctx->state[7] >> (24 - i * 8)) & 0xff);
+  }
+}
+
+static void sha256_hash(const uint8_t *data, size_t len, uint8_t out[32]) {
+  sha256_ctx ctx;
+  sha256_init(&ctx);
+  sha256_update(&ctx, data, len);
+  sha256_final(&ctx, out);
+}
+
+static int ct_eq(const uint8_t *a, const uint8_t *b, size_t len) {
+  uint8_t diff = 0;
+  for (size_t i = 0; i < len; i++) diff |= (uint8_t)(a[i] ^ b[i]);
+  return diff == 0;
+}
+
+static void trim_ws(char *s) {
+  size_t len = strlen(s);
+  while (len > 0 && (s[len - 1] == '\\n' || s[len - 1] == '\\r' || s[len - 1] == ' ' || s[len - 1] == '\\t')) {
+    s[--len] = 0;
+  }
+  size_t start = 0;
+  while (s[start] == ' ' || s[start] == '\\t' || s[start] == '\\n' || s[start] == '\\r') start++;
+  if (start > 0) memmove(s, s + start, len - start + 1);
+}
+
+static void str_to_lower(char *s) {
+  for (; *s; s++) {
+    *s = (char)tolower((unsigned char)*s);
+  }
+}
+
+static int read_text(const char *path, char *out, size_t out_len) {
+  int fd = open(path, O_RDONLY | O_CLOEXEC);
+  if (fd < 0) return -1;
+  ssize_t r = read(fd, out, out_len - 1);
+  close(fd);
+  if (r <= 0) return -1;
+  out[r] = 0;
+  trim_ws(out);
+  return out[0] ? 0 : -1;
+}
+`;
+}
+
 function escapeCString(value) {
   return String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
@@ -1335,7 +2079,9 @@ function renderLauncherSource(
   appBindEnabled,
   snapshotGuardCfg,
   nativeBootstrapEnabled,
-  nativeBootstrapMode
+  nativeBootstrapMode,
+  nativeBootstrapWipeSource,
+  payloadProtectionCfg
 ) {
   const sentinelDefs = renderSentinelDefs(sentinelCfg);
   const sentinelCode = renderSentinelCode();
@@ -1464,6 +2210,7 @@ function renderLauncherSource(
   const seccompAggressive = adSeccomp && seccompCfg.aggressive === true;
   const adCoreDump = adEnabled && antiDebug.coreDump !== false;
   const adLoaderGuard = adEnabled && antiDebug.loaderGuard !== false;
+  const adHypervisor = adEnabled && antiDebug.hypervisor === true;
 
   const sentinelEnabled = !!(sentinelCfg && sentinelCfg.enabled);
   const sentinelExitCode = sentinelEnabled ? Number(sentinelCfg.exitCodeBlock || 200) : 200;
@@ -1485,6 +2232,56 @@ function renderLauncherSource(
   const sentinelTimeDuration = sentinelEnabled && sentinelCfg.timeLimit && Number.isFinite(Number(sentinelCfg.timeLimit.durationSec))
     ? Math.floor(Number(sentinelCfg.timeLimit.durationSec))
     : 0;
+  const sentinelExt = sentinelEnabled ? (sentinelCfg.externalAnchor || { type: "none" }) : { type: "none" };
+  const sentinelExtType = sentinelEnabled ? String(sentinelExt.type || "none").toLowerCase() : "none";
+  const sentinelExtTypeId = sentinelExtType === "usb"
+    ? 1
+    : (sentinelExtType === "file"
+      ? 2
+      : (sentinelExtType === "lease"
+        ? 3
+        : (sentinelExtType === "tpm2" ? 4 : 0)));
+  const sentinelExtUsb = sentinelExt.usb || {};
+  const sentinelExtFile = sentinelExt.file || {};
+  const sentinelExtLease = sentinelExt.lease || {};
+  const sentinelExtTpm2 = sentinelExt.tpm2 || {};
+  const sentinelExtUsbVid = sentinelExtTypeId === 1 ? String(sentinelExtUsb.vid || "") : "";
+  const sentinelExtUsbPid = sentinelExtTypeId === 1 ? String(sentinelExtUsb.pid || "") : "";
+  const sentinelExtUsbSerial = sentinelExtTypeId === 1 ? String(sentinelExtUsb.serial || "") : "";
+  const sentinelExtFilePath = sentinelExtTypeId === 2 ? String(sentinelExtFile.path || "") : "";
+  const sentinelExtLeaseUrl = sentinelExtTypeId === 3 ? String(sentinelExtLease.url || "") : "";
+  const sentinelExtLeaseTimeoutMs = sentinelExtTypeId === 3 && Number.isFinite(Number(sentinelExtLease.timeoutMs))
+    ? Math.floor(Number(sentinelExtLease.timeoutMs))
+    : 0;
+  const sentinelExtLeaseMax = sentinelExtTypeId === 3 && Number.isFinite(Number(sentinelExtLease.maxBytes))
+    ? Math.floor(Number(sentinelExtLease.maxBytes))
+    : 0;
+  const sentinelExtTpmBank = sentinelExtTypeId === 4 ? String(sentinelExtTpm2.bank || "") : "";
+  const sentinelExtTpmPcrs = sentinelExtTypeId === 4 && Array.isArray(sentinelExtTpm2.pcrs)
+    ? sentinelExtTpm2.pcrs.map((v) => String(v)).join(",")
+    : "";
+
+  const payloadProtection = (payloadProtectionCfg && typeof payloadProtectionCfg === "object") ? payloadProtectionCfg : {};
+  const payloadProtectionEnabled = payloadProtection.enabled === true;
+  const payloadProtectionProvider = payloadProtectionEnabled
+    ? String(payloadProtection.provider || "none").toLowerCase()
+    : "none";
+  const payloadProtectionProviderId = payloadProtectionProvider === "secret"
+    ? 1
+    : (payloadProtectionProvider === "tpm2" ? 2 : 0);
+  const payloadSecret = payloadProtection.secret || {};
+  const payloadSecretPath = payloadProtectionProviderId === 1 ? String(payloadSecret.path || "") : "";
+  const payloadSecretMax = payloadProtectionProviderId === 1 && Number.isFinite(Number(payloadSecret.maxBytes))
+    ? Math.max(1, Math.floor(Number(payloadSecret.maxBytes)))
+    : 4096;
+  const payloadTpmPub = payloadProtectionProviderId === 2 ? `r/${THIN_TPM_SEAL_PUB_FILE}` : "";
+  const payloadTpmPriv = payloadProtectionProviderId === 2 ? `r/${THIN_TPM_SEAL_PRIV_FILE}` : "";
+  const payloadBindCfg = payloadProtection.bind || {};
+  const payloadBindEnabled = payloadProtectionEnabled && payloadBindCfg.enabled === true;
+  const payloadBindIface = payloadBindEnabled ? String(payloadBindCfg.iface || "") : "";
+  const payloadBindMac = payloadBindEnabled ? String(payloadBindCfg.mac || "") : "";
+  const payloadBindIp = payloadBindEnabled ? String(payloadBindCfg.ip || "") : "";
+  const payloadSha256Code = renderPayloadSha256Code();
 
   const bootstrapJs = `"use strict";
 const fs = require("fs");
@@ -1492,6 +2289,7 @@ const path = require("path");
 const os = require("os");
 const Module = require("module");
 const crypto = require("crypto");
+const { spawnSync } = require("child_process");
 
 Error.stackTraceLimit = 0;
 if (typeof process.setSourceMapsEnabled === "function") {
@@ -2484,6 +3282,7 @@ function wipeKeyBuf() {
 
 const NATIVE_BOOTSTRAP_ENABLED = ${nativeBootstrapEnabled ? 1 : 0};
 const NATIVE_BOOTSTRAP_MODE = ${JSON.stringify(nativeBootstrapMode || "compile")};
+const NATIVE_BOOTSTRAP_WIPE_SOURCE = ${nativeBootstrapWipeSource ? 1 : 0};
 const NATIVE_BOOTSTRAP_PATH = process.env.SEAL_THIN_NATIVE || path.join(process.cwd(), "r", ${JSON.stringify(THIN_NATIVE_BOOTSTRAP_FILE)});
 
 let nativeAddon = null;
@@ -2517,6 +3316,17 @@ const SENTINEL_TIME_ENFORCE_MISMATCH = ${sentinelTimeEnforceMismatch ? 1 : 0};
 const SENTINEL_TIME_LIMIT_MODE = ${JSON.stringify(sentinelTimeMode)};
 const SENTINEL_TIME_LIMIT_EXPIRES_AT = ${sentinelTimeExpiresAt};
 const SENTINEL_TIME_LIMIT_DURATION_SEC = ${sentinelTimeDuration};
+const SENTINEL_EXT_TYPE = ${sentinelExtTypeId};
+const SENTINEL_EXT_USB_VID = ${toCString(sentinelExtUsbVid)};
+const SENTINEL_EXT_USB_PID = ${toCString(sentinelExtUsbPid)};
+const SENTINEL_EXT_USB_SERIAL = ${toCString(sentinelExtUsbSerial)};
+const SENTINEL_EXT_FILE_PATH = ${toCString(sentinelExtFilePath)};
+const SENTINEL_EXT_FILE_MAX = 4096;
+const SENTINEL_EXT_LEASE_URL = ${toCString(sentinelExtLeaseUrl)};
+const SENTINEL_EXT_LEASE_TIMEOUT_MS = ${sentinelExtLeaseTimeoutMs};
+const SENTINEL_EXT_LEASE_MAX = ${sentinelExtLeaseMax};
+const SENTINEL_EXT_TPM_BANK = ${toCString(sentinelExtTpmBank)};
+const SENTINEL_EXT_TPM_PCRS = ${toCString(sentinelExtTpmPcrs)};
 const SENTINEL_PAD_HASHES = 2;
 const SENTINEL_TEST_MODE = process.env.SEAL_SENTINEL_E2E === "1";
 const SENTINEL_FORCE_EXPIRE = SENTINEL_TEST_MODE && process.env.SEAL_SENTINEL_FORCE_EXPIRE === "1";
@@ -2568,6 +3378,31 @@ function readNumberFile(filePath) {
   return 0;
 }
 
+function isForbiddenTmp(p) {
+  return p === "/tmp" || p.startsWith("/tmp/") || p === "/var/tmp" || p.startsWith("/var/tmp/");
+}
+
+function resolveTmpBase() {
+  const env = process.env || {};
+  const candidates = [
+    env.SEAL_TMPDIR,
+    env.SEAL_E2E_TMP_ROOT,
+    env.TMPDIR,
+    env.TMP,
+    env.TEMP,
+  ].filter(Boolean);
+  for (const cand of candidates) {
+    const resolved = path.resolve(cand);
+    if (!isForbiddenTmp(resolved)) {
+      try { fs.mkdirSync(resolved, { recursive: true }); } catch {}
+      return resolved;
+    }
+  }
+  const base = path.join(process.cwd(), "seal-out", "tmp");
+  try { fs.mkdirSync(base, { recursive: true }); } catch {}
+  return base;
+}
+
 function resolveDeferPaths() {
   const anchor = SENTINEL_ANCHOR_HEX ? Buffer.from(SENTINEL_ANCHOR_HEX, "hex") : Buffer.alloc(0);
   const hash = sha256(Buffer.concat([Buffer.from([0x74, 0x00]), anchor])).toString("hex");
@@ -2615,6 +3450,168 @@ function readFileTrim(p) {
   } catch {
     return "";
   }
+}
+
+function sha256Hex(buf) {
+  return crypto.createHash("sha256").update(buf).digest("hex");
+}
+
+function hashFileSha256(filePath) {
+  const fd = fs.openSync(filePath, "r");
+  const hash = crypto.createHash("sha256");
+  try {
+    const buf = Buffer.alloc(65536);
+    let bytes = 0;
+    while ((bytes = fs.readSync(fd, buf, 0, buf.length, null)) > 0) {
+      hash.update(buf.subarray(0, bytes));
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+  return { digest: hash.digest(), size: fs.statSync(filePath).size };
+}
+
+function computeFileEah() {
+  if (!SENTINEL_EXT_FILE_PATH) return "";
+  try {
+    const st = fs.lstatSync(SENTINEL_EXT_FILE_PATH);
+    if (!st.isFile() || st.isSymbolicLink()) return "";
+    const res = hashFileSha256(SENTINEL_EXT_FILE_PATH);
+    if (res.size > SENTINEL_EXT_FILE_MAX) {
+      return sha256Hex(res.digest);
+    }
+    return res.digest.toString("hex");
+  } catch {
+    return "";
+  }
+}
+
+function computeUsbEah() {
+  if (!SENTINEL_EXT_USB_VID || !SENTINEL_EXT_USB_PID) return "";
+  try {
+    const entries = fs.readdirSync("/sys/bus/usb/devices");
+    for (const name of entries) {
+      if (!name || name.startsWith(".")) continue;
+      const base = path.join("/sys/bus/usb/devices", name);
+      const vid = readFileTrim(path.join(base, "idVendor")).toLowerCase();
+      const pid = readFileTrim(path.join(base, "idProduct")).toLowerCase();
+      if (!vid || !pid) continue;
+      if (vid !== SENTINEL_EXT_USB_VID || pid !== SENTINEL_EXT_USB_PID) continue;
+      if (SENTINEL_EXT_USB_SERIAL) {
+        const serial = readFileTrim(path.join(base, "serial"));
+        if (!serial || serial !== SENTINEL_EXT_USB_SERIAL) continue;
+      }
+      const anchor = "usb\\nvid=" + SENTINEL_EXT_USB_VID + "\\npid=" + SENTINEL_EXT_USB_PID + "\\nserial=" + SENTINEL_EXT_USB_SERIAL + "\\n";
+      return sha256Hex(Buffer.from(anchor, "utf8"));
+    }
+  } catch {}
+  return "";
+}
+
+function spawnCapture(cmd, args, timeoutMs, maxBytes) {
+  if (!cmd) return null;
+  try {
+    const maxBuffer = maxBytes > 0 ? Math.max(maxBytes + 16, 1024) : 1024;
+    const res = spawnSync(cmd, args, {
+      encoding: null,
+      timeout: timeoutMs > 0 ? timeoutMs : 0,
+      maxBuffer,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    if (res.error || res.status !== 0) return null;
+    const buf = res.stdout;
+    if (!buf || !buf.length) return null;
+    if (maxBytes > 0 && buf.length > maxBytes) return null;
+    return buf;
+  } catch {
+    return null;
+  }
+}
+
+function computeLeaseEah() {
+  if (!SENTINEL_EXT_LEASE_URL) return "";
+  if (!SENTINEL_EXT_LEASE_MAX) return "";
+  const timeoutMs = SENTINEL_EXT_LEASE_TIMEOUT_MS > 0 ? SENTINEL_EXT_LEASE_TIMEOUT_MS : 1500;
+  const timeoutSec = Math.max(1, Math.ceil(timeoutMs / 1000));
+  let buf = spawnCapture(
+    "curl",
+    ["-fsL", "--max-time", String(timeoutSec), SENTINEL_EXT_LEASE_URL],
+    timeoutMs,
+    SENTINEL_EXT_LEASE_MAX,
+  );
+  if (!buf) {
+    buf = spawnCapture(
+      "wget",
+      ["-q", "-O", "-", "--timeout", String(timeoutSec), SENTINEL_EXT_LEASE_URL],
+      timeoutMs,
+      SENTINEL_EXT_LEASE_MAX,
+    );
+  }
+  if (!buf || !buf.length) return "";
+  return sha256Hex(buf);
+}
+
+function tpmBankBytes(bank) {
+  if (bank === "sha1") return 20;
+  if (bank === "sha256") return 32;
+  if (bank === "sha384") return 48;
+  if (bank === "sha512") return 64;
+  return 0;
+}
+
+function countPcrs(list) {
+  if (!list) return 0;
+  const items = String(list)
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
+  return items.length;
+}
+
+function computeTpm2Eah() {
+  if (!SENTINEL_EXT_TPM_BANK || !SENTINEL_EXT_TPM_PCRS) return "";
+  const bank = String(SENTINEL_EXT_TPM_BANK).toLowerCase();
+  const digestBytes = tpmBankBytes(bank);
+  if (!digestBytes) return "";
+  const expected = countPcrs(SENTINEL_EXT_TPM_PCRS);
+  if (!expected) return "";
+  let res = null;
+  try {
+    res = spawnSync("tpm2_pcrread", [bank + ":" + SENTINEL_EXT_TPM_PCRS], {
+      encoding: "utf8",
+      timeout: 2000,
+      maxBuffer: 16384,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+  } catch {
+    return "";
+  }
+  if (!res || res.error || res.status !== 0) return "";
+  const text = String(res.stdout || "");
+  if (!text) return "";
+  const matches = text.match(/0x[0-9a-fA-F]+/g) || [];
+  if (matches.length < expected) return "";
+  const hash = crypto.createHash("sha256");
+  let used = 0;
+  for (const token of matches) {
+    if (used >= expected) break;
+    const hex = token.slice(2);
+    if (hex.length !== digestBytes * 2) return "";
+    const buf = Buffer.from(hex, "hex");
+    if (buf.length !== digestBytes) return "";
+    hash.update(buf);
+    used += 1;
+  }
+  if (used < expected) return "";
+  return hash.digest("hex");
+}
+
+function computeExternalEah() {
+  if (SENTINEL_EXT_TYPE === 1) return computeUsbEah();
+  if (SENTINEL_EXT_TYPE === 2) return computeFileEah();
+  if (SENTINEL_EXT_TYPE === 3) return computeLeaseEah();
+  if (SENTINEL_EXT_TYPE === 4) return computeTpm2Eah();
+  return "";
 }
 
 function readCpuInfoValue(key) {
@@ -2721,7 +3718,7 @@ function getRootRid() {
   return "dev:" + majmin;
 }
 
-function buildFingerprint(level, mid, rid, cpuid, includeCpuId) {
+function buildFingerprint(level, mid, rid, puid, eah, cpuid, includeCpuId, includePuid) {
   const lines = [];
   if (level === 0) {
     lines.push("v0");
@@ -2739,6 +3736,25 @@ function buildFingerprint(level, mid, rid, cpuid, includeCpuId) {
       if (!cpuid) return "";
       lines.push("cpuid=" + cpuid);
     }
+  } else if (level === 3) {
+    if (!mid || !rid || !puid) return "";
+    lines.push("v3", "mid=" + mid, "rid=" + rid, "puid=" + puid);
+    if (includeCpuId) {
+      if (!cpuid) return "";
+      lines.push("cpuid=" + cpuid);
+    }
+  } else if (level === 4) {
+    if (!mid || !rid || !eah) return "";
+    lines.push("v4", "mid=" + mid, "rid=" + rid);
+    if (includeCpuId) {
+      if (!cpuid) return "";
+      lines.push("cpuid=" + cpuid);
+    }
+    if (includePuid) {
+      if (!puid) return "";
+      lines.push("puid=" + puid);
+    }
+    lines.push("eah=" + eah);
   } else {
     return "";
   }
@@ -2797,8 +3813,9 @@ function sentinelCheck() {
       if (version === 1 && maskLen !== 72) throw new Error("len");
       if (version === 2 && maskLen !== 80) throw new Error("len");
       const level = raw.readUInt8(1);
-      if (level > 2) throw new Error("lvl");
+      if (level > 4) throw new Error("lvl");
       const flags = raw.readUInt16LE(2);
+      const includePuid = (flags & 0x0002) !== 0;
       const includeCpuId = (flags & 0x0004) !== 0;
       if (version === 2) {
         expiresAtSec = Number(raw.readBigUInt64LE(72));
@@ -2806,8 +3823,14 @@ function sentinelCheck() {
 
       const mid = level >= 1 ? readFileTrim("/etc/machine-id") : "";
       const rid = level >= 2 ? getRootRid() : "";
+      const puid = level >= 3 ? readFileTrim("/sys/class/dmi/id/product_uuid") : "";
+      const eah = level === 4 ? computeExternalEah() : "";
+      if (level === 4) {
+        if (!eah) throw new Error("eah");
+        if (includePuid && !puid) throw new Error("puid");
+      }
       const cpuid = includeCpuId ? buildCpuId(SENTINEL_CPUID_MODE) : "";
-      const fp = buildFingerprint(level, mid, rid, cpuid, includeCpuId);
+      const fp = buildFingerprint(level, mid, rid, puid, eah, cpuid, includeCpuId, includePuid);
       if (!fp) throw new Error("fp");
       const fpHash = sha256(Buffer.from(fp, "utf8"));
       if (fpHash.length !== 32) throw new Error("hash");
@@ -3013,6 +4036,9 @@ function readE2eCodeFromFd(sourceFd) {
   return readFdUtf8(sourceFd);
 }
 
+const dumpCodePath = process.env.SEAL_THIN_BOOTSTRAP_DUMP_CODE || "";
+const dumpFd = dumpCodePath ? dupBootstrapFd(fd) : -1;
+
 if (NATIVE_BOOTSTRAP_ENABLED) {
   try {
     nativeAddon = loadNativeAddon(NATIVE_BOOTSTRAP_PATH);
@@ -3031,7 +4057,7 @@ if (NATIVE_BOOTSTRAP_ENABLED) {
             code = readE2eCodeFromFd(dup);
           }
         }
-        compiled = nativeAddon.compileCjsFromFd(fd, entry);
+        compiled = nativeAddon.compileCjsFromFd(fd, entry, NATIVE_BOOTSTRAP_WIPE_SOURCE);
         if (typeof compiled !== "function") nativeFail();
         usedNative = true;
       } else {
@@ -3049,6 +4075,19 @@ if (!usedNative) {
   code = buf.toString("utf8");
   buf.fill(0);
   buf = null;
+}
+if (dumpCodePath) {
+  let dumpCode = code;
+  if (dumpCode === null || dumpCode === undefined) {
+    if (dumpFd >= 0) {
+      dumpCode = readFdUtf8(dumpFd);
+    }
+    if (dumpCode === null || dumpCode === undefined) {
+      dumpCode = readFdUtf8(fd);
+    }
+  }
+  try { fs.writeFileSync(dumpCodePath, dumpCode || "", "utf8"); } catch {}
+  process.exit(0);
 }
 if (E2E_TEST_MODE && (E2E_SELF_SCAN || E2E_STACK_SCAN || E2E_MODULE_SCAN)) {
   e2eMaskedCodeTokens = e2eBuildCodeTokens(code);
@@ -3141,6 +4180,9 @@ return `#include <errno.h>
 #endif
 #include <dirent.h>
 #include <fcntl.h>
+#include <ifaddrs.h>
+#include <arpa/inet.h>
+#include <net/if.h>
 #include <linux/audit.h>
 #include <linux/filter.h>
 #include <linux/seccomp.h>
@@ -3158,6 +4200,7 @@ return `#include <errno.h>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 #include <sys/syscall.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <zstd.h>
 
@@ -3224,6 +4267,26 @@ extern char **environ;
 #define THIN_AD_SECCOMP_AGGRESSIVE ${seccompAggressive ? 1 : 0}
 #define THIN_AD_CORE_DUMP ${adCoreDump ? 1 : 0}
 #define THIN_AD_LOADER_GUARD ${adLoaderGuard ? 1 : 0}
+#define THIN_AD_HYPERVISOR ${adHypervisor ? 1 : 0}
+#define THIN_PL_ENC_ENABLED ${payloadProtectionEnabled ? 1 : 0}
+#define THIN_PL_ENC_PROVIDER_NONE 0
+#define THIN_PL_ENC_PROVIDER_SECRET 1
+#define THIN_PL_ENC_PROVIDER_TPM2 2
+#define THIN_PL_ENC_PROVIDER ${payloadProtectionProviderId}
+#define THIN_PL_ENC_MAGIC "SLPE"
+#define THIN_PL_ENC_VERSION ${PL_ENC_VERSION}
+#define THIN_PL_ENC_SALT_LEN ${PL_ENC_SALT_LEN}
+#define THIN_PL_ENC_NONCE_LEN ${PL_ENC_NONCE_LEN}
+#define THIN_PL_ENC_TAG_LEN ${PL_ENC_TAG_LEN}
+#define THIN_PL_ENC_HEADER_LEN ${PL_ENC_HEADER_LEN}
+static const char THIN_PL_SECRET_PATH[] = ${toCString(payloadSecretPath)};
+#define THIN_PL_SECRET_MAX ${payloadSecretMax}
+static const char THIN_PL_TPM_PUB_PATH[] = ${toCString(payloadTpmPub)};
+static const char THIN_PL_TPM_PRIV_PATH[] = ${toCString(payloadTpmPriv)};
+#define THIN_BIND_ENABLED ${payloadBindEnabled ? 1 : 0}
+static const char THIN_BIND_IFACE[] = ${toCString(payloadBindIface)};
+static const char THIN_BIND_MAC[] = ${toCString(payloadBindMac)};
+static const char THIN_BIND_IP[] = ${toCString(payloadBindIp)};
 
 #define MAX_CHUNKS ${limits.maxChunks}u
 #define MAX_CHUNK_RAW ${limits.maxChunkRaw}u
@@ -3366,6 +4429,521 @@ static int write_all(int fd, const uint8_t *buf, size_t len) {
     done += (size_t)w;
   }
   return 0;
+}
+
+static void secure_wipe(void *ptr, size_t len) {
+  if (!ptr || len == 0) return;
+  volatile uint8_t *p = (volatile uint8_t *)ptr;
+  while (len--) *p++ = 0;
+}
+
+#if THIN_PL_ENC_ENABLED
+static size_t mem_page_size(void) {
+  long ps = sysconf(_SC_PAGESIZE);
+  if (ps <= 0) return 4096;
+  return (size_t)ps;
+}
+
+static void protect_mem_region(void *ptr, size_t len) {
+  if (!ptr || len == 0) return;
+  size_t ps = mem_page_size();
+  uintptr_t start = (uintptr_t)ptr & ~(uintptr_t)(ps - 1);
+  uintptr_t end = ((uintptr_t)ptr + len + ps - 1) & ~(uintptr_t)(ps - 1);
+  size_t adj_len = end - start;
+#ifdef MADV_DONTDUMP
+  madvise((void *)start, adj_len, MADV_DONTDUMP);
+#endif
+#ifdef MADV_DONTFORK
+  madvise((void *)start, adj_len, MADV_DONTFORK);
+#endif
+  mlock((void *)start, adj_len);
+}
+
+static void unprotect_mem_region(void *ptr, size_t len) {
+  if (!ptr || len == 0) return;
+  size_t ps = mem_page_size();
+  uintptr_t start = (uintptr_t)ptr & ~(uintptr_t)(ps - 1);
+  uintptr_t end = ((uintptr_t)ptr + len + ps - 1) & ~(uintptr_t)(ps - 1);
+  size_t adj_len = end - start;
+  munlock((void *)start, adj_len);
+#ifdef MADV_DODUMP
+  madvise((void *)start, adj_len, MADV_DODUMP);
+#endif
+#ifdef MADV_DOFORK
+  madvise((void *)start, adj_len, MADV_DOFORK);
+#endif
+}
+
+static void *harden_fd_mapping(int fd, uint64_t len, size_t *out_len) {
+  if (len == 0 || len > SIZE_MAX) return NULL;
+  size_t map_len = (size_t)len;
+  void *addr = mmap(NULL, map_len, PROT_READ, MAP_SHARED, fd, 0);
+  if (addr == MAP_FAILED) return NULL;
+  protect_mem_region(addr, map_len);
+  if (out_len) *out_len = map_len;
+  return addr;
+}
+#endif
+
+#if THIN_PL_ENC_ENABLED && !SENTINEL_ENABLED
+${payloadSha256Code}
+#endif
+#if THIN_PL_ENC_ENABLED
+typedef struct {
+  sha256_ctx inner;
+  uint8_t o_key_pad[64];
+} hmac_sha256_ctx;
+
+static void hmac_sha256_init(hmac_sha256_ctx *ctx, const uint8_t *key, size_t key_len) {
+  uint8_t key_block[64];
+  uint8_t key_hash[32];
+  if (key_len > sizeof(key_block)) {
+    sha256_hash(key, key_len, key_hash);
+    key = key_hash;
+    key_len = sizeof(key_hash);
+  }
+  memset(key_block, 0, sizeof(key_block));
+  if (key_len > 0) memcpy(key_block, key, key_len);
+  uint8_t i_key_pad[64];
+  for (size_t i = 0; i < sizeof(key_block); i++) {
+    i_key_pad[i] = key_block[i] ^ 0x36;
+    ctx->o_key_pad[i] = key_block[i] ^ 0x5c;
+  }
+  sha256_init(&ctx->inner);
+  sha256_update(&ctx->inner, i_key_pad, sizeof(i_key_pad));
+  secure_wipe(key_block, sizeof(key_block));
+  secure_wipe(i_key_pad, sizeof(i_key_pad));
+  secure_wipe(key_hash, sizeof(key_hash));
+}
+
+static void hmac_sha256_update(hmac_sha256_ctx *ctx, const uint8_t *data, size_t len) {
+  sha256_update(&ctx->inner, data, len);
+}
+
+static void hmac_sha256_final(hmac_sha256_ctx *ctx, uint8_t out[32]) {
+  uint8_t inner_hash[32];
+  sha256_final(&ctx->inner, inner_hash);
+  sha256_ctx outer;
+  sha256_init(&outer);
+  sha256_update(&outer, ctx->o_key_pad, sizeof(ctx->o_key_pad));
+  sha256_update(&outer, inner_hash, sizeof(inner_hash));
+  sha256_final(&outer, out);
+  secure_wipe(inner_hash, sizeof(inner_hash));
+  secure_wipe(ctx->o_key_pad, sizeof(ctx->o_key_pad));
+}
+
+static int resolve_root_path(const char *root, const char *rel, char *out, size_t out_len) {
+  if (!rel || !*rel || !out || out_len == 0) return -1;
+  if (rel[0] == '/') {
+    int n = snprintf(out, out_len, "%s", rel);
+    return (n > 0 && (size_t)n < out_len) ? 0 : -1;
+  }
+  if (!root || !*root) return -1;
+  int n = snprintf(out, out_len, "%s/%s", root, rel);
+  return (n > 0 && (size_t)n < out_len) ? 0 : -1;
+}
+
+static int read_file_bytes(const char *path, size_t max_len, uint8_t **out, size_t *out_len) {
+  if (out) *out = NULL;
+  if (out_len) *out_len = 0;
+  if (!path || !*path) return -1;
+  struct stat st;
+  if (lstat(path, &st) != 0) return -1;
+  if (!S_ISREG(st.st_mode) || S_ISLNK(st.st_mode)) return -1;
+  if (st.st_size <= 0) return -1;
+  if ((uint64_t)st.st_size > (uint64_t)max_len) return -1;
+  int fd = open(path, O_RDONLY | O_CLOEXEC
+#ifdef O_NOFOLLOW
+    | O_NOFOLLOW
+#endif
+  );
+  if (fd < 0) return -1;
+  size_t size = (size_t)st.st_size;
+  uint8_t *buf = (uint8_t *)malloc(size);
+  if (!buf) {
+    close(fd);
+    return -1;
+  }
+  if (read_exact(fd, buf, size, 0) != 0) {
+    close(fd);
+    secure_wipe(buf, size);
+    free(buf);
+    return -1;
+  }
+  close(fd);
+  if (out) *out = buf;
+  if (out_len) *out_len = size;
+  return 0;
+}
+
+static int get_iface_mac(const char *iface, char *out, size_t out_len) {
+  if (!iface || !*iface || !out || out_len == 0) return -1;
+  char path_buf[PATH_MAX + 32];
+  int n = snprintf(path_buf, sizeof(path_buf), "/sys/class/net/%s/address", iface);
+  if (n <= 0 || n >= (int)sizeof(path_buf)) return -1;
+  if (read_text(path_buf, out, out_len) != 0) return -1;
+  str_to_lower(out);
+  return 0;
+}
+
+static int get_iface_ipv4(const char *iface, char *out, size_t out_len) {
+  if (!iface || !*iface || !out || out_len == 0) return -1;
+  struct ifaddrs *ifaddr = NULL;
+  if (getifaddrs(&ifaddr) != 0 || !ifaddr) return -1;
+  int ok = -1;
+  for (struct ifaddrs *ifa = ifaddr; ifa; ifa = ifa->ifa_next) {
+    if (!ifa->ifa_addr) continue;
+    if (ifa->ifa_addr->sa_family != AF_INET) continue;
+    if (strcmp(ifa->ifa_name, iface) != 0) continue;
+    struct sockaddr_in *sin = (struct sockaddr_in *)ifa->ifa_addr;
+    if (!inet_ntop(AF_INET, &sin->sin_addr, out, out_len)) continue;
+    ok = 0;
+    break;
+  }
+  freeifaddrs(ifaddr);
+  return ok;
+}
+
+static int resolve_payload_bind(char *mac_out, size_t mac_len, char *ip_out, size_t ip_len) {
+#if THIN_BIND_ENABLED
+  if (!THIN_BIND_IFACE[0]) return -1;
+  if (THIN_BIND_MAC[0]) {
+    if (!mac_out || mac_len == 0) return -1;
+    if (get_iface_mac(THIN_BIND_IFACE, mac_out, mac_len) != 0) return -1;
+    if (strcmp(mac_out, THIN_BIND_MAC) != 0) return -1;
+  } else if (mac_out && mac_len > 0) {
+    mac_out[0] = 0;
+  }
+  if (THIN_BIND_IP[0]) {
+    if (!ip_out || ip_len == 0) return -1;
+    if (get_iface_ipv4(THIN_BIND_IFACE, ip_out, ip_len) != 0) return -1;
+    if (strcmp(ip_out, THIN_BIND_IP) != 0) return -1;
+  } else if (ip_out && ip_len > 0) {
+    ip_out[0] = 0;
+  }
+  return 0;
+#else
+  if (mac_out && mac_len > 0) mac_out[0] = 0;
+  if (ip_out && ip_len > 0) ip_out[0] = 0;
+  return 0;
+#endif
+}
+
+static inline void write_u64_le(uint8_t *p, uint64_t v) {
+  p[0] = (uint8_t)(v & 0xff);
+  p[1] = (uint8_t)((v >> 8) & 0xff);
+  p[2] = (uint8_t)((v >> 16) & 0xff);
+  p[3] = (uint8_t)((v >> 24) & 0xff);
+  p[4] = (uint8_t)((v >> 32) & 0xff);
+  p[5] = (uint8_t)((v >> 40) & 0xff);
+  p[6] = (uint8_t)((v >> 48) & 0xff);
+  p[7] = (uint8_t)((v >> 56) & 0xff);
+}
+
+static void derive_payload_key(const uint8_t *base, size_t base_len,
+                               const uint8_t salt[THIN_PL_ENC_SALT_LEN],
+                               const char *iface, const char *mac, const char *ip,
+                               uint8_t out[32]) {
+  static const char key_label[] = "seal-pl-key-v1";
+  uint8_t base_hash[32];
+  sha256_hash(base, base_len, base_hash);
+  sha256_ctx ctx;
+  sha256_init(&ctx);
+  sha256_update(&ctx, (const uint8_t *)key_label, sizeof(key_label) - 1);
+  sha256_update(&ctx, base_hash, sizeof(base_hash));
+  sha256_update(&ctx, salt, THIN_PL_ENC_SALT_LEN);
+  if (iface && *iface) sha256_update(&ctx, (const uint8_t *)iface, strlen(iface));
+  sha256_update(&ctx, (const uint8_t *)"\\n", 1);
+  if (mac && *mac) sha256_update(&ctx, (const uint8_t *)mac, strlen(mac));
+  sha256_update(&ctx, (const uint8_t *)"\\n", 1);
+  if (ip && *ip) sha256_update(&ctx, (const uint8_t *)ip, strlen(ip));
+  sha256_update(&ctx, (const uint8_t *)"\\n", 1);
+  sha256_final(&ctx, out);
+  secure_wipe(base_hash, sizeof(base_hash));
+}
+
+static void xor_payload_stream(uint8_t *buf, size_t len,
+                               const uint8_t key[32],
+                               const uint8_t nonce[THIN_PL_ENC_NONCE_LEN],
+                               uint64_t offset) {
+  uint64_t counter = offset / 32;
+  size_t skip = (size_t)(offset % 32);
+  uint8_t block[32];
+  uint8_t input[32 + THIN_PL_ENC_NONCE_LEN + 8];
+  memcpy(input, key, 32);
+  memcpy(input + 32, nonce, THIN_PL_ENC_NONCE_LEN);
+  while (len > 0) {
+    write_u64_le(input + 32 + THIN_PL_ENC_NONCE_LEN, counter);
+    sha256_hash(input, sizeof(input), block);
+    size_t take = 32 - skip;
+    if (take > len) take = len;
+    for (size_t i = 0; i < take; i++) {
+      buf[i] ^= block[skip + i];
+    }
+    buf += take;
+    len -= take;
+    counter++;
+    skip = 0;
+  }
+  secure_wipe(block, sizeof(block));
+  secure_wipe(input + 32 + THIN_PL_ENC_NONCE_LEN, 8);
+}
+
+static int run_cmd_quiet(char *const argv[]) {
+  pid_t pid = fork();
+  if (pid < 0) return -1;
+  if (pid == 0) {
+    int devnull = open("/dev/null", O_WRONLY);
+    if (devnull >= 0) {
+      dup2(devnull, STDOUT_FILENO);
+      dup2(devnull, STDERR_FILENO);
+      close(devnull);
+    }
+    execvp(argv[0], argv);
+    _exit(127);
+  }
+  int status = 0;
+  if (waitpid(pid, &status, 0) < 0) return -1;
+  if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) return -1;
+  return 0;
+}
+
+static int run_cmd_capture(char *const argv[], uint8_t **out, size_t *out_len, size_t max_len) {
+  if (out) *out = NULL;
+  if (out_len) *out_len = 0;
+  int pipefd[2];
+  if (pipe(pipefd) != 0) return -1;
+  pid_t pid = fork();
+  if (pid < 0) {
+    close(pipefd[0]);
+    close(pipefd[1]);
+    return -1;
+  }
+  if (pid == 0) {
+    close(pipefd[0]);
+    dup2(pipefd[1], STDOUT_FILENO);
+    close(pipefd[1]);
+    int devnull = open("/dev/null", O_WRONLY);
+    if (devnull >= 0) {
+      dup2(devnull, STDERR_FILENO);
+      close(devnull);
+    }
+    execvp(argv[0], argv);
+    _exit(127);
+  }
+  close(pipefd[1]);
+  uint8_t *buf = (uint8_t *)malloc(max_len);
+  if (!buf) {
+    close(pipefd[0]);
+    return -1;
+  }
+  size_t total = 0;
+  ssize_t r = 0;
+  while ((r = read(pipefd[0], buf + total, max_len - total)) > 0) {
+    total += (size_t)r;
+    if (total >= max_len) break;
+  }
+  close(pipefd[0]);
+  if (r < 0) {
+    secure_wipe(buf, max_len);
+    free(buf);
+    return -1;
+  }
+  int status = 0;
+  if (waitpid(pid, &status, 0) < 0 || !WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+    secure_wipe(buf, max_len);
+    free(buf);
+    return -1;
+  }
+  if (total == 0 || total >= max_len) {
+    secure_wipe(buf, max_len);
+    free(buf);
+    return -1;
+  }
+  if (out) *out = buf;
+  if (out_len) *out_len = total;
+  return 0;
+}
+
+static int tpm2_unseal_key(const char *root, uint8_t **out, size_t *out_len) {
+#if THIN_PL_ENC_PROVIDER == THIN_PL_ENC_PROVIDER_TPM2
+  if (!THIN_PL_TPM_PUB_PATH[0] || !THIN_PL_TPM_PRIV_PATH[0]) return -1;
+  if (access("/dev/tpm0", F_OK) != 0
+    && access("/dev/tpmrm0", F_OK) != 0
+    && access("/sys/class/tpm/tpm0", F_OK) != 0
+    && access("/sys/class/tpm/tpmrm0", F_OK) != 0) return -1;
+  char pub_path[PATH_MAX];
+  char priv_path[PATH_MAX];
+  if (resolve_root_path(root, THIN_PL_TPM_PUB_PATH, pub_path, sizeof(pub_path)) != 0) return -1;
+  if (resolve_root_path(root, THIN_PL_TPM_PRIV_PATH, priv_path, sizeof(priv_path)) != 0) return -1;
+
+  char tmp_dir[] = "/tmp/.seal-tpm-XXXXXX";
+  if (!mkdtemp(tmp_dir)) return -1;
+  char primary_path[PATH_MAX];
+  char seal_path[PATH_MAX];
+  primary_path[0] = 0;
+  seal_path[0] = 0;
+  int ok = -1;
+  int n1 = snprintf(primary_path, sizeof(primary_path), "%s/primary.ctx", tmp_dir);
+  int n2 = snprintf(seal_path, sizeof(seal_path), "%s/seal.ctx", tmp_dir);
+  if (n1 > 0 && n1 < (int)sizeof(primary_path) && n2 > 0 && n2 < (int)sizeof(seal_path)) {
+    char *createprimary_argv[] = {
+      (char *)"tpm2_createprimary", (char *)"-C", (char *)"o",
+      (char *)"-g", (char *)"sha256", (char *)"-G", (char *)"rsa",
+      (char *)"-c", primary_path, NULL
+    };
+    char *load_argv[] = {
+      (char *)"tpm2_load", (char *)"-C", primary_path,
+      (char *)"-u", pub_path, (char *)"-r", priv_path,
+      (char *)"-c", seal_path, NULL
+    };
+    char *unseal_argv[] = { (char *)"tpm2_unseal", (char *)"-c", seal_path, NULL };
+    if (run_cmd_quiet(createprimary_argv) == 0 && run_cmd_quiet(load_argv) == 0) {
+      if (run_cmd_capture(unseal_argv, out, out_len, 4096) == 0) {
+        ok = 0;
+      }
+    }
+  }
+  if (primary_path[0]) unlink(primary_path);
+  if (seal_path[0]) unlink(seal_path);
+  rmdir(tmp_dir);
+  return ok;
+#else
+  (void)root;
+  (void)out;
+  (void)out_len;
+  return -1;
+#endif
+}
+
+#endif
+static int make_memfd(const char *name);
+static int decrypt_payload_container(int src_fd, uint64_t off, uint64_t len, const char *root,
+                                     int *out_fd, uint64_t *out_len) {
+#if THIN_PL_ENC_ENABLED
+  if (len <= THIN_PL_ENC_HEADER_LEN) return -1;
+  uint8_t header[THIN_PL_ENC_HEADER_LEN];
+  if (read_exact(src_fd, header, THIN_PL_ENC_HEADER_LEN, (off_t)off) != 0) return -1;
+  if (memcmp(header, THIN_PL_ENC_MAGIC, 4) != 0) return -1;
+  if (header[4] != THIN_PL_ENC_VERSION) return -1;
+
+  uint8_t salt[THIN_PL_ENC_SALT_LEN];
+  uint8_t nonce[THIN_PL_ENC_NONCE_LEN];
+  uint8_t tag[THIN_PL_ENC_TAG_LEN];
+  memcpy(salt, header + 8, THIN_PL_ENC_SALT_LEN);
+  memcpy(nonce, header + 8 + THIN_PL_ENC_SALT_LEN, THIN_PL_ENC_NONCE_LEN);
+  memcpy(tag, header + 8 + THIN_PL_ENC_SALT_LEN + THIN_PL_ENC_NONCE_LEN, THIN_PL_ENC_TAG_LEN);
+
+  uint8_t *base_key = NULL;
+  size_t base_len = 0;
+  uint8_t *key = NULL;
+  uint8_t *buf = NULL;
+  uint64_t enc_len = 0;
+  int tmp_fd = -1;
+  int rc = -1;
+#if THIN_PL_ENC_PROVIDER == THIN_PL_ENC_PROVIDER_SECRET
+  char secret_path[PATH_MAX];
+  if (!THIN_PL_SECRET_PATH[0]) return -1;
+  if (resolve_root_path(root, THIN_PL_SECRET_PATH, secret_path, sizeof(secret_path)) != 0) return -1;
+  if (read_file_bytes(secret_path, (size_t)THIN_PL_SECRET_MAX, &base_key, &base_len) != 0) return -1;
+#elif THIN_PL_ENC_PROVIDER == THIN_PL_ENC_PROVIDER_TPM2
+  if (tpm2_unseal_key(root, &base_key, &base_len) != 0) return -1;
+#else
+  return -1;
+#endif
+  if (!base_key || base_len == 0) {
+    if (base_key) {
+      secure_wipe(base_key, base_len);
+      free(base_key);
+    }
+    return -1;
+  }
+  protect_mem_region(base_key, base_len);
+
+  char mac_buf[64];
+  char ip_buf[64];
+  if (resolve_payload_bind(mac_buf, sizeof(mac_buf), ip_buf, sizeof(ip_buf)) != 0) {
+    goto done;
+  }
+  const char *iface_val = THIN_BIND_ENABLED ? THIN_BIND_IFACE : "";
+  const char *mac_val = (THIN_BIND_ENABLED && THIN_BIND_MAC[0]) ? mac_buf : "";
+  const char *ip_val = (THIN_BIND_ENABLED && THIN_BIND_IP[0]) ? ip_buf : "";
+
+  key = (uint8_t *)malloc(32);
+  if (!key) goto done;
+  protect_mem_region(key, 32);
+  derive_payload_key(base_key, base_len, salt, iface_val, mac_val, ip_val, key);
+  secure_wipe(base_key, base_len);
+  unprotect_mem_region(base_key, base_len);
+  free(base_key);
+  base_key = NULL;
+  base_len = 0;
+
+  enc_len = len - THIN_PL_ENC_HEADER_LEN;
+  tmp_fd = make_memfd("seal-pl-enc");
+  if (tmp_fd < 0) goto done;
+  hmac_sha256_ctx hctx;
+  hmac_sha256_init(&hctx, key, 32);
+  hmac_sha256_update(&hctx, nonce, THIN_PL_ENC_NONCE_LEN);
+
+  buf = (uint8_t *)malloc(8192);
+  if (!buf) goto done;
+  protect_mem_region(buf, 8192);
+  uint64_t pos = 0;
+  while (pos < enc_len) {
+    size_t to_read = 8192;
+    if (enc_len - pos < to_read) to_read = (size_t)(enc_len - pos);
+    if (read_exact(src_fd, buf, to_read, (off_t)(off + THIN_PL_ENC_HEADER_LEN + pos)) != 0) {
+      goto done;
+    }
+    hmac_sha256_update(&hctx, buf, to_read);
+    xor_payload_stream(buf, to_read, key, nonce, pos);
+    if (write_all(tmp_fd, buf, to_read) != 0) {
+      goto done;
+    }
+    pos += to_read;
+  }
+
+  uint8_t tag_calc[32];
+  hmac_sha256_final(&hctx, tag_calc);
+  if (!ct_eq(tag_calc, tag, sizeof(tag))) {
+    secure_wipe(tag_calc, sizeof(tag_calc));
+    goto done;
+  }
+  secure_wipe(tag_calc, sizeof(tag_calc));
+  if (lseek(tmp_fd, 0, SEEK_SET) < 0) {
+    goto done;
+  }
+  if (out_fd) *out_fd = tmp_fd;
+  if (out_len) *out_len = enc_len;
+  rc = 0;
+done:
+  if (buf) {
+    secure_wipe(buf, 8192);
+    unprotect_mem_region(buf, 8192);
+    free(buf);
+  }
+  if (key) {
+    secure_wipe(key, 32);
+    unprotect_mem_region(key, 32);
+    free(key);
+  }
+  if (base_key) {
+    secure_wipe(base_key, base_len);
+    unprotect_mem_region(base_key, base_len);
+    free(base_key);
+  }
+  if (rc != 0 && tmp_fd >= 0) close(tmp_fd);
+  return rc;
+#else
+  (void)src_fd;
+  (void)off;
+  (void)len;
+  (void)root;
+  (void)out_fd;
+  (void)out_len;
+  return -1;
+#endif
 }
 
 ${sentinelCode}
@@ -3939,6 +5517,22 @@ static int maps_has_deny(void) {
 }
 #endif
 
+#if THIN_AD_ENABLED && THIN_AD_HYPERVISOR
+static int hypervisor_detected(void) {
+#if defined(__x86_64__) || defined(__i386__)
+#if !defined(SEAL_HAS_CPUID_H) || SEAL_HAS_CPUID_H == 0
+  return 0;
+#else
+  unsigned int eax = 0, ebx = 0, ecx = 0, edx = 0;
+  if (!__get_cpuid(1, &eax, &ebx, &ecx, &edx)) return 0;
+  return (ecx & (1u << 31)) ? 1 : 0;
+#endif
+#else
+  return 0;
+#endif
+}
+#endif
+
 static uint16_t read_u16_le(const uint8_t *p) {
   return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
 }
@@ -4160,6 +5754,12 @@ static int anti_debug_checks(void) {
   {
     int rc = loader_guard_check();
     if (rc != 0) return rc;
+  }
+#endif
+
+#if THIN_AD_ENABLED && THIN_AD_HYPERVISOR
+  if (!hypervisor_detected()) {
+    return fail_msg("[thin] runtime invalid", 86);
   }
 #endif
 
@@ -4703,13 +6303,34 @@ int main(int argc, char **argv) {
   if (bundle_fd < 0) {
     return fail_msg("[thin] payload fd failed", 29);
   }
-  rc = decode_container(pl_fd, pl_src_off, pl_src_len, bundle_fd);
+  int pl_dec_fd = pl_fd;
+  uint64_t pl_dec_off = pl_src_off;
+  uint64_t pl_dec_len = pl_src_len;
+#if THIN_PL_ENC_ENABLED
+  void *pl_map = NULL;
+  size_t pl_map_len = 0;
+  if (decrypt_payload_container(pl_fd, pl_src_off, pl_src_len, root, &pl_dec_fd, &pl_dec_len) != 0) {
+    return fail_msg("[thin] payload invalid", 90);
+  }
+  pl_dec_off = 0;
+  pl_map = harden_fd_mapping(pl_dec_fd, pl_dec_len, &pl_map_len);
+#endif
+  rc = decode_container(pl_dec_fd, pl_dec_off, pl_dec_len, bundle_fd);
+#if THIN_PL_ENC_ENABLED
+  if (pl_map && pl_map_len > 0) {
+    unprotect_mem_region(pl_map, pl_map_len);
+    munmap(pl_map, pl_map_len);
+  }
+#endif
   if (rc != 0) {
     char msg[128];
     snprintf(msg, sizeof(msg), "[thin] decode payload failed (%d)", rc);
     return fail_msg(msg, 30);
   }
   if (lseek(bundle_fd, 0, SEEK_SET) < 0) return THIN_FAIL(29);
+#if THIN_PL_ENC_ENABLED
+  if (pl_dec_fd != pl_fd) close(pl_dec_fd);
+#endif
 
   seal_memfd(node_fd);
   seal_memfd(bundle_fd);
@@ -4808,7 +6429,9 @@ function buildLauncher(
   launcherHardening,
   launcherHardeningCET,
   nativeBootstrapEnabled,
-  nativeBootstrapMode
+  nativeBootstrapMode,
+  nativeBootstrapWipeSource,
+  payloadProtectionCfg
 ) {
   const limits = DEFAULT_LIMITS;
   if (cObfuscator && cObfuscator.kind) {
@@ -4855,7 +6478,9 @@ function buildLauncher(
       appBindEnabled,
       snapshotGuardCfg,
       nativeBootstrapEnabled,
-      nativeBootstrapMode
+      nativeBootstrapMode,
+      nativeBootstrapWipeSource,
+      payloadProtectionCfg
     ),
     "utf-8"
   );
@@ -4997,6 +6622,7 @@ async function packThin({
   snapshotGuard,
   nativeBootstrap,
   nativeBootstrapObfuscator,
+  payloadProtection,
   projectRoot,
   targetName,
   sentinel,
@@ -5019,8 +6645,14 @@ async function packThin({
     const zstdTimeout = resolveZstdTimeout(zstdTimeoutMs);
     const integrityCfg = integrity && typeof integrity === "object" ? integrity : {};
     const nativeBootstrapCfg = nativeBootstrap && typeof nativeBootstrap === "object" ? nativeBootstrap : {};
+    const payloadProtectionCfg = payloadProtection && typeof payloadProtection === "object" ? payloadProtection : {};
+    const payloadProtectionEnabled = payloadProtectionCfg.enabled === true;
+    const payloadProtectionProvider = payloadProtectionEnabled
+      ? String(payloadProtectionCfg.provider || "none").toLowerCase()
+      : "none";
     const nativeBootstrapEnabled = nativeBootstrapCfg.enabled === true;
     const nativeBootstrapMode = nativeBootstrapCfg.mode === "string" ? "string" : "compile";
+    const nativeBootstrapWipeSource = nativeBootstrapCfg.wipeSource !== false;
     const payloadOnlyMode = !!payloadOnly;
     const timeSync = timing && timing.timeSync ? timing.timeSync : (label, fn) => fn();
     const timeAsync = timing && timing.timeAsync ? timing.timeAsync : async (label, fn) => await fn();
@@ -5101,11 +6733,31 @@ async function packThin({
     ensureDir(stageDir);
     ensureDir(releaseDir);
 
+    let payloadContainerFinal = payloadContainer;
+    if (payloadProtectionEnabled) {
+      info("Thin: encrypting payload (protected)...");
+      const bindInfo = buildPayloadBindData(payloadProtectionCfg.bind);
+      let baseKey = null;
+      if (payloadProtectionProvider === "secret") {
+        const secretCfg = payloadProtectionCfg.secret || {};
+        baseKey = readSecretFile(secretCfg.path, secretCfg.maxBytes || 4096);
+      } else if (payloadProtectionProvider === "tpm2") {
+        baseKey = crypto.randomBytes(32);
+        const rDir = path.join(releaseDir, "r");
+        ensureDir(rDir);
+        sealPayloadKeyTpm2({ keyBuf: baseKey, rDir, tpm2Cfg: payloadProtectionCfg.tpm2 || {} });
+      } else {
+        throw new Error(`payloadProtection provider missing: ${payloadProtectionProvider}`);
+      }
+      payloadContainerFinal = encryptPayloadContainer(payloadContainer, { baseKey, bindData: bindInfo.data });
+      wipeBuffer(payloadContainer);
+    }
+
     if (payloadOnlyMode) {
       return timeSync("build.packager.thin.payload_only", () => {
         const rDir = path.join(releaseDir, "r");
         ensureDir(rDir);
-        fs.writeFileSync(path.join(rDir, "pl"), payloadContainer);
+        fs.writeFileSync(path.join(rDir, "pl"), payloadContainerFinal);
         writeCodecBin(rDir, codecState);
         saveCodecState(projectRoot, targetName, codecState);
         return { ok: true, codecId: codecState.codecId, payloadOnly: true };
@@ -5131,7 +6783,9 @@ async function packThin({
       launcherHardening,
       launcherHardeningCET,
       nativeBootstrapEnabled,
-      nativeBootstrapMode
+      nativeBootstrapMode,
+      nativeBootstrapWipeSource,
+      payloadProtectionCfg
     ));
     if (!launcherRes.ok) return launcherRes;
 
@@ -5156,7 +6810,7 @@ async function packThin({
         const rDir = path.join(releaseDir, "r");
         ensureDir(rDir);
         fs.writeFileSync(path.join(rDir, "rt"), runtimeContainer);
-        fs.writeFileSync(path.join(rDir, "pl"), payloadContainer);
+        fs.writeFileSync(path.join(rDir, "pl"), payloadContainerFinal);
         if (nativeRes && nativeRes.path) {
           const nativeOut = path.join(rDir, THIN_NATIVE_BOOTSTRAP_FILE);
           fs.copyFileSync(nativeRes.path, nativeOut);
@@ -5191,12 +6845,12 @@ exec "$DIR/b/a" "$@"
         runtimeOff,
         runtimeLen: runtimeContainer.length,
         payloadOff,
-        payloadLen: payloadContainer.length,
+        payloadLen: payloadContainerFinal.length,
         appBindValue,
       });
 
       fs.appendFileSync(outBin, runtimeContainer);
-      fs.appendFileSync(outBin, payloadContainer);
+      fs.appendFileSync(outBin, payloadContainerFinal);
       fs.appendFileSync(outBin, aioFooter);
       writeCodecBin(releaseDir, codecState);
 

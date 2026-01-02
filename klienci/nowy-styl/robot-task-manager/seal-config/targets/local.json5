@@ -8,4 +8,9 @@
   serviceName: "robot-task-manager-sandbox",
   packager: "auto",
   config: "local",
+  readiness: {
+    enabled: true,
+    mode: "both",
+    url: "http://127.0.0.1:3100/healthz",
+  },
 }

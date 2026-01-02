@@ -80,7 +80,8 @@ function sshExec({ user, host, args, stdin = null, stdio = "inherit", tty = fals
     // ssh concatenates args without quoting, so wrap the bash -lc command.
     const flag = args[1];
     const cmd = args.slice(2).join(" ");
-    finalArgs = [`bash ${flag} ${shellQuote(cmd)}`];
+    // Avoid BASH_ENV/ENV side effects (e.g., set -u + unbound vars) on remote non-interactive shells.
+    finalArgs = [`env -u BASH_ENV -u ENV bash ${flag} ${shellQuote(cmd)}`];
   }
   const baseArgs = [];
   if (tty) baseArgs.push("-tt");

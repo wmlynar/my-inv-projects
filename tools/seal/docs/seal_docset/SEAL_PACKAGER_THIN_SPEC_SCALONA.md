@@ -16,6 +16,26 @@ Dotyczy: **packager thin** w frameworku SEAL: `thin-split`
 
 ---
 
+## Spis treści
+
+- 0. Założenia, threat model, cele, non‑goals
+- 1. Terminologia i osie projektu (żeby nie mieszać pojęć)
+- 2. UX i integracja w SEAL
+- 3. Model systemu i artefakty
+- 4. Kontrakt aplikacji (payload) i runtime FS
+- 5. Minimalne wymagania platformy (Ubuntu)
+- 6. Lifecycle serwera i algorytm deploy (szczególnie BOOTSTRAP)
+- 7. Launcher: kontrakt uruchomienia (memfd + FD 4) i hardening
+- 8. Bootstrap JS (inline) — kontrakt minimalny
+- 9. Kontener THIN — format binarny, encode/decode i zgodność
+- 10. Stan kodeka, cache i zgodność launcher ↔ payload (BOOTSTRAP krytyczne)
+- 11. Testy i QA (brama jakości)
+- 12. Błędy, exit codes i minimalna diagnostyka
+- 13. Roadmap (żeby nie było chaosu)
+- 14. Załącznik: zasada “jedno źródło prawdy” dla kodeka (rekomendacja implementacyjna)
+
+---
+
 ## 0. Założenia, threat model, cele, non‑goals
 
 ### 0.1 Threat model (świadomie brutalny)
@@ -109,15 +129,24 @@ npx seal release prod --packager thin-split
   - `memfd` wymaga wsparcia jądra; brak wsparcia = błąd uruchomienia.
   - `tmpfile` używa `mkstemp` i usuwa plik z dysku (unlink), ale nie używa memfd; pliki tymczasowe są tworzone z `umask(077)`.
 - Native bootstrap (opcjonalny, tylko thin-split):
-  - `build.thin.nativeBootstrap: { enabled: false, mode: "compile" }`.
+  - `build.thin.nativeBootstrap: { enabled: false, mode: "compile", wipeSource: true }`.
   - Addon trafia do `r/n` (bez rozszerzenia `.node`).
   - `mode: "compile" | "string"`:
     - `compile` (domyślnie): natywny addon kompiluje CJS w native (`CompileFunction`), bez JS‑owego stringa źródła i bez wrappera w JS.
     - `string` (legacy): natywny addon tworzy `ExternalString`, a bootstrap używa klasycznego `_compile`.
+  - `wipeSource: true|false` (domyślnie `true`): po native compile nadpisuje bufor źródła w pamięci addonu; dla E2E możesz wyłączyć.
   - Zysk: mniej kopii plaintextu w JS heapie i krótszy czas życia jawnego kodu (poza pamięcią wewnętrzną V8).
   - W trybie E2E może zostać wygenerowany dodatkowy string wyłącznie na potrzeby self‑scan.
   - Wymaga nagłówków Node (np. `/usr/include/node` lub `SEAL_NODE_INCLUDE_DIR`) oraz kompilatora C++ z obsługą C++20.
   - Opcjonalnie: `build.protection.nativeBootstrapObfuscator` (obfuscating clang++ + args) dla C++ addonu.
+- Payload protection (opcjonalny, domyślnie off):
+  - `build.thin.payloadProtection: { enabled: false, provider: "secret" | "tpm2", secret: { path, maxBytes }, tpm2: { bank, pcrs }, bind: { iface, mac, ip } }`.
+  - `provider="secret"`: absolutna ścieżka do sekretu (USB/host‑mount); `maxBytes` domyślnie `4096`.
+  - `provider="tpm2"`: sealing klucza w TPM2 (wymaga `tpm2_*` tools w buildzie i `tpm2_load`/`tpm2_unseal` w runtime).
+  - `bind`: opcjonalne związanie z NIC (`iface` + `mac`/`ip`); mismatch → `[thin] payload invalid`.
+  - Payload `r/pl` jest szyfrowany; launcher odszyfrowuje przed `decode_container`.
+  - Best‑effort: odszyfrowane bufory/memfd dostają `mlock` + `madvise(MADV_DONTDUMP|MADV_DONTFORK)`; brak uprawnień/limitów = brak efektu (bez fail‑fast).
+  - Dla `tpm2`: `r/tp` (public) i `r/tk` (private) są wymagane obok payloadu.
 
 **Anti‑debug / integrity (opcjonalne):**
 - `build.thin.antiDebug`:
@@ -134,6 +163,7 @@ npx seal release prod --packager thin-split
     - brak wsparcia seccomp = **fail‑fast** (bez fallbacku).
   - `coreDump` (domyślnie `true`) — ustawia `RLIMIT_CORE=0` (brak core‑dumpów).
   - `loaderGuard` (domyślnie `true`) — weryfikuje loader z `PT_INTERP` vs `/proc/self/maps` (blokuje uruchomienie przez alternatywny `ld-linux`).
+  - `hypervisor` (domyślnie `false`) — wymaga CPUID hypervisor bit (x86); brak bitu → fail‑fast; uwaga na masking i środowiska non‑x86.
 - **Brak aktywnego `PTRACE_TRACEME` guard**: wymagałby modelu fork/parent‑handshake (TRACEME → SIGTRAP → parent `PTRACE_DETACH`) oraz zmian w unitach systemd (`Type=forking`/PIDFile) i przekazywania sygnałów/logów. Obecnie używamy `PR_SET_DUMPABLE` + seccomp jako twardej blokady.
 
 **Jak wyglądałaby implementacja aktywnego `PTRACE_TRACEME` (opcjonalny projekt):**
@@ -259,6 +289,8 @@ Pliki na serwerze (przykładowe krótkie nazwy):
 - `<installDir>/b/a`   — launcher (ELF)
 - `<installDir>/r/rt`  — runtime node (THIN)
 - `<installDir>/r/pl`  — payload aplikacji (THIN)
+- `<installDir>/r/tp`  — TPM seal public blob (tylko payloadProtection=tpm2)
+- `<installDir>/r/tk`  — TPM seal private blob (tylko payloadProtection=tpm2)
 - `<installDir>/shared/` — config/assety (zwykłe pliki)
 - `<installDir>/data/` albo `<installDir>/var/` — write‑paths (opcjonalnie, zależnie od ustaleń)
 

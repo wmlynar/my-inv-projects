@@ -141,6 +141,15 @@ function resolveCc() {
   return null;
 }
 
+function hasHypervisorFlag() {
+  try {
+    const cpuinfo = fs.readFileSync("/proc/cpuinfo", "utf-8");
+    return /\bhypervisor\b/i.test(cpuinfo);
+  } catch {
+    return false;
+  }
+}
+
 function runGdbAttach(pid, timeoutMs = 5000) {
   return spawnSync(
     "gdb",
@@ -2240,6 +2249,13 @@ function scanFileSamplesForTokens(filePath, tokenBuffers, opts = {}) {
   let fd = null;
   try {
     fd = fs.openSync(filePath, "r");
+  } catch (e) {
+    const code = e && e.code ? e.code : "";
+    if (code === "EACCES" || code === "EPERM") return { skip: "permission denied" };
+    if (code === "ENOENT") return { skip: "missing" };
+    return { skip: code || "open error" };
+  }
+  try {
     for (const off of uniq) {
       const toRead = Math.min(sampleBytes, size - off);
       if (toRead <= 0) continue;
@@ -6474,6 +6490,14 @@ async function buildThinSplit({
     enabled: false,
   });
   const thinCfg = Object.assign({}, projectCfg.build.thin || {});
+  const e2eWipeRaw = process.env.SEAL_E2E_NATIVE_WIPE_SOURCE;
+  if (e2eWipeRaw !== undefined) {
+    thinCfg.nativeBootstrap = Object.assign({}, thinCfg.nativeBootstrap || {}, {
+      wipeSource: e2eWipeRaw === "1",
+    });
+  } else {
+    thinCfg.nativeBootstrap = Object.assign({}, thinCfg.nativeBootstrap || {}, { wipeSource: false });
+  }
   if (antiDebug !== undefined) thinCfg.antiDebug = Object.assign({}, thinCfg.antiDebug || {}, antiDebug);
   if (integrity !== undefined) thinCfg.integrity = Object.assign({}, thinCfg.integrity || {}, integrity);
   if (appBind !== undefined) thinCfg.appBind = Object.assign({}, thinCfg.appBind || {}, appBind);
@@ -6556,6 +6580,34 @@ function ensureCgroupV2Writable(root) {
   } catch {
     return false;
   }
+}
+
+async function testHypervisorRequirement({ outRoot, buildTimeoutMs, runTimeoutMs, testTimeoutMs }) {
+  const arch = process.arch;
+  if (arch !== "x64" && arch !== "ia32") {
+    return { skip: `arch ${arch} not supported` };
+  }
+  if (!fs.existsSync("/proc/cpuinfo")) {
+    return { skip: "cpuinfo missing" };
+  }
+  const detected = hasHypervisorFlag();
+  const res = await withTimeout("buildRelease(hypervisor guard)", buildTimeoutMs, () =>
+    buildThinSplit({
+      outRoot,
+      antiDebug: { enabled: true, hypervisor: true },
+      launcherObfuscation: false,
+    })
+  );
+  if (detected) {
+    await withTimeout("hypervisor guard ok", testTimeoutMs, () =>
+      runReleaseOk({ releaseDir: res.releaseDir, runTimeoutMs })
+    );
+    return { ok: true, detected };
+  }
+  await withTimeout("hypervisor guard fail", testTimeoutMs, () =>
+    runReleaseExpectFail({ releaseDir: res.releaseDir, runTimeoutMs, expectStderr: "[thin] runtime invalid" })
+  );
+  return { ok: true, detected };
 }
 
 async function main() {
@@ -7656,6 +7708,13 @@ async function main() {
         runReleaseOk({ releaseDir: resHard.releaseDir, runTimeoutMs })
       );
       log("OK: launcher hardening off still runs");
+
+      const hvRes = await testHypervisorRequirement({ outRoot, buildTimeoutMs, runTimeoutMs, testTimeoutMs });
+      if (hvRes && hvRes.skip) {
+        log(`SKIP: hypervisor guard (${hvRes.skip})`);
+      } else {
+        log(`OK: hypervisor guard (${hvRes && hvRes.detected ? "detected" : "not detected"})`);
+      }
 
       log("Building thin-split with maps denylist...");
       const resC = await withTimeout("buildRelease(maps deny)", buildTimeoutMs, () =>

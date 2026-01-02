@@ -430,6 +430,7 @@ if [ "$REMOTE_E2E" = "1" ]; then
     --tmpfs /run \
     --tmpfs /seal-tmp \
     --tmpfs /run/lock \
+    -e SEAL_SSH_KEYS_DIR="/seal-tmp/seal-ssh" \
     -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
     -v "$SSH_DIR:/seal-tmp/seal-ssh:ro" \
     --network "$NETWORK_NAME" \
@@ -521,6 +522,7 @@ $DOCKER run --rm \
   -w /workspace \
   -e SEAL_DOCKER_E2E=1 \
   -e NPM_CONFIG_UNSAFE_PERM=true \
+  -e SEAL_SSH_DIR="/seal-tmp/seal-ssh" \
   -e SEAL_E2E_SSH="${REMOTE_E2E}" \
   -e SEAL_E2E_CONFIG="${CONFIG_ENV}" \
   -e SEAL_E2E_TOOLSET="${TOOLSET}" \

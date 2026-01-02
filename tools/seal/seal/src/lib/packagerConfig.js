@@ -106,8 +106,8 @@ function normalizeThinSnapshotGuard(raw) {
 }
 
 function normalizeThinNativeBootstrap(raw) {
-  if (raw === undefined || raw === null) return { enabled: false, mode: "compile" };
-  if (typeof raw === "boolean") return { enabled: raw, mode: "compile" };
+  if (raw === undefined || raw === null) return { enabled: false, mode: "compile", wipeSource: true };
+  if (typeof raw === "boolean") return { enabled: raw, mode: "compile", wipeSource: true };
   if (typeof raw !== "object" || Array.isArray(raw)) {
     throw new Error("Invalid thin.nativeBootstrap: expected boolean or object");
   }
@@ -122,9 +122,141 @@ function normalizeThinNativeBootstrap(raw) {
       throw new Error(`Invalid thin.nativeBootstrap.mode: ${raw.mode}`);
     }
   }
+  let wipeSource = true;
+  if (raw.wipeSource !== undefined && raw.wipeSource !== null) {
+    if (typeof raw.wipeSource !== "boolean") {
+      throw new Error(`Invalid thin.nativeBootstrap.wipeSource: ${raw.wipeSource} (expected boolean)`);
+    }
+    wipeSource = raw.wipeSource;
+  }
   return {
     enabled: raw.enabled !== undefined ? !!raw.enabled : true,
     mode,
+    wipeSource,
+  };
+}
+
+function normalizeThinPayloadBind(raw) {
+  if (raw === undefined || raw === null || raw === false) {
+    return { enabled: false, iface: "", mac: "", ip: "" };
+  }
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("Invalid thin.payloadProtection.bind: expected object or boolean");
+  }
+  const iface = raw.iface !== undefined && raw.iface !== null ? String(raw.iface).trim() : "";
+  if (!iface) {
+    throw new Error("Invalid thin.payloadProtection.bind.iface: empty");
+  }
+  if (iface.length > 64) {
+    throw new Error(`Invalid thin.payloadProtection.bind.iface: too long (${iface.length} > 64)`);
+  }
+  if (/[^\x20-\x7E]/.test(iface)) {
+    throw new Error("Invalid thin.payloadProtection.bind.iface: non-ASCII");
+  }
+  let mac = "";
+  if (raw.mac !== undefined && raw.mac !== null && String(raw.mac).trim() !== "") {
+    mac = String(raw.mac).trim().toLowerCase();
+    if (!/^([0-9a-f]{2})(:[0-9a-f]{2}){5}$/.test(mac)) {
+      throw new Error(`Invalid thin.payloadProtection.bind.mac: ${raw.mac} (expected aa:bb:cc:dd:ee:ff)`);
+    }
+  }
+  let ip = "";
+  if (raw.ip !== undefined && raw.ip !== null && String(raw.ip).trim() !== "") {
+    const rawIp = String(raw.ip).trim();
+    const parts = rawIp.split(".");
+    if (parts.length !== 4) {
+      throw new Error(`Invalid thin.payloadProtection.bind.ip: ${raw.ip} (expected IPv4)`);
+    }
+    const nums = parts.map((p) => Number(p));
+    if (nums.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) {
+      throw new Error(`Invalid thin.payloadProtection.bind.ip: ${raw.ip} (expected IPv4)`);
+    }
+    ip = nums.join(".");
+  }
+  if (!mac && !ip) {
+    throw new Error("Invalid thin.payloadProtection.bind: expected mac and/or ip");
+  }
+  return { enabled: true, iface, mac, ip };
+}
+
+function normalizeThinPayloadProtection(raw) {
+  const defaults = {
+    enabled: false,
+    provider: "none",
+    secret: { path: "", maxBytes: 4096 },
+    tpm2: { bank: "sha256", pcrs: [0, 2, 4, 7] },
+    bind: { enabled: false, iface: "", mac: "", ip: "" },
+  };
+  if (raw === undefined || raw === null) return { ...defaults };
+  if (typeof raw === "boolean") return { ...defaults, enabled: raw };
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("Invalid thin.payloadProtection: expected object or boolean");
+  }
+  const enabled = raw.enabled !== undefined ? !!raw.enabled : true;
+  let provider = raw.provider !== undefined && raw.provider !== null ? String(raw.provider).trim().toLowerCase() : "";
+  if (!provider) {
+    const secretCfg = raw.secret && typeof raw.secret === "object" && !Array.isArray(raw.secret) ? raw.secret : null;
+    const tpm2Cfg = raw.tpm2 && typeof raw.tpm2 === "object" && !Array.isArray(raw.tpm2) ? raw.tpm2 : null;
+    if (secretCfg && secretCfg.path) provider = "secret";
+    else if (tpm2Cfg) provider = "tpm2";
+  }
+  if (provider && provider !== "secret" && provider !== "tpm2") {
+    throw new Error(`Invalid thin.payloadProtection.provider: ${raw.provider} (expected: secret|tpm2)`);
+  }
+  if (enabled && !provider) {
+    throw new Error("Invalid thin.payloadProtection.provider: missing (expected: secret|tpm2)");
+  }
+  const secretRaw = raw.secret && typeof raw.secret === "object" && !Array.isArray(raw.secret) ? raw.secret : {};
+  let secretPath = secretRaw.path !== undefined && secretRaw.path !== null ? String(secretRaw.path).trim() : "";
+  if (provider === "secret") {
+    if (!secretPath) {
+      throw new Error("Invalid thin.payloadProtection.secret.path: empty");
+    }
+    if (!secretPath.startsWith("/")) {
+      throw new Error("Invalid thin.payloadProtection.secret.path: expected absolute path");
+    }
+    if (/[^\x20-\x7E]/.test(secretPath)) {
+      throw new Error("Invalid thin.payloadProtection.secret.path: non-ASCII");
+    }
+  }
+  let secretMaxBytes = secretRaw.maxBytes !== undefined && secretRaw.maxBytes !== null
+    ? Number(secretRaw.maxBytes)
+    : 4096;
+  if (!Number.isFinite(secretMaxBytes) || secretMaxBytes <= 0) {
+    throw new Error(`Invalid thin.payloadProtection.secret.maxBytes: ${secretRaw.maxBytes}`);
+  }
+  secretMaxBytes = Math.min(Math.floor(secretMaxBytes), 1024 * 1024);
+
+  const tpm2Raw = raw.tpm2 && typeof raw.tpm2 === "object" && !Array.isArray(raw.tpm2) ? raw.tpm2 : {};
+  const bankRaw = tpm2Raw.bank !== undefined && tpm2Raw.bank !== null ? String(tpm2Raw.bank) : "sha256";
+  const bank = bankRaw.toLowerCase();
+  if (!["sha1", "sha256", "sha384", "sha512"].includes(bank)) {
+    throw new Error(`Invalid thin.payloadProtection.tpm2.bank: ${tpm2Raw.bank} (expected sha1|sha256|sha384|sha512)`);
+  }
+  const pcrsRaw = tpm2Raw.pcrs !== undefined && tpm2Raw.pcrs !== null ? tpm2Raw.pcrs : [0, 2, 4, 7];
+  if (!Array.isArray(pcrsRaw)) {
+    throw new Error("Invalid thin.payloadProtection.tpm2.pcrs: expected array of numbers");
+  }
+  const pcrs = [];
+  for (const entry of pcrsRaw) {
+    const n = Number(entry);
+    if (!Number.isFinite(n) || n < 0 || n > 23) {
+      throw new Error(`Invalid thin.payloadProtection.tpm2.pcrs: ${entry} (expected 0..23)`);
+    }
+    const v = Math.floor(n);
+    if (!pcrs.includes(v)) pcrs.push(v);
+  }
+  if (provider === "tpm2" && pcrs.length === 0) {
+    throw new Error("Invalid thin.payloadProtection.tpm2.pcrs: empty");
+  }
+
+  const bind = normalizeThinPayloadBind(raw.bind);
+  return {
+    enabled,
+    provider: provider || "none",
+    secret: { path: secretPath, maxBytes: secretMaxBytes },
+    tpm2: { bank, pcrs },
+    bind,
   };
 }
 
@@ -253,6 +385,11 @@ function normalizeThinAntiDebug(raw) {
   if (typeof loaderGuard !== "boolean") {
     throw new Error(`Invalid thin.antiDebug.loaderGuard: ${raw.loaderGuard} (expected boolean)`);
   }
+  let hypervisor = raw.hypervisor;
+  if (hypervisor === undefined) hypervisor = false;
+  if (typeof hypervisor !== "boolean") {
+    throw new Error(`Invalid thin.antiDebug.hypervisor: ${raw.hypervisor} (expected boolean)`);
+  }
   let tracerPidThreadsFinal = tracerPidThreads;
   if (!enabled || !tracerPid) {
     tracerPidIntervalMs = 0;
@@ -264,6 +401,7 @@ function normalizeThinAntiDebug(raw) {
     coreDump = false;
     loaderGuard = false;
     argvDeny = false;
+    hypervisor = false;
   }
   return {
     enabled,
@@ -277,6 +415,7 @@ function normalizeThinAntiDebug(raw) {
     seccompNoDebug,
     coreDump,
     loaderGuard,
+    hypervisor,
   };
 }
 
@@ -386,6 +525,12 @@ function resolveThinConfig(targetCfg, projectCfg) {
     null;
   const nativeBootstrap = normalizeThinNativeBootstrap(nativeBootstrapRaw);
 
+  const payloadProtectionRaw =
+    tThin.payloadProtection ??
+    pThin.payloadProtection ??
+    null;
+  const payloadProtection = normalizeThinPayloadProtection(payloadProtectionRaw);
+
   const launcherHardeningRaw =
     tThin.launcherHardening ??
     pThin.launcherHardening ??
@@ -418,6 +563,7 @@ function resolveThinConfig(targetCfg, projectCfg) {
     appBind,
     snapshotGuard,
     nativeBootstrap,
+    payloadProtection,
     launcherHardening,
     launcherHardeningCET,
     launcherObfuscation,

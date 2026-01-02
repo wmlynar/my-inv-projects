@@ -47,6 +47,83 @@
       "requirements": []
     },
     {
+      "name": "thin-anti-debug-attach",
+      "category": "security",
+      "parallel": true,
+      "description": "Runs thin anti-debug attach suite only.",
+      "skipRisk": "high",
+      "failHint": "Check ptrace/perf/bpf tooling and strict env flags.",
+      "script": "tools/seal/seal/scripts/test-thin-anti-debug-attach-e2e.js",
+      "hostOnly": false,
+      "requirements": []
+    },
+    {
+      "name": "thin-anti-debug-bootstrap",
+      "category": "security",
+      "parallel": true,
+      "description": "Runs thin anti-debug bootstrap suite only.",
+      "skipRisk": "high",
+      "failHint": "Check ptrace/perf/bpf tooling and strict env flags.",
+      "script": "tools/seal/seal/scripts/test-thin-anti-debug-bootstrap-e2e.js",
+      "hostOnly": false,
+      "requirements": []
+    },
+    {
+      "name": "thin-anti-debug-build",
+      "category": "security",
+      "parallel": true,
+      "description": "Runs thin anti-debug build suite only.",
+      "skipRisk": "high",
+      "failHint": "Check ptrace/perf/bpf tooling and strict env flags.",
+      "script": "tools/seal/seal/scripts/test-thin-anti-debug-build-e2e.js",
+      "hostOnly": false,
+      "requirements": []
+    },
+    {
+      "name": "thin-anti-debug-config",
+      "category": "security",
+      "parallel": true,
+      "description": "Runs thin anti-debug config suite only.",
+      "skipRisk": "high",
+      "failHint": "Check ptrace/perf/bpf tooling and strict env flags.",
+      "script": "tools/seal/seal/scripts/test-thin-anti-debug-config-e2e.js",
+      "hostOnly": false,
+      "requirements": []
+    },
+    {
+      "name": "thin-anti-debug-env",
+      "category": "security",
+      "parallel": true,
+      "description": "Runs thin anti-debug environment suite only.",
+      "skipRisk": "high",
+      "failHint": "Check ptrace/perf/bpf tooling and strict env flags.",
+      "script": "tools/seal/seal/scripts/test-thin-anti-debug-env-e2e.js",
+      "hostOnly": false,
+      "requirements": []
+    },
+    {
+      "name": "thin-anti-debug-leaks",
+      "category": "security",
+      "parallel": true,
+      "description": "Runs thin anti-debug leaks suite only.",
+      "skipRisk": "high",
+      "failHint": "Check ptrace/perf/bpf tooling and strict env flags.",
+      "script": "tools/seal/seal/scripts/test-thin-anti-debug-leaks-e2e.js",
+      "hostOnly": false,
+      "requirements": []
+    },
+    {
+      "name": "thin-anti-debug-tamper",
+      "category": "security",
+      "parallel": true,
+      "description": "Runs thin anti-debug tamper suite only.",
+      "skipRisk": "high",
+      "failHint": "Check ptrace/perf/bpf tooling and strict env flags.",
+      "script": "tools/seal/seal/scripts/test-thin-anti-debug-tamper-e2e.js",
+      "hostOnly": false,
+      "requirements": []
+    },
+    {
       "name": "thin-anti-debug-dump",
       "category": "security",
       "parallel": true,
@@ -104,6 +181,28 @@
       "requirements": []
     },
     {
+      "name": "workspace-defaults",
+      "category": "misc",
+      "parallel": true,
+      "description": "Validates workspace defaults merging for subprojects.",
+      "skipRisk": "low",
+      "failHint": "Check workspace seal.json5 defaults merging logic.",
+      "script": "tools/seal/seal/scripts/test-workspace-defaults-e2e.js",
+      "hostOnly": false,
+      "requirements": []
+    },
+    {
+      "name": "workspace-batch",
+      "category": "flow",
+      "parallel": true,
+      "description": "Ensures workspace auto-batch runs commands per project.",
+      "skipRisk": "low",
+      "failHint": "Check auto-batch detection and workspace project discovery.",
+      "script": "tools/seal/seal/scripts/test-workspace-batch-e2e.js",
+      "hostOnly": false,
+      "requirements": []
+    },
+    {
       "name": "noop-a",
       "category": "misc",
       "parallel": true,
@@ -133,6 +232,17 @@
       "skipRisk": "medium",
       "failHint": "Check E2E cleanup handlers and worker temp roots.",
       "script": "tools/seal/seal/scripts/test-e2e-cleanup-e2e.js",
+      "hostOnly": false,
+      "requirements": []
+    },
+    {
+      "name": "clean",
+      "category": "flow",
+      "parallel": true,
+      "description": "Validates seal clean scopes for seal-out cleanup.",
+      "skipRisk": "low",
+      "failHint": "Check seal clean behavior and seal-out paths.",
+      "script": "tools/seal/seal/scripts/test-clean-e2e.js",
       "hostOnly": false,
       "requirements": []
     },

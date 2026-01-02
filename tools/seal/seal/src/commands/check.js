@@ -219,21 +219,33 @@ REQUIRED_TOOLS=${shQuote(requireTools.join(" "))}
 REQUIRE_SUDO=${requireSudo}
 FORCE_SUDO_FAIL=${forceSudoFail}
 issues=()
+ROOT_OK=0
+TMP_OK=0
 
 if [ ! -d "$ROOT" ]; then
   issues+=("__SEAL_MISSING_DIR__")
 else
+  ROOT_OK=1
   if [ ! -w "$ROOT" ]; then issues+=("__SEAL_NOT_WRITABLE__"); fi
   if [ -d "$REL" ] && [ ! -w "$REL" ]; then issues+=("__SEAL_NOT_WRITABLE_RELEASES__"); fi
   if [ -d "$SHARED" ] && [ ! -w "$SHARED" ]; then issues+=("__SEAL_NOT_WRITABLE_SHARED__"); fi
   if [ ! -f "$RUNNER" ]; then issues+=("__SEAL_MISSING_RUNNER__"); fi
   if [ ! -f "$UNIT" ]; then issues+=("__SEAL_MISSING_UNIT__"); fi
-  if command -v df >/dev/null 2>&1; then
+fi
+
+if [ -d "$TMP_DIR" ]; then
+  TMP_OK=1
+else
+  issues+=("__SEAL_TMP_MISSING__")
+fi
+
+if command -v df >/dev/null 2>&1; then
+  if [ "$ROOT_OK" -eq 1 ]; then
     AVAIL_KB="$(df -Pk "$ROOT" 2>/dev/null | awk 'NR==2 {print $4}')"
     if [ -n "$AVAIL_KB" ]; then
       AVAIL_MB=$((AVAIL_KB / 1024))
       if [ "$AVAIL_MB" -lt "$MIN_MB" ]; then
-        issues+=("__SEAL_DISK_LOW__:${AVAIL_MB}:${MIN_MB}")
+        issues+=("__SEAL_DISK_LOW__:\${AVAIL_MB}:\${MIN_MB}")
       fi
     else
       issues+=("__SEAL_DISK_CHECK_FAILED__")
@@ -241,60 +253,63 @@ else
     AVAIL_INODES="$(df -Pi "$ROOT" 2>/dev/null | awk 'NR==2 {print $4}')"
     if [ -n "$AVAIL_INODES" ]; then
       if [ "$AVAIL_INODES" -lt "$MIN_INODES" ]; then
-        issues+=("__SEAL_INODES_LOW__:${AVAIL_INODES}:${MIN_INODES}")
+        issues+=("__SEAL_INODES_LOW__:\${AVAIL_INODES}:\${MIN_INODES}")
       fi
     else
       issues+=("__SEAL_INODES_CHECK_FAILED__")
     fi
-    if [ -d "$TMP_DIR" ]; then
-      TMP_AVAIL_KB="$(df -Pk "$TMP_DIR" 2>/dev/null | awk 'NR==2 {print $4}')"
-      if [ -n "$TMP_AVAIL_KB" ]; then
-        TMP_AVAIL_MB=$((TMP_AVAIL_KB / 1024))
-        if [ "$TMP_AVAIL_MB" -lt "$TMP_MIN_MB" ]; then
-          issues+=("__SEAL_TMP_DISK_LOW__:${TMP_AVAIL_MB}:${TMP_MIN_MB}")
-        fi
-      else
-        issues+=("__SEAL_TMP_DISK_CHECK_FAILED__")
-      fi
-      TMP_AVAIL_INODES="$(df -Pi "$TMP_DIR" 2>/dev/null | awk 'NR==2 {print $4}')"
-      if [ -n "$TMP_AVAIL_INODES" ]; then
-        if [ "$TMP_AVAIL_INODES" -lt "$TMP_MIN_INODES" ]; then
-          issues+=("__SEAL_TMP_INODES_LOW__:${TMP_AVAIL_INODES}:${TMP_MIN_INODES}")
-        fi
-      else
-        issues+=("__SEAL_TMP_INODES_CHECK_FAILED__")
+  fi
+  if [ "$TMP_OK" -eq 1 ]; then
+    TMP_AVAIL_KB="$(df -Pk "$TMP_DIR" 2>/dev/null | awk 'NR==2 {print $4}')"
+    if [ -n "$TMP_AVAIL_KB" ]; then
+      TMP_AVAIL_MB=$((TMP_AVAIL_KB / 1024))
+      if [ "$TMP_AVAIL_MB" -lt "$TMP_MIN_MB" ]; then
+        issues+=("__SEAL_TMP_DISK_LOW__:\${TMP_AVAIL_MB}:\${TMP_MIN_MB}")
       fi
     else
-      issues+=("__SEAL_TMP_MISSING__")
+      issues+=("__SEAL_TMP_DISK_CHECK_FAILED__")
     fi
-    if command -v findmnt >/dev/null 2>&1; then
-      if [ "$ALLOW_NOEXEC" -ne 1 ]; then
-        OPTS="$(findmnt -no OPTIONS --target "$ROOT" 2>/dev/null || true)"
-        if echo "$OPTS" | grep -q "noexec"; then
-          issues+=("__SEAL_NOEXEC__")
-        fi
+    TMP_AVAIL_INODES="$(df -Pi "$TMP_DIR" 2>/dev/null | awk 'NR==2 {print $4}')"
+    if [ -n "$TMP_AVAIL_INODES" ]; then
+      if [ "$TMP_AVAIL_INODES" -lt "$TMP_MIN_INODES" ]; then
+        issues+=("__SEAL_TMP_INODES_LOW__:\${TMP_AVAIL_INODES}:\${TMP_MIN_INODES}")
+      fi
+    else
+      issues+=("__SEAL_TMP_INODES_CHECK_FAILED__")
+    fi
+  fi
+  if [ "$ROOT_OK" -eq 1 ] && command -v findmnt >/dev/null 2>&1; then
+    if [ "$ALLOW_NOEXEC" -ne 1 ]; then
+      OPTS="$(findmnt -no OPTIONS --target "$ROOT" 2>/dev/null || true)"
+      if echo "$OPTS" | grep -q "noexec"; then
+        issues+=("__SEAL_NOEXEC__")
       fi
     fi
-  else
+  fi
+else
+  if [ "$ROOT_OK" -eq 1 ]; then
     issues+=("__SEAL_DISK_CHECK_FAILED__")
     issues+=("__SEAL_INODES_CHECK_FAILED__")
+  fi
+  if [ "$TMP_OK" -eq 1 ]; then
     issues+=("__SEAL_TMP_DISK_CHECK_FAILED__")
     issues+=("__SEAL_TMP_INODES_CHECK_FAILED__")
   fi
-  if [ -n "$REQUIRED_TOOLS" ]; then
-    for tool in $REQUIRED_TOOLS; do
-      if ! command -v "$tool" >/dev/null 2>&1; then
-        issues+=("__SEAL_TOOL_MISSING__:$tool")
-      fi
-    done
-  fi
-  if [ "$REQUIRE_SUDO" -eq 1 ]; then
-    if [ "$FORCE_SUDO_FAIL" -eq 1 ]; then
+fi
+
+if [ -n "$REQUIRED_TOOLS" ]; then
+  for tool in $REQUIRED_TOOLS; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+      issues+=("__SEAL_TOOL_MISSING__:$tool")
+    fi
+  done
+fi
+if [ "$REQUIRE_SUDO" -eq 1 ]; then
+  if [ "$FORCE_SUDO_FAIL" -eq 1 ]; then
+    issues+=("__SEAL_SUDO_MISSING__")
+  else
+    if ! sudo -n true >/dev/null 2>&1; then
       issues+=("__SEAL_SUDO_MISSING__")
-    else
-      if ! sudo -n true >/dev/null 2>&1; then
-        issues+=("__SEAL_SUDO_MISSING__")
-      fi
     fi
   fi
 fi

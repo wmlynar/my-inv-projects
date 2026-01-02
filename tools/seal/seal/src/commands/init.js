@@ -23,15 +23,17 @@ function templateProjectJson5(appName, entry) {
         enabled: true,
         seaMain: { pack: true, method: "brotli", chunkSize: 8000 },
         bundle: { pack: true },
-        strip: { enabled: false, cmd: "strip" },
+        strip: { enabled: true, cmd: "strip" },
         elfPacker: { tool: "kiteshield", cmd: "kiteshield", args: ["-n", "{in}", "{out}"] },
       },
       thin: { mode: "split", level: "low" },
       decoy: { mode: "none", scope: "backend", sourceDir: "decoy", overwrite: false, generator: "off" },
+      watermark: { enabled: false, mode: "auto", length: 24, prefix: "wm", style: "plain" },
       includeDirs: ["public", "data"],
     },
     deploy: {
       autoBootstrap: true,
+      systemdHardening: "baseline",
     },
   };
 }

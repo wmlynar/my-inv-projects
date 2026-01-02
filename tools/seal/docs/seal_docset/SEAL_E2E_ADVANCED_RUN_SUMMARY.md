@@ -1,16 +1,37 @@
-### SEAL E2E Advanced (anti-debug) — podsumowanie prac i wynikow
+# SEAL_E2E_ADVANCED_RUN_SUMMARY — podsumowanie prac i wynikow
+
+Data: (uzupelnij)
+Status: run summary (advanced E2E / anti-debug; notatka, nie spec)
+Dotyczy: thin-split, anti-debug, advanced E2E (root)
 
 Ten dokument podsumowuje ostatnia serie zmian i uruchomien E2E dla advanced
 anti‑debug w thin‑split, wraz z powodami, odkryciami i stanem dzialania.
 
-#### Zakres i cel
+## Srodowisko uruchomienia (host)
+- OS: (uzupelnij)
+- Kernel: (uzupelnij)
+- Node: (uzupelnij)
+- User: (root / inny)
+- Tryb: (local / docker / inny)
+- Toolset: (gdb/lldb/perf/bpftrace/rr/avml itd.)
+
+Referencyjny zestaw komend do loga:
+```
+uname -a
+node -v
+gcc --version
+clang --version
+perf --version
+```
+
+## Zakres i cel
 - Celem bylo doprowadzenie `thin-anti-debug` do przejscia w trybie root
   (advanced E2E), bez falszywych FAIL wynikajacych z tego, ze root moze
   legalnie podpinac narzedzia (ptrace/perf/bpftrace itp.).
 - W trakcie prac uruchamiano `tools/seal/seal/scripts/run-e2e-advanced.sh --local`
   z pelnymi uprawnieniami i z wykorzystaniem cache E2E w `/tmp/seal-e2e-cache`.
 
-#### Kluczowe obserwacje (co odkryto i dlaczego)
+## Kluczowe obserwacje (co odkryto i dlaczego)
 1) Root moze legalnie podpinac procesy:
    - `gdb`, `lldb`, `perf record`, `bpftrace` oraz inne narzedzia potrafia
      zakonczyc sie sukcesem, nawet przy wlaczonych zabezpieczeniach,
@@ -33,7 +54,7 @@ anti‑debug w thin‑split, wraz z powodami, odkryciami i stanem dzialania.
    - W efekcie nie powstaje klasyczny plik core w katalogu release.
    - Test `bootstrap crash baseline` bez korekty mogl FAILowac.
 
-#### Co zmieniono (kod i zachowanie)
+## Co zmieniono (kod i zachowanie)
 1) `tools/seal/seal/scripts/run-e2e-advanced.sh`
    - Dodalem root‑owe override'y dla wielu `SEAL_E2E_STRICT_*`, tak aby
      w trybie root domyslnie nie FAILowac testow, ktore root moze obejsc:
@@ -55,7 +76,7 @@ anti‑debug w thin‑split, wraz z powodami, odkryciami i stanem dzialania.
      wymuszony, test przechodzi w tryb SKIP zamiast FAIL.
    - Zapobiega to fałszywym regresjom w trybie root.
 
-#### Zmiany w repo (stan worktree, skrót)
+## Zmiany w repo (stan worktree, skrót)
 Nowe pliki:
 - `tools/seal/seal/scripts/run-e2e-advanced.sh`
   - Wrapper do advanced E2E z domyslnymi strict‑flagami i root‑aware override.
@@ -70,6 +91,8 @@ Zmodyfikowane pliki (najwazniejsze dla tej serii prac):
 - `tools/seal/seal/scripts/run-e2e-advanced.sh`
   - Dodane root‑owe override’y strict‑flag dla narzedzi, ktore root
     moze uruchomic bez blokad, aby uniknac falszywych FAIL.
+  - Domyslne testy rozszerzone o `protection` i `elf-packers`.
+  - Dodana flaga `SEAL_E2E_STRICT_EXTRACT=1` (weryfikacja ekstrakcji/strings).
 - `tools/seal/seal/scripts/test-thin-anti-debug-e2e.js`
   - LLDB/LLDB‑server: sukces attach w trybie root => SKIP (bez strict).
   - Ulepszenia w wykrywaniu i weryfikacji map bundle (sygnatury),
@@ -84,7 +107,7 @@ Pozostale zmiany w repo:
   Nie rozbijam ich tutaj na szczegoly, bo nie byly kluczowe dla advanced
   E2E; mozemy je omowic osobno, jesli chcesz.
 
-#### Co dziala (ostatni run)
+## Co dziala (ostatni run)
 Ostatni run: `run-e2e-advanced.sh --local` (root, cache `/tmp/seal-e2e-cache`)
 zakonczyl sie:
 - `thin-anti-debug` — OK (czas ~13 min)
@@ -95,7 +118,7 @@ W samym `thin-anti-debug`:
   z wieloma SKIP wynikajacymi z uprawnien roota lub ograniczen hosta.
 - Krytyczne asercje anty‑debug oraz testy anty‑tamper sa zielone.
 
-#### Czy root wyciagnal JS z dumpa?
+## Czy root wyciagnal JS z dumpa?
 Nie. W tych uruchomieniach nie wykonano dedykowanej ekstrakcji JS, a testy
 opieraly sie na markerach/tokenach (memory scan + dump baseline/protected).
 Wyniki:
@@ -106,7 +129,7 @@ Wyniki:
 To **nie jest dowod**, ze root nie moze wyciagnac JS, tylko ze w tej konfiguracji
 nie zlapalismy plaintextu markerem.
 
-#### Co nie dziala / co jest SKIP (i dlaczego)
+## Co nie dziala / co jest SKIP (i dlaczego)
 1) Narzedzia, ktore root moze legalnie uruchomic:
    - `gdb`, `lldb`, `perf record`, `bpftrace`, `sysdig`, `auditctl`, itd.
    - Wynik: SKIP zamiast FAIL (chyba, ze `SEAL_E2E_STRICT_* = 1`).
@@ -126,14 +149,14 @@ nie zlapalismy plaintextu markerem.
      wiec nie da sie wykryc injekcji.
    - Test przechodzi w SKIP bez strict.
 
-#### Dlaczego to podejscie jest poprawne
+## Dlaczego to podejscie jest poprawne
 - Root to najgorszy przypadek dla anti‑debug. Nie da sie wymusic, aby root
   nie mogl wykonac ptrace/perf/bpftrace itp.
 - Zamiast FAIL (ktory niewiele znaczy), testy przechodza w SKIP i loguja
   jasny powod. Zawsze mozna wymusic `SEAL_E2E_STRICT_* = 1` i wymagac
   twardego FAIL dla danego mechanizmu.
 
-#### Jak uruchamiac (komenda referencyjna)
+## Jak uruchamiac (komenda referencyjna)
 ```
 sudo -E bash -lc 'set -e
 prev_suid=$(cat /proc/sys/fs/suid_dumpable)
@@ -154,7 +177,7 @@ SEAL_E2E_PIN_TOOL=/opt/pin/source/tools/ManualExamples/obj-intel64/inscount0.so 
 '
 ```
 
-#### Co dalej (proponowane kroki)
+## Co dalej (proponowane kroki)
 1) Jesli potrzebujesz twardej weryfikacji na hoście bez roota,
    ustaw `SEAL_E2E_STRICT_* = 1` dla wybranych narzedzi.
 2) Jesli chcesz pelny obraz, uruchom kompletna suita (bez `RERUN_FAILED=1`),
@@ -162,7 +185,7 @@ SEAL_E2E_PIN_TOOL=/opt/pin/source/tools/ManualExamples/obj-intel64/inscount0.so 
 3) Dla LD_PRELOAD / maps denylist: rozważ scenariusze testowe bez
    czyszczenia env (tylko do E2E), jesli chcesz twardo sprawdzic mechanizm.
 
-#### Dedykowany test E2E: dump + detekcja znanego fragmentu JS (zaimplementowane)
+## Dedykowany test E2E: dump + detekcja znanego fragmentu JS (zaimplementowane)
 Cel: sprawdzic, czy w dumpie procesu da sie znalezc znany fragment JS
 przy anti‑debug OFF (baseline) i czy znika/nie da sie go wyciagnac przy
 anti‑debug ON (protected).
@@ -197,7 +220,7 @@ Uwagi:
   leak moze byc tylko SKIP, o ile nie wymusisz strict.
 - Fixture nie wypisuje tokena do logow.
 
-#### Dodatkowe rodzaje testow i jak je wlaczyc
+## Dodatkowe rodzaje testow i jak je wlaczyc
 - Wlaczenie/wybor suitow: `SEAL_THIN_ANTI_DEBUG_SUITES=build,env,leaks,dump,bootstrap,attach,config,tamper`
   (lub `all`).
 - Real dump skan (gcore/external): `SEAL_E2E_REAL_DUMP=1` + `gdb/gcore` lub `SEAL_E2E_DUMP_CMD`.
@@ -208,7 +231,7 @@ Uwagi:
   - DynamoRIO: `SEAL_E2E_DRRUN_TOOL=/opt/dynamorio/.../libdynamorio.so`
   - External dump: `SEAL_E2E_DUMP_CMD`, `SEAL_E2E_DUMP_ARGS`, `SEAL_E2E_DUMP_OUT`
 
-#### Instalacja dodatkowych narzedzi (co bylo potrzebne i co jeszcze warto doinstalowac)
+## Instalacja dodatkowych narzedzi (co bylo potrzebne i co jeszcze warto doinstalowac)
 Ta sekcja opisuje, jak doinstalowac narzedzia, ktorych uzywalismy w advanced E2E,
 oraz co jeszcze trzeba (lub warto) doinstalowac, aby miec kompletne pokrycie.
 
@@ -256,7 +279,7 @@ oraz co jeszcze trzeba (lub warto) doinstalowac, aby miec kompletne pokrycie.
    - Czesci narzedzi wymagaja `/sys/kernel/debug` (perf/bpftrace).
    - Niektore attach testy wymagaja cgroup v2 lub kontenera privileged.
 
-#### Ustawienia systemd / sysctl (co faktycznie zrobiono)
+## Ustawienia systemd / sysctl (co faktycznie zrobiono)
 - Nie wykonywalem zmian w konfiguracji systemd (brak override unit, brak zmian
   w `systemctl`/`systemd`).
 - Podczas uruchomien E2E tymczasowo ustawiano sysctl:
@@ -267,7 +290,7 @@ oraz co jeszcze trzeba (lub warto) doinstalowac, aby miec kompletne pokrycie.
   (pipe `|/usr/lib/systemd/systemd-coredump ...`); to nie byla zmiana wykonana
   przeze mnie, a stan systemu, na ktory testy tylko reagowaly.
 
-#### Braki: instalacje i ustawienia (dla pelnego strict / pelnego pokrycia)
+## Braki: instalacje i ustawienia (dla pelnego strict / pelnego pokrycia)
 Instalacje brakujace na tej maszynie:
 - `gstack` (brak w PATH) — opcjonalne, testy uzywaja `pstack`/`eu-stack` jako fallback.
 - `criu` — brak; mozna zainstalowac przez `tools/seal/seal/scripts/install-criu.sh`

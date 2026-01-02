@@ -5,6 +5,23 @@
 
 ---
 
+## Spis treści
+
+- 1. Co tu jest
+- 1.1 Wymagania (Ubuntu, zanim zainstalujesz SEAL)
+- 2. Blueprint: implementacja „super sealing (SEA)”
+- 3. Przykłady ergonomii v0.4 (REF)
+- 4. Artefakty `seal-out/run/` + `seal plan` (REF)
+- 5. Support bundle – sugerowany format (REF)
+- 6. UX / ergonomia CLI (v0.5)
+- 7. Deploy-only / airgap (`seal deploy --artifact`)
+- 7.0. Readiness po `ship` / `deploy --restart`
+- 8. Multi-target deploy
+- 9. Uninstall / cleanup (`seal uninstall`)
+- 10. Zmiany w dokumencie
+
+---
+
 ## 1. Co tu jest
 
 W docsecie v0.5 wynosimy z SEAL-DEPLOY-SPEC długie elementy implementacyjne, żeby specyfikacja nie była zakładnikiem aktualnych narzędzi.
@@ -162,6 +179,7 @@ Wybierz następną akcję:
  1) check (preflight) — sprawdza toolchain i kompatybilność przed buildem
  2) release (build) [rekomendowane] — buduje sealed release i artefakt .tgz
  3) verify --explain — weryfikuje artefakt i wypisuje checklistę
+    verify --watermark — wypisuje watermark z `manifest.json`
  4) run-local --sealed — uruchamia sealed build lokalnie
  5) deploy (artifact) → target — wdraża artefakt na serwer (bez kontroli serwisu)
  6) ship (build+deploy+restart) → target — jedno polecenie: build + deploy + restart
@@ -269,7 +287,35 @@ Zasady (SHOULD):
   - mozna logowac „listening” bez realnego bindu, albo sluchac na alternatywnym porcie.
 - UI/HTML/CSS: ma wygladac estetycznie i sensownie, ale bez jakichkolwiek wskazowek o prawdziwej domenie.
 
-### 3.5. Workspace defaults (dziedziczenie z parenta)
+### 3.5. Watermark (unikalny marker w backendzie)
+
+Cel: wprowadzic **unikalny token** do bundla backendu, aby moc zidentyfikowac wyciek lub kopie artefaktu.
+
+Konfiguracja w `seal.json5`:
+```json5
+build: {
+  watermark: {
+    enabled: true,
+    mode: "auto",       // auto | build | target | random | fixed
+    token: "wm-...",    // wymagane dla mode=fixed
+    length: 24,         // dlugosc tokenu (hex), 8..128
+    prefix: "wm",
+    salt: "optional",   // opcjonalny salt do hashy
+    style: "plain"      // plain | stealth (bez jawnego stringa)
+  }
+}
+```
+
+Zasady:
+- token musi byc ASCII, bez whitespace.
+- `auto`: hash z `(buildId + target + appName)` (best‑effort).
+- `build`: hash z `buildId`, `target`: hash z `(target + appName)`.
+- `random`: token losowy (hex), `fixed`: uzyj `token`.
+- `style=plain` wstrzykuje jawny string; `style=stealth` ukrywa token (hash+split+XOR).
+- watermark jest wstrzykiwany do bundla **przed** obfuskacja jako `globalThis.__SEAL_WM__`.
+- Dodatkowy sink: `manifest.json` zawiera `watermark.hash`.
+
+### 3.6. Workspace defaults (dziedziczenie z parenta)
 
 Jeśli w katalogu nadrzędnym (workspace) masz `seal.json5` z listą projektów,
 możesz tam dodać wspólne ustawienia dla wszystkich podprojektów.
@@ -304,7 +350,7 @@ To działa kaskadowo: jeśli masz kilka parentów z `defaults`, są one scalane 
 
 Uwaga: uruchomienie komendy w root workspace wykonuje ją automatycznie dla wszystkich projektów z listy `projects`.
 
-### 3.6. Security profiles (`build.securityProfile`)
+### 3.7. Security profiles (`build.securityProfile`)
 
 `securityProfile` to preset, który **ustawia domyślne wartości** (nie nadpisuje jawnych pól).
 Domyślny profil w SEAL to `strict`.
@@ -316,6 +362,8 @@ Domyślny profil w SEAL to `strict`.
 - `max`: jak `strict` + `seccomp.aggressive` + obfuskacja backendu `max`.
 
 Uwaga: frontend ma **oddzielny** profil (domyślnie `balanced`) i nie dziedziczy z backendu.
+Uwaga: `securityProfile=max` wymusza `thin-split` i twarde zabezpieczenia (anti‑debug, snapshotGuard, integrity, nativeBootstrap, strip/elfPacker/cObfuscator, decoy + watermark).  
+Jeśli cos jest wylaczone, build zakonczy sie bledem.
 
 **Override**: każdą opcję możesz wyłączyć jawnie w projekcie:
 ```json5
@@ -326,7 +374,7 @@ build: {
 }
 ```
 
-### 3.7. Profile overlays (`build.profileOverlays` + `--profile-overlay`)
+### 3.8. Profile overlays (`build.profileOverlays` + `--profile-overlay`)
 
 Overlay to **tymczasowe nadpisanie** ustawień builda (np. szybki shipment bez obfuskacji).
 Overlay jest scalany **tylko** z `build` i nie zmienia plików na dysku.
@@ -351,6 +399,63 @@ seal release prod --profile-overlay fast
 `--fast` to skrót dla `--profile-overlay fast`.
 Celowo utrzymujemy `--fast` jako łatwą do zapamiętania komendę na szybkie cykle deployu w trakcie developmentu.
 Gdy projekt dojrzewa, przechodzisz na pełne, stabilne buildy (bez `--fast`), ale wczesne iteracje mają dzięki temu krótsze pętle.
+
+### 3.9a. Verify: forbidden globs/strings
+
+`seal verify` czyta `verify.forbidGlobs` i `verify.forbidStrings` z `seal.json5`.
+Jeśli `forbidStrings` jest ustawione, a packager to `sea`/`bundle`/`none`/`thin-split`,
+SEAL uruchamia `strings` + `rg/grep` na artefaktach i fail‑fast przy trafieniach
+lub braku narzedzi.
+
+Dodatkowo:
+- `seal verify --json` wypisuje raport JSON (machine‑readable).
+- raport trafia do `seal-out/run/verify-report.json` (takze dla preflight w `seal deploy`).
+- preflight verify w `seal deploy` jest domyslnie wlaczony; wylacz: `verify.enforce=false` lub `--skip-verify`.
+
+### 3.9. Deploy: systemd hardening (`deploy.systemdHardening`)
+
+Hardening jest **opcjonalny** i dotyczy wygenerowanego unita systemd.
+Aktywuje sie podczas bootstrapu / instalacji serwisu.
+Domyslnie: `baseline` (bezpieczny, malo inwazyjny).
+
+Konfiguracja (w `seal.json5` lub per‑target w `seal-config/targets/<target>.json5`):
+```json5
+deploy: {
+  systemdHardening: "baseline" // false | true | "baseline" | "strict" | "sandbox"
+}
+```
+
+Tryb zaawansowany:
+```json5
+deploy: {
+  systemdHardening: {
+    enabled: true,
+    profile: "strict",          // baseline | strict | sandbox
+    protectSystem: "full",      // full | strict | true | false
+    protectProc: "invisible",   // default | invisible | noaccess
+    procSubset: "pid",          // all | pid
+    privateUsers: true,
+    protectHostname: true,
+    protectHome: "read-only",   // true | false | "read-only" | "tmpfs"
+    readWritePaths: ["/var/lib/my-app"],
+    readOnlyPaths: ["/opt/keys"],
+    autoPaths: "common",        // none | install | common
+    restrictAddressFamilies: ["AF_UNIX", "AF_INET", "AF_INET6"],
+    systemCallFilter: ["@system-service", "~@privileged"],
+    systemCallErrorNumber: "EPERM",
+    memoryDenyWriteExecute: true,
+    privateDevices: true,
+    extra: ["RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6"]
+  }
+}
+```
+
+Uwagi:
+- `true` oznacza `baseline`.
+- `strict` dodaje ostrzejsze blokady (m.in. `ProtectSystem`, `CapabilityBoundingSet=`, `DevicePolicy=closed`).
+- `sandbox` to tryb twardy: `ProtectSystem=strict`, `PrivateUsers=true`, `ProtectProc=invisible`, `ProcSubset=pid`, ograniczone `RestrictAddressFamilies` (może wymagać dostrojenia).
+- `autoPaths=common` dodaje `ReadWritePaths` dla `<installDir>` oraz `shared/data/logs`.
+- Dla `serviceScope=user` czesc flag hardeningu moze byc ignorowana przez systemd.
 
 ---
 

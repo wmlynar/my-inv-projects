@@ -6,8 +6,9 @@ const crypto = require("crypto");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { cmdShip } = require("../src/commands/deploy");
+const { cmdShip, cmdDeploy } = require("../src/commands/deploy");
 const { cmdCheck } = require("../src/commands/check");
+const { cmdRelease } = require("../src/commands/release");
 const { uninstallLocal, restartLocal } = require("../src/lib/deploy");
 const { uninstallSsh, restartSsh } = require("../src/lib/deploySsh");
 const { sshExec } = require("../src/lib/ssh");
@@ -49,6 +50,10 @@ async function captureOutput(fn) {
 }
 
 function systemctlUserReady() {
+  if (process.env.SEAL_E2E_HOME_ISOLATED === "1") {
+    log("SKIP: systemctl --user disabled when SEAL_E2E_HOME_ISOLATED=1");
+    return false;
+  }
   const res = spawnSyncWithTimeout("systemctl", ["--user", "show-environment"], { stdio: "pipe", timeout: 8000 });
   if (res.error && res.error.code === "ETIMEDOUT") {
     log("SKIP: systemctl --user timed out");
@@ -116,6 +121,14 @@ function readFileMaybe(p) {
   } catch {
     return null;
   }
+}
+
+function writeCorruptArtifact(src, dest) {
+  const data = fs.readFileSync(src);
+  const minBytes = 1024;
+  const keep = Math.max(minBytes, Math.floor(data.length / 10));
+  fs.writeFileSync(dest, data.subarray(0, Math.min(keep, data.length)));
+  return dest;
 }
 
 function disableSentinelOnDisk() {
@@ -319,6 +332,7 @@ async function testShipThinBootstrapReuse() {
     serviceName,
     packager: "thin-split",
     config: "local",
+    sentinel: { enabled: true },
   };
 
   const targetPath = path.join(EXAMPLE_ROOT, "seal-config", "targets", `${targetName}.json5`);
@@ -399,6 +413,111 @@ async function testShipRestartPreflightLocal() {
   }
 }
 
+async function testShipRuntimeMismatchLocal() {
+  log("Testing runtime mismatch fallback (local)...");
+  const targetName = `ship-e2e-runtime-mismatch-${Date.now()}-${process.pid}`;
+  const serviceName = `seal-example-ship-runtime-mismatch-${Date.now()}`;
+  const { root: installRoot, installDir } = createSafeInstallDir("seal-ship-runtime-mismatch-");
+  const targetCfg = {
+    target: targetName,
+    kind: "local",
+    host: "127.0.0.1",
+    user: "local",
+    serviceScope: "user",
+    installDir,
+    serviceName,
+    packager: "thin-split",
+    config: "local",
+  };
+
+  const targetPath = path.join(EXAMPLE_ROOT, "seal-config", "targets", `${targetName}.json5`);
+  const backup = readFileMaybe(targetPath);
+  writeTargetConfig(targetName, targetCfg);
+
+  try {
+    await shipOnce(targetCfg, { bootstrap: true, pushConfig: true, skipCheck: true, packager: "thin-split" });
+    const nvPath = path.join(installDir, "r", "nv");
+    assert.ok(fs.existsSync(nvPath), "Missing r/nv before runtime mismatch test");
+    fs.writeFileSync(nvPath, "v0.0.0", "utf-8");
+
+    const cap = await captureOutput(() =>
+      shipOnce(targetCfg, { bootstrap: false, pushConfig: false, skipCheck: true, packager: "thin-split" })
+    );
+    const out = `${cap.out}\n${cap.err}`;
+    assert.ok(out.includes("node version mismatch"), `Expected node version mismatch warning, got: ${out.trim()}`);
+    assert.ok(out.toLowerCase().includes("copying full bootstrap"), `Expected full bootstrap fallback, got: ${out.trim()}`);
+  } finally {
+    try {
+      uninstallLocal(targetCfg);
+    } catch {
+      cleanupServiceArtifacts(targetCfg);
+    }
+    cleanupTargetConfig(targetName, backup);
+    fs.rmSync(installRoot, { recursive: true, force: true });
+  }
+}
+
+async function testShipCorruptArtifactLocal() {
+  log("Testing corrupt artifact handling (local)...");
+  const targetName = `ship-e2e-corrupt-${Date.now()}-${process.pid}`;
+  const serviceName = `seal-example-ship-corrupt-${Date.now()}`;
+  const { root: installRoot, installDir } = createSafeInstallDir("seal-ship-corrupt-");
+  const targetCfg = {
+    target: targetName,
+    kind: "local",
+    host: "127.0.0.1",
+    user: "local",
+    serviceScope: "user",
+    installDir,
+    serviceName,
+    packager: "thin-split",
+    config: "local",
+  };
+
+  const targetPath = path.join(EXAMPLE_ROOT, "seal-config", "targets", `${targetName}.json5`);
+  const backup = readFileMaybe(targetPath);
+  writeTargetConfig(targetName, targetCfg);
+
+  let corruptPath = null;
+  try {
+    const releaseRes = await cmdRelease(EXAMPLE_ROOT, targetCfg.target, {
+      skipCheck: true,
+      skipVerify: true,
+      packager: "thin-split",
+    });
+    assert.ok(releaseRes && releaseRes.artifactPath, "Missing artifact for corrupt test");
+    corruptPath = path.join(installRoot, "corrupt.tgz");
+    writeCorruptArtifact(releaseRes.artifactPath, corruptPath);
+
+    let failed = false;
+    try {
+      await cmdDeploy(EXAMPLE_ROOT, targetCfg.target, {
+        artifact: corruptPath,
+        skipVerify: true,
+        pushConfig: false,
+        bootstrap: false,
+        restart: false,
+        wait: false,
+      });
+    } catch (e) {
+      failed = true;
+      const msg = e && e.message ? e.message : String(e);
+      assert.ok(msg.includes("Artifact appears corrupted or incomplete"), `Expected corrupt artifact hint, got: ${msg}`);
+      assert.ok(msg.includes("seal ship") || msg.includes("seal deploy"), `Expected fix hint, got: ${msg}`);
+    }
+    assert.ok(failed, "Expected deploy to fail with corrupt artifact");
+  } finally {
+    if (corruptPath) fs.rmSync(corruptPath, { force: true });
+    try {
+      uninstallLocal(targetCfg);
+    } catch {
+      cleanupServiceArtifacts(targetCfg);
+    }
+    cleanupTargetConfig(targetName, backup);
+    fs.rmSync(installRoot, { recursive: true, force: true });
+  }
+}
+
 async function testShipMissingAppctlLocal() {
   log("Testing missing appctl hint (local)...");
   const targetName = `ship-e2e-missing-appctl-${Date.now()}-${process.pid}`;
@@ -442,11 +561,11 @@ async function testShipMissingAppctlLocal() {
   }
 }
 
-async function testShipSentinelHintLocal() {
-  log("Testing sentinel hint on runtime invalid (local)...");
-  const targetName = `ship-e2e-sentinel-hint-${Date.now()}-${process.pid}`;
-  const serviceName = `seal-example-ship-sentinel-hint-${Date.now()}`;
-  const { root: installRoot, installDir } = createSafeInstallDir("seal-ship-sentinel-hint-");
+async function testShipChdirHintLocal() {
+  log("Testing systemd CHDIR hint (local)...");
+  const targetName = `ship-e2e-chdir-hint-${Date.now()}-${process.pid}`;
+  const serviceName = `seal-example-ship-chdir-hint-${Date.now()}`;
+  const { root: installRoot, installDir } = createSafeInstallDir("seal-ship-chdir-hint-");
   const targetCfg = {
     target: targetName,
     kind: "local",
@@ -465,13 +584,30 @@ async function testShipSentinelHintLocal() {
 
   try {
     await shipOnce(targetCfg, { bootstrap: true, pushConfig: true, skipCheck: true, packager: "thin-split" });
-    const buildId = fs.readFileSync(path.join(installDir, "current.buildId"), "utf-8").trim();
-    const relDir = path.join(installDir, "releases", buildId);
-    const binPath = path.join(relDir, "b", "a");
-    const src = fs.readFileSync(binPath, "utf8");
-    const patched = src.replace(/exit\\s+0\\s*$/m, "exit 200");
-    fs.writeFileSync(binPath, patched, "utf8");
-    fs.chmodSync(binPath, 0o755);
+    const svcPath = path.join(os.homedir(), ".config", "systemd", "user", `${serviceName}.service`);
+    const unit = fs.readFileSync(svcPath, "utf8");
+    const badDir = path.join(installDir, "missing");
+    fs.rmSync(badDir, { recursive: true, force: true });
+    const patchedUnit = unit.replace(/^\\s*WorkingDirectory=.*$/m, `WorkingDirectory=${badDir}`);
+    if (patchedUnit === unit) {
+      throw new Error("Failed to patch WorkingDirectory in systemd unit");
+    }
+    fs.writeFileSync(svcPath, patchedUnit, "utf8");
+    const reload = spawnSyncWithTimeout("systemctl", ["--user", "daemon-reload"], { stdio: "pipe", timeout: 8000 });
+    if (reload.error || reload.status !== 0) {
+      const out = `${reload.stdout || ""}\n${reload.stderr || ""}`.trim();
+      throw new Error(`systemctl daemon-reload failed: ${out || reload.error || reload.status}`);
+    }
+    const show = spawnSyncWithTimeout(
+      "systemctl",
+      ["--user", "show", `${serviceName}.service`, "-p", "WorkingDirectory", "--value"],
+      { stdio: "pipe", timeout: 8000 },
+    );
+    const wd = String(show.stdout || "").trim();
+    if (show.error || show.status !== 0 || wd !== badDir) {
+      const out = `${show.stdout || ""}\n${show.stderr || ""}`.trim();
+      throw new Error(`systemctl WorkingDirectory mismatch: ${wd || "<empty>"} (${out || show.error || show.status})`);
+    }
 
     let failed = false;
     try {
@@ -483,9 +619,10 @@ async function testShipSentinelHintLocal() {
     } catch (e) {
       failed = true;
       const msg = e && e.message ? e.message : String(e);
-      assert.ok(msg.includes("Sentinel"), `Expected sentinel hint, got: ${msg}`);
+      assert.ok(msg.includes("Missing WorkingDirectory/installDir"), `Expected CHDIR hint, got: ${msg}`);
+      assert.ok(msg.includes("seal ship"), `Expected bootstrap hint, got: ${msg}`);
     }
-    assert.ok(failed, "Expected readiness to fail with sentinel hint");
+    assert.ok(failed, "Expected readiness to fail with CHDIR hint");
   } finally {
     try {
       uninstallLocal(targetCfg);
@@ -656,6 +793,42 @@ async function testShipThinBootstrapSsh() {
     const unitStat = sshStat(user, host, `/etc/systemd/system/${serviceName}.service`, sshPort);
     assert.ok(runnerStat, "Missing runner after auto bootstrap ship (ssh)");
     assert.ok(unitStat, "Missing systemd unit after auto bootstrap ship (ssh)");
+    const tmpDirCheck = sshOk(user, host, `test -d ${shellQuote(`${installDir}/.seal-tmp`)}`, sshPort);
+    assert.ok(tmpDirCheck.ok, "Missing .seal-tmp after auto bootstrap ship (ssh)");
+    const activeCheck = sshOk(user, host, `sudo -n systemctl is-active ${shellQuote(`${serviceName}.service`)}`, sshPort);
+    assert.ok(activeCheck.ok, `systemctl is-active failed (ssh): ${activeCheck.out}`);
+    assert.strictEqual(activeCheck.out.trim(), "active", `Expected systemd active after ship (ssh), got: ${activeCheck.out}`);
+
+    const corruptPath = path.join(resolveTmpRoot(), `seal-e2e-corrupt-${Date.now()}-${process.pid}.tgz`);
+    try {
+      const releaseRes = await cmdRelease(EXAMPLE_ROOT, targetCfg.target, {
+        skipCheck: true,
+        skipVerify: true,
+        packager: "thin-split",
+      });
+      assert.ok(releaseRes && releaseRes.artifactPath, "Missing artifact for ssh corrupt test");
+      writeCorruptArtifact(releaseRes.artifactPath, corruptPath);
+
+      let failed = false;
+      try {
+        await cmdDeploy(EXAMPLE_ROOT, targetCfg.target, {
+          artifact: corruptPath,
+          skipVerify: true,
+          pushConfig: false,
+          bootstrap: false,
+          restart: false,
+          wait: false,
+        });
+      } catch (e) {
+        failed = true;
+        const msg = e && e.message ? e.message : String(e);
+        assert.ok(msg.includes("Artifact appears corrupted or incomplete"), `Expected corrupt artifact hint (ssh), got: ${msg}`);
+        assert.ok(msg.includes("seal ship") || msg.includes("seal deploy"), `Expected fix hint (ssh), got: ${msg}`);
+      }
+      assert.ok(failed, "Expected SSH deploy to fail with corrupt artifact");
+    } finally {
+      fs.rmSync(corruptPath, { force: true });
+    }
 
     const rmRunner = sshOk(user, host, `rm -f ${shellQuote(`${installDir}/run-current.sh`)}`, sshPort);
     assert.ok(rmRunner.ok, `Failed to remove runner before preflight test: ${rmRunner.out}`);
@@ -909,6 +1082,31 @@ async function testShipThinBootstrapSsh() {
     } else {
       log("SKIP: noexec preflight (findmnt not available or installDir has exec)");
     }
+
+    const beforeRollback = sshReadFile(user, host, `${installDir}/current.buildId`, sshPort);
+    assert.ok(beforeRollback, "Missing current.buildId before rollback test (ssh)");
+    let rollbackFailed = false;
+    try {
+      await cmdShip(EXAMPLE_ROOT, targetCfg.target, {
+        bootstrap: false,
+        pushConfig: false,
+        acceptDrift: true,
+        skipCheck: true,
+        packager: "thin-split",
+        wait: true,
+        waitMode: "http",
+        waitUrl: "http://127.0.0.1:1/healthz",
+        waitTimeout: 3000,
+        waitInterval: 500,
+        waitHttpTimeout: 500,
+      });
+    } catch {
+      rollbackFailed = true;
+    }
+    assert.ok(rollbackFailed, "Expected ship to fail readiness and trigger rollback (ssh)");
+    const afterRollback = sshReadFile(user, host, `${installDir}/current.buildId`, sshPort);
+    assert.ok(afterRollback, "Missing current.buildId after rollback test (ssh)");
+    assert.strictEqual(afterRollback.trim(), beforeRollback.trim(), "Rollback should restore previous current.buildId");
   } finally {
     if (process.env.SEAL_SHIP_SSH_KEEP !== "1") {
       try {
@@ -943,16 +1141,28 @@ async function main() {
         failures.push({ name: "local", error: e && e.stack ? e.stack : e && e.message ? e.message : String(e) });
       }
       try {
+        await testShipRuntimeMismatchLocal();
+        log("OK: testShipRuntimeMismatchLocal");
+      } catch (e) {
+        failures.push({ name: "local-runtime-mismatch", error: e && e.stack ? e.stack : e && e.message ? e.message : String(e) });
+      }
+      try {
+        await testShipCorruptArtifactLocal();
+        log("OK: testShipCorruptArtifactLocal");
+      } catch (e) {
+        failures.push({ name: "local-corrupt-artifact", error: e && e.stack ? e.stack : e && e.message ? e.message : String(e) });
+      }
+      try {
         await testShipMissingAppctlLocal();
         log("OK: testShipMissingAppctlLocal");
       } catch (e) {
         failures.push({ name: "local-missing-appctl", error: e && e.stack ? e.stack : e && e.message ? e.message : String(e) });
       }
       try {
-        await testShipSentinelHintLocal();
-        log("OK: testShipSentinelHintLocal");
+        await testShipChdirHintLocal();
+        log("OK: testShipChdirHintLocal");
       } catch (e) {
-        failures.push({ name: "local-sentinel-hint", error: e && e.stack ? e.stack : e && e.message ? e.message : String(e) });
+        failures.push({ name: "local-chdir-hint", error: e && e.stack ? e.stack : e && e.message ? e.message : String(e) });
       }
       try {
         await testShipRestartPreflightLocal();

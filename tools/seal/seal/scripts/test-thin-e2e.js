@@ -25,7 +25,11 @@ const {
 const { buildRelease } = require("../src/lib/build");
 const { loadProjectConfig, loadTargetConfig, resolveConfigName } = require("../src/lib/project");
 const { readJson5, writeJson5 } = require("../src/lib/json5io");
-const { THIN_NATIVE_BOOTSTRAP_FILE } = require("../src/lib/thinPaths");
+const {
+  THIN_NATIVE_BOOTSTRAP_FILE,
+  THIN_TPM_SEAL_PUB_FILE,
+  THIN_TPM_SEAL_PRIV_FILE,
+} = require("../src/lib/thinPaths");
 
 const EXAMPLE_ROOT = resolveExampleRoot();
 const TMP_ROOT = resolveTmpRoot();
@@ -54,6 +58,63 @@ function hashFile(filePath) {
     fs.closeSync(fd);
   }
   return hash.digest("hex");
+}
+
+function hasTpmDevice() {
+  return (
+    fs.existsSync("/dev/tpm0")
+    || fs.existsSync("/dev/tpmrm0")
+    || fs.existsSync("/sys/class/tpm/tpm0")
+    || fs.existsSync("/sys/class/tpm/tpmrm0")
+  );
+}
+
+function checkTpmPrereqs() {
+  const tools = [
+    "tpm2_createpolicy",
+    "tpm2_createprimary",
+    "tpm2_create",
+    "tpm2_load",
+    "tpm2_unseal",
+  ];
+  for (const tool of tools) {
+    if (!hasCommand(tool)) {
+      return { ok: false, skip: true, reason: `Missing ${tool}` };
+    }
+  }
+  if (!hasTpmDevice()) {
+    return { ok: false, skip: true, reason: "TPM device missing" };
+  }
+  return { ok: true, skip: false };
+}
+
+function pickBindInterface() {
+  const ifaces = os.networkInterfaces();
+  for (const [name, list] of Object.entries(ifaces)) {
+    if (!Array.isArray(list)) continue;
+    const ipv4 = list.find((addr) => addr && addr.family === "IPv4" && !addr.internal);
+    if (!ipv4) continue;
+    const mac = (ipv4.mac || "").toLowerCase();
+    if (!mac || mac === "00:00:00:00:00:00") continue;
+    return { iface: name, ip: ipv4.address, mac };
+  }
+  return null;
+}
+
+function bumpIp(ip) {
+  const parts = String(ip).trim().split(".");
+  if (parts.length !== 4) return "127.0.0.1";
+  const nums = parts.map((p) => Number(p));
+  if (nums.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return "127.0.0.1";
+  nums[3] = (nums[3] + 1) % 255;
+  if (nums[3] === 0) nums[3] = 1;
+  return nums.join(".");
+}
+
+function writeSecretFile(tmpDir) {
+  const secretPath = path.join(tmpDir, "seal-secret.bin");
+  fs.writeFileSync(secretPath, crypto.randomBytes(32));
+  return secretPath;
 }
 
 function ensureLauncherObfuscation(projectCfg) {
@@ -164,6 +225,9 @@ async function buildThinRelease(buildTimeoutMs, opts = {}) {
   if (opts.nativeBootstrap === true) {
     const mode = opts.nativeBootstrapMode;
     thinCfg.nativeBootstrap = mode ? { enabled: true, mode } : { enabled: true };
+  }
+  if (opts.payloadProtection !== undefined) {
+    thinCfg.payloadProtection = opts.payloadProtection;
   }
   projectCfg.build.thin = thinCfg;
   ensureLauncherObfuscation(projectCfg);
@@ -447,6 +511,204 @@ async function testThinSplitRandomization(ctx) {
   }
 }
 
+async function testThinPayloadProtectionSecret(ctx) {
+  log("Building thin SPLIT with payloadProtection=secret...");
+  const tmpDir = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-secret-"));
+  const secretPath = writeSecretFile(tmpDir);
+  let res = null;
+  try {
+    res = await buildThinRelease(ctx.buildTimeoutMs, {
+      payloadProtection: {
+        enabled: true,
+        provider: "secret",
+        secret: { path: secretPath },
+      },
+    });
+    const { releaseDir, buildId } = res;
+    log("Running thin SPLIT with secret-protected payload...");
+    await runRelease({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs });
+
+    fs.writeFileSync(secretPath, crypto.randomBytes(32));
+    log("Running thin SPLIT with wrong secret (expect failure)...");
+    await runReleaseExpectFailure({
+      releaseDir,
+      runTimeoutMs: ctx.runTimeoutMs,
+      expectSubstring: "[thin] payload invalid",
+    });
+  } finally {
+    if (res && res.outRoot) fs.rmSync(res.outRoot, { recursive: true, force: true });
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
+async function testThinPayloadProtectionSecretMissing(ctx) {
+  log("Building thin SPLIT with payloadProtection=secret (missing secret)...");
+  const tmpDir = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-secret-missing-"));
+  const secretPath = writeSecretFile(tmpDir);
+  let res = null;
+  try {
+    res = await buildThinRelease(ctx.buildTimeoutMs, {
+      payloadProtection: {
+        enabled: true,
+        provider: "secret",
+        secret: { path: secretPath },
+      },
+    });
+    const { releaseDir, buildId } = res;
+    await runRelease({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs });
+
+    fs.rmSync(secretPath, { force: true });
+    log("Running thin SPLIT with missing secret (expect failure)...");
+    await runReleaseExpectFailure({
+      releaseDir,
+      runTimeoutMs: ctx.runTimeoutMs,
+      expectSubstring: "[thin] payload invalid",
+    });
+  } finally {
+    if (res && res.outRoot) fs.rmSync(res.outRoot, { recursive: true, force: true });
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
+async function testThinPayloadProtectionBind(ctx) {
+  const bind = pickBindInterface();
+  if (!bind) {
+    log("SKIP: no suitable network interface for payload bind test");
+    return;
+  }
+  log(`Building thin SPLIT with payloadProtection bind (${bind.iface})...`);
+  const tmpDir = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-bind-"));
+  const secretPath = writeSecretFile(tmpDir);
+  let res = null;
+  let resBad = null;
+  try {
+    res = await buildThinRelease(ctx.buildTimeoutMs, {
+      payloadProtection: {
+        enabled: true,
+        provider: "secret",
+        secret: { path: secretPath },
+        bind: {
+          iface: bind.iface,
+          mac: bind.mac,
+          ip: bind.ip,
+        },
+      },
+    });
+    await runRelease({ releaseDir: res.releaseDir, buildId: res.buildId, runTimeoutMs: ctx.runTimeoutMs });
+
+    const badIp = bumpIp(bind.ip);
+    resBad = await buildThinRelease(ctx.buildTimeoutMs, {
+      payloadProtection: {
+        enabled: true,
+        provider: "secret",
+        secret: { path: secretPath },
+        bind: {
+          iface: bind.iface,
+          mac: bind.mac,
+          ip: badIp,
+        },
+      },
+    });
+    log("Running thin SPLIT with wrong bind IP (expect failure)...");
+    await runReleaseExpectFailure({
+      releaseDir: resBad.releaseDir,
+      runTimeoutMs: ctx.runTimeoutMs,
+      expectSubstring: "[thin] payload invalid",
+    });
+  } finally {
+    if (res && res.outRoot) fs.rmSync(res.outRoot, { recursive: true, force: true });
+    if (resBad && resBad.outRoot) fs.rmSync(resBad.outRoot, { recursive: true, force: true });
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
+async function testThinPayloadProtectionTpm(ctx) {
+  const prereq = checkTpmPrereqs();
+  if (!prereq.ok) {
+    log(`SKIP: TPM payload protection prerequisites not met (${prereq.reason || "unknown"})`);
+    return;
+  }
+  log("Building thin SPLIT with payloadProtection=tpm2...");
+  let res = null;
+  try {
+    res = await buildThinRelease(ctx.buildTimeoutMs, {
+      payloadProtection: {
+        enabled: true,
+        provider: "tpm2",
+      },
+    });
+    const { releaseDir, buildId } = res;
+    const tpmPub = path.join(releaseDir, "r", THIN_TPM_SEAL_PUB_FILE);
+    const tpmPriv = path.join(releaseDir, "r", THIN_TPM_SEAL_PRIV_FILE);
+    assert.ok(fs.existsSync(tpmPub), `Missing TPM pub file: ${tpmPub}`);
+    assert.ok(fs.existsSync(tpmPriv), `Missing TPM priv file: ${tpmPriv}`);
+
+    log("Running thin SPLIT with TPM-protected payload...");
+    await runRelease({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs });
+
+    const bak = `${tpmPub}.bak`;
+    fs.renameSync(tpmPub, bak);
+    try {
+      log("Running thin SPLIT with missing TPM pub (expect failure)...");
+      await runReleaseExpectFailure({
+        releaseDir,
+        runTimeoutMs: ctx.runTimeoutMs,
+        expectSubstring: "[thin] payload invalid",
+      });
+    } finally {
+      if (fs.existsSync(bak)) fs.renameSync(bak, tpmPub);
+    }
+  } finally {
+    if (res && res.outRoot) fs.rmSync(res.outRoot, { recursive: true, force: true });
+  }
+}
+
+async function testThinPayloadProtectionTpmMismatch(ctx) {
+  const prereq = checkTpmPrereqs();
+  if (!prereq.ok) {
+    log(`SKIP: TPM payload protection mismatch prerequisites not met (${prereq.reason || "unknown"})`);
+    return;
+  }
+  log("Building thin SPLIT with payloadProtection=tpm2 (mismatch test)...");
+  let resA = null;
+  let resB = null;
+  try {
+    resA = await buildThinRelease(ctx.buildTimeoutMs, {
+      payloadProtection: {
+        enabled: true,
+        provider: "tpm2",
+      },
+    });
+    resB = await buildThinRelease(ctx.buildTimeoutMs, {
+      payloadProtection: {
+        enabled: true,
+        provider: "tpm2",
+      },
+    });
+    const { releaseDir, buildId } = resA;
+    const tpmPubA = path.join(releaseDir, "r", THIN_TPM_SEAL_PUB_FILE);
+    const tpmPrivA = path.join(releaseDir, "r", THIN_TPM_SEAL_PRIV_FILE);
+    const tpmPubB = path.join(resB.releaseDir, "r", THIN_TPM_SEAL_PUB_FILE);
+    const tpmPrivB = path.join(resB.releaseDir, "r", THIN_TPM_SEAL_PRIV_FILE);
+    assert.ok(fs.existsSync(tpmPubA) && fs.existsSync(tpmPrivA), "Missing TPM files for release A");
+    assert.ok(fs.existsSync(tpmPubB) && fs.existsSync(tpmPrivB), "Missing TPM files for release B");
+
+    await runRelease({ releaseDir, buildId, runTimeoutMs: ctx.runTimeoutMs });
+
+    fs.copyFileSync(tpmPubB, tpmPubA);
+    fs.copyFileSync(tpmPrivB, tpmPrivA);
+    log("Running thin SPLIT with mismatched TPM blobs (expect failure)...");
+    await runReleaseExpectFailure({
+      releaseDir,
+      runTimeoutMs: ctx.runTimeoutMs,
+      expectSubstring: "[thin] payload invalid",
+    });
+  } finally {
+    if (resA && resA.outRoot) fs.rmSync(resA.outRoot, { recursive: true, force: true });
+    if (resB && resB.outRoot) fs.rmSync(resB.outRoot, { recursive: true, force: true });
+  }
+}
+
 async function main() {
   if (process.env.SEAL_THIN_E2E !== "1") {
     log("SKIP: set SEAL_THIN_E2E=1 to run thin E2E tests");
@@ -481,7 +743,17 @@ async function main() {
     }
   }
 
-  const tests = [testThinSplit, testThinSingleLegacy, testThinSplitRandomization, testThinSplitNativeBootstrap];
+  const tests = [
+    testThinSplit,
+    testThinSingleLegacy,
+    testThinSplitRandomization,
+    testThinPayloadProtectionSecret,
+    testThinPayloadProtectionSecretMissing,
+    testThinPayloadProtectionBind,
+    testThinPayloadProtectionTpm,
+    testThinPayloadProtectionTpmMismatch,
+    testThinSplitNativeBootstrap,
+  ];
   let failures = 0;
   try {
     for (const t of tests) {

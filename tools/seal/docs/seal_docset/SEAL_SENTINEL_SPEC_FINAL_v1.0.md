@@ -10,6 +10,29 @@ Jeśli jakiś element musiał wypaść dla spójności, jest to opisane w sekcji
 
 ---
 
+## Spis treści
+
+- 0. Najkrótszy opis idei
+- 1. Słownik i normatywność
+- 2. Cele, ograniczenia, threat model
+- 3. Zakres: gdzie sentinel działa
+- 4. Konfiguracja (tylko po stronie deployera)
+- 5. Lokalizacja i nazewnictwo sentinela (storage)
+- 6. Tryby storage: `file` i `file+xattr`
+- 7. Format bloba (v1/v2) i integralność
+- 8. Fingerprint hosta (update‑safe) i poziomy (level)
+- 9. Level 4 (anti‑clone): external anchor
+- 10. Bootstrap / install / uninstall / verify (deployer)
+- 11. Runtime weryfikacja w thin launcherze
+- 12. systemd: brak restart‑storm (MUST)
+- 13. Tabela awarii i zabezpieczenia (MUST)
+- 14. Test plan (MVP) i kryteria akceptacji
+- 15. Appendix A — Test vectors (GENEROWANE, MUST zgodność)
+- 16. Appendix B — Plan implementacji inkrementalnej (MVP → rozszerzenia)
+- 17. Z czego zrezygnowaliśmy (dla spójności, ale nic nie “ginie”)
+
+---
+
 ## 0. Najkrótszy opis idei
 
 **SEAL‑SENTINEL** to lokalny znacznik instalacji (binarny blob), który:
@@ -141,7 +164,8 @@ Na serwerze istnieje tylko:
       },
 
       // anti-clone (Level 4)
-      externalAnchor: { type: "none" } // none | usb | file | lease | tpm2
+      externalAnchor: { type: "none" }, // none | usb | file | lease | tpm2
+      l4IncludePuid: true               // dodaj PUID do fingerprintu L4 (domyslnie true)
     }
   }
 }
@@ -392,11 +416,12 @@ Nie opierać fingerprintu o:
 To nie jest update‑safe.
 
 ### 8.3 `level=auto` (MUST)
-- jeśli `externalAnchor.type != "none"` i provider dostępny → **L4**
+- jeśli `externalAnchor.type != "none"` (usb/file) i provider dostępny → **L4**
 - inaczej:
+  - jeśli `rid` jest **stabilny** i `puid` dostępny → **L3**
   - jeśli `rid` jest **stabilny** → **L2**
   - inaczej → **L1**
-- L3 jest **opt‑in** (tylko jeśli deployer wybierze `level=3` albo politykę wprost)
+- L3 można wymusić jawnie przez `level=3` (wymaga `puid`).
 
 ### 8.4 `rid` — algorytm (MUST) i stabilność
 Algorytm:
@@ -410,7 +435,7 @@ Algorytm:
    - `rid = "dev:<major>:<minor>"`
 
 Stabilność RID:
-- `uuid:` i `partuuid:` traktujemy jako **stabilne** (dla auto→L2)
+- `uuid:` i `partuuid:` traktujemy jako **stabilne** (dla auto→L3/L2)
 - `dev:` traktujemy jako **niestabilne** (auto MUST spaść do L1)
 - jeśli `/` to overlay/tmpfs → RID uznajemy za niestabilny
 
@@ -425,7 +450,7 @@ SHOULD:
 L4 dokłada do fingerprintu wartość `eah`, która pochodzi z **zewnętrznej kotwicy** (external anchor) — czegoś, czego typowy klon VM/dysku **nie przenosi**.
 
 MUST (dla L4):
-- external anchor musi być **poza** obrazem/FS, który jest klonowany (np. USB passthrough, osobny mount, lease online).
+- external anchor musi być **poza** obrazem/FS, który jest klonowany (np. USB passthrough, osobny mount; lease online wymaga sieci).
 
 ### 9.2 `eah` (MUST)
 - `anchor_bytes` — kanoniczny bajtowy opis provider’a (patrz niżej)
@@ -513,19 +538,27 @@ MUST:
 ### 9.6 Provider: `lease` (online policy)
 Konfiguracja:
 ```json5
-externalAnchor: { type: "lease", lease: { url: "https://<endpoint>/seal-lease", timeoutMs: 1500 } }
+externalAnchor: { type: "lease", lease: { url: "https://<endpoint>/seal-lease", timeoutMs: 1500, maxBytes: 4096 } }
 ```
 
 MUST:
-- TLS + walidacja tożsamości serwera,
-- odpowiedź musi być zweryfikowana (np. podpis, format),
+- TLS + walidacja tożsamości serwera (rekomendowane),
+- odpowiedź musi być mała (limit `maxBytes`),
 - określić politykę offline (MUST): `fail` albo cache z TTL (np. 5 min).
 
-`anchor_bytes` = zweryfikowany token lease (raw bytes).
+`anchor_bytes` = treść odpowiedzi HTTP (raw bytes).
 
 ### 9.7 Provider: `tpm2` (opcjonalny)
-MAY:
-- użyć TPM2 do sealed secret lub EK (zależnie od platformy).
+Konfiguracja:
+```json5
+externalAnchor: { type: "tpm2", tpm2: { bank: "sha256", pcrs: [0, 2, 4, 7] } }
+```
+
+MUST:
+- host musi mieć `/dev/tpm0`,
+- wymagane narzędzie: `tpm2_pcrread`.
+
+`anchor_bytes` = sklejone PCR w zadanym banku; `eah` = SHA256(anchor_bytes).
 
 ---
 
@@ -551,10 +584,10 @@ MAY:
 - zebrać informacje o możliwych opcjach Level 4 (external anchor),
 - wypisać listę wykrytych USB urządzeń (vid/pid/serial),
 - wypisać mounty host‑shared (vboxsf/9p/virtiofs/vmhgfs/cifs/nfs),
-- wypisać mounty USB (jeśli możliwe) oraz dostępność TPM2,
+- wypisać mounty USB (jeśli możliwe),
 - sprawdzić wsparcie xattr (gdy planujesz `mode=file+xattr`),
-- jeśli externalAnchor jest skonfigurowany: zweryfikować jego dostępność (file/usb/lease/tpm2),
-- wskazać rekomendowane konfiguracje `externalAnchor` (usb/file/tpm2),
+- jeśli externalAnchor jest skonfigurowany: zweryfikować jego dostępność (file/usb),
+- wskazać rekomendowane konfiguracje `externalAnchor` (usb/file),
 - opcjonalnie zwrócić JSON (`--json`) do automatyzacji.
 
 ### 10.3 Install (MUST)

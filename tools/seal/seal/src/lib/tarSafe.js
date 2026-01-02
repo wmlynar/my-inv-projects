@@ -34,7 +34,9 @@ function validateTarEntries(entries) {
 function listTarEntries(artifactPath) {
   const res = spawnSyncSafe("tar", ["-tzf", artifactPath], { stdio: "pipe" });
   if (!res.ok) {
-    throw new Error(`tar -tzf failed (status=${res.status ?? "?"})`);
+    const detail = [res.stdout, res.stderr, res.error].filter(Boolean).join(" | ").trim();
+    const hint = "Artifact appears corrupted or incomplete. Rebuild and re-run seal ship, or re-upload with seal deploy --artifact <file>.";
+    throw new Error(`tar -tzf failed (status=${res.status ?? "?"})${detail ? `: ${detail}` : ""}. ${hint}`);
   }
   return (res.stdout || "").split(/\r?\n/).filter(Boolean);
 }

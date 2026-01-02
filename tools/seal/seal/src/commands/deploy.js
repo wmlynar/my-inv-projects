@@ -8,8 +8,9 @@ const { normalizePackager, resolveThinConfig } = require("../lib/packagerConfig"
 const { resolveSentinelConfig } = require("../lib/sentinelConfig");
 const { installSentinelSsh, uninstallSentinelSsh } = require("../lib/sentinelOps");
 const { fileExists } = require("../lib/fsextra");
-const { info, warn, ok, hr } = require("../lib/ui");
+const { info, warn, ok, err, hr } = require("../lib/ui");
 const { resolveTiming } = require("../lib/timing");
+const { verifyArtifact, explainChecklist, buildVerifyReport, writeVerifyReport } = require("../lib/verify");
 
 const { cmdRelease } = require("./release");
 const { deployLocal, bootstrapLocal, statusLocal, logsLocal, enableLocal, startLocal, restartLocal, stopLocal, disableLocalOnly, disableLocal, rollbackLocal, downLocal, uninstallLocal, runLocalForeground, ensureCurrentReleaseLocal, waitForReadyLocal, checkConfigDriftLocal } = require("../lib/deploy");
@@ -31,12 +32,14 @@ function ensureConfigDriftOk({ targetCfg, targetName, configFile, acceptDrift })
 
   if (!res || res.status === "same") return;
   if (res.status === "missing") {
-    warn(`Config missing on target (${res.path || "shared/config.json5"}).`);
-    throw new Error(`Refusing to start with missing config. Fix: seal config push ${targetName} (or ship --push-config), or rerun with --accept-drift.`);
+    const hint = `Fix: seal config push ${targetName} (or ship --push-config), or rerun with --accept-drift.`;
+    warn(`Config missing on target (${res.path || "shared/config.json5"}). ${hint}`);
+    throw new Error("Refusing to start with missing config.");
   }
   if (res.status === "diff") {
-    warn("Config drift detected (repo vs target).");
-    throw new Error(`Refusing to start with config drift. Fix: seal config push ${targetName} (or ship --push-config), or rerun with --accept-drift.`);
+    const hint = `Fix: seal config push ${targetName} (or ship --push-config), or rerun with --accept-drift.`;
+    warn(`Config drift detected (repo vs target). ${hint}`);
+    throw new Error("Refusing to start with config drift.");
   }
   if (res.status === "error") {
     throw new Error(res.message || "Config drift check failed");
@@ -143,6 +146,21 @@ function resolveTarget(projectRoot, targetArg, opts) {
   t.cfg._thinIntegrityMode = thinCfg.integrity && thinCfg.integrity.mode ? thinCfg.integrity.mode : null;
   t.cfg._thinIntegrityFile = thinCfg.integrity && thinCfg.integrity.file ? thinCfg.integrity.file : null;
   t.cfg._thinNativeBootstrapEnabled = !!(thinCfg.nativeBootstrap && thinCfg.nativeBootstrap.enabled);
+
+  const projectDeploy = (proj && proj.deploy && typeof proj.deploy === "object" && !Array.isArray(proj.deploy)) ? proj.deploy : {};
+  const targetDeploy = (t.cfg.deploy && typeof t.cfg.deploy === "object" && !Array.isArray(t.cfg.deploy)) ? t.cfg.deploy : {};
+  let systemdHardening = targetDeploy.systemdHardening;
+  if (systemdHardening === undefined && t.cfg.systemdHardening !== undefined) {
+    systemdHardening = t.cfg.systemdHardening;
+  }
+  if (systemdHardening === undefined && projectDeploy.systemdHardening !== undefined) {
+    systemdHardening = projectDeploy.systemdHardening;
+  }
+  if (systemdHardening !== undefined || Object.keys(targetDeploy).length) {
+    t.cfg.deploy = { ...targetDeploy };
+    if (systemdHardening !== undefined) t.cfg.deploy.systemdHardening = systemdHardening;
+  }
+
   return { proj, targetName, targetCfg: t.cfg, packagerSpec };
 }
 
@@ -157,6 +175,7 @@ async function ensureArtifact(projectRoot, proj, opts, targetName, configName, t
   await cmdRelease(projectRoot, targetName, {
     config: configName,
     skipCheck: false,
+    skipVerify: true,
     packager: null,
     profileOverlay: opts.profileOverlay || null,
     timing,
@@ -174,6 +193,7 @@ async function cmdDeploy(cwd, targetArg, opts) {
   const policy = loadPolicy(projectRoot);
   const sentinelCfg = resolveSentinelConfig({ projectRoot, projectCfg: proj, targetCfg, targetName, packagerSpec });
   const autoBootstrapEnabled = !(proj && proj.deploy && proj.deploy.autoBootstrap === false);
+  const verifyCfg = (proj.verify && typeof proj.verify === "object" && !Array.isArray(proj.verify)) ? proj.verify : {};
   const payloadOnly = !!opts.payloadOnly;
   const waitEnabled = resolveWaitEnabled(opts, targetCfg, false);
   let rollbackAttempted = false;
@@ -215,6 +235,35 @@ async function cmdDeploy(cwd, targetArg, opts) {
     info("Payload-only deploy: updating thin payload only.");
   }
   hr();
+
+  const verifyEnforce = verifyCfg.enforce !== false && verifyCfg.enabled !== false;
+  if (!payloadOnly && artifactPath && verifyEnforce && !opts.skipVerify) {
+    info(`Verify preflight: ${artifactPath}`);
+    const verifyOptions = {
+      forbidGlobs: verifyCfg.forbidGlobs || verifyCfg.forbiddenGlobs || null,
+      forbidStrings: verifyCfg.forbidStrings || verifyCfg.forbiddenStrings || verifyCfg.forbidWords || null,
+    };
+    const verifyRes = await timing.timeAsync("deploy.verify", async () => verifyArtifact(artifactPath, verifyOptions));
+    const report = buildVerifyReport({
+      artifactPath,
+      result: verifyRes,
+      options: verifyOptions,
+      checklist: explainChecklist(verifyRes),
+      source: "deploy",
+    });
+    writeVerifyReport(projectRoot, report);
+    if (!verifyRes.ok) {
+      err("Artifact FAILED verification:");
+      for (const l of verifyRes.leaks) {
+        console.log(` - ${l.reason}: ${l.path}`);
+      }
+      throw new Error("verify failed");
+    }
+    ok("Verify OK.");
+  } else if (!payloadOnly && artifactPath && (!verifyEnforce || opts.skipVerify)) {
+    const reason = opts.skipVerify ? "--skip-verify" : "verify.enforce=false";
+    warn(`Verify skipped (${reason}).`);
+  }
 
   if (opts.bootstrap) {
     if ((targetCfg.kind || "local").toLowerCase() === "ssh") {
@@ -334,6 +383,7 @@ async function cmdShip(cwd, targetArg, opts) {
   const releaseOpts = {
     config: null,
     skipCheck: !!opts.skipCheck,
+    skipVerify: !!opts.skipVerify,
     checkVerbose: !!opts.checkVerbose,
     checkCc: opts.checkCc || null,
     packager: opts.packager || null,
@@ -353,6 +403,7 @@ async function cmdShip(cwd, targetArg, opts) {
     buildId: releaseRes && releaseRes.buildId ? releaseRes.buildId : null,
     acceptDrift: !!opts.acceptDrift,
     warnDrift: !!opts.warnDrift,
+    skipVerify: !!opts.skipVerify,
     payloadOnly,
     profileOverlay: opts.profileOverlay || null,
     wait: opts.wait !== false,

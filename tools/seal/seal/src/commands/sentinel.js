@@ -139,7 +139,10 @@ async function cmdSentinelProbe(cwd, targetArg) {
   const res = probeSentinelSsh({ targetCfg: ctx.targetCfg, sentinelCfg: ctx.sentinelCfg });
 
   const host = res.hostInfo || {};
-  const level = ctx.sentinelCfg.level === "auto" ? resolveAutoLevel(host) : ctx.sentinelCfg.level;
+  const wantsExternal = ctx.sentinelCfg.externalAnchor && ctx.sentinelCfg.externalAnchor.type !== "none";
+  const level = ctx.sentinelCfg.level === "auto"
+    ? (wantsExternal ? 4 : resolveAutoLevel(host))
+    : ctx.sentinelCfg.level;
 
   console.log("Host:");
   console.log(`  mid: ${host.mid || "(missing)"}`);
@@ -157,6 +160,15 @@ async function cmdSentinelProbe(cwd, targetArg) {
   console.log(`  gid: ${base.gid !== null ? base.gid : "?"}`);
   console.log(`  mode: ${base.mode || "?"}`);
   console.log(`  execOk: ${base.execOk ? "yes" : "no"}`);
+
+  if (res.externalAnchor) {
+    console.log("External anchor:");
+    console.log(`  type: ${res.externalAnchor.type}`);
+    console.log(`  ok: ${res.externalAnchor.ok ? "yes" : "no"}`);
+    if (!res.externalAnchor.ok && res.externalAnchor.error) {
+      console.log(`  error: ${res.externalAnchor.error}`);
+    }
+  }
 
   ok("Probe done.");
 }

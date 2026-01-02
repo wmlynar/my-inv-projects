@@ -1,5 +1,7 @@
 # SEAL E2E Queue – szkic zmian
 
+Status: szkic (roboczy)
+
 Cel: dodac kolejke zadań E2E i workery, aby testy uruchamialy sie automatycznie wg dostepnosci zasobow, bez recznego dzielenia na “krotkie/dlugie”.
 
 ## Zakres i cele

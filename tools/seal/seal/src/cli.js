@@ -213,6 +213,7 @@ async function main(argv) {
     .argument("[target]", "Target name (defaults: project defaultTarget or 'local')")
     .option("--config <config>", "Override config variant (rare)", null)
     .option("--skip-check", "Skip preflight checks", false)
+    .option("--skip-verify", "Skip artifact verify after release (NOT recommended)", false)
     .option("--check-verbose", "Show tool output during preflight checks", false)
     .option("--check-cc <compiler>", "C compiler for preflight checks (e.g. gcc/clang)", null)
     .option("--packager <packager>", "Override packager: thin-split|sea|bundle|none|auto(=thin-split)", null)
@@ -234,6 +235,8 @@ async function main(argv) {
     .description("Verify last build artifact (or given .tgz) for leaks (.map/src/etc)")
     .argument("[artifactOrTarget]", "Artifact path (.tgz) or target name (defaults to last artifact)", null)
     .option("--explain", "Print a readable checklist", false)
+    .option("--watermark", "Extract watermark info from manifest.json (requires watermark enabled)", false)
+    .option("--json", "Print machine-readable JSON report", false)
     .action(async (arg, opts) => cmdVerify(process.cwd(), arg, opts));
 
   program
@@ -277,6 +280,7 @@ async function main(argv) {
     .option("--bootstrap", "Install prerequisites on the target (first time)", false)
     .option("--push-config", "Overwrite server runtime config with repo config (explicit)", false)
     .option("--skip-sentinel-verify", "Skip post-install sentinel verify (runner check)", false)
+    .option("--skip-verify", "Skip preflight artifact verify (NOT recommended)", false)
     .option("--restart", "Restart target service after deploy (explicit)", false)
     .option("--wait", "Wait for readiness after restart (systemd or HTTP)", false)
     .option("--wait-timeout <ms>", "Readiness timeout in ms (default: 60000)", null)
@@ -299,6 +303,7 @@ async function main(argv) {
     .option("--bootstrap", "Install prerequisites on the target (first time)", false)
     .option("--push-config", "Overwrite server runtime config with repo config (explicit)", false)
     .option("--skip-sentinel-verify", "Skip post-install sentinel verify (runner check)", false)
+    .option("--skip-verify", "Skip preflight artifact verify (NOT recommended)", false)
     .option("--no-wait", "Skip readiness wait after restart (default: wait)")
     .option("--wait-timeout <ms>", "Readiness timeout in ms (default: 60000)", null)
     .option("--wait-interval <ms>", "Readiness poll interval in ms (default: 1000)", null)

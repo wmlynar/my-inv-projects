@@ -20,7 +20,12 @@ const { ok, info, warn } = require("./ui");
 const { normalizeRetention, filterReleaseNames, computeKeepSet } = require("./retention");
 const { getTarRoot } = require("./tarSafe");
 const { normalizeThinMode } = require("./packagerConfig");
-const { THIN_NATIVE_BOOTSTRAP_FILE } = require("./thinPaths");
+const {
+  THIN_NATIVE_BOOTSTRAP_FILE,
+  THIN_TPM_SEAL_PUB_FILE,
+  THIN_TPM_SEAL_PRIV_FILE,
+} = require("./thinPaths");
+const { normalizeSystemdHardening, renderSystemdHardening } = require("./systemdHardening");
 
 /**
  * Minimal remote deploy baseline (Linux, systemd system scope).
@@ -155,9 +160,14 @@ function acquireDeployLockSsh(targetCfg, tmpDir) {
     "bash",
     "-c",
     `
+set +u
 LOCK=${shQuote(lockBase)}
 TTL=${Math.trunc(ttlSec)}
 NOW="$(date +%s)"
+TS=0
+AGE=0
+LOCK_DIR="$(dirname "$LOCK")"
+mkdir -p "$LOCK_DIR" 2>/dev/null || true
 if mkdir "$LOCK" 2>/dev/null; then
   echo "$NOW" > "$LOCK/ts"
   echo "$$" > "$LOCK/pid"
@@ -166,6 +176,9 @@ if mkdir "$LOCK" 2>/dev/null; then
 fi
 if [ -f "$LOCK/ts" ]; then
   TS="$(cat "$LOCK/ts" 2>/dev/null || echo 0)"
+  case "$TS" in
+    ''|*[!0-9]*) TS=0 ;;
+  esac
   AGE=$((NOW - TS))
   if [ "$AGE" -gt "$TTL" ]; then
     rm -rf "$LOCK" 2>/dev/null || true
@@ -176,11 +189,11 @@ if [ -f "$LOCK/ts" ]; then
       exit 0
     fi
   else
-    echo "__SEAL_LOCK_BUSY__:${AGE}:${TTL}"
+    echo "__SEAL_LOCK_BUSY__:$AGE:$TTL"
     exit 0
   fi
 fi
-echo "__SEAL_LOCK_BUSY__:0:${TTL}"
+echo "__SEAL_LOCK_BUSY__:$AGE:$TTL"
 exit 0
 `,
   ];
@@ -462,6 +475,24 @@ function buildRemoteTarValidateCmd(remoteArtifactTmpQ, expectedRoot) {
   return `( ${parts.join("\n")} )`;
 }
 
+function isRemoteTarFailure(output) {
+  const text = String(output || "").toLowerCase();
+  if (!text) return false;
+  if (text.includes("__seal_tar_bad__") || text.includes("__seal_tar_root__")) return true;
+  if (text.includes("tar:") && (text.includes("unexpected") || text.includes("invalid") || text.includes("error") || text.includes("short read"))) {
+    return true;
+  }
+  if (text.includes("gzip:") && (text.includes("unexpected") || text.includes("invalid") || text.includes("not in gzip format"))) {
+    return true;
+  }
+  return false;
+}
+
+function buildArtifactCorruptHint(targetCfg) {
+  const label = targetLabel(targetCfg);
+  return `Hint: Artifact appears corrupted or incomplete on target. Rebuild and re-run: seal ship ${label} (or re-upload with seal deploy ${label} --artifact <file>).`;
+}
+
 function bootstrapHint(targetCfg, layout, user, host, issues) {
   const targetName = targetLabel(targetCfg);
   const owner = shQuote(`${user}:${user}`);
@@ -543,19 +574,31 @@ REQUIRED_TOOLS=${shQuote(requireTools.join(" "))}
 REQUIRE_SUDO=${requireSudo}
 FORCE_SUDO_FAIL=${forceSudoFail}
 issues=()
+ROOT_OK=0
+TMP_OK=0
 
 if [ ! -d "$ROOT" ]; then
   issues+=("__SEAL_MISSING_DIR__")
 else
+  ROOT_OK=1
   if [ ! -w "$ROOT" ]; then issues+=("__SEAL_NOT_WRITABLE__"); fi
   if [ -d "$REL" ] && [ ! -w "$REL" ]; then issues+=("__SEAL_NOT_WRITABLE_RELEASES__"); fi
   if [ -d "$SHARED" ] && [ ! -w "$SHARED" ]; then issues+=("__SEAL_NOT_WRITABLE_SHARED__"); fi
-  if command -v df >/dev/null 2>&1; then
+fi
+
+if [ -d "$TMP_DIR" ]; then
+  TMP_OK=1
+else
+  issues+=("__SEAL_TMP_MISSING__")
+fi
+
+if command -v df >/dev/null 2>&1; then
+  if [ "$ROOT_OK" -eq 1 ]; then
     AVAIL_KB="$(df -Pk "$ROOT" 2>/dev/null | awk 'NR==2 {print $4}')"
     if [ -n "$AVAIL_KB" ]; then
       AVAIL_MB=$((AVAIL_KB / 1024))
       if [ "$AVAIL_MB" -lt "$MIN_MB" ]; then
-        issues+=("__SEAL_DISK_LOW__:${AVAIL_MB}:${MIN_MB}")
+        issues+=("__SEAL_DISK_LOW__:\${AVAIL_MB}:\${MIN_MB}")
       fi
     else
       issues+=("__SEAL_DISK_CHECK_FAILED__")
@@ -563,64 +606,67 @@ else
     AVAIL_INODES="$(df -Pi "$ROOT" 2>/dev/null | awk 'NR==2 {print $4}')"
     if [ -n "$AVAIL_INODES" ]; then
       if [ "$AVAIL_INODES" -lt "$MIN_INODES" ]; then
-        issues+=("__SEAL_INODES_LOW__:${AVAIL_INODES}:${MIN_INODES}")
+        issues+=("__SEAL_INODES_LOW__:\${AVAIL_INODES}:\${MIN_INODES}")
       fi
     else
       issues+=("__SEAL_INODES_CHECK_FAILED__")
     fi
-    if [ -d "$TMP_DIR" ]; then
-      TMP_AVAIL_KB="$(df -Pk "$TMP_DIR" 2>/dev/null | awk 'NR==2 {print $4}')"
-      if [ -n "$TMP_AVAIL_KB" ]; then
-        TMP_AVAIL_MB=$((TMP_AVAIL_KB / 1024))
-        if [ "$TMP_AVAIL_MB" -lt "$TMP_MIN_MB" ]; then
-          issues+=("__SEAL_TMP_DISK_LOW__:${TMP_AVAIL_MB}:${TMP_MIN_MB}")
-        fi
-      else
-        issues+=("__SEAL_TMP_DISK_CHECK_FAILED__")
-      fi
-      TMP_AVAIL_INODES="$(df -Pi "$TMP_DIR" 2>/dev/null | awk 'NR==2 {print $4}')"
-      if [ -n "$TMP_AVAIL_INODES" ]; then
-        if [ "$TMP_AVAIL_INODES" -lt "$TMP_MIN_INODES" ]; then
-          issues+=("__SEAL_TMP_INODES_LOW__:${TMP_AVAIL_INODES}:${TMP_MIN_INODES}")
-        fi
-      else
-        issues+=("__SEAL_TMP_INODES_CHECK_FAILED__")
+  fi
+  if [ "$TMP_OK" -eq 1 ]; then
+    TMP_AVAIL_KB="$(df -Pk "$TMP_DIR" 2>/dev/null | awk 'NR==2 {print $4}')"
+    if [ -n "$TMP_AVAIL_KB" ]; then
+      TMP_AVAIL_MB=$((TMP_AVAIL_KB / 1024))
+      if [ "$TMP_AVAIL_MB" -lt "$TMP_MIN_MB" ]; then
+        issues+=("__SEAL_TMP_DISK_LOW__:\${TMP_AVAIL_MB}:\${TMP_MIN_MB}")
       fi
     else
-      issues+=("__SEAL_TMP_MISSING__")
+      issues+=("__SEAL_TMP_DISK_CHECK_FAILED__")
     fi
-    if command -v findmnt >/dev/null 2>&1; then
-      if [ "$ALLOW_NOEXEC" -ne 1 ]; then
-        OPTS="$(findmnt -no OPTIONS --target "$ROOT" 2>/dev/null || true)"
-        if echo "$OPTS" | grep -q "noexec"; then
-          issues+=("__SEAL_NOEXEC__")
-        fi
+    TMP_AVAIL_INODES="$(df -Pi "$TMP_DIR" 2>/dev/null | awk 'NR==2 {print $4}')"
+    if [ -n "$TMP_AVAIL_INODES" ]; then
+      if [ "$TMP_AVAIL_INODES" -lt "$TMP_MIN_INODES" ]; then
+        issues+=("__SEAL_TMP_INODES_LOW__:\${TMP_AVAIL_INODES}:\${TMP_MIN_INODES}")
+      fi
+    else
+      issues+=("__SEAL_TMP_INODES_CHECK_FAILED__")
+    fi
+  fi
+  if [ "$ROOT_OK" -eq 1 ] && command -v findmnt >/dev/null 2>&1; then
+    if [ "$ALLOW_NOEXEC" -ne 1 ]; then
+      OPTS="$(findmnt -no OPTIONS --target "$ROOT" 2>/dev/null || true)"
+      if echo "$OPTS" | grep -q "noexec"; then
+        issues+=("__SEAL_NOEXEC__")
       fi
     fi
-  else
+  fi
+else
+  if [ "$ROOT_OK" -eq 1 ]; then
     issues+=("__SEAL_DISK_CHECK_FAILED__")
     issues+=("__SEAL_INODES_CHECK_FAILED__")
+  fi
+  if [ "$TMP_OK" -eq 1 ]; then
     issues+=("__SEAL_TMP_DISK_CHECK_FAILED__")
     issues+=("__SEAL_TMP_INODES_CHECK_FAILED__")
   fi
-  if [ -n "$REQUIRED_TOOLS" ]; then
-    for tool in $REQUIRED_TOOLS; do
-      if ! command -v "$tool" >/dev/null 2>&1; then
-        issues+=("__SEAL_TOOL_MISSING__:$tool")
-      fi
-    done
-  fi
-  if [ "$REQUIRE_SUDO" -eq 1 ]; then
-    if [ "$FORCE_SUDO_FAIL" -eq 1 ]; then
+fi
+
+if [ -n "$REQUIRED_TOOLS" ]; then
+  for tool in $REQUIRED_TOOLS; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+      issues+=("__SEAL_TOOL_MISSING__:$tool")
+    fi
+  done
+fi
+if [ "$REQUIRE_SUDO" -eq 1 ]; then
+  if [ "$FORCE_SUDO_FAIL" -eq 1 ]; then
+    issues+=("__SEAL_SUDO_MISSING__")
+  else
+    if ! sudo -n true >/dev/null 2>&1; then
       issues+=("__SEAL_SUDO_MISSING__")
-    else
-      if ! sudo -n true >/dev/null 2>&1; then
-        issues+=("__SEAL_SUDO_MISSING__")
-      fi
     fi
   fi
-${serviceChecks}
 fi
+${serviceChecks}
 
 if [ "\${#issues[@]}" -eq 0 ]; then
   echo "__SEAL_OK__"
@@ -636,6 +682,7 @@ exit 0
 function bootstrapSsh(targetCfg) {
   const { user, host } = sshUserHost(targetCfg);
   const layout = remoteLayout(targetCfg);
+  const tmpDir = resolveTmpDir(targetCfg);
 
   const sudoCheck = sshExecTarget(targetCfg, { user, host, args: ["bash", "-c", "sudo -n true"], stdio: "pipe" });
   if (!sudoCheck.ok) {
@@ -658,7 +705,7 @@ function bootstrapSsh(targetCfg) {
   const cmd = [
     "bash", "-c",
     [
-      `sudo -n mkdir -p ${shQuote(layout.releasesDir)} ${shQuote(layout.sharedDir)} ${shQuote(`${layout.installDir}/b`)} ${shQuote(`${layout.installDir}/r`)}`,
+      `sudo -n mkdir -p ${shQuote(layout.releasesDir)} ${shQuote(layout.sharedDir)} ${shQuote(`${layout.installDir}/b`)} ${shQuote(`${layout.installDir}/r`)} ${shQuote(tmpDir)}`,
       `sudo -n chown -R ${shQuote(`${user}:${user}`)} ${shQuote(layout.installDir)}`,
     ].join(" && ")
   ];
@@ -676,6 +723,14 @@ function installServiceSsh(targetCfg, sentinelCfg) {
   const { user: sshUser, host } = sshUserHost(targetCfg);
   const { user: serviceUser, group: serviceGroup } = serviceUserGroup(targetCfg, sshUser);
   const layout = remoteLayout(targetCfg);
+  const hardeningCfg = normalizeSystemdHardening(targetCfg?.deploy?.systemdHardening ?? targetCfg?.systemdHardening);
+  if (hardeningCfg.enabled && (targetCfg.serviceScope || "system").toLowerCase() === "user") {
+    warn("systemdHardening enabled for serviceScope=user; some directives may be ignored. Use serviceScope=system for full hardening.");
+  }
+  const hardening = renderSystemdHardening({
+    config: targetCfg?.deploy?.systemdHardening ?? targetCfg?.systemdHardening,
+    installDir: layout.installDir,
+  });
   const useSentinel = !!(sentinelCfg && sentinelCfg.enabled);
   const exitCodeBlock = useSentinel ? Number(sentinelCfg.exitCodeBlock || 200) : null;
   const unitLimits = useSentinel
@@ -747,6 +802,7 @@ ${preventRestart}
 StandardOutput=journal
 StandardError=journal
 
+${hardening}
 [Install]
 WantedBy=multi-user.target
 `;
@@ -836,7 +892,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
   let payloadOnlyFallbackLogged = false;
   const timeSync = timing && timing.timeSync ? timing.timeSync : (label, fn) => fn();
   const tmpDir = resolveTmpDir(targetCfg);
-  const lock = acquireDeployLockSsh(targetCfg, tmpDir);
+  let lock = null;
   try {
   const { res: preflight, layout, user, host } = timeSync(
     "deploy.ssh.preflight",
@@ -863,7 +919,9 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
     const { avail, min } = resourceCheck.lowTmpInodes;
     throw new Error(`ssh preflight failed: low inode count on target (${tmpDir}: ${avail} < ${min}). Clean up files or lower target.preflight.tmpMinFreeInodes/SEAL_PREFLIGHT_TMP_MIN_FREE_INODES.`);
   }
-  if (resourceCheck.tmpMissing) {
+  const defaultTmpDir = layout.installDir ? `${layout.installDir}/.seal-tmp` : ".seal-tmp";
+  const ignoreTmpMissing = out.includes("__SEAL_MISSING_DIR__") && tmpDir === defaultTmpDir;
+  if (resourceCheck.tmpMissing && !ignoreTmpMissing) {
     throw new Error(`ssh preflight failed: tmp dir missing on target (${tmpDir}). Set target.preflight.tmpDir or fix the path.`);
   }
   if (resourceCheck.noexecInstall) {
@@ -889,6 +947,7 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
   }
   let issues = collectPreflightIssues(out, layout);
   if (issues.length && !effectiveBootstrap && autoBootstrapAllowed) {
+    if (!lock) lock = acquireDeployLockSsh(targetCfg, tmpDir);
     if (payloadOnlyRequested) {
       payloadOnlyFallbackReason = `target needs bootstrap (${issues.join("; ")})`;
     }
@@ -950,6 +1009,9 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
   }
   if (issues.length) {
     throw new Error(bootstrapHint(targetCfg, layout, user, host, issues));
+  }
+  if (!lock) {
+    lock = acquireDeployLockSsh(targetCfg, tmpDir);
   }
   let reuseBootstrap = thinMode === "bootstrap" && !effectiveBootstrap;
 
@@ -1168,6 +1230,15 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
   if (payloadOnly) {
     info("Thin bootstrap: payload-only upload (no runtime).");
     const extras = buildPayloadExtrasTar(releaseDir, appName, buildId);
+    const tpmFiles = [];
+    const tpmPubLocal = releaseDir ? path.join(releaseDir, "r", THIN_TPM_SEAL_PUB_FILE) : null;
+    const tpmPrivLocal = releaseDir ? path.join(releaseDir, "r", THIN_TPM_SEAL_PRIV_FILE) : null;
+    if (tpmPubLocal && fileExists(tpmPubLocal)) {
+      tpmFiles.push({ localPath: tpmPubLocal, file: THIN_TPM_SEAL_PUB_FILE, mode: "644" });
+    }
+    if (tpmPrivLocal && fileExists(tpmPrivLocal)) {
+      tpmFiles.push({ localPath: tpmPrivLocal, file: THIN_TPM_SEAL_PRIV_FILE, mode: "600" });
+    }
     let extrasRemote = null;
     const remoteTmp = `${remoteTmpDir}/${appName}-payload-${buildId || Date.now()}.pl`;
     const remoteTmpQ = shQuote(remoteTmp);
@@ -1190,6 +1261,19 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       }));
       fs.rmSync(extras.tmpDir, { recursive: true, force: true });
       if (!upExtras.ok) throw new Error(`scp extras failed (status=${upExtras.status})${formatSshFailure(upExtras)}`);
+    }
+    const tpmUploads = [];
+    for (const file of tpmFiles) {
+      const remoteFile = `${remoteTmpDir}/${appName}-${file.file}-${buildId || Date.now()}.tmp`;
+      info(`Uploading TPM seal file to ${host}:${remoteFile}`);
+      const upFile = timeSync("deploy.ssh.upload_tpm", () => scpToTarget(targetCfg, {
+        user,
+        host,
+        localPath: file.localPath,
+        remotePath: remoteFile,
+      }));
+      if (!upFile.ok) throw new Error(`scp TPM seal failed (status=${upFile.status})${formatSshFailure(upFile)}`);
+      tpmUploads.push({ remote: remoteFile, file: file.file, mode: file.mode });
     }
 
     const cmdParts = [
@@ -1220,6 +1304,10 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
     const nbDstQ = shQuote(`${relDir}/r/${THIN_NATIVE_BOOTSTRAP_FILE}`);
     const nvSrcQ = shQuote(`${rDir}/${THIN_RUNTIME_VERSION_FILE}`);
     const nvDstQ = shQuote(`${relDir}/r/${THIN_RUNTIME_VERSION_FILE}`);
+    const tpmPubDstQ = shQuote(`${relDir}/r/${THIN_TPM_SEAL_PUB_FILE}`);
+    const tpmPrivDstQ = shQuote(`${relDir}/r/${THIN_TPM_SEAL_PRIV_FILE}`);
+    const tpmPubInstallQ = shQuote(`${rDir}/${THIN_TPM_SEAL_PUB_FILE}`);
+    const tpmPrivInstallQ = shQuote(`${rDir}/${THIN_TPM_SEAL_PRIV_FILE}`);
     cmdParts.push(`mkdir -p ${relDirQ}/b ${relDirQ}/r`);
     if (extrasRemote) {
       const extrasRemoteQ = shQuote(extrasRemote);
@@ -1233,6 +1321,16 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
     cmdParts.push(`if [ -f ${nvSrcQ} ]; then cp ${nvSrcQ} ${nvDstQ}; fi`);
     if (thinIntegritySidecar) {
       cmdParts.push(`if [ -f ${ihSrcQ} ]; then cp ${ihSrcQ} ${ihDstQ}; fi`);
+    }
+    for (const file of tpmUploads) {
+      const tmpQ = shQuote(file.remote);
+      const mode = file.mode || "644";
+      if (file.file === THIN_TPM_SEAL_PUB_FILE) {
+        cmdParts.push(`cp ${tmpQ} ${tpmPubDstQ} && cp ${tmpQ} ${tpmPubInstallQ} && chmod ${mode} ${tpmPubDstQ} ${tpmPubInstallQ}`);
+      } else {
+        cmdParts.push(`cp ${tmpQ} ${tpmPrivDstQ} && cp ${tmpQ} ${tpmPrivInstallQ} && chmod ${mode} ${tpmPrivDstQ} ${tpmPrivInstallQ}`);
+      }
+      cmdParts.push(`rm -f ${tmpQ}`);
     }
     cmdParts.push(`cp ${remoteTmpQ} ${relDirQ}/r/pl && chmod 644 ${relDirQ}/r/pl`);
     cmdParts.push(`cp ${remoteTmpQ} ${rDirQ}/pl.tmp && mv ${rDirQ}/pl.tmp ${rDirQ}/pl && chmod 644 ${rDirQ}/pl`);
@@ -1292,6 +1390,8 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       const ihSrc = `${relDir}/r/${thinIntegrityFile}`;
       const nbSrc = `${relDir}/r/${THIN_NATIVE_BOOTSTRAP_FILE}`;
       const nvSrc = `${relDir}/r/${THIN_RUNTIME_VERSION_FILE}`;
+      const tpmPubSrc = `${relDir}/r/${THIN_TPM_SEAL_PUB_FILE}`;
+      const tpmPrivSrc = `${relDir}/r/${THIN_TPM_SEAL_PRIV_FILE}`;
       const bDirQ = shQuote(bDir);
       const rDirQ = shQuote(rDir);
       const launcherSrcQ = shQuote(launcherSrc);
@@ -1304,6 +1404,10 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       const nbDstQ = shQuote(`${rDir}/${THIN_NATIVE_BOOTSTRAP_FILE}`);
       const nvSrcQ = shQuote(nvSrc);
       const nvDstQ = shQuote(`${rDir}/${THIN_RUNTIME_VERSION_FILE}`);
+      const tpmPubSrcQ = shQuote(tpmPubSrc);
+      const tpmPrivSrcQ = shQuote(tpmPrivSrc);
+      const tpmPubDstQ = shQuote(`${rDir}/${THIN_TPM_SEAL_PUB_FILE}`);
+      const tpmPrivDstQ = shQuote(`${rDir}/${THIN_TPM_SEAL_PRIV_FILE}`);
       cmdParts.push(`test -f ${launcherSrcQ}`);
       cmdParts.push(`test -f ${rtSrcQ}`);
       cmdParts.push(`test -f ${plSrcQ}`);
@@ -1318,6 +1422,8 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       cmdParts.push(`if [ -f ${codecSrcQ} ]; then cp ${codecSrcQ} ${rDirQ}/c.tmp && mv ${rDirQ}/c.tmp ${rDirQ}/c && chmod 644 ${rDirQ}/c; fi`);
       cmdParts.push(`if [ -f ${nbSrcQ} ]; then cp ${nbSrcQ} ${nbDstQ}.tmp && mv ${nbDstQ}.tmp ${nbDstQ} && chmod 644 ${nbDstQ}; fi`);
       cmdParts.push(`if [ -f ${nvSrcQ} ]; then cp ${nvSrcQ} ${nvDstQ}.tmp && mv ${nvDstQ}.tmp ${nvDstQ} && chmod 644 ${nvDstQ}; fi`);
+      cmdParts.push(`if [ -f ${tpmPubSrcQ} ]; then cp ${tpmPubSrcQ} ${tpmPubDstQ}.tmp && mv ${tpmPubDstQ}.tmp ${tpmPubDstQ} && chmod 644 ${tpmPubDstQ}; fi`);
+      cmdParts.push(`if [ -f ${tpmPrivSrcQ} ]; then cp ${tpmPrivSrcQ} ${tpmPrivDstQ}.tmp && mv ${tpmPrivDstQ}.tmp ${tpmPrivDstQ} && chmod 600 ${tpmPrivDstQ}; fi`);
       if (thinIntegritySidecar) {
         cmdParts.push(`if [ -f ${ihSrcQ} ]; then cp ${ihSrcQ} ${ihDstQ}.tmp && mv ${ihDstQ}.tmp ${ihDstQ} && chmod 644 ${ihDstQ}; fi`);
       }
@@ -1329,7 +1435,9 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       const ihFileQ = shQuote(`${layout.installDir}/r/${thinIntegrityFile}`);
       const nbFileQ = shQuote(`${layout.installDir}/r/${THIN_NATIVE_BOOTSTRAP_FILE}`);
       const nvFileQ = shQuote(`${layout.installDir}/r/${THIN_RUNTIME_VERSION_FILE}`);
-      cmdParts.push(`rm -f ${bFileQ} ${rtFileQ} ${plFileQ} ${codecFileQ} ${ihFileQ} ${nbFileQ} ${nvFileQ}`);
+      const tpmPubQ = shQuote(`${layout.installDir}/r/${THIN_TPM_SEAL_PUB_FILE}`);
+      const tpmPrivQ = shQuote(`${layout.installDir}/r/${THIN_TPM_SEAL_PRIV_FILE}`);
+      cmdParts.push(`rm -f ${bFileQ} ${rtFileQ} ${plFileQ} ${codecFileQ} ${ihFileQ} ${nbFileQ} ${nvFileQ} ${tpmPubQ} ${tpmPrivQ}`);
     }
     cmdParts.push(`echo ${shQuote(folderName)} > ${currentFileQ}`);
     cmdParts.push(`rm -f ${remoteArtifactTmpQ}`);
@@ -1373,6 +1481,8 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       const plSrc = `${relDir}/r/pl`;
       const nbSrc = `${relDir}/r/${THIN_NATIVE_BOOTSTRAP_FILE}`;
       const nvSrc = `${relDir}/r/${THIN_RUNTIME_VERSION_FILE}`;
+      const tpmPubSrc = `${relDir}/r/${THIN_TPM_SEAL_PUB_FILE}`;
+      const tpmPrivSrc = `${relDir}/r/${THIN_TPM_SEAL_PRIV_FILE}`;
       const bDirQ = shQuote(bDir);
       const rDirQ = shQuote(rDir);
       const launcherSrcQ = shQuote(launcherSrc);
@@ -1382,6 +1492,10 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       const nbDstQ = shQuote(`${rDir}/${THIN_NATIVE_BOOTSTRAP_FILE}`);
       const nvSrcQ = shQuote(nvSrc);
       const nvDstQ = shQuote(`${rDir}/${THIN_RUNTIME_VERSION_FILE}`);
+      const tpmPubSrcQ = shQuote(tpmPubSrc);
+      const tpmPrivSrcQ = shQuote(tpmPrivSrc);
+      const tpmPubDstQ = shQuote(`${rDir}/${THIN_TPM_SEAL_PUB_FILE}`);
+      const tpmPrivDstQ = shQuote(`${rDir}/${THIN_TPM_SEAL_PRIV_FILE}`);
       retryParts.push(`test -f ${launcherSrcQ}`);
       retryParts.push(`test -f ${rtSrcQ}`);
       retryParts.push(`test -f ${plSrcQ}`);
@@ -1395,20 +1509,26 @@ function deploySsh({ targetCfg, artifactPath, repoConfigPath, pushConfig, bootst
       retryParts.push(`cp ${plSrcQ} ${rDirQ}/pl.tmp && mv ${rDirQ}/pl.tmp ${rDirQ}/pl && chmod 644 ${rDirQ}/pl`);
       retryParts.push(`if [ -f ${nbSrcQ} ]; then cp ${nbSrcQ} ${nbDstQ}.tmp && mv ${nbDstQ}.tmp ${nbDstQ} && chmod 644 ${nbDstQ}; fi`);
       retryParts.push(`if [ -f ${nvSrcQ} ]; then cp ${nvSrcQ} ${nvDstQ}.tmp && mv ${nvDstQ}.tmp ${nvDstQ} && chmod 644 ${nvDstQ}; fi`);
+      retryParts.push(`if [ -f ${tpmPubSrcQ} ]; then cp ${tpmPubSrcQ} ${tpmPubDstQ}.tmp && mv ${tpmPubDstQ}.tmp ${tpmPubDstQ} && chmod 644 ${tpmPubDstQ}; fi`);
+      retryParts.push(`if [ -f ${tpmPrivSrcQ} ]; then cp ${tpmPrivSrcQ} ${tpmPrivDstQ}.tmp && mv ${tpmPrivDstQ}.tmp ${tpmPrivDstQ} && chmod 600 ${tpmPrivDstQ}; fi`);
     } else {
       const bFileQ = shQuote(`${layout.installDir}/b/a`);
       const rtFileQ = shQuote(`${layout.installDir}/r/rt`);
       const plFileQ = shQuote(`${layout.installDir}/r/pl`);
       const nbFileQ = shQuote(`${layout.installDir}/r/${THIN_NATIVE_BOOTSTRAP_FILE}`);
       const nvFileQ = shQuote(`${layout.installDir}/r/${THIN_RUNTIME_VERSION_FILE}`);
-      retryParts.push(`rm -f ${bFileQ} ${rtFileQ} ${plFileQ} ${nbFileQ} ${nvFileQ}`);
+      const tpmPubQ = shQuote(`${layout.installDir}/r/${THIN_TPM_SEAL_PUB_FILE}`);
+      const tpmPrivQ = shQuote(`${layout.installDir}/r/${THIN_TPM_SEAL_PRIV_FILE}`);
+      retryParts.push(`rm -f ${bFileQ} ${rtFileQ} ${plFileQ} ${nbFileQ} ${nvFileQ} ${tpmPubQ} ${tpmPrivQ}`);
     }
     retryParts.push(`echo ${shQuote(folderName)} > ${currentFileQ}`);
     retryParts.push(`rm -f ${remoteArtifactTmpQ}`);
     res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-c", retryParts.join(" && ")], stdio: "pipe" });
   }
   if (!res.ok) {
-    throw new Error(`deploy ssh failed (status=${res.status})${formatSshFailure(res)}`);
+    const combined = `${res.stdout || ""}\n${res.stderr || ""}`;
+    const hint = isRemoteTarFailure(combined) ? `\n${buildArtifactCorruptHint(targetCfg)}` : "";
+    throw new Error(`deploy ssh failed (status=${res.status})${formatSshFailure(res)}${hint}`);
   }
 
   ok(`Deployed on ${host}: ${folderName}`);
@@ -1955,7 +2075,13 @@ function configPushSsh({ targetCfg, localConfigPath }) {
   if (issues.length) {
     throw new Error(bootstrapHint(targetCfg, layout, user, host, issues));
   }
-  const tmpCfg = `${resolveTmpDir(targetCfg)}/${targetCfg.serviceName}-config.json5`;
+  const tmpDir = resolveTmpDir(targetCfg);
+  const tmpDirQ = shQuote(tmpDir);
+  const ensureTmp = sshExecTarget(targetCfg, { user, host, args: ["bash", "-c", `mkdir -p ${tmpDirQ}`], stdio: "pipe" });
+  if (!ensureTmp.ok) {
+    throw new Error(`ssh preflight failed: tmp dir missing on target (${tmpDir}). Set target.preflight.tmpDir or fix the path.`);
+  }
+  const tmpCfg = `${tmpDir}/${targetCfg.serviceName}-config.json5`;
   const up = scpToTarget(targetCfg, { user, host, localPath: localConfigPath, remotePath: tmpCfg });
   if (!up.ok) throw new Error(`scp config failed${formatSshFailure(up)}`);
 

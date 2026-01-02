@@ -409,6 +409,26 @@ async function main() {
     runId,
     summaryEnabled: !setupOnly,
   });
+  const realHome = env.HOME || os.homedir();
+  const setIfMissing = (key, value) => {
+    if (env[key] === undefined || env[key] === null || env[key] === "") {
+      env[key] = value;
+    }
+  };
+  const toolchainRoot = env.SEAL_E2E_TOOLCHAIN_ROOT || path.join(cacheRoot, "toolchain");
+  setIfMissing("SEAL_E2E_TOOLCHAIN_ROOT", toolchainRoot);
+  ensureDir(toolchainRoot);
+  setIfMissing("SEAL_OLLVM_DIR", path.join(toolchainRoot, "obfuscators", "obfuscator-llvm"));
+  setIfMissing("SEAL_OLLVM_BUILD_DIR", path.join(env.SEAL_OLLVM_DIR, "build"));
+  setIfMissing("SEAL_HIKARI_DIR", path.join(toolchainRoot, "obfuscators", "hikari"));
+  setIfMissing("SEAL_HIKARI_BUILD_DIR", path.join(env.SEAL_HIKARI_DIR, "build"));
+  setIfMissing("SEAL_KITESHIELD_DIR", path.join(toolchainRoot, "kiteshield"));
+  setIfMissing("SEAL_MIDGETPACK_DIR", path.join(toolchainRoot, "midgetpack"));
+  setIfMissing("SEAL_CRIU_DIR", path.join(toolchainRoot, "criu"));
+  setIfMissing("PLAYWRIGHT_BROWSERS_PATH", path.join(cacheRoot, "playwright"));
+  setIfMissing("XDG_CACHE_HOME", path.join(cacheRoot, "xdg-cache"));
+  ensureDir(env.XDG_CACHE_HOME);
+  ensureDir(env.PLAYWRIGHT_BROWSERS_PATH);
   ensureDir(cacheBin);
   ensureDir(stampsDir);
   env.PATH = `${cacheBin}${path.delimiter}${env.PATH || ""}`;
@@ -455,6 +475,8 @@ async function main() {
   }
   let e2eHome = "";
   if (isolateHome === "1") {
+    env.SEAL_E2E_HOME_ISOLATED = "1";
+    env.SEAL_E2E_REAL_HOME = realHome;
     const homeRoot = env.SEAL_E2E_HOME_ROOT || path.join(cacheRoot, "e2e-home");
     ensureDir(homeRoot);
     e2eHome = fs.mkdtempSync(path.join(homeRoot, "home-"));

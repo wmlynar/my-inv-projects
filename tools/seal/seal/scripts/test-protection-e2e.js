@@ -28,6 +28,10 @@ const EXAMPLE_ROOT = resolveExampleRoot();
 
 const { log, fail } = createLogger("protection-e2e");
 
+const FLAG_L4_INCLUDE_PUID = 0x0002;
+const FLAG_INCLUDE_CPUID = 0x0004;
+const MAX_ANCHOR_FILE_BYTES = 4096;
+
 function runCmd(cmd, args, timeoutMs = 5000) {
   const res = spawnSync(cmd, args, { stdio: "pipe", timeout: timeoutMs });
   if (res.error) {
@@ -35,6 +39,27 @@ function runCmd(cmd, args, timeoutMs = 5000) {
     throw new Error(`${cmd} failed: ${msg}`);
   }
   return res;
+}
+
+function shQuote(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
+}
+
+function stringsContainsToken(filePath, token, timeoutMs = 15000) {
+  const finder = hasCommand("rg") ? "rg -F --quiet" : (hasCommand("grep") ? "grep -Fq" : null);
+  if (!finder) {
+    throw new Error("Missing rg/grep (required for strings scan)");
+  }
+  const cmd = `strings -a -n 8 ${shQuote(filePath)} | ${finder} ${shQuote(token)}`;
+  const res = spawnSync("bash", ["-c", cmd], { stdio: "pipe", timeout: timeoutMs, maxBuffer: 1024 * 1024 });
+  if (res.error) {
+    const msg = res.error.message || String(res.error);
+    throw new Error(`strings scan failed: ${msg}`);
+  }
+  if (res.status === 0) return true;
+  if (res.status === 1) return false;
+  const out = `${res.stdout || ""}\n${res.stderr || ""}`.trim();
+  throw new Error(`strings scan failed (status=${res.status})${out ? `: ${out}` : ""}`);
 }
 
 function readFileTrim(p) {
@@ -149,9 +174,14 @@ function ensureLauncherObfuscation(projectCfg) {
   const thinCfg = projectCfg.build && projectCfg.build.thin ? projectCfg.build.thin : {};
   const cObf = projectCfg.build && projectCfg.build.protection ? projectCfg.build.protection.cObfuscator || {} : {};
   const cObfCmd = cObf.cmd || cObf.tool;
-  if (thinCfg.launcherObfuscation !== false && cObfCmd && !hasCommand(cObfCmd)) {
-    log(`C obfuscator not available (${cObfCmd}); disabling launcherObfuscation for test`);
-    thinCfg.launcherObfuscation = false;
+  if (thinCfg.launcherObfuscation !== false) {
+    if (!cObfCmd) {
+      log("C obfuscator not configured; disabling launcherObfuscation for test");
+      thinCfg.launcherObfuscation = false;
+    } else if (!hasCommand(cObfCmd)) {
+      log(`C obfuscator not available (${cObfCmd}); disabling launcherObfuscation for test`);
+      thinCfg.launcherObfuscation = false;
+    }
   }
   projectCfg.build.thin = thinCfg;
 }
@@ -226,7 +256,82 @@ function ensureBaseDirOwned(baseDir, mode) {
   fs.chownSync(baseDir, 0, 0);
 }
 
-function installSentinelBlob({ baseDir, namespaceId, appId, cpuid, expiresAtSec }) {
+function readRootMountInfo() {
+  const content = readFileTrim("/proc/self/mountinfo");
+  if (!content) return null;
+  const lines = content.split(/\r?\n/);
+  for (const line of lines) {
+    const parts = line.split(" ");
+    if (parts.length < 5) continue;
+    if (parts[4] === "/") {
+      return { majmin: parts[2] || "" };
+    }
+  }
+  return null;
+}
+
+function statHexMajMin(p) {
+  const res = runCmd("stat", ["-Lc", "%t:%T", p], 5000);
+  if (res.status !== 0) return null;
+  const raw = (res.stdout || "").toString("utf8").trim();
+  if (!raw || !raw.includes(":")) return null;
+  const [majHex, minHex] = raw.split(":");
+  const maj = parseInt(majHex, 16);
+  const min = parseInt(minHex, 16);
+  if (!Number.isFinite(maj) || !Number.isFinite(min)) return null;
+  return `${maj}:${min}`;
+}
+
+function resolveRidLocal() {
+  const info = readRootMountInfo();
+  if (!info || !info.majmin) return "";
+  const majmin = info.majmin;
+  const uuidDir = "/dev/disk/by-uuid";
+  if (fs.existsSync(uuidDir)) {
+    const entries = fs.readdirSync(uuidDir);
+    for (const name of entries) {
+      const p = path.join(uuidDir, name);
+      const mm = statHexMajMin(p);
+      if (mm && mm === majmin) return `uuid:${name}`;
+    }
+  }
+  const partDir = "/dev/disk/by-partuuid";
+  if (fs.existsSync(partDir)) {
+    const entries = fs.readdirSync(partDir);
+    for (const name of entries) {
+      const p = path.join(partDir, name);
+      const mm = statHexMajMin(p);
+      if (mm && mm === majmin) return `partuuid:${name}`;
+    }
+  }
+  return `dev:${majmin}`;
+}
+
+function resolvePuidLocal() {
+  return readFileTrim("/sys/class/dmi/id/product_uuid");
+}
+
+function computeFileEah(filePath) {
+  const buf = fs.readFileSync(filePath);
+  const sha = crypto.createHash("sha256").update(buf).digest("hex");
+  if (buf.length > MAX_ANCHOR_FILE_BYTES) {
+    return crypto.createHash("sha256").update(Buffer.from(sha, "hex")).digest("hex");
+  }
+  return sha;
+}
+
+function installSentinelBlob({
+  baseDir,
+  namespaceId,
+  appId,
+  cpuid,
+  expiresAtSec,
+  level = 1,
+  flags,
+  hostInfo,
+  includePuid,
+  includeCpuId,
+}) {
   ensureBaseDirOwned(baseDir, 0o711);
   const opaqueDir = deriveOpaqueDir(namespaceId);
   const opaqueFile = deriveOpaqueFile(namespaceId, appId);
@@ -237,16 +342,24 @@ function installSentinelBlob({ baseDir, namespaceId, appId, cpuid, expiresAtSec 
 
   const anchor = buildAnchor(namespaceId, appId);
   const installId = crypto.randomBytes(32);
-  const includeCpuId = !!cpuid;
-  const fpHash = buildFingerprintHash(1, {
+  const info = hostInfo || {
     mid: readFileTrim("/etc/machine-id"),
     rid: "",
     puid: "",
+    eah: "",
     cpuid,
-  }, { includePuid: false, includeCpuId });
+  };
+  const useCpuId = includeCpuId !== undefined ? includeCpuId : !!cpuid;
+  const usePuid = includePuid !== undefined ? includePuid : false;
+  const fpHash = buildFingerprintHash(level, info, { includePuid: usePuid, includeCpuId: useCpuId });
 
-  const flags = includeCpuId ? 0x0004 : 0x0000;
-  const blob = packBlob({ level: 1, flags, installId, fpHash, expiresAtSec }, anchor);
+  let blobFlags = flags;
+  if (blobFlags === undefined || blobFlags === null) {
+    blobFlags = 0x0000;
+    if (useCpuId) blobFlags |= FLAG_INCLUDE_CPUID;
+    if (usePuid) blobFlags |= FLAG_L4_INCLUDE_PUID;
+  }
+  const blob = packBlob({ level, flags: blobFlags, installId, fpHash, expiresAtSec }, anchor);
   const blobPath = path.join(dirPath, opaqueFile);
   fs.writeFileSync(blobPath, blob, { mode: 0o600 });
   fs.chmodSync(blobPath, 0o600);
@@ -357,6 +470,173 @@ async function testMaxRuntime(ctx) {
     await runRelease({ releaseDir: res.releaseDir, buildId: res.buildId, runTimeoutMs: ctx.runTimeoutMs });
   } finally {
     fs.rmSync(outRoot, { recursive: true, force: true });
+  }
+}
+
+async function testExtractionWatermark(ctx) {
+  const strict = process.env.SEAL_E2E_STRICT_EXTRACT === "1";
+  if (!hasCommand("strings")) {
+    const msg = "strings not available for extraction scan";
+    if (strict) throw new Error(msg);
+    log(`SKIP: ${msg}`);
+    return;
+  }
+  if (!hasCommand("rg") && !hasCommand("grep")) {
+    const msg = "rg/grep not available for extraction scan";
+    if (strict) throw new Error(msg);
+    log(`SKIP: ${msg}`);
+    return;
+  }
+
+  log("Building thin-split with watermark for extraction scan...");
+  const outRoot = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-protection-extract-"));
+  const token = `wm-e2e-${crypto.randomBytes(16).toString("hex")}`;
+  try {
+    const res = await withTimeout("buildRelease(extract)", ctx.buildTimeoutMs, () =>
+      buildWithProtection({
+        protection: {},
+        build: {
+          watermark: { enabled: true, mode: "fixed", token },
+          obfuscationProfile: "strict",
+          backendTerser: { enabled: true, passes: 2 },
+        },
+        outRoot,
+        packager: "thin-split",
+      })
+    );
+    const targets = [
+      path.join(res.releaseDir, "b", "a"),
+      path.join(res.releaseDir, "r", "pl"),
+    ];
+    for (const target of targets) {
+      assert.ok(fs.existsSync(target), `Missing artifact for scan: ${target}`);
+      const found = stringsContainsToken(target, token);
+      assert.strictEqual(found, false, `Expected token not visible in strings(${target})`);
+    }
+  } finally {
+    fs.rmSync(outRoot, { recursive: true, force: true });
+  }
+}
+
+async function testSentinelL4FileAnchor(ctx) {
+  const requireFull = process.env.SEAL_PROTECTION_E2E_REQUIRE_FULL === "1";
+  if (typeof process.getuid === "function" && process.getuid() !== 0) {
+    const msg = "sentinel L4 test requires root (baseDir ownership)";
+    if (requireFull) throw new Error(msg);
+    log(`SKIP: ${msg}`);
+    return;
+  }
+  const mid = readFileTrim("/etc/machine-id");
+  const rid = resolveRidLocal();
+  const puid = resolvePuidLocal();
+  if (!mid || !rid) {
+    const msg = "sentinel L4 requires mid/rid";
+    if (requireFull) throw new Error(msg);
+    log(`SKIP: ${msg}`);
+    return;
+  }
+  if (!puid) {
+    const msg = "sentinel L4 includePuid requires product_uuid";
+    if (requireFull) throw new Error(msg);
+    log(`SKIP: ${msg}`);
+    return;
+  }
+
+  log("Building thin-split with sentinel L4 (file anchor)...");
+  const outRoot = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-sentinel-l4-"));
+  const baseDir = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-sentinel-l4-base-"));
+  const anchorDir = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-sentinel-l4-anchor-"));
+  const anchorPath = path.join(anchorDir, "anchor.bin");
+  fs.writeFileSync(anchorPath, crypto.randomBytes(128));
+  try {
+    const projectCfg = loadProjectConfig(EXAMPLE_ROOT);
+    const targetCfg = loadTargetConfig(EXAMPLE_ROOT, "local").cfg;
+    const configName = resolveConfigName(targetCfg, "local");
+    const appName = projectCfg.appName || "seal-example";
+
+    projectCfg.build = projectCfg.build || {};
+    projectCfg.build.packager = "thin-split";
+    projectCfg.build.securityProfile = "minimal";
+    projectCfg.build.protection = { enabled: false };
+    projectCfg.build.sentinel = {
+      enabled: true,
+      level: 4,
+      appId: appName,
+      namespaceId: "00112233445566778899aabbccddeeff",
+      storage: { baseDir, mode: "file" },
+      cpuIdSource: "off",
+      exitCodeBlock: 222,
+      checkIntervalMs: 0,
+      externalAnchor: { type: "file", file: { path: anchorPath } },
+      l4IncludePuid: true,
+    };
+    projectCfg.build.thin = Object.assign({}, projectCfg.build.thin || {}, { mode: "split" });
+    ensureLauncherObfuscation(projectCfg);
+
+    const outDir = path.join(outRoot, "seal-out");
+    const res = await withTimeout("buildRelease(l4)", ctx.buildTimeoutMs, () =>
+      buildRelease({
+        projectRoot: EXAMPLE_ROOT,
+        projectCfg,
+        targetCfg,
+        configName,
+        packagerOverride: "thin-split",
+        outDirOverride: outDir,
+      })
+    );
+
+    const hostInfo = {
+      mid,
+      rid,
+      puid,
+      eah: computeFileEah(anchorPath),
+      cpuid: "",
+    };
+    installSentinelBlob({
+      baseDir,
+      namespaceId: "00112233445566778899aabbccddeeff",
+      appId: appName,
+      level: 4,
+      flags: FLAG_L4_INCLUDE_PUID,
+      hostInfo,
+      includePuid: true,
+      includeCpuId: false,
+      expiresAtSec: 0,
+    });
+
+    await runRelease({ releaseDir: res.releaseDir, buildId: res.buildId, runTimeoutMs: ctx.runTimeoutMs });
+
+    fs.unlinkSync(anchorPath);
+    try {
+      await runRelease({ releaseDir: res.releaseDir, buildId: res.buildId, runTimeoutMs: ctx.runTimeoutMs });
+      throw new Error("Expected sentinel L4 to fail without external anchor");
+    } catch (e) {
+      log("Sentinel L4: missing anchor -> FAIL (expected)");
+    }
+
+    fs.writeFileSync(anchorPath, crypto.randomBytes(128));
+    const badInfo = { ...hostInfo, eah: computeFileEah(anchorPath) };
+    installSentinelBlob({
+      baseDir,
+      namespaceId: "00112233445566778899aabbccddeeff",
+      appId: appName,
+      level: 4,
+      flags: FLAG_L4_INCLUDE_PUID,
+      hostInfo: { ...badInfo, puid: "00000000-0000-0000-0000-000000000000" },
+      includePuid: true,
+      includeCpuId: false,
+      expiresAtSec: 0,
+    });
+    try {
+      await runRelease({ releaseDir: res.releaseDir, buildId: res.buildId, runTimeoutMs: ctx.runTimeoutMs });
+      throw new Error("Expected sentinel L4 to fail with PUID mismatch");
+    } catch {
+      log("Sentinel L4: PUID mismatch -> FAIL (expected)");
+    }
+  } finally {
+    fs.rmSync(outRoot, { recursive: true, force: true });
+    fs.rmSync(baseDir, { recursive: true, force: true });
+    fs.rmSync(anchorDir, { recursive: true, force: true });
   }
 }
 
@@ -516,7 +796,15 @@ async function main() {
     }
   }
 
-  const tests = [testStringObfuscationMeta, testBackendTerser, testMaxRuntime, testElfPacker, testFullProtection];
+  const tests = [
+    testStringObfuscationMeta,
+    testBackendTerser,
+    testMaxRuntime,
+    testExtractionWatermark,
+    testSentinelL4FileAnchor,
+    testElfPacker,
+    testFullProtection,
+  ];
   let failures = 0;
   try {
     for (const t of tests) {

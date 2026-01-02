@@ -358,6 +358,33 @@ function resolveNonRootUser() {
   return fallback;
 }
 
+function hasGroupAccess(stat, gid, modeMask) {
+  if (!stat) return false;
+  if (!Number.isFinite(gid)) return false;
+  return stat.gid === gid && (stat.mode & modeMask) === modeMask;
+}
+
+function canUseGroupAccess(baseDir, filePath, gid) {
+  const dirPath = path.dirname(filePath);
+  let baseStat;
+  let dirStat;
+  let fileStat;
+  try {
+    baseStat = fs.statSync(baseDir);
+  } catch {}
+  try {
+    dirStat = fs.statSync(dirPath);
+  } catch {}
+  try {
+    fileStat = fs.statSync(filePath);
+  } catch {}
+  return (
+    hasGroupAccess(baseStat, gid, 0o050) &&
+    hasGroupAccess(dirStat, gid, 0o050) &&
+    hasGroupAccess(fileStat, gid, 0o040)
+  );
+}
+
 function chownRecursive(root, uid, gid) {
   if (!fs.existsSync(root)) return;
   const stat = fs.lstatSync(root);
@@ -455,6 +482,7 @@ async function runReleaseExpectFail({ releaseDir, runTimeoutMs, expectCode, uid,
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
 
+  let capturedLogs = null;
   const exitInfo = await withSealedBinary({
     label: "sentinel",
     releaseDir,
@@ -467,7 +495,8 @@ async function runReleaseExpectFail({ releaseDir, runTimeoutMs, expectCode, uid,
     captureOutput: true,
     uid,
     gid,
-  }, async ({ port, readyFile, exitInfo: exitPromise }) => {
+  }, async ({ port, readyFile, exitInfo: exitPromise, logs }) => {
+    capturedLogs = logs;
     const readyPromise = waitForReadyVerified({ port, readyFile, timeoutMs: runTimeoutMs });
     const winner = await withTimeout("waitForExit", runTimeoutMs, () => Promise.race([
       exitPromise.then((info) => ({ type: "exit", info })),
@@ -481,7 +510,10 @@ async function runReleaseExpectFail({ releaseDir, runTimeoutMs, expectCode, uid,
 
   const { code } = exitInfo || {};
   if (expectCode !== undefined && expectCode !== null) {
-    assert.strictEqual(code, expectCode);
+    if (code !== expectCode) {
+      const output = capturedLogs ? capturedLogs.format() : "";
+      throw new Error(`Expected exit code ${expectCode}, got ${code}${output}`);
+    }
   } else {
     assert.ok(code !== 0, "Expected non-zero exit code");
   }
@@ -498,6 +530,7 @@ async function runReleaseExpectExpire({
   const binPath = path.join(releaseDir, "seal-example");
   assert.ok(fs.existsSync(binPath), `Missing binary: ${binPath}`);
 
+  let capturedLogs = null;
   const exitInfo = await withSealedBinary({
     label: "sentinel",
     releaseDir,
@@ -508,7 +541,8 @@ async function runReleaseExpectExpire({
     waitForReady: requireReady,
     failOnExit: false,
     captureOutput: true,
-  }, async ({ exitInfo: exitPromise, readyFile, ready }) => {
+  }, async ({ exitInfo: exitPromise, readyFile, ready, logs }) => {
+    capturedLogs = logs;
     if (requireReady && readyFile) {
       const payload = await readReadyPayload(readyFile, ready, 1000);
       if (!payload) {
@@ -520,7 +554,10 @@ async function runReleaseExpectExpire({
 
   const { code } = exitInfo || {};
   if (expectCode !== undefined && expectCode !== null) {
-    assert.strictEqual(code, expectCode);
+    if (code !== expectCode) {
+      const output = capturedLogs ? capturedLogs.format() : "";
+      throw new Error(`Expected exit code ${expectCode}, got ${code}${output}`);
+    }
   } else {
     assert.ok(code !== 0, "Expected non-zero exit code");
   }
@@ -582,49 +619,63 @@ async function testSentinelBasics(ctx) {
         fs.chmodSync(path.join(releaseDir, "seal-example"), 0o755);
       } catch {}
       try {
-        fs.chownSync(baseDir, 0, nonRoot.gid);
-        fs.chmodSync(baseDir, 0o710);
-      } catch {}
-      installSentinelBlob({
-        baseDir,
-        namespaceId,
-        appId,
-        level: 1,
-        mid,
-        cpuid,
-        dirMode: 0o710,
-        dirGroup: nonRoot.gid,
-      });
-      await runReleaseExpectFail({
-        releaseDir,
-        runTimeoutMs: ctx.runTimeoutMs,
-        expectCode: 222,
-        uid: nonRoot.uid,
-        gid: nonRoot.gid,
-      });
+        try {
+          fs.chownSync(baseDir, 0, nonRoot.gid);
+          fs.chmodSync(baseDir, 0o710);
+        } catch {}
+        installSentinelBlob({
+          baseDir,
+          namespaceId,
+          appId,
+          level: 1,
+          mid,
+          cpuid,
+          dirMode: 0o710,
+          dirGroup: nonRoot.gid,
+        });
+        await runReleaseExpectFail({
+          releaseDir,
+          runTimeoutMs: ctx.runTimeoutMs,
+          expectCode: 222,
+          uid: nonRoot.uid,
+          gid: nonRoot.gid,
+        });
 
-      log("Case: sentinel dir group-readable -> expect OK for non-root");
-      try {
-        fs.chmodSync(baseDir, 0o750);
-      } catch {}
-      installSentinelBlob({
-        baseDir,
-        namespaceId,
-        appId,
-        level: 1,
-        mid,
-        cpuid,
-        dirMode: 0o750,
-        dirGroup: nonRoot.gid,
-      });
-      await runReleaseExpectOk({
-        releaseDir,
-        buildId,
-        runTimeoutMs: ctx.runTimeoutMs,
-        uid: nonRoot.uid,
-        gid: nonRoot.gid,
-      });
-      chownRecursive(outRoot, 0, 0);
+        log("Case: sentinel dir group-readable -> expect OK for non-root");
+        try {
+          fs.chmodSync(baseDir, 0o750);
+        } catch {}
+        const groupFile = installSentinelBlob({
+          baseDir,
+          namespaceId,
+          appId,
+          level: 1,
+          mid,
+          cpuid,
+          dirMode: 0o750,
+          dirGroup: nonRoot.gid,
+        });
+        if (!canUseGroupAccess(baseDir, groupFile, nonRoot.gid)) {
+          log("SKIP: unable to set group-readable sentinel dir; skipping non-root OK case");
+        } else {
+          await runReleaseExpectOk({
+            releaseDir,
+            buildId,
+            runTimeoutMs: ctx.runTimeoutMs,
+            uid: nonRoot.uid,
+            gid: nonRoot.gid,
+          });
+        }
+      } catch (e) {
+        const msg = e && e.message ? e.message : String(e);
+        if (/spawn failed:.*EACCES/i.test(msg)) {
+          log("SKIP: non-root exec denied (EACCES); skipping permission checks");
+        } else {
+          throw e;
+        }
+      } finally {
+        chownRecursive(outRoot, 0, 0);
+      }
     }
 
     log("Case: mismatched machine-id -> expect fail");
@@ -954,7 +1005,7 @@ async function testSentinelExternalAnchorUnsupported(ctx) {
       );
     } catch (e) {
       const msg = e && e.message ? e.message : String(e);
-      if (!/externalAnchor.*not supported/i.test(msg)) {
+      if (!/externalAnchor.*requires level=4/i.test(msg)) {
         throw e;
       }
       threw = true;

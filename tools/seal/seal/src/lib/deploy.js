@@ -14,7 +14,12 @@ const { info, warn, err, ok, hr } = require("./ui");
 const { normalizeRetention, filterReleaseNames, computeKeepSet } = require("./retention");
 const { getTarRoot } = require("./tarSafe");
 const { normalizeThinMode } = require("./packagerConfig");
-const { THIN_NATIVE_BOOTSTRAP_FILE } = require("./thinPaths");
+const {
+  THIN_NATIVE_BOOTSTRAP_FILE,
+  THIN_TPM_SEAL_PUB_FILE,
+  THIN_TPM_SEAL_PRIV_FILE,
+} = require("./thinPaths");
+const { normalizeSystemdHardening, renderSystemdHardening } = require("./systemdHardening");
 
 function expandHome(p) {
   if (!p) return p;
@@ -315,6 +320,14 @@ function writeServiceFile(targetCfg, layout) {
   const name = targetCfg.serviceName || targetCfg.appName || "app";
   const scope = (targetCfg.serviceScope || "user").toLowerCase();
   const { user: serviceUser, group: serviceGroup } = localServiceUserGroup(targetCfg);
+  const hardeningCfg = normalizeSystemdHardening(targetCfg?.deploy?.systemdHardening ?? targetCfg?.systemdHardening);
+  if (hardeningCfg.enabled && scope === "user") {
+    warn("systemdHardening enabled for serviceScope=user; some directives may be ignored. Use serviceScope=system for full hardening.");
+  }
+  const hardening = renderSystemdHardening({
+    config: targetCfg?.deploy?.systemdHardening ?? targetCfg?.systemdHardening,
+    installDir: layout.installDir,
+  });
   const userGroupLines = (scope === "system" && (serviceUser || serviceGroup))
     ? [serviceUser ? `User=${serviceUser}` : null, serviceGroup ? `Group=${serviceGroup}` : null].filter(Boolean).join("\n") + "\n"
     : "";
@@ -333,6 +346,7 @@ RestartSec=1
 StandardOutput=journal
 StandardError=journal
 
+${hardening}
 [Install]
 WantedBy=default.target
 `;
@@ -367,7 +381,10 @@ function extractArtifactToLocal(layout, artifactPath) {
 
   // Use system tar for speed and compatibility
   const res = spawnSyncSafe("tar", ["-xzf", artifactPath, "-C", layout.releasesDir], { stdio: "inherit" });
-  if (!res.ok) throw new Error(`tar extract failed (status=${res.status})`);
+  if (!res.ok) {
+    const hint = "Artifact appears corrupted or incomplete. Rebuild and re-run seal ship, or re-upload with seal deploy --artifact <file>.";
+    throw new Error(`tar extract failed (status=${res.status ?? "?"}). ${hint}`);
+  }
 
   return path.join(layout.releasesDir, root);
 }
@@ -382,6 +399,8 @@ function applyThinBootstrapLocal(layout, extractedDir, opts = {}) {
   const ihSrc = path.join(extractedDir, "r", integrityFile);
   const nvSrc = path.join(extractedDir, "r", THIN_RUNTIME_VERSION_FILE);
   const nbSrc = path.join(extractedDir, "r", THIN_NATIVE_BOOTSTRAP_FILE);
+  const tpmPubSrc = path.join(extractedDir, "r", THIN_TPM_SEAL_PUB_FILE);
+  const tpmPrivSrc = path.join(extractedDir, "r", THIN_TPM_SEAL_PRIV_FILE);
 
   if (!fileExists(launcherSrc)) throw new Error(`Missing thin launcher: ${launcherSrc}`);
   if (!fileExists(rtSrc)) throw new Error(`Missing thin runtime: ${rtSrc}`);
@@ -414,6 +433,16 @@ function applyThinBootstrapLocal(layout, extractedDir, opts = {}) {
       rmrf(path.join(rDir, THIN_NATIVE_BOOTSTRAP_FILE));
     }
   }
+  if (fileExists(tpmPubSrc)) {
+    copyAtomic(tpmPubSrc, path.join(rDir, THIN_TPM_SEAL_PUB_FILE), 0o644);
+  } else if (!onlyPayload) {
+    rmrf(path.join(rDir, THIN_TPM_SEAL_PUB_FILE));
+  }
+  if (fileExists(tpmPrivSrc)) {
+    copyAtomic(tpmPrivSrc, path.join(rDir, THIN_TPM_SEAL_PRIV_FILE), 0o600);
+  } else if (!onlyPayload) {
+    rmrf(path.join(rDir, THIN_TPM_SEAL_PRIV_FILE));
+  }
   if (fileExists(ihSrc)) {
     copyAtomic(ihSrc, path.join(rDir, integrityFile), 0o644);
   } else if (!onlyPayload) {
@@ -428,6 +457,8 @@ function cleanupThinBootstrapLocal(layout, opts = {}) {
   rmrf(path.join(layout.installDir, "r", "pl"));
   rmrf(path.join(layout.installDir, "r", "c"));
   rmrf(path.join(layout.installDir, "r", THIN_NATIVE_BOOTSTRAP_FILE));
+  rmrf(path.join(layout.installDir, "r", THIN_TPM_SEAL_PUB_FILE));
+  rmrf(path.join(layout.installDir, "r", THIN_TPM_SEAL_PRIV_FILE));
   rmrf(path.join(layout.installDir, "r", integrityFile));
   rmrf(path.join(layout.installDir, "r", THIN_RUNTIME_VERSION_FILE));
 }

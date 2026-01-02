@@ -10,6 +10,25 @@
 
 ---
 
+## Spis treści
+
+- 0. Jak czytać ten dokument
+- 1. Założenia i granice standardu
+- 2. Moduł `logging` (CORE, MUST)
+- 3. Moduł `config` (CORE, MUST)
+- 4. Moduł `status` (CORE, MUST)
+- 5. Moduł `service` (CORE, MUST)
+- 6. Moduł `ops` (CORE, MUST)
+- 7. Moduł `ui_resilience` (WARUNKOWY, MUST jeśli UI istnieje)
+- 8. Moduł `integrations` (WARUNKOWY, SHOULD jeśli integracje istnieją)
+- 9. Moduł `diagnostics` (SHOULD)
+- 9b. Dodatkowe standardy (SHOULD)
+- 10. Moduł `testing` (SHOULD)
+- 11. Minimalny „kontrakt dla AI” (wersja promptable)
+- 12. Changelog
+
+---
+
 ## 0. Jak czytać ten dokument
 
 ### 0.1. Modalności

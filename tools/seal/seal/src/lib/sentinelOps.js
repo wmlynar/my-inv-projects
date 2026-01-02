@@ -23,6 +23,7 @@ const FLAG_REQUIRE_XATTR = 0x0001;
 const FLAG_L4_INCLUDE_PUID = 0x0002;
 const FLAG_INCLUDE_CPUID = 0x0004;
 const TMPDIR_EXPR = "${SEAL_TMPDIR:-${TMPDIR:-$PWD}}";
+const MAX_ANCHOR_FILE_BYTES = 4096;
 
 function shQuote(value) {
   const str = String(value);
@@ -153,6 +154,376 @@ function parseUsbDevices(text) {
     });
   }
   return rows;
+}
+
+function sha256Hex(buf) {
+  return crypto.createHash("sha256").update(buf).digest("hex");
+}
+
+function normalizeHexDigest(value, label) {
+  const hex = String(value || "").trim().toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(hex)) {
+    throw new Error(`${label} invalid: ${value}`);
+  }
+  return hex;
+}
+
+function buildUsbAnchorBytes(usbCfg) {
+  const serial = usbCfg.serial || "";
+  const text = `usb\nvid=${usbCfg.vid}\npid=${usbCfg.pid}\nserial=${serial}\n`;
+  return Buffer.from(text, "utf8");
+}
+
+function probeUsbAnchorSsh(targetCfg, usbCfg) {
+  const { user, host } = sshUserHost(targetCfg);
+  const script = `
+set -euo pipefail
+VID=${shQuote(usbCfg.vid)}
+PID=${shQuote(usbCfg.pid)}
+SER=${shQuote(usbCfg.serial || "")}
+FOUND=0
+MATCH_SERIAL=""
+for d in /sys/bus/usb/devices/*; do
+  [ -d "$d" ] || continue
+  vid="$(cat "$d/idVendor" 2>/dev/null || true)"
+  pid="$(cat "$d/idProduct" 2>/dev/null || true)"
+  [ -n "$vid$pid" ] || continue
+  vid="$(echo "$vid" | tr 'A-Z' 'a-z' | tr -d '\\r\\n\\t ')"
+  pid="$(echo "$pid" | tr 'A-Z' 'a-z' | tr -d '\\r\\n\\t ')"
+  if [ "$vid" != "$VID" ] || [ "$pid" != "$PID" ]; then
+    continue
+  fi
+  serial="$(cat "$d/serial" 2>/dev/null || true)"
+  serial="$(echo "$serial" | tr -d '\\r\\n')"
+  if [ -n "$SER" ] && [ "$serial" != "$SER" ]; then
+    continue
+  fi
+  FOUND=1
+  MATCH_SERIAL="$serial"
+  break
+done
+echo "FOUND=$FOUND"
+echo "SERIAL=$MATCH_SERIAL"
+`;
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-c", script], stdio: "pipe" });
+  if (!res.ok) {
+    const out = `${res.stdout}\n${res.stderr}`.trim();
+    throw new Error(`sentinel usb anchor probe failed (status=${res.status})${formatSshFailure(res) || (out ? `: ${out}` : "")}`);
+  }
+  const kv = parseKeyValueOutput(res.stdout);
+  return { found: kv.FOUND === "1", serial: kv.SERIAL || "" };
+}
+
+function probeFileAnchorSsh(targetCfg, filePath) {
+  const { user, host } = sshUserHost(targetCfg);
+  const script = `
+set -euo pipefail
+FILE=${shQuote(filePath)}
+SUDO=""
+if [ ! -e "$FILE" ]; then
+  echo "__SEAL_FILE_MISSING__"
+  exit 2
+fi
+if [ -L "$FILE" ]; then
+  echo "__SEAL_FILE_SYMLINK__"
+  exit 2
+fi
+if [ ! -r "$FILE" ]; then
+  if command -v sudo >/dev/null 2>&1 && sudo -n test -r "$FILE" >/dev/null 2>&1; then
+    SUDO="sudo -n"
+  else
+    echo "__SEAL_FILE_NO_READ__"
+    exit 3
+  fi
+fi
+if [ ! -f "$FILE" ]; then
+  echo "__SEAL_FILE_NOT_FILE__"
+  exit 2
+fi
+HASH_TOOL=""
+if command -v sha256sum >/dev/null 2>&1; then
+  HASH_TOOL="sha256sum"
+elif command -v shasum >/dev/null 2>&1; then
+  HASH_TOOL="shasum -a 256"
+elif command -v openssl >/dev/null 2>&1; then
+  HASH_TOOL="openssl dgst -sha256"
+fi
+if [ -z "$HASH_TOOL" ]; then
+  echo "__SEAL_HASH_TOOL_MISSING__"
+  exit 4
+fi
+SIZE="$($SUDO stat -Lc '%s' "$FILE" 2>/dev/null || true)"
+if [ -z "$SIZE" ]; then
+  echo "__SEAL_FILE_STAT__"
+  exit 4
+fi
+HASH="$($SUDO $HASH_TOOL "$FILE" 2>/dev/null | awk '{print $NF}')"
+if [ -z "$HASH" ]; then
+  echo "__SEAL_HASH_FAIL__"
+  exit 4
+fi
+echo "SIZE=$SIZE"
+echo "SHA256=$HASH"
+echo "SUDO=\${SUDO:+1}"
+`;
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-c", script], stdio: "pipe" });
+  const out = `${res.stdout}\n${res.stderr}`.trim();
+  if (!res.ok) {
+    if (out.includes("__SEAL_FILE_MISSING__")) throw new Error(`sentinel file anchor missing: ${filePath}`);
+    if (out.includes("__SEAL_FILE_SYMLINK__")) throw new Error(`sentinel file anchor is symlink: ${filePath}`);
+    if (out.includes("__SEAL_FILE_NOT_FILE__")) throw new Error(`sentinel file anchor is not a file: ${filePath}`);
+    if (out.includes("__SEAL_FILE_NO_READ__")) throw new Error(`sentinel file anchor not readable: ${filePath}`);
+    if (out.includes("__SEAL_HASH_TOOL_MISSING__")) throw new Error("sentinel file anchor requires sha256sum/shasum/openssl");
+    if (out.includes("__SEAL_HASH_FAIL__")) throw new Error("sentinel file anchor hash failed");
+    if (out.includes("__SEAL_FILE_STAT__")) throw new Error("sentinel file anchor stat failed");
+    throw new Error(`sentinel file anchor probe failed (status=${res.status})${formatSshFailure(res) || (out ? `: ${out}` : "")}`);
+  }
+  const kv = parseKeyValueOutput(res.stdout);
+  const size = Number(kv.SIZE || "");
+  if (!Number.isFinite(size) || size < 0) {
+    throw new Error(`sentinel file anchor size invalid: ${kv.SIZE}`);
+  }
+  const shaHex = normalizeHexDigest(kv.SHA256, "sentinel file anchor sha256");
+  return { size, sha256: shaHex, sudo: kv.SUDO === "1" };
+}
+
+function probeLeaseAnchorSsh(targetCfg, leaseCfg) {
+  const { user, host } = sshUserHost(targetCfg);
+  const url = leaseCfg && leaseCfg.url ? String(leaseCfg.url) : "";
+  const timeoutMs = leaseCfg && Number.isFinite(Number(leaseCfg.timeoutMs)) ? Number(leaseCfg.timeoutMs) : 1500;
+  const maxBytes = leaseCfg && Number.isFinite(Number(leaseCfg.maxBytes)) ? Number(leaseCfg.maxBytes) : MAX_ANCHOR_FILE_BYTES;
+  const script = `
+set -euo pipefail
+URL=${shQuote(url)}
+TIMEOUT_MS=${shQuote(timeoutMs)}
+MAX_BYTES=${shQuote(maxBytes)}
+
+if [ -z "$URL" ]; then
+  echo "__SEAL_LEASE_URL_EMPTY__"
+  exit 4
+fi
+
+tmp_root="\${TMPDIR:-/tmp}"
+DIR="$(mktemp -d "$tmp_root/.seal-lease-XXXXXX")"
+FILE="$DIR/lease"
+cleanup() {
+  rm -rf "$DIR"
+}
+trap cleanup EXIT
+
+tm_ms="$TIMEOUT_MS"
+tm_s="$((tm_ms / 1000))"
+if [ "$tm_s" -le 0 ]; then tm_s=1; fi
+
+STATUS=""
+if command -v curl >/dev/null 2>&1; then
+  STATUS="$(curl -sS -o "$FILE" -w "%{http_code}" --max-time "$tm_s" "$URL" 2>/dev/null || true)"
+elif command -v wget >/dev/null 2>&1; then
+  if wget -q -O "$FILE" --timeout="$tm_s" "$URL" 2>/dev/null; then
+    STATUS="200"
+  else
+    STATUS="000"
+  fi
+else
+  echo "__SEAL_LEASE_TOOL_MISSING__"
+  exit 4
+fi
+
+if [ -z "$STATUS" ] || [ "$STATUS" = "000" ]; then
+  echo "__SEAL_LEASE_FETCH__"
+  exit 4
+fi
+if [ "$STATUS" -lt 200 ] || [ "$STATUS" -ge 300 ]; then
+  echo "__SEAL_LEASE_STATUS__:$STATUS"
+  exit 4
+fi
+
+SIZE="$(stat -Lc '%s' "$FILE" 2>/dev/null || true)"
+if [ -z "$SIZE" ]; then
+  echo "__SEAL_LEASE_STAT__"
+  exit 4
+fi
+if [ "$SIZE" -le 0 ]; then
+  echo "__SEAL_LEASE_EMPTY__"
+  exit 4
+fi
+if [ "$MAX_BYTES" -gt 0 ] && [ "$SIZE" -gt "$MAX_BYTES" ]; then
+  echo "__SEAL_LEASE_TOO_LARGE__:$SIZE"
+  exit 4
+fi
+
+HASH_TOOL=""
+if command -v sha256sum >/dev/null 2>&1; then
+  HASH_TOOL="sha256sum"
+elif command -v shasum >/dev/null 2>&1; then
+  HASH_TOOL="shasum"
+elif command -v openssl >/dev/null 2>&1; then
+  HASH_TOOL="openssl"
+fi
+if [ -z "$HASH_TOOL" ]; then
+  echo "__SEAL_HASH_TOOL_MISSING__"
+  exit 4
+fi
+
+HASH=""
+if [ "$HASH_TOOL" = "sha256sum" ]; then
+  HASH="$(sha256sum "$FILE" 2>/dev/null | awk '{print $1}')"
+elif [ "$HASH_TOOL" = "shasum" ]; then
+  HASH="$(shasum -a 256 "$FILE" 2>/dev/null | awk '{print $1}')"
+else
+  HASH="$(openssl dgst -sha256 "$FILE" 2>/dev/null | awk '{print $NF}')"
+fi
+if [ -z "$HASH" ]; then
+  echo "__SEAL_HASH_FAIL__"
+  exit 4
+fi
+echo "SIZE=$SIZE"
+echo "SHA256=$HASH"
+`;
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-c", script], stdio: "pipe" });
+  const out = `${res.stdout}\n${res.stderr}`.trim();
+  if (!res.ok) {
+    if (out.includes("__SEAL_LEASE_URL_EMPTY__")) throw new Error("sentinel lease url empty");
+    if (out.includes("__SEAL_LEASE_TOOL_MISSING__")) throw new Error("sentinel lease requires curl or wget");
+    if (out.includes("__SEAL_LEASE_FETCH__")) throw new Error("sentinel lease fetch failed");
+    if (out.includes("__SEAL_LEASE_STATUS__")) {
+      const match = out.match(/__SEAL_LEASE_STATUS__:(\d+)/);
+      const code = match ? match[1] : "?";
+      throw new Error(`sentinel lease HTTP error (${code})`);
+    }
+    if (out.includes("__SEAL_LEASE_STAT__")) throw new Error("sentinel lease stat failed");
+    if (out.includes("__SEAL_LEASE_EMPTY__")) throw new Error("sentinel lease empty body");
+    if (out.includes("__SEAL_LEASE_TOO_LARGE__")) {
+      const match = out.match(/__SEAL_LEASE_TOO_LARGE__:(\d+)/);
+      const size = match ? match[1] : "?";
+      throw new Error(`sentinel lease too large (${size} bytes)`);
+    }
+    if (out.includes("__SEAL_HASH_TOOL_MISSING__")) throw new Error("sentinel lease requires sha256sum/shasum/openssl");
+    if (out.includes("__SEAL_HASH_FAIL__")) throw new Error("sentinel lease hash failed");
+    throw new Error(`sentinel lease probe failed (status=${res.status})${formatSshFailure(res) || (out ? `: ${out}` : "")}`);
+  }
+  const kv = parseKeyValueOutput(res.stdout);
+  const size = Number(kv.SIZE || "");
+  if (!Number.isFinite(size) || size <= 0) {
+    throw new Error(`sentinel lease size invalid: ${kv.SIZE}`);
+  }
+  const shaHex = normalizeHexDigest(kv.SHA256, "sentinel lease sha256");
+  return { size, sha256: shaHex };
+}
+
+function probeTpm2AnchorSsh(targetCfg, tpm2Cfg) {
+  const { user, host } = sshUserHost(targetCfg);
+  const bank = tpm2Cfg && tpm2Cfg.bank ? String(tpm2Cfg.bank) : "sha256";
+  const pcrs = tpm2Cfg && Array.isArray(tpm2Cfg.pcrs) ? tpm2Cfg.pcrs : [0, 2, 4, 7];
+  const pcrList = pcrs.map((p) => String(p)).join(",");
+  const script = `
+set -euo pipefail
+BANK=${shQuote(bank)}
+PCRS=${shQuote(pcrList)}
+
+if ! command -v tpm2_pcrread >/dev/null 2>&1; then
+  echo "__SEAL_TPM_TOOL_MISSING__"
+  exit 4
+fi
+if [ ! -e /dev/tpm0 ] && [ ! -d /sys/class/tpm/tpm0 ]; then
+  echo "__SEAL_TPM_MISSING__"
+  exit 4
+fi
+
+OUT="$(tpm2_pcrread "$BANK:$PCRS" 2>/dev/null || true)"
+if [ -z "$OUT" ]; then
+  echo "__SEAL_TPM_READ_FAIL__"
+  exit 4
+fi
+
+HASHES="$(echo "$OUT" | grep -o '0x[0-9a-fA-F]\\{32,\\}' | sed 's/^0x//')"
+if [ -z "$HASHES" ]; then
+  echo "__SEAL_TPM_PARSE_FAIL__"
+  exit 4
+fi
+COMBINED="$(echo "$HASHES" | tr -d '\\n')"
+if [ -z "$COMBINED" ]; then
+  echo "__SEAL_TPM_PARSE_FAIL__"
+  exit 4
+fi
+
+HASH_TOOL=""
+if command -v sha256sum >/dev/null 2>&1; then
+  HASH_TOOL="sha256sum"
+elif command -v shasum >/dev/null 2>&1; then
+  HASH_TOOL="shasum"
+elif command -v openssl >/dev/null 2>&1; then
+  HASH_TOOL="openssl"
+fi
+if [ -z "$HASH_TOOL" ]; then
+  echo "__SEAL_HASH_TOOL_MISSING__"
+  exit 4
+fi
+
+HASH=""
+if [ "$HASH_TOOL" = "sha256sum" ]; then
+  HASH="$(printf '%s' "$COMBINED" | sha256sum 2>/dev/null | awk '{print $1}')"
+elif [ "$HASH_TOOL" = "shasum" ]; then
+  HASH="$(printf '%s' "$COMBINED" | shasum -a 256 2>/dev/null | awk '{print $1}')"
+else
+  HASH="$(printf '%s' "$COMBINED" | openssl dgst -sha256 2>/dev/null | awk '{print $NF}')"
+fi
+if [ -z "$HASH" ]; then
+  echo "__SEAL_HASH_FAIL__"
+  exit 4
+fi
+echo "PCRS=$PCRS"
+echo "SHA256=$HASH"
+`;
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash", "-c", script], stdio: "pipe" });
+  const out = `${res.stdout}\n${res.stderr}`.trim();
+  if (!res.ok) {
+    if (out.includes("__SEAL_TPM_TOOL_MISSING__")) throw new Error("sentinel tpm2 requires tpm2_pcrread");
+    if (out.includes("__SEAL_TPM_MISSING__")) throw new Error("sentinel tpm2 device missing");
+    if (out.includes("__SEAL_TPM_READ_FAIL__")) throw new Error("sentinel tpm2 read failed");
+    if (out.includes("__SEAL_TPM_PARSE_FAIL__")) throw new Error("sentinel tpm2 parse failed");
+    if (out.includes("__SEAL_HASH_TOOL_MISSING__")) throw new Error("sentinel tpm2 requires sha256sum/shasum/openssl");
+    if (out.includes("__SEAL_HASH_FAIL__")) throw new Error("sentinel tpm2 hash failed");
+    throw new Error(`sentinel tpm2 probe failed (status=${res.status})${formatSshFailure(res) || (out ? `: ${out}` : "")}`);
+  }
+  const kv = parseKeyValueOutput(res.stdout);
+  const shaHex = normalizeHexDigest(kv.SHA256, "sentinel tpm2 sha256");
+  return { bank, pcrs: pcrs.slice(), sha256: shaHex };
+}
+
+function resolveExternalAnchorEahSsh({ targetCfg, sentinelCfg }) {
+  const ext = sentinelCfg && sentinelCfg.externalAnchor ? sentinelCfg.externalAnchor : { type: "none" };
+  const type = String(ext.type || "none").toLowerCase();
+  if (type === "none") return { type: "none", eah: "" };
+  if (type === "usb") {
+    const usbCfg = ext.usb || {};
+    const probe = probeUsbAnchorSsh(targetCfg, usbCfg);
+    if (!probe.found) {
+      throw new Error(`sentinel usb anchor not found (vid=${usbCfg.vid}, pid=${usbCfg.pid})`);
+    }
+    const anchorBytes = buildUsbAnchorBytes(usbCfg);
+    return { type: "usb", eah: sha256Hex(anchorBytes) };
+  }
+  if (type === "file") {
+    const fileCfg = ext.file || {};
+    const info = probeFileAnchorSsh(targetCfg, fileCfg.path);
+    let eah = info.sha256;
+    if (info.size > MAX_ANCHOR_FILE_BYTES) {
+      eah = sha256Hex(Buffer.from(info.sha256, "hex"));
+    }
+    return { type: "file", eah, size: info.size, sudo: info.sudo };
+  }
+  if (type === "lease") {
+    const leaseCfg = ext.lease || {};
+    const info = probeLeaseAnchorSsh(targetCfg, leaseCfg);
+    return { type: "lease", eah: info.sha256, size: info.size };
+  }
+  if (type === "tpm2") {
+    const tpm2Cfg = ext.tpm2 || {};
+    const info = probeTpm2AnchorSsh(targetCfg, tpm2Cfg);
+    return { type: "tpm2", eah: info.sha256, bank: info.bank, pcrs: info.pcrs };
+  }
+  throw new Error(`sentinel externalAnchor not supported: ${type}`);
 }
 
 function flattenLsblk(node, parent) {
@@ -677,12 +1048,28 @@ function installSentinelSsh({ targetCfg, sentinelCfg, force, insecure, skipVerif
   const timeLimit = sentinelCfg && sentinelCfg.timeLimit ? sentinelCfg.timeLimit : { mode: "off" };
   const needsNow = timeLimit.mode && timeLimit.mode !== "off";
   const nowSec = needsNow ? getEpochSecondsSsh(targetCfg) : null;
-  const level = sentinelCfg.level === "auto" ? resolveAutoLevel(hostInfo) : Number(sentinelCfg.level);
-  if (![0, 1, 2].includes(level)) {
-    throw new Error(`sentinel level not supported in MVP: ${level}`);
+  const externalAnchor = sentinelCfg.externalAnchor || { type: "none" };
+  const hasExternalAnchor = externalAnchor.type && externalAnchor.type !== "none";
+  let level = sentinelCfg.level === "auto" ? resolveAutoLevel(hostInfo) : Number(sentinelCfg.level);
+  if (sentinelCfg.level === "auto" && hasExternalAnchor) {
+    level = 4;
+  }
+  if (hasExternalAnchor && level !== 4) {
+    throw new Error("sentinel externalAnchor requires level=4");
+  }
+  if (!hasExternalAnchor && level === 4) {
+    throw new Error("sentinel level=4 requires externalAnchor");
+  }
+  if (![0, 1, 2, 3, 4].includes(level)) {
+    throw new Error(`sentinel level not supported: ${level}`);
   }
   if (level >= 1 && !hostInfo.mid) throw new Error("sentinel install failed: missing machine-id");
   if (level >= 2 && !hostInfo.rid) throw new Error("sentinel install failed: missing rid");
+  if (level === 3 && !hostInfo.puid) throw new Error("sentinel install failed: missing puid");
+  if (level === 4) {
+    const ext = resolveExternalAnchorEahSsh({ targetCfg, sentinelCfg });
+    hostInfo.eah = ext.eah;
+  }
 
   let flags = 0;
   let cpuid = "";
@@ -698,8 +1085,13 @@ function installSentinelSsh({ targetCfg, sentinelCfg, force, insecure, skipVerif
   hostInfo.cpuid = cpuid;
   const includeCpuId = level >= 1 && !!hostInfo.cpuid;
   if (includeCpuId) flags |= FLAG_INCLUDE_CPUID;
+  const includePuid = level === 4 && !!sentinelCfg.l4IncludePuid;
+  if (includePuid) {
+    if (!hostInfo.puid) throw new Error("sentinel install failed: missing puid for l4IncludePuid");
+    flags |= FLAG_L4_INCLUDE_PUID;
+  }
   const installId = crypto.randomBytes(32);
-  const fpHash = buildFingerprintHash(level, hostInfo, { includePuid: false, includeCpuId });
+  const fpHash = buildFingerprintHash(level, hostInfo, { includePuid, includeCpuId });
   const expiresAtSec = resolveExpiresAtSec({ sentinelCfg, nowSec });
   const blob = packBlob({ level, flags, installId, fpHash, expiresAtSec }, sentinelCfg.anchor);
 
@@ -911,7 +1303,7 @@ echo "NOW_EPOCH=$(date +%s)"
   if (![1, 2].includes(parsed.version)) {
     return { ok: false, reason: "version", parsed };
   }
-  if (![0, 1, 2].includes(parsed.level)) {
+  if (![0, 1, 2, 3, 4].includes(parsed.level)) {
     return { ok: false, reason: "level", parsed };
   }
 
@@ -925,6 +1317,23 @@ echo "NOW_EPOCH=$(date +%s)"
       hostInfo,
       require: true,
     });
+  }
+  if (parsed.level === 3 && !hostInfo.puid) {
+    return { ok: false, reason: "puid_missing", parsed, hostInfo };
+  }
+  if (parsed.level === 4) {
+    const ext = sentinelCfg && sentinelCfg.externalAnchor ? sentinelCfg.externalAnchor : { type: "none" };
+    if (!ext || ext.type === "none") {
+      return { ok: false, reason: "external_anchor_missing", parsed, hostInfo };
+    }
+    try {
+      hostInfo.eah = resolveExternalAnchorEahSsh({ targetCfg, sentinelCfg }).eah;
+    } catch (e) {
+      return { ok: false, reason: "external_anchor_missing", error: e.message, parsed, hostInfo };
+    }
+    if (includePuid && !hostInfo.puid) {
+      return { ok: false, reason: "puid_missing", parsed, hostInfo };
+    }
   }
   const fpHash = buildFingerprintHash(parsed.level, hostInfo, { includePuid, includeCpuId });
   const match = crypto.timingSafeEqual(parsed.fpHash, fpHash);
@@ -1039,7 +1448,16 @@ echo "__SEAL_SENTINEL_REMOVED__"
 function probeSentinelSsh({ targetCfg, sentinelCfg }) {
   const hostInfo = getHostInfoSsh(targetCfg);
   const base = probeBaseDirSsh(targetCfg, sentinelCfg);
-  return { hostInfo, base };
+  let externalAnchor = null;
+  if (sentinelCfg && sentinelCfg.externalAnchor && sentinelCfg.externalAnchor.type !== "none") {
+    try {
+      const res = resolveExternalAnchorEahSsh({ targetCfg, sentinelCfg });
+      externalAnchor = { type: res.type, ok: true };
+    } catch (e) {
+      externalAnchor = { type: sentinelCfg.externalAnchor.type, ok: false, error: e.message };
+    }
+  }
+  return { hostInfo, base, externalAnchor };
 }
 
 function inspectSentinelSsh({ targetCfg, sentinelCfg }) {

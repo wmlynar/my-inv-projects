@@ -11,7 +11,7 @@ const { log, fail } = createLogger("diag-e2e");
 const EXAMPLE_ROOT = resolveExampleRoot();
 
 function runDiag(target) {
-  const cliPath = path.join(__dirname, "..", "src", "cli.js");
+  const cliPath = path.join(__dirname, "..", "bin", "seal.js");
   const res = spawnSync(process.execPath, [cliPath, "diag", target], { cwd: EXAMPLE_ROOT, stdio: "pipe" });
   if (res.error) {
     throw new Error(res.error.message || String(res.error));

@@ -8,4 +8,9 @@
   serviceName: "seal-example-sandbox",
   packager: "auto",
   config: "local",
+  readiness: {
+    enabled: true,
+    mode: "both",
+    url: "http://127.0.0.1:3000/api/status",
+  },
 }
