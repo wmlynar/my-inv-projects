@@ -28,6 +28,11 @@ build: {
 - Plik jest dostępny na hoście runtime **przed** startem usługi.
 - Uprawnienia: preferuj `0400` lub `0440` (read-only).
 
+**Decision card (secret/USB/host-mount):**
+- Kiedy używać: offline, gdy możesz dostarczyć sekret poza obrazem VM.
+- Koszt operacyjny: musisz utrzymywać i rotować plik sekretu.
+- Failure modes: brak pliku lub zly sekret = `[thin] payload invalid`.
+
 **Test manualny:**
 - Brak sekretu → `[thin] payload invalid`.
 - Zły sekret → `[thin] payload invalid`.
@@ -65,6 +70,11 @@ command -v tpm2_unseal
 **Uwaga o PCR:** wartości PCR są **specyficzne dla hosta i boot‑chain**.
 Zmiana firmware/bootloadera może zmienić PCR → payload nie odszyfruje się.
 
+**Decision card (tpm2):**
+- Kiedy używać: gdy masz fizyczny TPM i chcesz mocne wiazanie do sprzetu.
+- Koszt operacyjny: wymaga TPM + tpm2-tools na buildzie i runtime.
+- Failure modes: zmiana PCR/firmware = brak unseal.
+
 **Recovery:** jeśli TPM/PCR się zmieniły → zbuduj nowy release na docelowej maszynie.
 
 ---
@@ -89,6 +99,11 @@ build: {
 **Rekomendacje:**
 - Preferuj `mac` zamiast `ip` (IP bywa dynamiczne).
 - Używaj statycznej konfiguracji sieciowej, jeśli bindujesz do IP.
+
+**Decision card (NIC bind):**
+- Kiedy używać: gdy potrzebujesz "lekiego" anti-copy bez TPM.
+- Koszt operacyjny: zmiana karty lub MAC = nowy release.
+- Failure modes: zmiana MAC/IP = `[thin] payload invalid`.
 
 **Check MAC/IP:**
 ```
@@ -133,6 +148,11 @@ build: {
 ```
 
 **Uwaga:** external anchor wymaga `level=4` — inaczej fail‑fast.
+
+**Decision card (external anchor):**
+- Kiedy używać: gdy chcesz twardo zablokowac start bez fizycznej kotwicy.
+- Koszt operacyjny: utrzymanie nośnika/plików poza obrazem VM.
+- Failure modes: brak kotwicy = `sentinel verify failed`.
 
 ---
 

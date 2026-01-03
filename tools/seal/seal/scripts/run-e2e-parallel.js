@@ -22,7 +22,7 @@ const {
   writeJsonSummaryReport,
 } = require("./e2e-report");
 const { loadE2EConfig, resolveE2ERoot, resolveE2EPaths, resolveRerunFrom, isPlanMode } = require("./e2e-runner-config");
-const { ensureDir, resolveRunContext, setupRunCleanup, removeDirSafe } = require("./e2e-runner-fs");
+const { ensureDir, resolveRunContext, setupRunCleanup, removeDirSafe, autoCleanE2ERoot, pruneE2EHistory } = require("./e2e-runner-fs");
 const {
   assertEscalated,
   makeRunId,
@@ -377,6 +377,14 @@ async function main() {
     ]),
     formatConfigLine([
       { key: "node_modules_root", value: env.SEAL_E2E_NODE_MODULES_ROOT || "<none>" },
+    ]),
+    formatConfigLine([
+      { key: "auto_clean", value: env.SEAL_E2E_AUTO_CLEAN || "0" },
+      { key: "disk_warn_gb", value: env.SEAL_E2E_SEAL_OUT_WARN_GB || "" },
+    ]),
+    formatConfigLine([
+      { key: "summary_keep", value: env.SEAL_E2E_SUMMARY_KEEP || "" },
+      { key: "log_keep", value: env.SEAL_E2E_LOG_KEEP || "" },
     ]),
   ].filter(Boolean);
   logEffectiveConfig(log, effectiveLines);
@@ -784,6 +792,27 @@ async function main() {
   });
 
   logE2EDiskSummary(env, { e2eRoot, log });
+  autoCleanE2ERoot({
+    env,
+    e2eRoot,
+    runLayout,
+    keepRuns,
+    keepTmp,
+    lockOwned,
+    log,
+  });
+  pruneE2EHistory({
+    env,
+    e2eRoot,
+    cacheRoot,
+    runLayout,
+    keepRuns,
+    keepTmp,
+    lockOwned,
+    summaryPath,
+    logDir: logRoot,
+    log,
+  });
 
   if (heartbeatTimer) {
     clearInterval(heartbeatTimer);

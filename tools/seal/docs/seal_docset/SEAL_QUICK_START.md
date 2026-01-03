@@ -15,6 +15,18 @@ SEAL działa wtedy jak „wizard”: wykrywa stan projektu i mówi **co zrobić 
 
 ---
 
+## Najczęstsze pomyłki (warto znać)
+
+- Brak toolchaina na buildzie → `seal check <target>` przed `seal release`.
+- Mylony `target` z `config` → pamiętaj: `target` to host, `config` to runtime config aplikacji.
+- `seal ship` na świeżym hoście bez `--bootstrap` → zakończy się błędami systemd/CHDIR.
+- Oczekiwanie cross-builda → v0.5 zakłada build na platformie docelowej (zob. `SEAL_COMPATIBILITY.md`).
+- Brak `config.runtime.json5` w runtime → skopiuj z `seal-config/configs/<config>.json5` lub użyj `seal run-local`.
+
+Szybkie linki: `SEAL_PITFALLS.md` + `SEAL_TROUBLESHOOTING.md`.
+
+---
+
 ## 1) Wymagania
 
 ### Na komputerze deweloperskim

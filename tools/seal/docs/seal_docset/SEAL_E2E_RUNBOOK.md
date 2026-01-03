@@ -49,6 +49,10 @@ nie sprzatac. Ponizej jest lista bledow, napraw oraz zasad zapobiegania.
   gdy run jest zajety, robi fallback do `concurrent-runs/<run-id>` i loguje ostrzezenie.
 - W trybie `concurrent` powstaje `concurrent-runs/<run-id>`, a po runie sprzatane sa `tmp/` i `workers/`.
 - `SEAL_E2E_GC=1` jest opcjonalne i sluzy do czyszczenia starych `concurrent-runs/` (uruchamiaj gdy nie ma aktywnych concurrent runow).
+- `SEAL_E2E_AUTO_CLEAN=1` (domyslnie) usuwa `run/*` poza `logs/` oraz `cache/e2e-home`,
+  gdy `seal-out/` przekracza prog `SEAL_E2E_SEAL_OUT_WARN_GB`.
+- `SEAL_E2E_SUMMARY_KEEP` i `SEAL_E2E_LOG_KEEP` utrzymuja ostatnie N podsumowan/logow
+  (retencja tylko w trybie shared, bez rownoleglego runu).
 
 ### Zasady na przyszlosc (obowiazkowe)
 
@@ -59,6 +63,7 @@ nie sprzatac. Ponizej jest lista bledow, napraw oraz zasad zapobiegania.
 - `SEAL_E2E_RUN_MODE=single` jest domyslny; `parallel` wlaczaj tylko gdy jest potrzebny.
 - Zewnetrzny tmp wymaga `SEAL_E2E_TMP_ALLOW_EXTERNAL=1` i powinien byc wyjatkiem.
 - Nie wlaczaj `SEAL_E2E_KEEP_RUNS` i `SEAL_E2E_KEEP_TMP` na stale; to flagi tylko do debugowania.
+- Gdy potrzebujesz pelnych artefaktow, ustaw `SEAL_E2E_KEEP_RUNS=1` lub tymczasowo `SEAL_E2E_AUTO_CLEAN=0`.
 - Po debugowaniu zawsze sprzataj: `rm -rf tools/seal/example/seal-out/e2e/run tools/seal/example/seal-out/e2e/concurrent-runs`.
 - Alternatywnie: `seal clean runs` (tylko project).
 - Regularnie monitoruj rozmiar: `du -sh tools/seal/example/seal-out/e2e`.

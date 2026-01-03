@@ -106,6 +106,10 @@ Jesli root jest pusty, cache root spada do `~/.cache/seal`.
 - `SEAL_E2E_KEEP_TMP=1` - zostawia tmp.
 - `SEAL_E2E_KEEP_RUNS=1` - zostawia `run/` lub `concurrent-runs/<run-id>`.
 - `SEAL_E2E_GC=1` - usuwa stare `concurrent-runs` na starcie (opcjonalnie; tylko gdy nie ma aktywnych concurrent runow).
+- `SEAL_E2E_AUTO_CLEAN=1` - po runie usuwa `run/*` poza `logs/` oraz `cache/e2e-home`,
+  gdy `seal-out/` przekracza prog `SEAL_E2E_SEAL_OUT_WARN_GB`.
+- `SEAL_E2E_SUMMARY_KEEP` i `SEAL_E2E_LOG_KEEP` - retencja podsumowan i logow
+  (przy shared layout, gdy run nie jest rownolegle zajety).
 
 ### Override sciezek
 - `SEAL_E2E_CACHE_DIR`, `SEAL_E2E_CACHE_BIN`

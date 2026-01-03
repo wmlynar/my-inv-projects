@@ -17,6 +17,7 @@
 - 7. Deploy-only / airgap (`seal deploy --artifact`)
 - 7.1. Minimalne przepływy CI/CD (REF)
 - 7.2. Readiness po `ship` / `deploy --restart`
+- 7.3. Checklist przed produkcja (REF)
 - 8. Multi-target deploy
 - 9. Uninstall / cleanup (`seal uninstall`)
 - 10. Zmiany w dokumencie
@@ -665,7 +666,8 @@ seal deploy <target> --artifact ... --push-config
 ```
 
 Uwagi:
-- build i deploy mogą działać w różnych repo (ważne: zgodny `seal.json5` i config runtime),\n+- `seal deploy` **zawsze** weryfikuje artefakt (chyba że użyjesz `--skip-verify`).\n+
+- build i deploy mogą działać w różnych repo (ważne: zgodny `seal.json5` i config runtime).
+- `seal deploy` **zawsze** weryfikuje artefakt (chyba że użyjesz `--skip-verify`).
 ---
 
 ## 7.2. Readiness po `ship` / `deploy --restart`
@@ -692,6 +694,26 @@ Przykład w `seal-config/targets/<name>.json5`:
 ```
 
 Uwaga: dla targetów SSH tryb HTTP wymaga `curl` albo `wget` na serwerze.
+
+---
+
+## 7.3. Checklist przed produkcja (REF)
+
+Krótka lista kontrolna dla releasu na produkcje. Uzywaj jako checklista "go/no-go".
+
+1) [MUST] `seal check <target>` przechodzi bez errorow.
+2) [MUST] `seal release` wykonany na docelowej platformie.
+3) [MUST] `seal verify --explain` bez wykrytych zrodel/sourcemap i bez "fallback".
+4) [MUST] Pierwszy deploy na host: `seal ship <target> --bootstrap`.
+5) [MUST] `seal remote <target> status` i readiness endpoint OK.
+6) [SHOULD] `seal config explain <target>` potwierdza oczekiwane override.
+7) [SHOULD] `seal remote <target> logs` bez bledow startu.
+8) [SHOULD] Retencja i rollback: `seal releases` + test `seal rollback` na stagingu.
+9) [SHOULD] Core E2E uruchomione: `SEAL_THIN_E2E=1`, `SEAL_SHIP_E2E=1`.
+10) [MAY] Sentinel/TPM/USB binding zweryfikowane (jesli wlaczone).
+11) [MAY] `seal diag <target>` zapisany jako punkt odniesienia.
+
+Powiazane: `SEAL_E2E_COVERAGE.md`, `SEAL_TROUBLESHOOTING.md`, `SEAL_HOST_BINDING_RUNBOOK.md`.
 
 ## 8. Multi-target deploy
 

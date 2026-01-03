@@ -3061,11 +3061,59 @@ function checkStackToolBlocked(cmd, args, label) {
   return { ok: true, note: out.slice(0, 200) };
 }
 
+function ensureGstackShim() {
+  if (hasCommand("gstack")) return true;
+  if (!hasCommand("gdb")) return false;
+  const targetDir = process.env.SEAL_E2E_CACHE_BIN || resolveTmpRoot();
+  try {
+    fs.mkdirSync(targetDir, { recursive: true });
+  } catch {
+    return false;
+  }
+  const target = path.join(targetDir, "gstack");
+  if (!fs.existsSync(target)) {
+    const script = [
+      "#!/usr/bin/env bash",
+      "set -euo pipefail",
+      "pid=\"${1:-}\"",
+      "if [ -z \"$pid\" ]; then",
+      "  echo \"Usage: gstack <pid>\" >&2",
+      "  exit 1",
+      "fi",
+      "exec gdb -q -n -batch -ex \"set pagination off\" -ex \"thread apply all bt\" -p \"$pid\"",
+      "",
+    ].join("\n");
+    try {
+      fs.writeFileSync(target, script, { mode: 0o755 });
+    } catch {
+      return false;
+    }
+  } else {
+    try {
+      fs.chmodSync(target, 0o755);
+    } catch {
+      // ignore
+    }
+  }
+  if (!hasCommand("gstack")) {
+    const pathEntry = `${targetDir}${path.delimiter}`;
+    if (!process.env.PATH || !process.env.PATH.includes(pathEntry)) {
+      process.env.PATH = `${targetDir}${path.delimiter}${process.env.PATH || ""}`;
+    }
+  }
+  return hasCommand("gstack");
+}
+
 function checkPstackAttachBlocked(pid) {
   return checkStackToolBlocked("pstack", [String(pid)], "pstack");
 }
 
 function checkGstackAttachBlocked(pid) {
+  if (!hasCommand("gstack")) {
+    if (!ensureGstackShim()) {
+      return { skip: "gstack not installed (gdb missing)" };
+    }
+  }
   return checkStackToolBlocked("gstack", [String(pid)], "gstack");
 }
 

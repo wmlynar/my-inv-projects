@@ -10,6 +10,7 @@
 ## Pliki w docsecie (linki)
 
 - [SEAL_QUICK_START.md](SEAL_QUICK_START.md)
+- [SEAL_FLOW_MAP.md](SEAL_FLOW_MAP.md)
 - [SEAL_SCENARIOS.md](SEAL_SCENARIOS.md)
 - [SEAL_DEPLOY_SPEC.md](SEAL_DEPLOY_SPEC.md)
 - [SEAL_DEPLOY_REFERENCE.md](SEAL_DEPLOY_REFERENCE.md)
@@ -45,6 +46,7 @@
 Docset v0.5 składa się z:
 
 - **SEAL_QUICK_START v0.5** – pierwsze 15 minut: od `seal init` do lokalnego testu sealed i pierwszego deployu.
+- **SEAL_FLOW_MAP v0.5** – jednoplanszowa mapa przeplywow (build/deploy/airgap/diag).
 - **SEAL_SCENARIOS v0.5** – lista typowych scenariuszy użytkownika (ściąga „co wpisać”).
 - **SEAL_DEPLOY_SPEC v0.5** – wymagania i kontrakty dla narzędzia `seal` (SPEC/ARCH).
 - **SEAL_DEPLOY_REFERENCE v0.5** – referencyjna implementacja i przykłady (REF).
@@ -68,18 +70,32 @@ Docset v0.5 składa się z:
 - Dokumenty „rdzenia” mają wersję docsetu: `SEAL_QUICK_START`, `SEAL_SCENARIOS`, `SEAL_DEPLOY_SPEC`, `SEAL_DEPLOY_REFERENCE`, `SEAL_CHANGELOG`.
 - Dokumenty „stałe” (standard jakości i kontrakt AI) mają własne wersje (`v1.x`), ale są kompatybilne z docsetem, jeśli tak mówi `SEAL_QUICK_START`.
 
+## Legenda modalnosci
+
+- [MUST] wymagane (brak spelnienia = blad wdrozeniowy)
+- [SHOULD] silna rekomendacja
+- [MAY] opcjonalne
+
 ## Jak czytać
 
 1) Zacznij od **SEAL_QUICK_START** (jeśli chcesz szybko zobaczyć efekt).
-2) Potem przeczytaj **SEAL_SCENARIOS** (żeby mieć „ściągę” do codziennej pracy).
-3) Jeśli implementujesz narzędzie albo potrzebujesz precyzji: **SEAL_DEPLOY_SPEC**.
-4) Jeśli implementujesz narzędzie i chcesz gotowe szablony: **SEAL_DEPLOY_REFERENCE**.
-5) Jeśli piszesz/generujesz aplikację: **SEAL_CONTRACT_AI** + **SEAL_STANDARD**.
+2) Szybka orientacja: **SEAL_FLOW_MAP**.
+3) Potem przeczytaj **SEAL_SCENARIOS** (żeby mieć „ściągę” do codziennej pracy).
+4) Jeśli implementujesz narzędzie albo potrzebujesz precyzji: **SEAL_DEPLOY_SPEC**.
+5) Jeśli implementujesz narzędzie i chcesz gotowe szablony: **SEAL_DEPLOY_REFERENCE**.
+6) Jeśli piszesz/generujesz aplikację: **SEAL_CONTRACT_AI** + **SEAL_STANDARD**.
+
+## Sciezki czytania (czas + priorytet)
+
+- **Dev (ok. 25-35 min):** [MUST] `SEAL_QUICK_START.md`, `SEAL_SCENARIOS.md`; [SHOULD] `SEAL_PITFALLS.md`.
+- **Ops/Deploy (ok. 35-50 min):** [MUST] `SEAL_DEPLOY_SPEC.md`, `SEAL_DEPLOY_REFERENCE.md`, `SEAL_TROUBLESHOOTING.md`; [SHOULD] `SEAL_CONFIG_SPEC.md`.
+- **QA/E2E (ok. 25-40 min):** [MUST] `SEAL_E2E_FRAMEWORK_SPEC.md`, `SEAL_E2E_RUNBOOK.md`, `SEAL_E2E_COVERAGE.md`.
+- **Security/Hardening (ok. 30-45 min):** [MUST] `SEAL_ANTI_REVERSE_ENGINEERING.md`; [SHOULD] `SEAL_HOST_BINDING_RUNBOOK.md`, `SEAL_SENTINEL_SPEC_FINAL_v1.0.md`.
 
 ## Kto co czyta (szybka mapa)
 
-- **Dev aplikacji:** `SEAL_QUICK_START.md`, `SEAL_SCENARIOS.md`, `SEAL_CONTRACT_AI.md`, `SEAL_STANDARD.md`
-- **Deployer / ops:** `SEAL_DEPLOY_SPEC.md`, `SEAL_DEPLOY_REFERENCE.md`, `SEAL_CONFIG_SPEC.md`, `SEAL_TROUBLESHOOTING.md`
+- **Dev aplikacji:** `SEAL_QUICK_START.md`, `SEAL_FLOW_MAP.md`, `SEAL_SCENARIOS.md`, `SEAL_CONTRACT_AI.md`, `SEAL_STANDARD.md`
+- **Deployer / ops:** `SEAL_FLOW_MAP.md`, `SEAL_DEPLOY_SPEC.md`, `SEAL_DEPLOY_REFERENCE.md`, `SEAL_CONFIG_SPEC.md`, `SEAL_TROUBLESHOOTING.md`
 - **QA / E2E:** `SEAL_E2E_FRAMEWORK_SPEC.md`, `SEAL_E2E_RUNBOOK.md`, `SEAL_E2E_COVERAGE.md`
 - **Security / hardening:** `SEAL_PACKAGER_THIN_SPEC_SCALONA.md`, `SEAL_HOST_BINDING_RUNBOOK.md`, `SEAL_ANTI_REVERSE_ENGINEERING.md`, `SEAL_SENTINEL_SPEC_FINAL_v1.0.md`
 

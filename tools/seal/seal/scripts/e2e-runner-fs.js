@@ -2,7 +2,13 @@
 
 const fs = require("fs");
 const path = require("path");
-const { isEnabled } = require("./e2e-runner-utils");
+const {
+  isEnabled,
+  getDirSizeBytes,
+  formatBytes,
+  parseWarnGb,
+  resolveE2EWarnRoot,
+} = require("./e2e-runner-utils");
 
 const RUN_LAYOUTS = {
   AUTO: "auto",
@@ -401,6 +407,203 @@ function setupRunCleanup(options) {
   return state;
 }
 
+function autoCleanE2ERoot(options) {
+  const env = options.env || process.env;
+  const log = typeof options.log === "function" ? options.log : null;
+  const e2eRoot = options.e2eRoot || env.SEAL_E2E_ROOT || "";
+  if (!e2eRoot || !fs.existsSync(e2eRoot)) return false;
+  if (!isEnabled(env, "SEAL_E2E_AUTO_CLEAN", "0")) return false;
+  const keepRuns = options.keepRuns === true || isEnabled(env, "SEAL_E2E_KEEP_RUNS", "0");
+  const keepTmp = options.keepTmp === true || isEnabled(env, "SEAL_E2E_KEEP_TMP", "0");
+  if (keepRuns || keepTmp) return false;
+  const runLayout = options.runLayout || env.SEAL_E2E_RUN_LAYOUT || RUN_LAYOUTS.SHARED;
+  if (runLayout === RUN_LAYOUTS.CONCURRENT) return false;
+  if (runLayout === RUN_LAYOUTS.SHARED && options.lockOwned === false) return false;
+  const warnGb = parseWarnGb(env);
+  if (!Number.isFinite(warnGb) || warnGb <= 0) return false;
+  const limitBytes = warnGb * 1024 * 1024 * 1024;
+  const { root: warnRoot, label: warnLabel } = resolveE2EWarnRoot(e2eRoot);
+  const warnBytes = warnRoot ? getDirSizeBytes(warnRoot) : null;
+  const e2eBytes = getDirSizeBytes(e2eRoot);
+  if (warnBytes !== null && warnBytes < limitBytes) {
+    return false;
+  }
+  if (warnBytes === null && e2eBytes !== null && e2eBytes < limitBytes) {
+    return false;
+  }
+  if (warnBytes === null && e2eBytes === null) {
+    return false;
+  }
+
+  const removed = [];
+  const runDir = path.join(e2eRoot, "run");
+  if (fs.existsSync(runDir)) {
+    const entries = fs.readdirSync(runDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name === "logs") continue;
+      removeDirSafe(path.join(runDir, entry.name));
+      removed.push(`run/${entry.name}`);
+    }
+  }
+  if (!isEnabled(env, "SEAL_E2E_HOME_KEEP", "0")) {
+    const homeRoot = path.join(e2eRoot, "cache", "e2e-home");
+    if (fs.existsSync(homeRoot)) {
+      removeDirSafe(homeRoot);
+      removed.push("cache/e2e-home");
+    }
+  }
+
+  if (removed.length && log) {
+    const beforeLabel = e2eBytes === null ? "unknown" : formatBytes(e2eBytes);
+    const afterBytes = getDirSizeBytes(e2eRoot);
+    const afterLabel = afterBytes === null ? "unknown" : formatBytes(afterBytes);
+    const rootLabel = warnRoot ? `${warnLabel || "root"}=${warnRoot}` : "root=unknown";
+    log(`Auto-clean: pruned ${removed.join(", ")} (e2e size ${beforeLabel} -> ${afterLabel}, ${rootLabel}).`);
+  }
+  return removed.length > 0;
+}
+
+function parseKeepCount(raw, fallback) {
+  const parsed = Number(raw);
+  if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+  return fallback;
+}
+
+function isUnderRoot(root, target) {
+  if (!root || !target) return false;
+  const resolvedRoot = path.resolve(root);
+  const resolvedTarget = path.resolve(target);
+  return resolvedTarget === resolvedRoot || resolvedTarget.startsWith(`${resolvedRoot}${path.sep}`);
+}
+
+function pruneSummaryDir(summaryDir, keepCount, keepBases, log) {
+  if (!summaryDir || keepCount <= 0) return 0;
+  if (!fs.existsSync(summaryDir)) return 0;
+  let entries = [];
+  try {
+    entries = fs.readdirSync(summaryDir, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  const keep = new Set(Array.isArray(keepBases) ? keepBases : []);
+  keep.add("last");
+  const byBase = new Map();
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    const name = entry.name;
+    const match = name.match(/^(run-[^./]+)\.(tsv|json)$/i);
+    if (!match) continue;
+    const base = match[1];
+    if (keep.has(base)) continue;
+    const full = path.join(summaryDir, name);
+    let stat;
+    try {
+      stat = fs.statSync(full);
+    } catch {
+      continue;
+    }
+    const existing = byBase.get(base) || { base, files: [], mtime: 0 };
+    existing.files.push(full);
+    if (stat.mtimeMs > existing.mtime) existing.mtime = stat.mtimeMs;
+    byBase.set(base, existing);
+  }
+  const sorted = Array.from(byBase.values()).sort((a, b) => b.mtime - a.mtime);
+  const toRemove = sorted.slice(keepCount);
+  let removed = 0;
+  for (const item of toRemove) {
+    for (const file of item.files) {
+      try {
+        fs.rmSync(file, { force: true });
+        removed += 1;
+      } catch {
+        // ignore
+      }
+    }
+  }
+  if (removed > 0 && log) {
+    log(`Retention: pruned ${removed} summary file(s) in ${summaryDir}.`);
+  }
+  return removed;
+}
+
+function pruneLogDirs(logRoot, keepCount, keepNames, log) {
+  if (!logRoot || keepCount <= 0) return 0;
+  if (!fs.existsSync(logRoot)) return 0;
+  let entries = [];
+  try {
+    entries = fs.readdirSync(logRoot, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  const keep = new Set(Array.isArray(keepNames) ? keepNames : []);
+  const dirs = entries.filter((entry) => entry.isDirectory()).map((entry) => {
+    const full = path.join(logRoot, entry.name);
+    try {
+      const stat = fs.statSync(full);
+      return { name: entry.name, full, mtime: stat.mtimeMs };
+    } catch {
+      return null;
+    }
+  }).filter(Boolean);
+  const candidates = dirs.filter((dir) => !keep.has(dir.name));
+  candidates.sort((a, b) => b.mtime - a.mtime);
+  const toRemove = candidates.slice(keepCount);
+  let removed = 0;
+  for (const dir of toRemove) {
+    removeDirSafe(dir.full);
+    removed += 1;
+  }
+  if (removed > 0 && log) {
+    log(`Retention: pruned ${removed} log dir(s) in ${logRoot}.`);
+  }
+  return removed;
+}
+
+function pruneE2EHistory(options) {
+  const env = options.env || process.env;
+  const log = typeof options.log === "function" ? options.log : null;
+  const e2eRoot = options.e2eRoot || env.SEAL_E2E_ROOT || "";
+  const cacheRoot = options.cacheRoot || "";
+  if (!e2eRoot && !cacheRoot) return false;
+  const keepRuns = options.keepRuns === true || isEnabled(env, "SEAL_E2E_KEEP_RUNS", "0");
+  const keepTmp = options.keepTmp === true || isEnabled(env, "SEAL_E2E_KEEP_TMP", "0");
+  if (keepRuns || keepTmp) return false;
+  const runLayout = options.runLayout || env.SEAL_E2E_RUN_LAYOUT || RUN_LAYOUTS.SHARED;
+  if (runLayout === RUN_LAYOUTS.CONCURRENT) return false;
+  if (runLayout === RUN_LAYOUTS.SHARED && options.lockOwned === false) return false;
+
+  const keepSummary = parseKeepCount(env.SEAL_E2E_SUMMARY_KEEP, 20);
+  const keepLogs = parseKeepCount(env.SEAL_E2E_LOG_KEEP, 10);
+  let changed = false;
+
+  if (keepSummary > 0 && e2eRoot) {
+    const summaryDir = options.summaryPath ? path.dirname(options.summaryPath) : path.join(e2eRoot, "summary");
+    if (isUnderRoot(e2eRoot, summaryDir)) {
+      const keepBases = [];
+      if (options.summaryPath && isUnderRoot(summaryDir, options.summaryPath)) {
+        const base = path.basename(options.summaryPath).replace(/\.(tsv|json)$/i, "");
+        if (base) keepBases.push(base);
+      }
+      pruneSummaryDir(summaryDir, keepSummary, keepBases, log);
+      changed = true;
+    }
+  }
+
+  if (keepLogs > 0 && cacheRoot) {
+    const logRoot = path.join(cacheRoot, "e2e-logs");
+    if (fs.existsSync(logRoot)) {
+      const keepNames = [];
+      if (options.logDir && path.dirname(options.logDir) === logRoot) {
+        keepNames.push(path.basename(options.logDir));
+      }
+      pruneLogDirs(logRoot, keepLogs, keepNames, log);
+      changed = true;
+    }
+  }
+
+  return changed;
+}
+
 module.exports = {
   ensureDir,
   removeDirSafe,
@@ -413,4 +616,6 @@ module.exports = {
   prepareRunLayout,
   resolveRunContext,
   setupRunCleanup,
+  autoCleanE2ERoot,
+  pruneE2EHistory,
 };

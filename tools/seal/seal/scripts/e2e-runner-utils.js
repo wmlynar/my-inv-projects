@@ -192,6 +192,17 @@ function parseWarnGb(env) {
   return Math.max(0, parsed);
 }
 
+function resolveE2EWarnRoot(e2eRoot) {
+  if (!e2eRoot) return { root: "", label: "" };
+  const path = require("path");
+  const resolved = path.resolve(e2eRoot);
+  const parent = path.dirname(resolved);
+  if (path.basename(resolved) === "e2e" && path.basename(parent) === "seal-out") {
+    return { root: parent, label: "seal-out" };
+  }
+  return { root: resolved, label: "e2e root" };
+}
+
 function logE2EDiskSummary(env, options) {
   if (normalizeFlag(env.SEAL_E2E_DISK_SUMMARY, "1") !== "1") {
     return;
@@ -205,12 +216,12 @@ function logE2EDiskSummary(env, options) {
     }
   }
   if (e2eRoot) {
-    const path = require("path");
-    const sealOutRoot = path.dirname(e2eRoot);
-    const sealOutBytes = getDirSizeBytes(sealOutRoot);
+    const { root: warnRoot, label } = resolveE2EWarnRoot(e2eRoot);
+    const warnBytes = warnRoot ? getDirSizeBytes(warnRoot) : null;
     const warnGb = parseWarnGb(env || process.env);
-    if (sealOutBytes !== null && warnGb > 0 && sealOutBytes >= warnGb * 1024 * 1024 * 1024) {
-      logger(`WARN: seal-out size ${formatBytes(sealOutBytes)} exceeds ${warnGb}GB at ${sealOutRoot}. Consider: seal clean`);
+    if (warnBytes !== null && warnGb > 0 && warnBytes >= warnGb * 1024 * 1024 * 1024) {
+      const labelPrefix = label ? `${label} ` : "";
+      logger(`WARN: ${labelPrefix}size ${formatBytes(warnBytes)} exceeds ${warnGb}GB at ${warnRoot}. Consider: seal clean`);
     }
   }
 }
@@ -233,5 +244,6 @@ module.exports = {
   getDuBytes,
   getDirSizeBytes,
   parseWarnGb,
+  resolveE2EWarnRoot,
   logE2EDiskSummary,
 };

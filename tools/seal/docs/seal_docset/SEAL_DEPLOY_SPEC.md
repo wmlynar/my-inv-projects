@@ -1184,6 +1184,57 @@ Celem sample-app jest:
 - Sample-app spełnia SEAL_STANDARD v1.3.
 - Szablony w Seal umożliwiają szybkie zastosowanie standardu.
 
+### 21.4. Zakres v1 (scope)
+
+**Platforma i runtime (MUST):**
+- Linux x86_64 + systemd (scope=user/system).
+- Build na platformie docelowej (cross-build poza zakresem v1).
+- Tryb offline/airgap jest wspierany (bez zewnetrznych serwerow).
+
+**Packagery (MUST/SHOULD):**
+- `thin-split` jako domyslny i rekomendowany (MUST).
+- `sea` i `bundle` wspierane tylko jawnie (SHOULD); brak cichych fallbackow (MUST).
+- `none` tylko do debug/dev (SHOULD NOT w produkcji).
+
+**Funkcje w zakresie (MUST):**
+- `seal init`, `seal check`, `seal release`, `seal verify`, `seal run-local`.
+- `seal ship`, `seal deploy --artifact`, `seal remote`, `seal rollback`, `seal uninstall`.
+- Konfiguracja i precedencja zgodna z `SEAL_CONFIG_SPEC.md`.
+
+**Poza zakresem v1 (MUST NOT):**
+- Windows/macOS i inne architektury jako oficjalne targety.
+- Cross-build i "jedna binarka na wszystko".
+- Licencje online / zewnetrzne serwery autoryzacji.
+
+### 21.5. Gotowosc do releasu v1 (DoD v1)
+
+**Produkt/UX (MUST):**
+- `seal` bez argumentow dziala jako wizard i prowadzi po happy-path.
+- Bledy sa fail-fast, bez cichych degradacji zabezpieczen.
+- `seal config explain` i `seal check` jasno pokazuja zrodla override i problemy toolchaina.
+
+**Bezpieczenstwo (MUST):**
+- Artefakt nie zawiera plaintext JS ani sourcemap (potwierdzone przez `seal verify`).
+- Domyslny profil bezpieczenstwa jest w trybie `strict`.
+- Brak fallbackow ochrony bez jawnego opt-out.
+
+**Ops/serwis (MUST):**
+- `seal ship --bootstrap` przygotowuje host w sposob powtarzalny.
+- Readiness dziala (systemd + opcjonalnie HTTP).
+- `seal remote status/logs`, `seal rollback`, `seal uninstall`, `seal diag` dzialaja.
+
+**Testy (MUST):**
+- Core E2E: `SEAL_THIN_E2E=1`, `SEAL_SHIP_E2E=1`, `SEAL_SENTINEL_E2E=1` (gdy srodowisko pozwala).
+- Negatywne scenariusze: brak toolchaina, brak sekretu/TPM, config drift.
+
+**Toolchain/dystrybucja (MUST):**
+- Pinowane wersje toolchaina + offline install.
+- Checksums artefaktow i powtarzalny build (manifest/verify).
+
+**Dokumentacja (MUST):**
+- Spójne i aktualne: Quick Start, Flow Map, Scenarios, Troubleshooting, Compatibility.
+- Release notes + migracje dla breaking changes.
+
 ---
 
 ## 22. Zakres poza projektem (non-goals)

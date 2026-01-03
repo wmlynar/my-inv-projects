@@ -34,6 +34,9 @@
 | `SEAL_E2E_GC` | cleanup starych runow | SEAL_E2E_RUNBOOK |
 | `SEAL_E2E_DISK_SUMMARY` | raport dysku po runie | SEAL_E2E_RUNBOOK |
 | `SEAL_E2E_SEAL_OUT_WARN_GB` | prog ostrzezen dla `seal-out/e2e` | SEAL_E2E_RUNBOOK |
+| `SEAL_E2E_AUTO_CLEAN` | auto cleanup run artefaktow po przekroczeniu progu | SEAL_E2E_RUNBOOK |
+| `SEAL_E2E_SUMMARY_KEEP` | retencja podsumowan (run-*.tsv/json) | SEAL_E2E_RUNBOOK |
+| `SEAL_E2E_LOG_KEEP` | retencja katalogow logow w cache | SEAL_E2E_RUNBOOK |
 | `SEAL_E2E_TOOLSET` | zakres narzedzi (`full`, itp.) | SEAL_E2E_RUNBOOK |
 
 ## Docker E2E

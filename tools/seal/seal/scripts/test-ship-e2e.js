@@ -79,6 +79,7 @@ async function testLocalPreflightResources() {
   process.env.SEAL_PREFLIGHT_LOCAL_TMP_MIN_FREE_MB = "999999";
   process.env.SEAL_PREFLIGHT_LOCAL_MIN_FREE_INODES = "999999999";
   process.env.SEAL_PREFLIGHT_LOCAL_TMP_MIN_FREE_INODES = "999999999";
+  log("NOTE: local preflight is forced to fail; errors below are expected.");
   let failed = false;
   try {
     await cmdCheck(EXAMPLE_ROOT, null, { strict: false, verbose: false, skipRemote: true });
@@ -977,6 +978,7 @@ async function testShipThinBootstrapSsh() {
       log(`OK: remote HTTP /healthz on port ${httpPort}`);
     }
 
+    log("NOTE: remote preflight is forced to fail; errors below are expected.");
     const preflightMbBackup = process.env.SEAL_PREFLIGHT_MIN_FREE_MB;
     process.env.SEAL_PREFLIGHT_MIN_FREE_MB = "999999";
     let preflightFailed = false;
