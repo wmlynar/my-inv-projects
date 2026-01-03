@@ -15,7 +15,8 @@
 - 5. Support bundle – sugerowany format (REF)
 - 6. UX / ergonomia CLI (v0.5)
 - 7. Deploy-only / airgap (`seal deploy --artifact`)
-- 7.0. Readiness po `ship` / `deploy --restart`
+- 7.1. Minimalne przepływy CI/CD (REF)
+- 7.2. Readiness po `ship` / `deploy --restart`
 - 8. Multi-target deploy
 - 9. Uninstall / cleanup (`seal uninstall`)
 - 10. Zmiany w dokumencie
@@ -642,7 +643,32 @@ Implementacja:
 
 ---
 
-## 7.0. Readiness po `ship` / `deploy --restart`
+## 7.1. Minimalne przepływy CI/CD (REF)
+
+### Build stage (builder)
+```
+seal check <target>
+seal release <target> --packager thin-split
+seal verify --json
+```
+Artefakt: `seal-out/<app>-<buildId>.tgz` (zapisz jako artefakt pipeline).
+
+### Deploy stage (airgap / offline)
+```
+seal deploy <target> --artifact /path/to/<app>-<buildId>.tgz --restart --wait
+```
+Jeśli runtime config jest zmieniany:
+```
+seal config push <target>
+# albo:
+seal deploy <target> --artifact ... --push-config
+```
+
+Uwagi:
+- build i deploy mogą działać w różnych repo (ważne: zgodny `seal.json5` i config runtime),\n+- `seal deploy` **zawsze** weryfikuje artefakt (chyba że użyjesz `--skip-verify`).\n+
+---
+
+## 7.2. Readiness po `ship` / `deploy --restart`
 
 - `seal ship <target>` **domyślnie czeka** na gotowość usługi po restarcie.
   - wyłączenie: `seal ship <target> --no-wait`

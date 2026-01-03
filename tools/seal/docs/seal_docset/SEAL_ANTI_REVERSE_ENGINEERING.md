@@ -409,6 +409,25 @@ Uwagi:
 - Sentinel: external anchor lease/tpm2, xattr mode, HMAC v2.
 - VM/hypervisor heurystyki (DMI/peryferia) — odłożone; mamy tylko opcjonalny wymóg CPUID hypervisor bit.
 
+### 4.1. Plan wdrożenia (propozycja, v0.5.x → v0.6)
+
+1) **Sentinel L4 (lease/tpm2) + HMAC v2**  
+   Najpierw rozszerzyć istniejący model sentinel (najmniejszy koszt integracji).
+
+2) **Hypervisor heurystyki (opcjonalne)**  
+   DMI/peryferia jako dodatkowa flaga, ale tylko w trybie opt‑in (ryzyko false‑positive).
+
+3) **Hardware breakpoints / single‑step**  
+   Implementacja tylko dla x86_64, z testami E2E w trybie strict.
+
+4) **GOT/PLT hooks**  
+   Detekcja i soft‑fail (log + exitCodeBlock), bez auto‑repair w MVP.
+
+5) **LSM/AppArmor/IMA**  
+   Integracje tylko tam, gdzie host ma jawne polityki; brak = SKIP, bez fail‑fast.
+
+Każdy etap wymaga: testów E2E, jawnego toggle i dokumentacji ryzyk operacyjnych.
+
 ## 5. Nieaktualne / Legacy (nie usuwać)
 - `thin-single` jako zalecany AIO packager — **legacy**. W repo nie używamy.
 - “AIO najpierw, potem BOOTSTRAP” — decyzja odwrócona na rzecz `thin-split`.

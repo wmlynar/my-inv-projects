@@ -13,14 +13,19 @@
 - [SEAL_SCENARIOS.md](SEAL_SCENARIOS.md)
 - [SEAL_DEPLOY_SPEC.md](SEAL_DEPLOY_SPEC.md)
 - [SEAL_DEPLOY_REFERENCE.md](SEAL_DEPLOY_REFERENCE.md)
+- [SEAL_CONFIG_SPEC.md](SEAL_CONFIG_SPEC.md)
+- [SEAL_COMPATIBILITY.md](SEAL_COMPATIBILITY.md)
 - [SEAL_STANDARD.md](SEAL_STANDARD.md)
 - [SEAL_E2E_FRAMEWORK_SPEC.md](SEAL_E2E_FRAMEWORK_SPEC.md)
 - [SEAL_E2E_RUNBOOK.md](SEAL_E2E_RUNBOOK.md)
+- [SEAL_E2E_COVERAGE.md](SEAL_E2E_COVERAGE.md)
 - [SEAL_CACHE_GUIDE.md](SEAL_CACHE_GUIDE.md)
 - [SEAL_ENV_FLAGS_REFERENCE.md](SEAL_ENV_FLAGS_REFERENCE.md)
 - [SEAL_CONTRACT_AI.md](SEAL_CONTRACT_AI.md)
 - [SEAL_PITFALLS.md](SEAL_PITFALLS.md)
+- [SEAL_TROUBLESHOOTING.md](SEAL_TROUBLESHOOTING.md)
 - [SEAL_PACKAGER_THIN_SPEC_SCALONA.md](SEAL_PACKAGER_THIN_SPEC_SCALONA.md)
+- [SEAL_HOST_BINDING_RUNBOOK.md](SEAL_HOST_BINDING_RUNBOOK.md)
 - [SEAL_ANTI_REVERSE_ENGINEERING.md](SEAL_ANTI_REVERSE_ENGINEERING.md)
 - [SEAL_CHANGELOG.md](SEAL_CHANGELOG.md)
 
@@ -43,13 +48,17 @@ Docset v0.5 składa się z:
 - **SEAL_SCENARIOS v0.5** – lista typowych scenariuszy użytkownika (ściąga „co wpisać”).
 - **SEAL_DEPLOY_SPEC v0.5** – wymagania i kontrakty dla narzędzia `seal` (SPEC/ARCH).
 - **SEAL_DEPLOY_REFERENCE v0.5** – referencyjna implementacja i przykłady (REF).
+- **SEAL_CONFIG_SPEC v0.5** – schema konfiguracji i precedencja (SOURCE OF TRUTH).
+- **SEAL_COMPATIBILITY v0.5** – kompatybilność i migracje (docset/CLI/platformy).
 - **SEAL_STANDARD v1.3** – standard jakości aplikacji sealowanych.
 - **SEAL_E2E_FRAMEWORK_SPEC v0.1** – specyfikacja frameworka testow E2E (wspolne API i enforcement).
 - **SEAL_CACHE_GUIDE v0.5** – mapa cache w Seal + polityka sprzatania i retencji.
 - **SEAL_ENV_FLAGS_REFERENCE v0.5** – sciaga flag ENV (timeouty, E2E, docker).
 - **SEAL_CONTRACT_AI v1.3** – krótki kontrakt „promptable” dla generatorów kodu.
 - **SEAL_PITFALLS v0.5** – lista realnych błędów do uniknięcia + wymagania zapobiegawcze.
+- **SEAL_TROUBLESHOOTING v0.5** – szybki runbook „symptom → fix”.
 - **SEAL_PACKAGER_THIN_SPEC_SCALONA** – specyfikacja packagera `thin-split` (BOOTSTRAP).
+- **SEAL_HOST_BINDING_RUNBOOK v0.5** – TPM/USB/NIC binding (payloadProtection + sentinel L4).
 - **SEAL_ANTI_REVERSE_ENGINEERING** – scalony opis anti‑debug/anti‑RE + status implementacji i braki.
 - **SEAL_CHANGELOG v0.5** – changelog całego docsetu.
 
@@ -70,9 +79,9 @@ Docset v0.5 składa się z:
 ## Kto co czyta (szybka mapa)
 
 - **Dev aplikacji:** `SEAL_QUICK_START.md`, `SEAL_SCENARIOS.md`, `SEAL_CONTRACT_AI.md`, `SEAL_STANDARD.md`
-- **Deployer / ops:** `SEAL_DEPLOY_SPEC.md`, `SEAL_DEPLOY_REFERENCE.md`, `SEAL_CACHE_GUIDE.md`, `SEAL_PITFALLS.md`
-- **QA / E2E:** `SEAL_E2E_FRAMEWORK_SPEC.md`, `SEAL_E2E_RUNBOOK.md`, `SEAL_PITFALLS.md`
-- **Security / hardening:** `SEAL_PACKAGER_THIN_SPEC_SCALONA.md`, `SEAL_ANTI_REVERSE_ENGINEERING.md`, `SEAL_SENTINEL_SPEC_FINAL_v1.0.md`
+- **Deployer / ops:** `SEAL_DEPLOY_SPEC.md`, `SEAL_DEPLOY_REFERENCE.md`, `SEAL_CONFIG_SPEC.md`, `SEAL_TROUBLESHOOTING.md`
+- **QA / E2E:** `SEAL_E2E_FRAMEWORK_SPEC.md`, `SEAL_E2E_RUNBOOK.md`, `SEAL_E2E_COVERAGE.md`
+- **Security / hardening:** `SEAL_PACKAGER_THIN_SPEC_SCALONA.md`, `SEAL_HOST_BINDING_RUNBOOK.md`, `SEAL_ANTI_REVERSE_ENGINEERING.md`, `SEAL_SENTINEL_SPEC_FINAL_v1.0.md`
 
 ## Najważniejsze zmiany mentalne w v0.5
 

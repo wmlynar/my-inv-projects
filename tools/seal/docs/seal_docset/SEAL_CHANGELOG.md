@@ -23,6 +23,7 @@
 - **SEAL_PITFALLS v0.5:** zebrane realne błędy i wymagania, aby ich nie powtarzać.
 - **SEAL_ANTI_REVERSE_ENGINEERING:** scalenie specyfikacji anti‑RE + tracerpid w jeden dokument z aktualnym statusem wdrożenia, decyzjami i brakami.
 - **SEAL_CACHE_GUIDE v0.5:** mapa cache w Seal + polityka sprzatania i retencji.
+- **Specyfikacje domykające braki:** `SEAL_CONFIG_SPEC`, `SEAL_COMPATIBILITY`, `SEAL_E2E_COVERAGE`, `SEAL_TROUBLESHOOTING`, `SEAL_HOST_BINDING_RUNBOOK`.
 
 ## Docset v0.5 (względem v0.4)
 

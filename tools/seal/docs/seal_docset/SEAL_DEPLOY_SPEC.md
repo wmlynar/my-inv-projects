@@ -129,7 +129,7 @@ Seal ma zdejmować z głowy temat „jak zabezpieczyć kod, żeby mnie nie okrad
 - 32. Specyfikacja obsługi UI i static assets w trybie single executable
 - 33. Toolchain i instalacja offline (żeby implementacja była wykonalna)
 - 34. Deterministyczne buildId, wersja i retencja release
-- 35. Open questions / TBD
+- 35. Decyzje i status (v0.5.x)
 - 36. Lista zmian (v0.5)
 - 37. Rzeczy, które wypadły z poprzedniej wersji (v0.2)
 
@@ -2172,27 +2172,27 @@ Seal działa bez tych narzędzi, ale `seal check` **SHOULD** ostrzegać, gdy ich
 ---
 
 
-## 35. Open questions / TBD
+## 35. Decyzje i status (v0.5.x)
 
-Ta sekcja zbiera tematy „do decyzji” lub „do dopięcia” – żeby nie rozpraszać specyfikacji w losowych miejscach.
+Ta sekcja zamyka wcześniejsze „open questions” i podaje obowiązujące decyzje.
 
-1) **Podpisywanie artefaktów i weryfikacja na serwerze**  
-   Czy chcemy wprowadzić podpis (np. Ed25519) i weryfikację przed zmianą `current.buildId`? W v0.4 `seal verify` jest przewidziane, ale podpisy są (na razie) opcjonalne.
+1) **Podpisywanie artefaktów**  
+   v0.5.x nie implementuje podpisów w CLI. Rekomendacja: zewnętrzny podpis i weryfikacja w CI/CD, a Seal dostarcza `seal verify --json` jako hook do automatyzacji. Opcjonalny podpis (np. Ed25519) jest **planowany**, ale nie jest częścią MVP.
 
-2) **Anti‑copy (sekcja 17) – poziom ambicji**  
-   Minimalny sentinel vs pełna licencja z podpisem i fingerprintem hosta. Jak bardzo chcemy utrudniać patchowanie przez roota?
+2) **Anti‑copy (sekcja 17)**  
+   MVP to sentinel L2 + opcjonalny L4 (external anchor usb/file). Licencje online i serwery zewnętrzne są **poza zakresem** v0.5.x.
 
 3) **Cross‑build vs build‑on‑target**  
-   MVP jest „build na platformie docelowej”. Jeśli potrzebujemy cross‑build, trzeba dopiąć zasady i testy dla SEA per OS/arch.
+   v0.5.x: **build na platformie docelowej**. Cross‑build jest OFF i wymaga osobnej ścieżki testowej (SEA + thin per OS/arch).
 
 4) **Profile obfuskacji i testy regresji**  
-   Jak mierzymy „strict‑but‑stable”? Jakie testy E2E są wymagane przed `deploy`?
+   Minimum: profil `balanced` i `strict` muszą przechodzić core E2E. Profil `max` jest opt‑in i może mieć osobny gating (SEAL_E2E_TOOLSET=full). Brak cichych fallbacków — degradacja ochrony musi być jawna.
 
-5) **Hardening systemd – gdzie jest granica**  
-   Baseline jest bezpieczny i mało inwazyjny, ale opcje typu `ProtectSystem=strict` mogą łamać integracje. Jakie presety udostępniamy (np. `baseline`, `strict`)?
+5) **Hardening systemd**  
+   Domyślny preset: `baseline`. `strict`/`sandbox` są opt‑in i wymagają jawnego dostosowania `readWritePaths`/integracji. `serviceScope=user` ma ostrzeżenie o ograniczeniach hardeningu.
 
 6) **Support-bundle**  
-   `appctl support-bundle` jest opisane jako SHOULD. Czy Seal ma mieć również `seal support-bundle <target>` zbierające dane po SSH?
+   MVP to `seal diag` (check/config/status). `seal support-bundle <target>` jest **odłożone**; `appctl support-bundle` pozostaje opcjonalne.
 
 ---
 
