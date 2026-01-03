@@ -47,11 +47,23 @@ function normalizeConfig(raw) {
   };
 }
 
+function resolveRuntimeConfigPath() {
+  const candidates = [];
+  if (process.env.SEAL_RUNTIME_CONFIG) candidates.push(process.env.SEAL_RUNTIME_CONFIG);
+  candidates.push(path.join(process.cwd(), "seal-out", "runtime", "config.runtime.json5"));
+  candidates.push(path.join(process.cwd(), "config.runtime.json5"));
+  for (const cand of candidates) {
+    if (cand && fs.existsSync(cand)) return cand;
+  }
+  return null;
+}
+
 function loadConfig() {
-  const cfgPath = path.join(process.cwd(), "config.runtime.json5");
-  if (!fs.existsSync(cfgPath)) {
-    console.error(`[FATAL] Missing config.runtime.json5 in ${process.cwd()}.`);
-    console.error("[FATAL] Copy seal-config/configs/<env>.json5 to config.runtime.json5 or deploy with SEAL.");
+  const cfgPath = resolveRuntimeConfigPath();
+  if (!cfgPath) {
+    console.error("[FATAL] Missing runtime config.");
+    console.error("[FATAL] Dev: set SEAL_RUNTIME_CONFIG=./seal-out/runtime/config.runtime.json5 (or run via seal run-local).");
+    console.error("[FATAL] Sealed: copy seal-config/configs/<env>.json5 to ./config.runtime.json5 in release dir.");
     process.exit(2);
   }
   let raw;
@@ -59,7 +71,7 @@ function loadConfig() {
     raw = JSON5.parse(fs.readFileSync(cfgPath, "utf-8"));
   } catch (err) {
     const msg = err && err.message ? err.message : String(err);
-    console.error(`[FATAL] Invalid config.runtime.json5: ${msg}`);
+    console.error(`[FATAL] Invalid runtime config (${cfgPath}): ${msg}`);
     process.exit(2);
   }
   return normalizeConfig(raw);

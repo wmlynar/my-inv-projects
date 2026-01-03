@@ -52,8 +52,17 @@ try {
   configPath = loaded.configPath;
   configHash = loaded.configHash;
 } catch (err) {
-  const cfgPath = path.join(process.cwd(), "config.runtime.json5");
-  fallbackLogger.error("CFG_INVALID", "Invalid config.runtime.json5", { configPath: cfgPath }, err);
+  const candidates = [];
+  if (process.env.SEAL_RUNTIME_CONFIG) candidates.push(process.env.SEAL_RUNTIME_CONFIG);
+  candidates.push(path.join(process.cwd(), "seal-out", "runtime", "config.runtime.json5"));
+  candidates.push(path.join(process.cwd(), "config.runtime.json5"));
+  const cfgPath = err && err.configPath
+    ? err.configPath
+    : (candidates.find((p) => fs.existsSync(p)) || candidates[0]);
+  const ctx = { configPath: cfgPath };
+  if (err && err.hint) ctx.hint = err.hint;
+  const msg = err && err.message ? err.message : "Invalid runtime config";
+  fallbackLogger.error("CFG_INVALID", msg, ctx, err);
   process.exit(2);
 }
 

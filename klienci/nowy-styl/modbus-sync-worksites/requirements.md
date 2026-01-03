@@ -97,8 +97,10 @@
 - Konfiguracja:
   - wszystkie istotne parametry (hosty, timeouty, interwały) zebrane w jednym miejscu,
   - loginy/hasła/language dla RDS są stałymi w kodzie (świadomy wyjątek),
-  - `config.runtime.json5` (JSON5) jest wymagany – brak/niepoprawny plik kończy proces z błędem,
-  - nie używamy `.env` jako runtime configu w produkcji; config kopiuje się do `config.runtime.json5`,
+  - runtime config jest wymagany – brak/niepoprawny plik kończy proces z błędem:
+    - dev: `seal-out/runtime/config.runtime.json5` (wskazany przez `SEAL_RUNTIME_CONFIG`),
+    - sealed: `config.runtime.json5` w katalogu release,
+  - nie używamy `.env` jako runtime configu w produkcji; config kopiuje się do `config.runtime.json5` w release,
   - walidacja konfiguracji przy starcie (duplikaty, zakresy, brakujące pola).
 
 - Logowanie:

@@ -79,11 +79,23 @@ function validateConfig(cfg) {
   return errors;
 }
 
+function resolveRuntimeConfigPath() {
+  const candidates = [];
+  if (process.env.SEAL_RUNTIME_CONFIG) candidates.push(process.env.SEAL_RUNTIME_CONFIG);
+  candidates.push(path.join(process.cwd(), "seal-out", "runtime", "config.runtime.json5"));
+  candidates.push(path.join(process.cwd(), "config.runtime.json5"));
+  for (const cand of candidates) {
+    if (cand && fs.existsSync(cand)) return cand;
+  }
+  return null;
+}
+
 function loadRuntimeConfig() {
-  const configPath = path.join(process.cwd(), "config.runtime.json5");
-  if (!fs.existsSync(configPath)) {
-    const err = new Error("Missing config.runtime.json5 in CWD");
+  const configPath = resolveRuntimeConfigPath();
+  if (!configPath) {
+    const err = new Error("Missing runtime config");
     err.code = "CONFIG_MISSING";
+    err.hint = "Dev: set SEAL_RUNTIME_CONFIG=./seal-out/runtime/config.runtime.json5. Sealed: copy seal-config/configs/<env>.json5 to ./config.runtime.json5 (release dir).";
     throw err;
   }
 
@@ -92,8 +104,9 @@ function loadRuntimeConfig() {
   try {
     cfg = JSON.parse(raw);
   } catch (e) {
-    const err = new Error(`Config parse error: ${e.message}`);
+    const err = new Error(`Config parse error (${configPath}): ${e.message}`);
     err.code = "CONFIG_PARSE";
+    err.configPath = configPath;
     throw err;
   }
 
@@ -122,9 +135,10 @@ function loadRuntimeConfig() {
 
   const errors = validateConfig(cfg);
   if (errors.length) {
-    const err = new Error(`Invalid config.runtime.json5: ${errors.join("; ")}`);
+    const err = new Error(`Invalid runtime config (${configPath}): ${errors.join("; ")}`);
     err.code = "CONFIG_INVALID";
     err.details = errors;
+    err.configPath = configPath;
     throw err;
   }
 

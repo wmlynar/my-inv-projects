@@ -64,16 +64,39 @@ function resolveE2ETimeoutScale() {
   return 1;
 }
 
+function isUnderRoot(root, candidate) {
+  if (!root || !candidate) return false;
+  const rel = path.relative(root, candidate);
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
 function resolveTmpRoot() {
-  const envRoot = process.env.SEAL_TMPDIR || process.env.SEAL_E2E_TMP_ROOT || process.env.TMPDIR || process.env.TMP || process.env.TEMP;
+  const env = process.env;
+  const envRoot = env.SEAL_E2E_TMP_ROOT || env.SEAL_TMPDIR || env.TMPDIR || env.TMP || env.TEMP;
+  const e2eRoot = env.SEAL_E2E_ROOT || "";
+  const runRoot = env.SEAL_E2E_RUN_ROOT || "";
+  const allowExternal = env.SEAL_E2E_TMP_ALLOW_EXTERNAL === "1";
+
   if (envRoot) {
     const resolved = path.resolve(envRoot);
     if (!resolved.startsWith("/tmp") && !resolved.startsWith("/var/tmp")) {
-      ensureDir(resolved);
-      return resolved;
+      const allowed = allowExternal
+        || (runRoot && isUnderRoot(runRoot, resolved))
+        || (e2eRoot && isUnderRoot(e2eRoot, resolved));
+      if (allowed) {
+        ensureDir(resolved);
+        return resolved;
+      }
+      const fallbackRoot = e2eRoot || path.join(process.cwd(), "seal-out", "e2e");
+      const fallback = path.join(fallbackRoot, "tmp");
+      console.warn(`WARN: ignoring temp root outside E2E root (${resolved}); using ${fallback}.`);
+      ensureDir(fallback);
+      return fallback;
     }
   }
-  const fallback = path.join(process.cwd(), "seal-out", "e2e", "tmp");
+
+  const fallbackRoot = e2eRoot || path.join(process.cwd(), "seal-out", "e2e");
+  const fallback = path.join(fallbackRoot, "tmp");
   ensureDir(fallback);
   return fallback;
 }
