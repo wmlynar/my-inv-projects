@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+path="/sys/bus/platform/devices/VPC2004:00/usb_charging"
+
+usage() {
+  echo "Usage: $0 on|off|status"
+  exit 1
+}
+
+[[ -e "$path" ]] || { echo "Not found: $path" >&2; exit 1; }
+
+if [[ $# -ne 1 ]]; then
+  usage
+fi
+
+case "$1" in
+  on)
+    echo 1 | sudo tee "$path" >/dev/null
+    ;;
+  off)
+    echo 0 | sudo tee "$path" >/dev/null
+    ;;
+  status)
+    cat "$path"
+    ;;
+  *)
+    usage
+    ;;
+ esac
