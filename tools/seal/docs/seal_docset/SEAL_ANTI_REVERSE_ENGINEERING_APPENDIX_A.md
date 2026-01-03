@@ -1,7 +1,7 @@
-# Appendix A — ubuntu-foss-anti-reverse-spec-v0.2-merged (verbatim)
+# Appendix A — ubuntu-foss-anti-reverse-spec-merged (verbatim)
 
 # Ubuntu/Linux (ELF): FOSS narzędzia i pipeline utrudniania reverse engineeringu / dekompilacji
-**Specyfikacja zmergowana:** v0.2 (merge v0.1 + recenzja Thinking)  
+**Specyfikacja zmergowana:** merge + recenzja Thinking  
 **Data:** 2025-12-25  
 **Zakres:** Ubuntu/Linux, artefakty **ELF** (binarki i biblioteki `.so`) budowane z **C/C++** (i ogólnie: z dowolnego języka kompilowanego przez LLVM/GCC).  
 **Cel:** zabezpieczyć *artefakt wykonywalny na Ubuntu* przed łatwą analizą (dekompilacją/pseudokodem) i szybkim zrozumieniem implementacji przez osobę, która ma dostęp do binarki oraz może ją uruchamiać.
@@ -288,4 +288,3 @@ GNU ld version scripts (symbol export control):
 
 
 ---
-

@@ -1,13 +1,16 @@
 "use strict";
 
+const path = require("path");
+
 const { findProjectRoot } = require("../lib/paths");
 const { loadProjectConfig, loadTargetConfig, resolveTargetName, resolveConfigName, getConfigFile } = require("../lib/project");
-const { fileExists } = require("../lib/fsextra");
+const { fileExists, rmrf } = require("../lib/fsextra");
 const { warn, ok, err } = require("../lib/ui");
 const { cmdCheck } = require("./check");
 const { resolveTiming } = require("../lib/timing");
 const { buildRelease } = require("../lib/build");
 const { verifyArtifact, explainChecklist, buildVerifyReport, writeVerifyReport } = require("../lib/verify");
+const { buildPlan, writePlanArtifacts, snapshotRunOnFailure } = require("../lib/plan");
 
 async function cmdRelease(cwd, targetArg, opts) {
   opts = opts || {};
@@ -31,6 +34,30 @@ async function cmdRelease(cwd, targetArg, opts) {
     console.log(`Tip: seal config add ${configName}`);
   }
 
+  const planAction = opts.planAction || "release";
+  const skipPlan = !!opts.skipPlan;
+  const outDirOverride = opts.out ? path.resolve(String(opts.out)) : null;
+  const artifactOnly = !!opts.artifactOnly;
+  if (artifactOnly && opts.payloadOnly) {
+    throw new Error("--artifact-only cannot be combined with --payload-only");
+  }
+
+  if (!skipPlan) {
+    const plan = buildPlan({
+      projectRoot,
+      projectCfg: proj,
+      targetCfg,
+      targetName,
+      configName,
+      packagerOverride: opts.packager || null,
+      action: planAction,
+      buildResult: null,
+      artifactPath: null,
+    });
+    writePlanArtifacts(projectRoot, plan);
+  }
+
+  let failed = false;
   try {
     if (!opts.skipCheck) {
       await timing.timeAsync("release.check", async () => cmdCheck(projectRoot, targetName, {
@@ -51,6 +78,7 @@ async function cmdRelease(cwd, targetArg, opts) {
       configName,
       packagerOverride: opts.packager,
       payloadOnly: !!opts.payloadOnly,
+      outDirOverride,
       timing,
     });
 
@@ -85,20 +113,51 @@ async function cmdRelease(cwd, targetArg, opts) {
       warn(`Verify skipped (${reason}).`);
     }
 
-    ok(`Release ready: ${result.releaseDir}`);
+    if (artifactOnly && result.releaseDir) {
+      rmrf(result.releaseDir);
+      result.releaseDir = null;
+      warn("Artifact-only build: release dir removed.");
+    }
+
+    if (!skipPlan) {
+      const plan = buildPlan({
+        projectRoot,
+        projectCfg: proj,
+        targetCfg,
+        targetName,
+        configName,
+        packagerOverride: opts.packager || null,
+        action: planAction,
+        buildResult: result,
+        artifactPath: result.artifactPath || null,
+      });
+      writePlanArtifacts(projectRoot, plan);
+    }
+
+    if (result.releaseDir) {
+      ok(`Release ready: ${result.releaseDir}`);
+    } else if (result.artifactPath) {
+      ok(`Artifact ready: ${result.artifactPath}`);
+    }
     if (result.payloadOnly) {
       warn("Payload-only build: launcher/runtime skipped; artifact not created; sealed run/verify disabled.");
-    } else {
+    } else if (result.releaseDir) {
       console.log("Next:");
       if (!verifyRan) console.log("  seal verify --explain");
       console.log("  seal run-local --sealed");
     }
-    console.log("");
-    console.log("Inspect:");
-    console.log(`  ls -la ${result.releaseDir}`);
+    if (result.releaseDir) {
+      console.log("");
+      console.log("Inspect:");
+      console.log(`  ls -la ${result.releaseDir}`);
+    }
 
     return result;
+  } catch (err) {
+    failed = true;
+    throw err;
   } finally {
+    if (failed && !skipPlan) snapshotRunOnFailure(projectRoot);
     if (report) timing.report({ title: "Release timing" });
   }
 }

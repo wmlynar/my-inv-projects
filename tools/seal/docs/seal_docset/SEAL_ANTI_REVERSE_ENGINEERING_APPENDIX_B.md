@@ -1,9 +1,9 @@
-# Appendix B — spec-seal-ubuntu-anti-reverse-v0.2-model-pro (verbatim)
+# Appendix B — spec-seal-ubuntu-anti-reverse-model-pro (verbatim)
 
-# SEAL / Ubuntu/Linux: warstwy ochrony kodu w artefaktach (FOSS) — anti‑casual extraction + utrudnianie reverse engineering (spec v0.2)
+# SEAL / Ubuntu/Linux: warstwy ochrony kodu w artefaktach (FOSS) — anti‑casual extraction + utrudnianie reverse engineering
 
 **Data:** 2025-12-25  
-**Status:** roboczy standard / do wdrożenia (v0.2)  
+**Status:** roboczy standard / do wdrożenia  
 **Dla:** projektów budowanych i wdrażanych przez **SEAL** (packagery: `thin-*`, `sea`, `bundle`, `none`) + ogólne zasady dla ELF na Ubuntu/Linux (C/C++/Rust/Go).  
 **Uwaga (zakres):** hardening systemd jest **poza zakresem** tej specyfikacji (może być realizowany osobno w konfiguracji usług/ops).
 **Założenie krytyczne:** **mamy źródła** (generator / build pipeline jest po naszej stronie), więc „ochronę” możemy robić **już na etapie generacji** i budowania artefaktu, a nie dopiero post‑factum.
@@ -13,8 +13,8 @@
 
 ---
 
-## Changelog (v0.2 vs v0.1)
-Wersja v0.2:
+## Changelog (zmiany względem poprzedniej iteracji)
+Wersja robocza:
 - doprecyzowuje cel i **mierzalne DoD** (Definition of Done),
 - dodaje osobną warstwę „**wycieki**” (logi/komunikaty/stringi/ścieżki),
 - rozdziela **anti‑RE** vs **hardening** (osobne presety),
@@ -551,4 +551,3 @@ Obfuscator-LLVM license note (NCSA/LLVM):
 
 
 ---
-

@@ -1,4 +1,4 @@
-# SEAL_FLOW_MAP – Mapa przeplywow (v0.5)
+# SEAL_FLOW_MAP – Mapa przeplywow
 
 > **Cel:** jedna strona, ktora pokazuje glowne sciezki: build, deploy, airgap, diagnostyka.
 > Szczegoly: `SEAL_QUICK_START.md`, `SEAL_DEPLOY_SPEC.md`, `SEAL_DEPLOY_REFERENCE.md`.

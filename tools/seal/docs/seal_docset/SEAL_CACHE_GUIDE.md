@@ -1,4 +1,4 @@
-# SEAL_CACHE_GUIDE - Mapa cache i polityka sprzatania (v0.5)
+# SEAL_CACHE_GUIDE - Mapa cache i polityka sprzatania
 
 Ten dokument opisuje wszystkie znane cache w Seal, ich domyslne lokalizacje,
 zmienne srodowiskowe oraz zasady sprzatania. Cel: brak niejawnego wzrostu

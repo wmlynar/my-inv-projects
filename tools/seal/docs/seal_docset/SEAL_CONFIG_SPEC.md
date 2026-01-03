@@ -1,4 +1,4 @@
-# SEAL_CONFIG_SPEC – Specyfikacja konfiguracji i precedencji (v0.5)
+# SEAL_CONFIG_SPEC – Specyfikacja konfiguracji i precedencji
 
 > **Cel:** jedna, spójna specyfikacja: jakie pliki konfiguracji istnieją, jak się składają,
 > jaka jest precedencja i jakie są domyślne wartości. Ten dokument jest normatywny
@@ -70,7 +70,7 @@ Kluczowe pola (pełny opis w `SEAL_DEPLOY_SPEC.md` + `SEAL_PACKAGER_THIN_SPEC_SC
 
 ### 3.4. `sentinel`
 - `build.sentinel` (object/boolean + opcjonalny `profile`).
-- Szczegóły: `SEAL_SENTINEL_SPEC_FINAL_v1.0.md`.
+- Szczegóły: `SEAL_SENTINEL_SPEC_FINAL.md`.
 
 ### 3.5. Workspace-only (`seal.json5` w root workspace)
 - `projects`: lista podprojektów (ścieżki względne).
@@ -131,5 +131,5 @@ Kluczowe pola (pełny opis w `SEAL_DEPLOY_SPEC.md` + `SEAL_PACKAGER_THIN_SPEC_SC
 - `SEAL_DEPLOY_SPEC.md` — pełny opis polityk i kontraktów.
 - `SEAL_PACKAGER_THIN_SPEC_SCALONA.md` — szczegóły `build.thin.*`.
 - `SEAL_ANTI_REVERSE_ENGINEERING.md` — profile bezpieczeństwa i hardening.
-- `SEAL_SENTINEL_SPEC_FINAL_v1.0.md` — sentinel i external anchor.
+- `SEAL_SENTINEL_SPEC_FINAL.md` — sentinel i external anchor.
 - `SEAL_ENV_FLAGS_REFERENCE.md` — env override.

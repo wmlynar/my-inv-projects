@@ -1,4 +1,4 @@
-# SEAL_SCENARIOS – Scenariusze użytkownika (v0.5)
+# SEAL_SCENARIOS – Scenariusze użytkownika
 
 > Ten dokument to „ściąga”: typowe sytuacje i minimalne komendy.
 > Zasada: jeśli nie wiesz co dalej, wpisz `seal` – CLI podpowie następny krok.

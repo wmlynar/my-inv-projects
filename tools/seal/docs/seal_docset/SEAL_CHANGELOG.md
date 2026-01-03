@@ -1,6 +1,6 @@
-# SEAL_CHANGELOG – Changelog docsetu (v0.5)
+# SEAL_CHANGELOG – Changelog docsetu
 
-## Repo/CLI v0.6.0 (docset v0.5.x)
+## Repo/CLI (stan obecny)
 
 ### Build / struktura (P0)
 - **Projekt + polityka:** przeniesione do `seal.json5` (w repo); targety/configi runtime pozostają w `seal-config/`.
@@ -15,21 +15,25 @@
 - **Bootstrap SSH uproszczony:** tworzy katalogi i nadaje uprawnienia; service instalowany po deployu (bez auto‑startu).
 - **Komendy serwisowe ujednolicone:** używaj `seal remote <target> <action>` (status/logs/restart/stop/disable/up/down).
 - **Lepsze preflighty SSH:** `seal check <target>` podaje precyzyjne wskazówki (brak katalogu, sudo, bootstrap).
+- **Plan/Release/Ship:** `seal plan` generuje `seal-out/run/plan.*`, `seal ship`/`deploy` wspieraja multi-target.
+- **Snapshot configu:** `seal deploy/ship` zapisuje `seal-out/remote/*` (wyłącz: `--no-snapshot`).
+- **Lista release:** `seal releases <target>` pokazuje current + last-known-good.
+- **Toolchain:** `seal toolchain status|install` jako jawne komendy.
 
 ### Frontend hardening (P1)
 - **Bezpieczna minifikacja HTML/CSS:** domyślnie włączona, z poziomami `safe`/`minimal` i override per‑sekcja.
 
 ### Docs (P1)
-- **SEAL_PITFALLS v0.5:** zebrane realne błędy i wymagania, aby ich nie powtarzać.
+- **SEAL_PITFALLS:** zebrane realne błędy i wymagania, aby ich nie powtarzać.
 - **SEAL_ANTI_REVERSE_ENGINEERING:** scalenie specyfikacji anti‑RE + tracerpid w jeden dokument z aktualnym statusem wdrożenia, decyzjami i brakami.
-- **SEAL_CACHE_GUIDE v0.5:** mapa cache w Seal + polityka sprzatania i retencji.
+- **SEAL_CACHE_GUIDE:** mapa cache w Seal + polityka sprzatania i retencji.
 - **Specyfikacje domykające braki:** `SEAL_CONFIG_SPEC`, `SEAL_COMPATIBILITY`, `SEAL_E2E_COVERAGE`, `SEAL_TROUBLESHOOTING`, `SEAL_HOST_BINDING_RUNBOOK`, `SEAL_FLOW_MAP`.
-- **Gotowosc v1:** kryteria scope/DoD dodane do `SEAL_DEPLOY_SPEC`.
+- **Gotowosc pierwszego releasu:** kryteria scope/DoD dodane do `SEAL_DEPLOY_SPEC`.
 
-## Docset v0.5 (względem v0.4)
+## Docset (zmiany względem poprzedniej iteracji)
 
 ### UX / prostota (P0)
-- **Docset jest scenariuszowy:** dodany dokument **SEAL_SCENARIOS v0.5** + rozbudowane scenariusze w SPEC.
+- **Docset jest scenariuszowy:** dodany dokument **SEAL_SCENARIOS** + rozbudowane scenariusze w SPEC.
 - **`seal` jako wizard (MUST):** uruchomienie `seal` bez argumentów wykrywa stan projektu i podpowiada „co dalej”.
 - **Domyślności, żeby nie pisać tego samego:**
   - `seal release` / `seal verify` / `seal run-local` używają domyślnego targetu (`default_target`) lub `local`.
@@ -51,7 +55,7 @@
 
 ### Spójność terminologii (P0)
 - Utrzymane: **target + config**, brak pojęcia „env” jako bytu konfiguracyjnego Seala.
-- Dokumenty `SEAL_STANDARD` i `SEAL_CONTRACT_AI` doprecyzowane i zsynchronizowane (v1.3).
+- Dokumenty `SEAL_STANDARD` i `SEAL_CONTRACT_AI` doprecyzowane i zsynchronizowane.
 
 ### Bezpieczeństwo / utrudnianie analizy (P0/P1)
 - **Frontend obfuskacja domyślnie włączona:** `public/**/*.js` (bez `*.min.js`) jest obfuskowane podczas `seal release`.
@@ -66,7 +70,7 @@
 
 ---
 
-## Docset v0.4 (względem v0.3.1) – archiwum skrócone
+## Docset (archiwum zmian)
 
 - `env` → `config` (koniec mindfucka).
 - Jedna główna komenda: `seal ship <target>` (`seal deploy` jako tryb manualny).

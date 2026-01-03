@@ -1,11 +1,11 @@
-# SEAL-DEPLOY – Dokument wymagań i standard jakości (v0.5)
+# SEAL-DEPLOY – Dokument wymagań i standard jakości
 > **Cel dokumentu:** zdefiniować kompletne wymagania dla narzędzia **seal-deploy** (dalej: **Seal**) oraz powiązanego **standardu jakości** dla aplikacji, które będą „sealowane” i wdrażane na środowiska wrogie (serwer/robot offline). Dokument jest podstawą implementacji.
 >
 > **Priorytet (P0):** Seal istnieje przede wszystkim po to, aby **wdrażać aplikacje Node.js na serwer/robota w postaci „sealed” (zaciemnionej, spakowanej) tak, żeby osoby mające dostęp do hosta miały maksymalnie utrudniony odczyt logiki/backendowego kodu źródłowego** — czyli chronić własnosc intelektualna przed latwym „wyciekiem”. Wszystkie pozostałe elementy (systemd, `appctl`, standard jakości, UI fallback) są podporządkowane temu, aby sealed wdrożenia były **stabilne i serwisowalne** mimo obfuskacji.
 
 ---
 
-## 0. Jak czytać ten dokument (v0.4)
+## 0. Jak czytać ten dokument
 
 ### 0.1. Warstwy dokumentu (PRD/REQ, ARCH, REF)
 
@@ -21,7 +21,7 @@ W praktyce:
 
 
 
-**Uwaga (docset v0.4):** w tej iteracji utrzymujemy nadal trzy warstwy myślowe (PRD/REQ, ARCH, REF), ale elementy **czysto implementacyjne** są systematycznie przenoszone do osobnego dokumentu **SEAL_DEPLOY_REFERENCE v0.4**.
+**Uwaga (docset):** w tej iteracji utrzymujemy nadal trzy warstwy myślowe (PRD/REQ, ARCH, REF), ale elementy **czysto implementacyjne** są systematycznie przenoszone do osobnego dokumentu **SEAL_DEPLOY_REFERENCE**.
 
 - W tym pliku trzymamy wymagania i kontrakty (SPEC) + krótkie uzasadnienia (ARCH).
 - W SEAL_DEPLOY_REFERENCE trzymamy: długie blueprinty, przykładowe pliki i szablony, gotowe „copy‑paste” fragmenty.
@@ -45,11 +45,11 @@ Przykład: `REQ-SEA-004`.
 
 ### 0.4. Zasada prostoty i iteracyjnego „utwardzania”
 
-Seal ma być **super prosty i mało inwazyjny**: użytkownik ma się skupiać na logice aplikacji, a nie na DevOpsach i zabezpieczeniach. v0.4 celowo redukuje pojęcia i liczbę komend.
+Seal ma być **super prosty i mało inwazyjny**: użytkownik ma się skupiać na logice aplikacji, a nie na DevOpsach i zabezpieczeniach. Ta iteracja celowo redukuje pojęcia i liczbę komend.
 
-Jednocześnie – bezpieczeństwo będzie rosnąć wersjami:
-- v0.x: **najpierw działa** (minimalna liczba ryzyk i „magii”, dużo logów i diagnostyki),
-- v1.x+: stopniowo dokładamy mocniejsze mechanizmy (hardening, weryfikacje, licencje/anti‑copy), ale tak, by nie rozwalić ergonomii.
+Jednocześnie – bezpieczeństwo będzie rosnąć iteracyjnie:
+- faza prototypowa: **najpierw działa** (minimalna liczba ryzyk i „magii”, dużo logów i diagnostyki),
+- kolejne iteracje: stopniowo dokładamy mocniejsze mechanizmy (hardening, weryfikacje, licencje/anti‑copy), ale tak, by nie rozwalić ergonomii.
 
 ### 0.5. Polityka sekretów (ważne i jawne)
 
@@ -62,9 +62,9 @@ W tej filozofii:
 
 
 
-### 0.6. Zmiany w v0.4 (skrót)
+### 0.6. Zmiany względem poprzedniej iteracji (skrót)
 
-Najważniejsze zmiany względem v0.3.1:
+Najważniejsze zmiany względem wcześniejszej iteracji:
 - `env` → **`config`** (wariant konfiguracji runtime). Zostaje **target** (host) + **config** (wariant w `seal-config/configs`).
 - Jedna główna komenda: **`seal ship <target>`** (a `seal deploy` pozostaje trybem manualnym).
 - Bootstrap serwera jest częścią shipu: **`seal ship <target> --bootstrap`** (deploy też wspiera `--bootstrap`).
@@ -93,7 +93,7 @@ Seal ma zdejmować z głowy temat „jak zabezpieczyć kod, żeby mnie nie okrad
 
 ## Spis treści
 
-- 0. Jak czytać ten dokument (v0.4)
+- 0. Jak czytać ten dokument
 - Idea przewodnia (guiding idea)
 - 1. Kontekst i cele
 - 2. Definicje i pojęcia
@@ -112,7 +112,7 @@ Seal ma zdejmować z głowy temat „jak zabezpieczyć kod, żeby mnie nie okrad
 - 15. Frontend: opcjonalne zabezpieczenie
 - 16. Zasoby (assets) i pliki danych
 - 17. Mechanizm anty-kopiowania (opcjonalnie)
-- 18. Standard jakości SEAL_STANDARD v1.3 (modułowy)
+- 18. Standard jakości SEAL_STANDARD (modułowy)
 - 19. Wersjonowanie standardu i “lock” w projekcie
 - 20. Przykładowa aplikacja referencyjna
 - 21. Kryteria akceptacyjne (Definition of Done)
@@ -129,9 +129,9 @@ Seal ma zdejmować z głowy temat „jak zabezpieczyć kod, żeby mnie nie okrad
 - 32. Specyfikacja obsługi UI i static assets w trybie single executable
 - 33. Toolchain i instalacja offline (żeby implementacja była wykonalna)
 - 34. Deterministyczne buildId, wersja i retencja release
-- 35. Decyzje i status (v0.5.x)
-- 36. Lista zmian (v0.5)
-- 37. Rzeczy, które wypadły z poprzedniej wersji (v0.2)
+- 35. Decyzje i status
+- 36. Lista zmian
+- 37. Rzeczy, które wypadły z poprzedniej wersji
 
 ---
 
@@ -234,7 +234,7 @@ Dla porządku rozróżniamy klasy atakującego (nie po to, żeby się oszukiwać
 
 ---
 
-### 3.4. Wykonalność i ograniczenia (Non-goals / limitations) (v0.4)
+### 3.4. Wykonalność i ograniczenia (Non-goals / limitations)
 
 Ta sekcja ma zapobiec obiecywaniu „magii”. Seal ma podnosić koszt kradzieży IP i upraszczać wdrożenia, ale nie daje absolutnych gwarancji w modelu atakującego z pełnym dostępem do hosta.
 
@@ -266,7 +266,7 @@ Ta sekcja ma zapobiec obiecywaniu „magii”. Seal ma podnosić koszt kradzież
 Seal jest instalowany globalnie na komputerze deweloperskim jako komenda (np. `seal`).
 
 Seal dostarcza:
-- standard jakości **SEAL_STANDARD v1.3** (dokumenty + szablony),
+- standard jakości **SEAL_STANDARD** (dokumenty + szablony),
 - komendy do pełnego workflow:
   - przygotowanie repo projektu: `seal init`,
   - kontrola kompatybilności przed sealingiem: `seal check`,
@@ -452,18 +452,17 @@ seal-deploy/
   docs/
     SEAL_DEPLOY_SPEC.md
     standard/
-      v1/
-        SEAL_STANDARD.md
-        modules/
-          logging.md
-          config.md
-          status.md
-          service.md
-          ui_resilience.md
-          integrations.md
-        examples/
-          status.example.json
-          logs.example.jsonl
+      SEAL_STANDARD.md
+      modules/
+        logging.md
+        config.md
+        status.md
+        service.md
+        ui_resilience.md
+        integrations.md
+      examples/
+        status.example.json
+        logs.example.jsonl
   templates/
     server/
       seal-server.sh
@@ -591,7 +590,7 @@ Mechanizmy:
 **Uwaga o sekretach:** w tym projekcie configi i snapshoty **mogą** zawierać sekrety i jest to akceptowane. Seal nie ma chronić przed ich wyciekiem – jego celem jest ochrona kodu/logiki.
 
 
-### 10.7. Samoopisująca konfiguracja (v0.3): brak ukrytych defaultów
+### 10.7. Samoopisująca konfiguracja: brak ukrytych defaultów
 
 > **Cel:** użytkownik ma móc „patrzeć w pliki” i zobaczyć wszystkie opcje – bez przekopywania dokumentacji i bez „magicznych” domyślnych zachowań ukrytych w kodzie.
 
@@ -613,7 +612,7 @@ Mechanizmy:
 
 ## 11. Serwer/robot: bootstrap środowiska (seal-server.sh)
 
-> W v0.4 nie chcemy osobnej „ścieżki mentalnej” w stylu `seal deploy --bootstrap`. Bootstrap jest trybem `seal deploy`.
+> W tej iteracji nie chcemy osobnej „ścieżki mentalnej” w stylu `seal deploy --bootstrap`. Bootstrap jest trybem `seal deploy`.
 
 ### 11.1. Założenia
 - Na serwerze nie ma zainstalowanego Seal.
@@ -675,7 +674,7 @@ MVP: wymagamy `sudo` do operacji bootstrap/systemd; po bootstrapie zapis w `<ins
 
 ### 12.1. Struktura
 
-> v0.4: **bez symlinków** jako domyślna polityka (mniej „gotcha” na dziwnych FS-ach).
+> Domyślnie: **bez symlinków** jako polityka (mniej „gotcha” na dziwnych FS-ach).
 
 ```
 /home/admin/apps/my-app/
@@ -732,7 +731,7 @@ Release musi zawierać `manifest.json` z co najmniej:
   - standard: aplikacja czyta `config.runtime.json5` z CWD,
   - `run-current.sh` uruchamia `appctl run` z aktywnego release, a `appctl` kopiuje `shared/config.json5` do `releases/<buildId>/config.runtime.json5`.
 
-**Baseline hardening (w v0.4 rekomendowany jako domyślny, bo mało inwazyjny):**
+**Baseline hardening (rekomendowany jako domyślny, bo mało inwazyjny):**
 - `NoNewPrivileges=true`
 - `PrivateTmp=true`
 - `ProtectHome=true`
@@ -742,7 +741,7 @@ Release musi zawierać `manifest.json` z co najmniej:
 Mocniejsze opcje sandboxingu są opisane w sekcji 30 jako „hardening opcjonalny”, bo mogą łamać integracje.
 
 ### 13.2. appctl
-W implementacji v0.6 `appctl` jest dostarczany w każdym release (`releases/<buildId>/appctl`), a runner `run-current.sh` używa go do startu.
+W implementacji `appctl` jest dostarczany w każdym release (`releases/<buildId>/appctl`), a runner `run-current.sh` używa go do startu.
 `appctl` ma zapewniać:
 - `status` – systemd status
 - `restart`, `stop`, `start`
@@ -826,9 +825,9 @@ SEA w Node (Single Executable Application) ma twarde ograniczenia, które determ
   - Seal **pinuję** wersję Node w toolchainie,
   - Seal ma plan awaryjny (bundle packager / tryb mniej agresywny), jeśli SEA zawiedzie na danym OS/arch.
 
-**Cross‑build:** w v0.4 MVP zakłada build na tej samej platformie co target (najmniej ryzyk). Cross‑build jest dopuszczalny jako MAY, ale wymaga jawnych ustawień „bezpiecznych” dla SEA (bez snapshot/cache tam, gdzie to problematyczne).
+**Cross‑build:** MVP zakłada build na tej samej platformie co target (najmniej ryzyk). Cross‑build jest dopuszczalny jako MAY, ale wymaga jawnych ustawień „bezpiecznych” dla SEA (bez snapshot/cache tam, gdzie to problematyczne).
 
-**Wtrysk flag runtime:** w v0.4 stosujemy podejście warstwowe:
+**Wtrysk flag runtime:** stosujemy podejście warstwowe:
 - SEA: ograniczamy execArgv injection w konfiguracji SEA (jeśli dostępne w danej wersji Node),
 - systemd: `UnsetEnvironment=NODE_OPTIONS` jako baseline.
 
@@ -884,7 +883,7 @@ SEA w Node (Single Executable Application) ma twarde ograniczenia, które determ
      - Gdy `elfPacker.tool="upx"` jest włączony i nie działa (brak narzędzia lub błąd typu `CantUnpackException: bad e_phoff`), build **musi** się przerwać z błędem.
      - Gdy `strip` jest włączony i narzędzie jest niedostępne, Seal wypisuje ostrzeżenie (bez przerywania builda).
   - Użytkownik **MUST** mieć możliwość wyłączenia protection w `seal.json5` (np. `build.protection.enabled=false`).
-   - (MAY) w przyszłości: self-integrity / anti-tamper jako opcja (nie domyślna w v0.5).
+   - (MAY) w przyszłości: self-integrity / anti-tamper jako opcja (nie domyślna w tej iteracji).
 
 7) **Utworzenie paczki release:**
    - `seal-out/<app>-<buildId>.tgz` zawiera:
@@ -913,13 +912,13 @@ SEA w Node (Single Executable Application) ma twarde ograniczenia, które determ
 
 
 
-### 14.6. Blueprint implementacji „super sealing (SEA)” – przeniesione do SEAL_DEPLOY_REFERENCE (v0.4)
+### 14.6. Blueprint implementacji „super sealing (SEA)” – przeniesione do SEAL_DEPLOY_REFERENCE
 
-> W docsecie v0.3 długie elementy implementacyjne (blueprinty, szablony krok‑po‑kroku) są utrzymywane w osobnym dokumencie **SEAL_DEPLOY_REFERENCE v0.4**.
+> W docsecie długie elementy implementacyjne (blueprinty, szablony krok‑po‑kroku) są utrzymywane w osobnym dokumencie **SEAL_DEPLOY_REFERENCE**.
 >
 > Dzięki temu SPEC nie jest zakładnikiem aktualnych narzędzi (SEA/postject/esbuild), a jednocześnie nic nie ginie.
 
-Zobacz: **SEAL_DEPLOY_REFERENCE v0.4**, sekcja „Blueprint: implementacja super sealing (SEA)”.
+Zobacz: **SEAL_DEPLOY_REFERENCE**, sekcja „Blueprint: implementacja super sealing (SEA)”.
 
 ---
 
@@ -928,7 +927,7 @@ Zobacz: **SEAL_DEPLOY_REFERENCE v0.4**, sekcja „Blueprint: implementacja super
 
 Frontend zawsze będzie „łatwiejszy do podejrzenia” (bo działa w przeglądarce). SEAL nie obiecuje magii — celem jest **utrudnienie prostego podglądu** (view-source / proste otwarcie pliku), a nie kryptografia.
 
-### 15.1. Zachowanie domyślne (v0.5)
+### 15.1. Zachowanie domyślne
 - Podczas `seal release` oraz `seal deploy` SEAL **obfuskuje pliki frontendu** w `public/**/*.js` (pomija `*.min.js`).
 - SEAL **bezpiecznie minifikuje** `public/**/*.html` i `public/**/*.css` (pomija `*.min.html` i `*.min.css`), domyślny poziom: `safe`.
 - Obfuskacja jest „browser-safe” (konserwatywna): nie robi agresywnych transformacji, które często psują DOM i API.
@@ -1035,7 +1034,7 @@ Opcje:
 
 ---
 
-## 18. Standard jakości SEAL_STANDARD v1.3 (modułowy)
+## 18. Standard jakości SEAL_STANDARD (modułowy)
 
 > Ten standard jest częścią Seal. Seal dostarcza dokument standardu i referencyjne szablony do jego implementacji.
 
@@ -1059,7 +1058,7 @@ Opcje:
 #### B) Config (MUST)
 - Konfiguracja runtime jest w pliku `config.runtime.json5` (lub json).
 - Walidacja configu na starcie (czytelny błąd wskazujący pole/typ).
-- (MAY) `configVersion` (opcjonalne; w v0.4 nie jest wymagane).
+- (MAY) `configVersion` (opcjonalne; nie jest wymagane).
 
 #### C) Health/Status (MUST)
 - `GET /healthz`:
@@ -1070,7 +1069,7 @@ Opcje:
   - zawiera wersję/build/uptime,
   - raportuje zależności jako: `ok|degraded|down` + `lastOkAt` + `msg`.
   - **Minimalny schemat (normatywnie):** `version`, `buildId` (lub `build`), `buildTime` (jeśli znane), `uptimeSec`, `deps`.
-  - Dostępność: w v0.4 endpointy `/healthz` i `/status` są traktowane jako **publiczne** (na tym samym porcie co aplikacja). (MAY) jeżeli kiedyś wystawisz to do internetu, możesz je schować za reverse‑proxy / firewallem.
+  - Dostępność: endpointy `/healthz` i `/status` są traktowane jako **publiczne** (na tym samym porcie co aplikacja). (MAY) jeżeli kiedyś wystawisz to do internetu, możesz je schować za reverse‑proxy / firewallem.
 
 #### D) Service readiness (MUST)
 - Obsługa SIGTERM (graceful shutdown).
@@ -1107,7 +1106,7 @@ Opcje:
   - snapshot `/status`,
   - wersja/build,
   - logi z ostatnich N minut,
-  - oznaczenie trybu bundle: `full|safe` (patrz SEAL_STANDARD v1.3),
+  - oznaczenie trybu bundle: `full|safe` (patrz SEAL_STANDARD),
   - (opcjonalnie) `configHash` i/lub config (w trybie `full`),
   - manifest release.
 
@@ -1115,7 +1114,7 @@ Opcje:
 
 > **Cel:** maksymalnie przenieść „myślenie o sealowaniu” do standardu i do promptów dla AI, tak aby projekty generowane przez AI były z góry kompatybilne z sealingiem.
 
-W ramach SEAL_STANDARD v1.3 Seal dostarcza plik (do skopiowania do repo aplikacji):
+W ramach SEAL_STANDARD Seal dostarcza plik (do skopiowania do repo aplikacji):
 - `SEAL_CONTRACT_AI.md` – krótka, jednoznaczna lista zasad dla kodu generowanego przez AI (np. brak `eval`, brak dynamicznych importów, statyczne importy assets, jednolity loader configu, wymagane endpointy `/healthz` i `/status`, format logów).
 
 W repo aplikacji plik ten może żyć jako:
@@ -1144,7 +1143,7 @@ Przykład:
 
 ### 19.2. Zasada kompatybilności
 - Projekt implementuje wymagania standardu zgodnie z lock.
-- Zmiana standardu (np. v1 → v2) jest jawna (zmiana lock).
+- Zmiana standardu (np. kolejna wersja) jest jawna (zmiana lock).
 
 ---
 
@@ -1181,14 +1180,14 @@ Celem sample-app jest:
 - Opcjonalna kompresja/ukrycie binarki działa jako przełącznik.
 
 ### 21.3. Standard jakości
-- Sample-app spełnia SEAL_STANDARD v1.3.
+- Sample-app spełnia SEAL_STANDARD
 - Szablony w Seal umożliwiają szybkie zastosowanie standardu.
 
-### 21.4. Zakres v1 (scope)
+### 21.4. Zakres pierwszego releasu (scope)
 
 **Platforma i runtime (MUST):**
 - Linux x86_64 + systemd (scope=user/system).
-- Build na platformie docelowej (cross-build poza zakresem v1).
+- Build na platformie docelowej (cross-build poza zakresem pierwszego releasu).
 - Tryb offline/airgap jest wspierany (bez zewnetrznych serwerow).
 
 **Packagery (MUST/SHOULD):**
@@ -1201,12 +1200,12 @@ Celem sample-app jest:
 - `seal ship`, `seal deploy --artifact`, `seal remote`, `seal rollback`, `seal uninstall`.
 - Konfiguracja i precedencja zgodna z `SEAL_CONFIG_SPEC.md`.
 
-**Poza zakresem v1 (MUST NOT):**
+**Poza zakresem pierwszego releasu (MUST NOT):**
 - Windows/macOS i inne architektury jako oficjalne targety.
 - Cross-build i "jedna binarka na wszystko".
 - Licencje online / zewnetrzne serwery autoryzacji.
 
-### 21.5. Gotowosc do releasu v1 (DoD v1)
+### 21.5. Gotowosc do releasu (DoD)
 
 **Produkt/UX (MUST):**
 - `seal` bez argumentow dziala jako wizard i prowadzi po happy-path.
@@ -1562,7 +1561,7 @@ Kompatybilność (MAY): brak historycznych aliasów.
 
 ### 25.5. `seal-out/run/` (artefakty uruchomienia; ostatni run)
 
-**Wymaganie (MUST, v0.4):** SEAL zapisuje artefakty ostatniego uruchomienia do jednego katalogu: `seal-out/run/` (nadpisywanego).
+**Wymaganie (MUST):** SEAL zapisuje artefakty ostatniego uruchomienia do jednego katalogu: `seal-out/run/` (nadpisywanego).
 
 `seal-out/run/` zawiera minimum:
 - `plan.md`, `plan.json`
@@ -1595,7 +1594,7 @@ Minimalne pola (MUST):
 
 > **Cel:** opisać krok po kroku, co ma się wydarzyć, aby implementacja była prosta i przewidywalna.
 
-### 26.0. Minimalny blueprint architektury narzędzia (v0.4)
+### 26.0. Minimalny blueprint architektury narzędzia
 
 - **Engine:** Plan → Execute → Verify → Report
   - *Plan* (`seal plan`) generuje decision trace + kroki jako dane.
@@ -1655,7 +1654,7 @@ Uwagi:
 
 > **Cel:** zapewnić, że implementacja Seala i standardu jest możliwa do weryfikacji w sposób powtarzalny.
 >
-> **Uwaga:** pełna „ściąga” scenariuszy jest w `SEAL_SCENARIOS v0.5`. Ta sekcja definiuje scenariusze jako testy akceptacyjne.
+> **Uwaga:** pełna „ściąga” scenariuszy jest w `SEAL_SCENARIOS`. Ta sekcja definiuje scenariusze jako testy akceptacyjne.
 
 ### 27.1. E2E: nowy projekt (init → dev-run)
 1) `seal init`
@@ -1806,7 +1805,7 @@ Uwagi:
 - current.buildId, buildId, health-check, rollback.
 
 ### 28.3. Milestone 3 – standard jakości i sample-app
-- sample-app spełniający SEAL_STANDARD v1.3.
+- sample-app spełniający SEAL_STANDARD
 - szablony logger/status w `seal-config/configs`.
 
 ### 28.4. Milestone 4 – frontend obfuskacja + hardening + licencja (opcjonalnie)
@@ -1827,7 +1826,7 @@ Uwagi:
 
 
 ### 29.2. Minimalny format
-Przykład (aktualny dla v0.5):
+Przykład (aktualny):
 ```json5
 {
   appName: "my-app",
@@ -1977,7 +1976,7 @@ Przykład (aktualny dla v0.5):
 
 **Cel:** jedno, jawne miejsce na reguły pakowania i weryfikacji (bez wyboru presetów/szablonów w UX).
 
-**Wymaganie (MUST, v0.4):**
+**Wymaganie (MUST):**
 - Po `seal init` istnieje jedna polityka domyślna (spójna i przewidywalna), używana automatycznie.
 - Polityka może być nadpisywalna w **jednym** pliku (`seal.json5#policy`) poprzez jawne reguły include/exclude/exception.
 - Narzędzie nie oferuje wyboru „policy templates” jako elementu UX.
@@ -2132,7 +2131,7 @@ WantedBy=multi-user.target
 ### 32.3. Co trafia do paczki release
 - SEAL dodaje minimalistyczny `version.json` (bez informacji o obfuskacji/releasie) — tylko wersja aplikacji.
 - Jeśli katalog `public/` istnieje w repo projektu, SEAL kopiuje `public/**` do release.
-- Domyślnie (v0.5): SEAL **obfuskuje** `public/**/*.js` (pomija `*.min.js`).
+- Domyślnie: SEAL **obfuskuje** `public/**/*.js` (pomija `*.min.js`).
   - SEAL **bezpiecznie minifikuje** `public/**/*.html` i `public/**/*.css` (pomija `*.min.html`/`*.min.css`).
 - Podsumowanie obfuskacji/minifikacji jest zapisywane lokalnie w `seal-out/meta.json` (pola `frontendObfuscation`, `frontendMinify`). `meta.json` nie jest częścią paczki release.
 - Wyłączenie jest możliwe w `seal.json5` (patrz sekcja 15).
@@ -2148,10 +2147,10 @@ WantedBy=multi-user.target
 ### 33.0. Compatibility Matrix
 
 
-**v0.4 (MVP):**
+**MVP:**
 - Host docelowy: Linux x86_64 + systemd.
 - Build sealed release: na maszynie, która ma kompatybilny glibc/arch (najprościej: ten sam typ systemu co target).
-- Cross-build: **out of scope** w v0.4 (MAY w przyszłości).
+- Cross-build: **out of scope** na starcie (MAY w przyszłości).
 
 **Toolchain (pinowany):**
 - Node (SEA) – pinowana wersja dostarczana przez Seal.
@@ -2223,18 +2222,18 @@ Seal działa bez tych narzędzi, ale `seal check` **SHOULD** ostrzegać, gdy ich
 ---
 
 
-## 35. Decyzje i status (v0.5.x)
+## 35. Decyzje i status
 
 Ta sekcja zamyka wcześniejsze „open questions” i podaje obowiązujące decyzje.
 
 1) **Podpisywanie artefaktów**  
-   v0.5.x nie implementuje podpisów w CLI. Rekomendacja: zewnętrzny podpis i weryfikacja w CI/CD, a Seal dostarcza `seal verify --json` jako hook do automatyzacji. Opcjonalny podpis (np. Ed25519) jest **planowany**, ale nie jest częścią MVP.
+   Obecna implementacja nie implementuje podpisów w CLI. Rekomendacja: zewnętrzny podpis i weryfikacja w CI/CD, a Seal dostarcza `seal verify --json` jako hook do automatyzacji. Opcjonalny podpis (np. Ed25519) jest **planowany**, ale nie jest częścią MVP.
 
 2) **Anti‑copy (sekcja 17)**  
-   MVP to sentinel L2 + opcjonalny L4 (external anchor usb/file). Licencje online i serwery zewnętrzne są **poza zakresem** v0.5.x.
+   MVP to sentinel L2 + opcjonalny L4 (external anchor usb/file). Licencje online i serwery zewnętrzne są **poza zakresem** obecnego zakresu.
 
 3) **Cross‑build vs build‑on‑target**  
-   v0.5.x: **build na platformie docelowej**. Cross‑build jest OFF i wymaga osobnej ścieżki testowej (SEA + thin per OS/arch).
+   Domyślnie: **build na platformie docelowej**. Cross‑build jest OFF i wymaga osobnej ścieżki testowej (SEA + thin per OS/arch).
 
 4) **Profile obfuskacji i testy regresji**  
    Minimum: profil `balanced` i `strict` muszą przechodzić core E2E. Profil `max` jest opt‑in i może mieć osobny gating (SEAL_E2E_TOOLSET=full). Brak cichych fallbacków — degradacja ochrony musi być jawna.
@@ -2249,11 +2248,11 @@ Ta sekcja zamyka wcześniejsze „open questions” i podaje obowiązujące decy
 
 
 
-## 36. Lista zmian (v0.5)
+## 36. Lista zmian
 
-### 36.1. v0.5 względem v0.4
+### 36.1. Zmiany względem poprzedniej iteracji
 
-- Dodane: **SEAL_SCENARIOS v0.5** (pełna lista scenariuszy użytkownika).
+- Dodane: **SEAL_SCENARIOS** (pełna lista scenariuszy użytkownika).
 - Doprecyzowane: „SEAL prowadzi za rękę” jako wymóg UX:
   - `seal` bez argumentów działa jak wizard,
   - domyślności dla target/config (`seal-config/configs`) i ostatniego builda.
@@ -2261,16 +2260,16 @@ Ta sekcja zamyka wcześniejsze „open questions” i podaje obowiązujące decy
   - `seal release` buduje artefakt + rozpakowuje do `seal-out/release/`,
   - `seal run-local` uruchamia sealed lokalnie.
 - Dodane scenariusze „z realu”: toolchain/prefetch, preflight, airgap, multi-target, uninstall, manual rollback + lista release, support bundle jako scenariusz.
-- Zaktualizowane referencje: `SEAL_STANDARD v1.3`, `SEAL_CONTRACT_AI v1.3`.
+- Zaktualizowane referencje: `SEAL_STANDARD`, `SEAL_CONTRACT_AI`.
 
 ---
 
-## 37. Rzeczy, które wypadły z poprzedniej wersji (v0.2)
+## 37. Rzeczy, które wypadły z poprzedniej wersji
 
 Nic kluczowego nie zostało usunięte funkcjonalnie.
 
-Świadome zmiany organizacyjne (wprowadzone w v0.3 i utrzymane w v0.4):
-- sekcja **14.6 (Blueprint implementacji SEA)** została przeniesiona do osobnego dokumentu **SEAL_DEPLOY_REFERENCE v0.4**.
+Świadome zmiany organizacyjne (wprowadzone wcześniej i utrzymane nadal):
+- sekcja **14.6 (Blueprint implementacji SEA)** została przeniesiona do osobnego dokumentu **SEAL_DEPLOY_REFERENCE**.
 - w szablonie systemd (sekcja 30) usunięto `APP_CONFIG` jako standardowy mechanizm konfiguracji (zostaje jako MAY – override diagnostyczny).
 
 Jeżeli w kolejnych iteracjach coś będzie realnie wycofywane (np. zmiana formatu plików), ta sekcja będzie zawierać pełną listę wraz z uzasadnieniem.

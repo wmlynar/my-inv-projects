@@ -1,4 +1,4 @@
-# SEAL_E2E_RUNBOOK - uruchamianie testow E2E (v0.1)
+# SEAL_E2E_RUNBOOK - uruchamianie testow E2E
 
 Ten dokument opisuje, jak uruchamiac testy E2E w kilku trybach: Docker (2 kontenery), lokalnie bez specjalnych narzedzi, lokalnie z narzedziami advanced oraz ktore testy sa domyslnie wylaczone/skipowane.
 

@@ -1,4 +1,4 @@
-# SEAL_STANDARD – Standard jakości aplikacji sealowanych (v1.3)
+# SEAL_STANDARD – Standard jakości aplikacji sealowanych
 
 > **Zakres:** ten standard definiuje minimalne wymagania jakościowe dla aplikacji wdrażanych przez **Seal** (seal-deploy), w szczególności w trybie **sealed** (bundle + obfuskacja + single executable) oraz uruchamianych jako **systemd service** na środowiskach offline.
 >
@@ -503,7 +503,7 @@ Przykład:
 - STD-089i (SHOULD): testy dockerowe wymagajace systemd/sshd sprawdzaja cgroup i tryb privileged; brak = SKIP z jasnym powodem i instrukcja flag.
 - STD-089i.a (SHOULD): kontenery testowe uruchamiaj z `--init` (tini) lub zapewnij init w obrazie, aby sprzatac zombie procesy.
 - STD-089i.b (SHOULD): po dodaniu usera do grupy `docker` wymagany jest re‑login; do tego czasu testy powinny uzywac `sudo docker` lub jawnie fail‑fast z instrukcja.
-- STD-089i.c (SHOULD): testy wykrywaja `docker compose` (v2) vs `docker-compose` (v1), loguja wybrana binarke i w razie braku wypisuja instrukcje instalacji.
+- STD-089i.c (SHOULD): testy wykrywaja `docker compose` vs `docker-compose`, loguja wybrana binarke i w razie braku wypisuja instrukcje instalacji.
 - STD-089i.d (SHOULD): skrypty dockerowe loguja i zachowuja `DOCKER_CONTEXT`/`DOCKER_CONFIG` (zwlaszcza przy `sudo`), aby uniknac przypadkowego uzycia innego daemonu.
 - STD-089i.e (SHOULD): obrazy z sshd generuja host keys (`ssh-keygen -A`) podczas builda lub entrypointu; brak kluczy = fail‑fast z instrukcja.
 - STD-089j (SHOULD): testy uruchamiane jako root nie modyfikuja repo; pracuja na kopii lub temp‑workspace i sprzataja wszystko w `finally`.
@@ -1180,11 +1180,11 @@ Przed zamknięciem zadania:
 
 ## 12. Changelog
 
-### v1.1
+### Najnowsza aktualizacja
 - Dodane tryby diagnostyki `full`/`safe` (bez konfliktu z polityką sekretów).
 - Doprecyzowana odporność UI na chwilowe timeouty.
 
-### v1.0 (pierwsza wersja)
+### Pierwsza wersja
 - Zdefiniowane moduły core i warunkowe.
 - Ustalony minimalny kontrakt logów (JSONL) i event codes.
 - Ustalony kontrakt `/healthz` i `/status` z modelem zależności.

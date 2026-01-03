@@ -5,7 +5,13 @@ const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
 
-const { spawnSyncWithTimeout, stripAnsi, resolveTmpRoot, createLogger } = require("./e2e-utils");
+const {
+  spawnSyncWithTimeout,
+  stripAnsi,
+  resolveTmpRoot,
+  resolveE2ERunTimeout,
+  createLogger,
+} = require("./e2e-utils");
 
 const { log, fail } = createLogger("workspace-batch-e2e");
 
@@ -16,13 +22,14 @@ function writeFile(filePath, content) {
   fs.writeFileSync(filePath, content, "utf8");
 }
 
-function runSeal(cwd, args) {
+function runSeal(cwd, args, timeoutMs) {
   const env = { ...process.env };
   delete env.SEAL_BATCH_SKIP;
   const res = spawnSyncWithTimeout(process.execPath, [SEAL_BIN, ...args], {
     cwd,
     env,
     encoding: "utf8",
+    timeout: timeoutMs,
   });
   const stdout = res.stdout || "";
   const stderr = res.stderr || "";
@@ -72,7 +79,8 @@ async function main() {
   const root = fs.mkdtempSync(path.join(resolveTmpRoot(), "seal-workspace-batch-"));
   const { appA, appB } = setupWorkspace(root);
   try {
-    const out = runSeal(root, ["config", "add", "batch"]);
+    const batchTimeout = resolveE2ERunTimeout("SEAL_E2E_WORKSPACE_BATCH_TIMEOUT_MS", 60_000);
+    const out = runSeal(root, ["config", "add", "batch"], batchTimeout);
     assert.ok(out.includes("Workspace: 2 project(s)"), "Expected auto-batch workspace header");
     assert.ok(out.includes("Workspace: [1/2]"), "Expected auto-batch progress for project 1");
     assert.ok(out.includes("Workspace: [2/2]"), "Expected auto-batch progress for project 2");

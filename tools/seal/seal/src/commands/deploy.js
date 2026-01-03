@@ -11,10 +11,11 @@ const { fileExists } = require("../lib/fsextra");
 const { info, warn, ok, err, hr } = require("../lib/ui");
 const { resolveTiming } = require("../lib/timing");
 const { verifyArtifact, explainChecklist, buildVerifyReport, writeVerifyReport } = require("../lib/verify");
+const { buildPlan, writePlanArtifacts, snapshotRunOnFailure } = require("../lib/plan");
 
 const { cmdRelease } = require("./release");
-const { deployLocal, bootstrapLocal, statusLocal, logsLocal, enableLocal, startLocal, restartLocal, stopLocal, disableLocalOnly, disableLocal, rollbackLocal, downLocal, uninstallLocal, runLocalForeground, ensureCurrentReleaseLocal, waitForReadyLocal, checkConfigDriftLocal } = require("../lib/deploy");
-const { deploySsh, bootstrapSsh, installServiceSsh, statusSsh, logsSsh, enableSsh, startSsh, restartSsh, stopSsh, disableSshOnly, disableSsh, rollbackSsh, downSsh, uninstallSsh, runSshForeground, ensureCurrentReleaseSsh, waitForReadySsh, checkConfigDriftSsh } = require("../lib/deploySsh");
+const { deployLocal, bootstrapLocal, statusLocal, logsLocal, enableLocal, startLocal, restartLocal, stopLocal, disableLocalOnly, disableLocal, rollbackLocal, downLocal, uninstallLocal, runLocalForeground, ensureCurrentReleaseLocal, waitForReadyLocal, checkConfigDriftLocal, listReleasesLocal, snapshotConfigLocal } = require("../lib/deploy");
+const { deploySsh, bootstrapSsh, installServiceSsh, statusSsh, logsSsh, enableSsh, startSsh, restartSsh, stopSsh, disableSshOnly, disableSsh, rollbackSsh, downSsh, uninstallSsh, runSshForeground, ensureCurrentReleaseSsh, waitForReadySsh, checkConfigDriftSsh, listReleasesSsh, snapshotConfigSsh } = require("../lib/deploySsh");
 
 function ensureConfigDriftOk({ targetCfg, targetName, configFile, acceptDrift }) {
   if (acceptDrift) {
@@ -179,6 +180,7 @@ async function ensureArtifact(projectRoot, proj, opts, targetName, configName, t
     packager: null,
     profileOverlay: opts.profileOverlay || null,
     timing,
+    skipPlan: true,
   });
   const built = findLastArtifact(projectRoot, proj.appName);
   if (!built) throw new Error("Build produced no artifact");
@@ -197,10 +199,32 @@ async function cmdDeploy(cwd, targetArg, opts) {
   const payloadOnly = !!opts.payloadOnly;
   const waitEnabled = resolveWaitEnabled(opts, targetCfg, false);
   let rollbackAttempted = false;
+  const skipPlan = !!opts.skipPlan;
+  const planAction = opts.planAction || "deploy";
 
   const configName = resolveConfigName(targetCfg, null);
   const configFile = getConfigFile(projectRoot, configName);
   if (!fileExists(configFile)) throw new Error(`Missing repo config: ${configFile}`);
+
+  if (!opts.noSnapshot) {
+    try {
+      const snap = (targetCfg.kind || "local").toLowerCase() === "ssh"
+        ? snapshotConfigSsh({ projectRoot, targetName, targetCfg })
+        : snapshotConfigLocal({ projectRoot, targetName, targetCfg });
+      if (snap.status === "missing") {
+        info("Snapshot skipped (remote config missing).");
+      } else if (snap.currentPath) {
+        ok(`Snapshot saved: ${snap.currentPath}`);
+      }
+    } catch (err) {
+      const msg = err && err.message ? err.message : String(err);
+      warn(`Snapshot failed: ${msg}`);
+      throw err;
+    }
+  } else {
+    info("Snapshot disabled (--no-snapshot).");
+  }
+
   if (opts.warnDrift) {
     warnConfigDrift({
       targetCfg,
@@ -221,159 +245,182 @@ async function cmdDeploy(cwd, targetArg, opts) {
     throw new Error("Payload-only deploy requires a local releaseDir (use: seal ship <target> --payload-only)");
   }
 
-  let artifactInfo = null;
-  let artifactPath = null;
-  if (!payloadOnly) {
-    artifactInfo = await timing.timeAsync("deploy.ensure_artifact", async () => ensureArtifact(projectRoot, proj, opts, targetName, configName, timing));
-    artifactPath = artifactInfo ? artifactInfo.path : null;
-  }
-
-  hr();
-  info(`Deploy -> ${targetName} (${targetCfg.kind})`);
-  if (!payloadOnly && artifactInfo && !artifactInfo.built) info(`Artifact: ${artifactPath}`);
-  if (payloadOnly) {
-    info("Payload-only deploy: updating thin payload only.");
-  }
-  hr();
-
-  const verifyEnforce = verifyCfg.enforce !== false && verifyCfg.enabled !== false;
-  if (!payloadOnly && artifactPath && verifyEnforce && !opts.skipVerify) {
-    info(`Verify preflight: ${artifactPath}`);
-    const verifyOptions = {
-      forbidGlobs: verifyCfg.forbidGlobs || verifyCfg.forbiddenGlobs || null,
-      forbidStrings: verifyCfg.forbidStrings || verifyCfg.forbiddenStrings || verifyCfg.forbidWords || null,
-    };
-    const verifyRes = await timing.timeAsync("deploy.verify", async () => verifyArtifact(artifactPath, verifyOptions));
-    const report = buildVerifyReport({
-      artifactPath,
-      result: verifyRes,
-      options: verifyOptions,
-      checklist: explainChecklist(verifyRes),
-      source: "deploy",
-    });
-    writeVerifyReport(projectRoot, report);
-    if (!verifyRes.ok) {
-      err("Artifact FAILED verification:");
-      for (const l of verifyRes.leaks) {
-        console.log(` - ${l.reason}: ${l.path}`);
-      }
-      throw new Error("verify failed");
+  let failed = false;
+  try {
+    let artifactInfo = null;
+    let artifactPath = null;
+    if (!payloadOnly) {
+      artifactInfo = await timing.timeAsync("deploy.ensure_artifact", async () => ensureArtifact(projectRoot, proj, opts, targetName, configName, timing));
+      artifactPath = artifactInfo ? artifactInfo.path : null;
     }
-    ok("Verify OK.");
-  } else if (!payloadOnly && artifactPath && (!verifyEnforce || opts.skipVerify)) {
-    const reason = opts.skipVerify ? "--skip-verify" : "verify.enforce=false";
-    warn(`Verify skipped (${reason}).`);
-  }
 
-  if (opts.bootstrap) {
-    if ((targetCfg.kind || "local").toLowerCase() === "ssh") {
-      timing.timeSync("deploy.bootstrap", () => bootstrapSsh(targetCfg));
+    if (!skipPlan) {
+      const plan = buildPlan({
+        projectRoot,
+        projectCfg: proj,
+        targetCfg,
+        targetName,
+        configName,
+        packagerOverride: opts.packager || null,
+        action: planAction,
+        buildResult: null,
+        artifactPath,
+      });
+      writePlanArtifacts(projectRoot, plan);
+    }
+
+    hr();
+    info(`Deploy -> ${targetName} (${targetCfg.kind})`);
+    if (!payloadOnly && artifactInfo && !artifactInfo.built) info(`Artifact: ${artifactPath}`);
+    if (payloadOnly) {
+      info("Payload-only deploy: updating thin payload only.");
+    }
+    hr();
+
+    const verifyEnforce = verifyCfg.enforce !== false && verifyCfg.enabled !== false;
+    if (!payloadOnly && artifactPath && verifyEnforce && !opts.skipVerify) {
+      info(`Verify preflight: ${artifactPath}`);
+      const verifyOptions = {
+        forbidGlobs: verifyCfg.forbidGlobs || verifyCfg.forbiddenGlobs || null,
+        forbidStrings: verifyCfg.forbidStrings || verifyCfg.forbiddenStrings || verifyCfg.forbidWords || null,
+      };
+      const verifyRes = await timing.timeAsync("deploy.verify", async () => verifyArtifact(artifactPath, verifyOptions));
+      const report = buildVerifyReport({
+        artifactPath,
+        result: verifyRes,
+        options: verifyOptions,
+        checklist: explainChecklist(verifyRes),
+        source: "deploy",
+      });
+      writeVerifyReport(projectRoot, report);
+      if (!verifyRes.ok) {
+        err("Artifact FAILED verification:");
+        for (const l of verifyRes.leaks) {
+          console.log(` - ${l.reason}: ${l.path}`);
+        }
+        throw new Error("verify failed");
+      }
+      ok("Verify OK.");
+    } else if (!payloadOnly && artifactPath && (!verifyEnforce || opts.skipVerify)) {
+      const reason = opts.skipVerify ? "--skip-verify" : "verify.enforce=false";
+      warn(`Verify skipped (${reason}).`);
+    }
+
+    if (opts.bootstrap) {
+      if ((targetCfg.kind || "local").toLowerCase() === "ssh") {
+        timing.timeSync("deploy.bootstrap", () => bootstrapSsh(targetCfg));
+      } else {
+        timing.timeSync("deploy.bootstrap", () => bootstrapLocal(targetCfg));
+      }
+    }
+
+    let autoBootstrap = false;
+    if (isSsh) {
+      info(`Auto bootstrap: ${autoBootstrapEnabled ? "enabled" : "disabled"} (deploy.autoBootstrap)`);
+      const deployRes = deploySsh({
+        targetCfg,
+        artifactPath,
+        repoConfigPath: configFile,
+        pushConfig: !!opts.pushConfig,
+        bootstrap: !!opts.bootstrap,
+        policy,
+        releaseDir: opts.releaseDir || null,
+        buildId: opts.buildId || null,
+        allowAutoBootstrap: autoBootstrapEnabled,
+        payloadOnlyRequired: payloadOnly,
+        timing,
+      });
+      autoBootstrap = !!(deployRes && deployRes.autoBootstrap);
+      const shouldInstall = !!opts.bootstrap || autoBootstrap;
+      if (shouldInstall) {
+        timing.timeSync("deploy.install_service", () => installServiceSsh(targetCfg, sentinelCfg));
+        if (sentinelCfg.enabled) {
+          timing.timeSync("deploy.install_sentinel", () => installSentinelSsh({
+            targetCfg,
+            sentinelCfg,
+            force: false,
+            insecure: false,
+            skipVerify: !!opts.skipSentinelVerify,
+          }));
+        }
+      }
     } else {
-      timing.timeSync("deploy.bootstrap", () => bootstrapLocal(targetCfg));
+      timing.timeSync("deploy.local", () => deployLocal({
+        targetCfg,
+        artifactPath,
+        repoConfigPath: configFile,
+        pushConfig: !!opts.pushConfig,
+        policy,
+        bootstrap: !!opts.bootstrap,
+      }));
     }
-  }
 
-  let autoBootstrap = false;
-  if (isSsh) {
-    info(`Auto bootstrap: ${autoBootstrapEnabled ? "enabled" : "disabled"} (deploy.autoBootstrap)`);
-    const deployRes = deploySsh({
-      targetCfg,
-      artifactPath,
-      repoConfigPath: configFile,
-      pushConfig: !!opts.pushConfig,
-      bootstrap: !!opts.bootstrap,
-      policy,
-      releaseDir: opts.releaseDir || null,
-      buildId: opts.buildId || null,
-      allowAutoBootstrap: autoBootstrapEnabled,
-      payloadOnlyRequired: payloadOnly,
-      timing,
-    });
-    autoBootstrap = !!(deployRes && deployRes.autoBootstrap);
-    const shouldInstall = !!opts.bootstrap || autoBootstrap;
-    if (shouldInstall) {
-      timing.timeSync("deploy.install_service", () => installServiceSsh(targetCfg, sentinelCfg));
-      if (sentinelCfg.enabled) {
-        timing.timeSync("deploy.install_sentinel", () => installSentinelSsh({
-          targetCfg,
-          sentinelCfg,
-          force: false,
-          insecure: false,
-          skipVerify: !!opts.skipSentinelVerify,
-        }));
+    if (opts.restart) {
+      timing.timeSync("deploy.config_drift", () => ensureConfigDriftOk({
+        targetCfg,
+        targetName,
+        configFile,
+        acceptDrift: !!opts.acceptDrift,
+      }));
+      hr();
+      info("Restart requested (--restart)");
+      try {
+        if ((targetCfg.kind || "local").toLowerCase() === "ssh") {
+          timing.timeSync("deploy.restart", () => restartSsh(targetCfg));
+        } else {
+          timing.timeSync("deploy.restart", () => restartLocal(targetCfg));
+        }
+      } catch (err) {
+        if (!rollbackAttempted) {
+          rollbackAttempted = true;
+          attemptRollback({ targetCfg, targetName, timing });
+        }
+        throw err;
       }
     }
-  } else {
-    timing.timeSync("deploy.local", () => deployLocal({
-      targetCfg,
-      artifactPath,
-      repoConfigPath: configFile,
-      pushConfig: !!opts.pushConfig,
-      policy,
-      bootstrap: !!opts.bootstrap,
-    }));
-  }
 
-  if (opts.restart) {
-    timing.timeSync("deploy.config_drift", () => ensureConfigDriftOk({
-      targetCfg,
-      targetName,
-      configFile,
-      acceptDrift: !!opts.acceptDrift,
-    }));
-    hr();
-    info("Restart requested (--restart)");
-    try {
-      if ((targetCfg.kind || "local").toLowerCase() === "ssh") {
-        timing.timeSync("deploy.restart", () => restartSsh(targetCfg));
-      } else {
-        timing.timeSync("deploy.restart", () => restartLocal(targetCfg));
+    if (waitEnabled) {
+      if (!opts.restart) warn("Readiness wait requested without --restart; checking current service state.");
+      const readiness = resolveReadinessOptions(targetCfg, opts, {
+        timeoutMs: 60000,
+        intervalMs: 1000,
+        httpTimeoutMs: 2000,
+      });
+      readiness.targetName = targetName;
+      readiness.sentinelEnabled = !!(sentinelCfg && sentinelCfg.enabled);
+      readiness.sentinelExitCode = sentinelCfg && sentinelCfg.exitCodeBlock ? Number(sentinelCfg.exitCodeBlock) : 200;
+      hr();
+      try {
+        if ((targetCfg.kind || "local").toLowerCase() === "ssh") {
+          await timing.timeAsync("deploy.wait", async () => waitForReadySsh(targetCfg, readiness));
+        } else {
+          await timing.timeAsync("deploy.wait", async () => waitForReadyLocal(targetCfg, readiness));
+        }
+      } catch (err) {
+        if (opts.restart && !rollbackAttempted) {
+          rollbackAttempted = true;
+          attemptRollback({ targetCfg, targetName, timing });
+        }
+        throw err;
       }
-    } catch (err) {
-      if (!rollbackAttempted) {
-        rollbackAttempted = true;
-        attemptRollback({ targetCfg, targetName, timing });
-      }
-      throw err;
     }
-  }
 
-  if (waitEnabled) {
-    if (!opts.restart) warn("Readiness wait requested without --restart; checking current service state.");
-    const readiness = resolveReadinessOptions(targetCfg, opts, {
-      timeoutMs: 60000,
-      intervalMs: 1000,
-      httpTimeoutMs: 2000,
-    });
-    readiness.targetName = targetName;
-    readiness.sentinelEnabled = !!(sentinelCfg && sentinelCfg.enabled);
-    readiness.sentinelExitCode = sentinelCfg && sentinelCfg.exitCodeBlock ? Number(sentinelCfg.exitCodeBlock) : 200;
-    hr();
-    try {
-      if ((targetCfg.kind || "local").toLowerCase() === "ssh") {
-        await timing.timeAsync("deploy.wait", async () => waitForReadySsh(targetCfg, readiness));
-      } else {
-        await timing.timeAsync("deploy.wait", async () => waitForReadyLocal(targetCfg, readiness));
-      }
-    } catch (err) {
-      if (opts.restart && !rollbackAttempted) {
-        rollbackAttempted = true;
-        attemptRollback({ targetCfg, targetName, timing });
-      }
-      throw err;
+    console.log("");
+    ok("Done.");
+    console.log("Next:");
+    if (!opts.bootstrap && !autoBootstrap) {
+      console.log(`  seal ship ${targetName} --bootstrap   # (once) install systemd service (explicit)`);
     }
+    console.log(`  seal remote ${targetName} restart      # start/restart service (explicit)`);
+    console.log(`  seal remote ${targetName} status`);
+    console.log(`  seal remote ${targetName} logs`);
+  } catch (err) {
+    failed = true;
+    throw err;
+  } finally {
+    if (failed) snapshotRunOnFailure(projectRoot);
+    if (report) timing.report({ title: "Deploy timing" });
   }
-
-  console.log("");
-  ok("Done.");
-  console.log("Next:");
-  if (!opts.bootstrap && !autoBootstrap) {
-    console.log(`  seal ship ${targetName} --bootstrap   # (once) install systemd service (explicit)`);
-  }
-  console.log(`  seal remote ${targetName} restart      # start/restart service (explicit)`);
-  console.log(`  seal remote ${targetName} status`);
-  console.log(`  seal remote ${targetName} logs`);
-  if (report) timing.report({ title: "Deploy timing" });
 }
 
 async function cmdShip(cwd, targetArg, opts) {
@@ -389,6 +436,7 @@ async function cmdShip(cwd, targetArg, opts) {
     packager: opts.packager || null,
     payloadOnly: !!opts.payloadOnly,
     profileOverlay: opts.profileOverlay || null,
+    planAction: "ship",
     timing,
   };
   const releaseRes = await timing.timeAsync("ship.release", async () => cmdRelease(cwd, targetArg, releaseOpts));
@@ -404,6 +452,7 @@ async function cmdShip(cwd, targetArg, opts) {
     acceptDrift: !!opts.acceptDrift,
     warnDrift: !!opts.warnDrift,
     skipVerify: !!opts.skipVerify,
+    noSnapshot: !!opts.noSnapshot,
     payloadOnly,
     profileOverlay: opts.profileOverlay || null,
     wait: opts.wait !== false,
@@ -412,6 +461,8 @@ async function cmdShip(cwd, targetArg, opts) {
     waitUrl: opts.waitUrl,
     waitMode: opts.waitMode,
     waitHttpTimeout: opts.waitHttpTimeout,
+    skipPlan: true,
+    planAction: "ship",
     timing,
   };
   await timing.timeAsync("ship.deploy", async () => cmdDeploy(cwd, targetArg, deployOpts));
@@ -438,6 +489,45 @@ async function cmdRollback(cwd, targetArg, opts) {
   });
   if ((targetCfg.kind || "local").toLowerCase() === "ssh") rollbackSsh(targetCfg);
   else rollbackLocal(targetCfg);
+}
+
+async function cmdReleases(cwd, targetArg, opts) {
+  opts = opts || {};
+  const projectRoot = findProjectRoot(cwd);
+  const { targetCfg, targetName } = resolveTarget(projectRoot, targetArg);
+  const kind = (targetCfg.kind || "local").toLowerCase();
+  const res = kind === "ssh" ? listReleasesSsh(targetCfg) : listReleasesLocal(targetCfg);
+  const payload = {
+    target: targetName,
+    current: res.current || null,
+    previous: res.previous || null,
+    releases: res.releases || [],
+  };
+  if (opts.json) {
+    console.log(JSON.stringify(payload, null, 2));
+    return;
+  }
+  console.log(`Releases (${targetName}):`);
+  if (!payload.releases.length) {
+    if (payload.current) {
+      console.log(`  - ${payload.current} [current]`);
+    } else {
+      console.log("  (no releases)");
+    }
+    return;
+  }
+  const seen = new Set();
+  for (const name of payload.releases) {
+    const tags = [];
+    if (payload.current && name === payload.current) tags.push("current");
+    if (payload.previous && name === payload.previous) tags.push("last-known-good");
+    const suffix = tags.length ? ` [${tags.join(", ")}]` : "";
+    console.log(`  - ${name}${suffix}`);
+    seen.add(name);
+  }
+  if (payload.current && !seen.has(payload.current)) {
+    console.log(`  - ${payload.current} [current, missing]`);
+  }
 }
 
 async function cmdUninstall(cwd, targetArg) {
@@ -563,6 +653,7 @@ module.exports = {
   cmdDeploy,
   cmdShip,
   cmdDisable,
+  cmdReleases,
   cmdRollback,
   cmdUninstall,
   cmdRunRemote,

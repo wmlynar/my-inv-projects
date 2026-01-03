@@ -1,4 +1,4 @@
-# SEAL_COMPATIBILITY – Kompatybilność i migracje (v0.5)
+# SEAL_COMPATIBILITY – Kompatybilność i migracje
 
 > **Cel:** jasno powiedzieć co z czym jest zgodne i jak robić upgrade bez niespodzianek.
 
@@ -8,9 +8,9 @@
 
 | Docset | CLI (seal) | Status | Uwagi |
 | --- | --- | --- | --- |
-| 0.5.x | 0.6.x | **compatible** | docset 0.5.x opisuje CLI 0.6.x |
+| aktualny | aktualny | **compatible** | docset opisuje CLI z tego repo |
 
-**Zasada (MUST):** jeśli major docsetu i CLI się nie zgadzają, **nie uruchamiaj deployu**.
+**Zasada (MUST):** jeśli docset i CLI pochodzą z różnych wersji repo, **nie uruchamiaj deployu**.
 
 ---
 
@@ -18,7 +18,7 @@
 
 ### 2.1. Platforma docelowa
 - **MVP:** Linux + systemd (x86_64 jako bazowy punkt odniesienia).
-- Inne OS/arch są poza zakresem v0.5 (możliwe tylko jako eksperyment).
+- Inne OS/arch są poza zakresem na tym etapie (możliwe tylko jako eksperyment).
 
 ### 2.2. Packagery
 - `thin-split` (domyślny): wymaga toolchaina C/C++ + `zstd` + `libzstd-dev` na buildzie.
@@ -34,7 +34,7 @@
 ## 3) Zasady kompatybilności (MUST)
 
 1) **Artefakt jest per OS/arch.** Nie przenoś release między innymi architekturami.
-2) **Cross‑build jest nieobsługiwany** w v0.5 (build na tej samej platformie, co target).
+2) **Cross‑build jest nieobsługiwany** na tym etapie (build na tej samej platformie, co target).
 3) **Systemd jest wymagany** do deployu jako usługa (local/ssh).
 4) **serviceScope=user** wymaga poprawnego środowiska sesji użytkownika (DBus/XDG runtime).
 

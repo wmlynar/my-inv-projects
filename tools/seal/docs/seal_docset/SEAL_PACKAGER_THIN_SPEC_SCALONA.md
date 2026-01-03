@@ -1,4 +1,4 @@
-# SEAL PACKAGER THIN — specyfikacja scalona (anti‑casual extraction, Ubuntu) — v0.8-merged
+# SEAL PACKAGER THIN — specyfikacja scalona (anti‑casual extraction, Ubuntu)
 
 Data: 2025-12-24  
 Status: **proposal → implementacja**  
@@ -6,9 +6,9 @@ Dotyczy: **packager thin** w frameworku SEAL: `thin-split`
 (`thin-single` traktujemy jako **legacy** i nie używamy w repo)
 
 Źródła scalone w tym dokumencie:
-- v0.1 (model thinking, “maksymalnie doprecyzowany”)  
-- v0.2 (robocza specyfikacja, “żeby nie mieszać pojęć”)  
-- v0.7 (uproszczona specyfikacja, draft)
+- model thinking (“maksymalnie doprecyzowany”)  
+- robocza specyfikacja (“żeby nie mieszać pojęć”)  
+- uproszczona specyfikacja (draft)
 
 > **Cel praktyczny**: nie “tajemnica wobec roota”, tylko **anti‑casual extraction** — podnieść próg tak, by proste techniki (`file/strings/binwalk/zstd -d/unzip/odcięcie ogona`) nie wystarczały, a wydobycie kodu wymagało RE/dezasemblacji/debugowania launchera lub formatu.
 
@@ -306,14 +306,14 @@ Launcher w BOOTSTRAP sam odnajduje `r/rt` i `r/pl` względnie do własnej lokali
 ### 3.4 Kontrakt zapisu (write‑paths) — dwa spójne warianty
 W źródłach pojawiają się dwa podejścia; oba zachowujemy jako możliwe, ale trzeba wybrać jeden jako “produktowy standard”:
 
-- **Wariant FS‑A (v0.1):**
+- **Wariant FS‑A:**
   - `<installDir>/shared/` — read‑only (assety/config),
   - `<installDir>/data/` — read‑write (jeśli aplikacja musi pisać).
-- **Wariant FS‑B (v0.2):**
+- **Wariant FS‑B:**
   - `<installDir>/shared/` — assety + config,
   - `<installDir>/var/` — write‑paths (logi/cache/DB), jeśli potrzebny.
 
-W v0.7 pojawia się jeszcze uproszczenie “pisz tylko do `shared/`”, ale operacyjnie najczytelniejszy jest FS‑B (RO/RW rozdzielone).  
+W wariancie uproszczonym pojawia się jeszcze uproszczenie “pisz tylko do `shared/`”, ale operacyjnie najczytelniejszy jest FS‑B (RO/RW rozdzielone).  
 Niezależnie od wyboru: launcher nie zapisuje runtime/payload na dysk w trakcie startu (używa `memfd`).
 
 ---
@@ -372,7 +372,7 @@ W źródłach są dwa poziomy ostrożności; scalamy to jako kontrakt MVP + opcj
 ### 4.8 Env kontrakt dla aplikacji
 Launcher czyści większość ENV, ale musi przekazać stabilne ścieżki instalacji (whitelist).
 
-Minimalny kontrakt (z v0.2 + uzupełnienie):
+Minimalny kontrakt (wariant roboczy + uzupełnienie):
 - `SEAL_APP_DIR=<installDir>`
 - `SEAL_SHARED_DIR=<installDir>/shared`
 - `SEAL_VAR_DIR=<installDir>/var` **lub** `SEAL_DATA_DIR=<installDir>/data` (zależnie od wybranego FS wariantu)
@@ -595,8 +595,8 @@ Kontener jest zbudowany jako:
 - `footer` ma stały rozmiar `FOOTER_LEN` (czytany z końca pliku).
 
 Warianty:
-- w v0.1/v0.7 `index_off` jest wyliczalny jako `filesize - FOOTER_LEN - index_len`,
-- w v0.2 występuje jawne `index_off` w footerze (opcjonalne pole).
+- w wariancie wczesnym/uproszczonym `index_off` jest wyliczalny jako `filesize - FOOTER_LEN - index_len`,
+- w wariancie roboczym występuje jawne `index_off` w footerze (opcjonalne pole).
 
 ### 9.4 Chunking i kompresja
 - raw dzielimy na chunki (domyślnie **64 KiB**, ostatni mniejszy),
@@ -622,9 +622,9 @@ Maskujemy:
 Cel: wykrywanie korupcji/przerwanych uploadów i sanity (to nie “security” przeciw rootowi).
 
 W źródłach pojawiają się warianty:
-- v0.1: CRC32 (odradzane) lub “lepiej: szybki hash”
-- v0.7: hash 128‑bit (16 bajtów, truncation) dla `raw_hash` + `footer_hash`
-- v0.2: hash 256‑bit (32 bajty) dla chunków + `container_hash` w footerze
+- wariant wczesny: CRC32 (odradzane) lub “lepiej: szybki hash”
+- wariant uproszczony: hash 128‑bit (16 bajtów, truncation) dla `raw_hash` + `footer_hash`
+- wariant roboczy: hash 256‑bit (32 bajty) dla chunków + `container_hash` w footerze
 
 Scalona rekomendacja:
 - używać **szybkiego hasha** (nie CRC32),
@@ -633,7 +633,7 @@ Scalona rekomendacja:
 ### 9.7 Index i footer — trzy zgodne propozycje (do wyboru implementacyjnego)
 Żeby zachować wszystkie informacje ze źródeł, opisujemy trzy kompatybilne “profile” kontenera. W praktyce implementacja MVP powinna wybrać **jeden** profil i zamrozić go jako `format_version`.
 
-#### Profil P‑1 (minimalny, v0.1)
+#### Profil P‑1 (minimalny)
 - **Footer**: stałe **32B** (maskowane), pola (LE):
   - `u32 version` (np. 1)
   - `u32 codec_id`
@@ -650,7 +650,7 @@ Scalona rekomendacja:
 
 Zaleta: proste. Wada: słabsza integralność, mniej “self‑describing”.
 
-#### Profil P‑2 (64B footer + index header, v0.7)
+#### Profil P‑2 (64B footer + index header)
 - **Footer**: stałe **64B** (maskowane), pola (LE):
   - `u32 format_version`
   - `u32 flags`
@@ -687,7 +687,7 @@ Zaleta: proste. Wada: słabsza integralność, mniej “self‑describing”.
   - `raw_len <= MAX_CHUNK_RAW_BYTES`
   - suma `raw_len` == `footer.total_raw_len`
 
-#### Profil P‑3 (footer z index_off + container_hash, v0.2)
+#### Profil P‑3 (footer z index_off + container_hash)
 - **Footer**: stały rozmiar (np. 96–128B; zależy od pól), maskowany:
   - `u16 format_version`
   - `u16 flags`
@@ -835,8 +835,8 @@ W źródłach są dwie propozycje numeracji; scalamy je jako “zestaw minimalny
 - `30` — błąd uruchomienia node (`E_EXEC_NODE`)
 - `40` — błąd wewnętrzny I/O (`E_INTERNAL`)
 
-### 12.3 Alternatywna mapa (historyczna propozycja v0.1)
-W v0.1 pojawia się prostsze numerowanie (inny zakres), np.:
+### 12.3 Alternatywna mapa (historyczna propozycja)
+W historycznej propozycji pojawia się prostsze numerowanie (inny zakres), np.:
 - `10`: brak runtime
 - `11`: brak payload
 - `20`: błąd dekodowania kontenera / codec mismatch / format

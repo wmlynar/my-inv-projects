@@ -1,4 +1,4 @@
-# SEAL_ENV_FLAGS_REFERENCE - referencja flag ENV (v0.5)
+# SEAL_ENV_FLAGS_REFERENCE - referencja flag ENV
 
 > Cel: szybka sciaga najczesciej uzywanych flag ENV w SEAL.
 > Lista nie jest kompletna; aktualizuj wraz z kodem i dokumentacja.
@@ -37,6 +37,7 @@
 | `SEAL_E2E_AUTO_CLEAN` | auto cleanup run artefaktow po przekroczeniu progu | SEAL_E2E_RUNBOOK |
 | `SEAL_E2E_SUMMARY_KEEP` | retencja podsumowan (run-*.tsv/json) | SEAL_E2E_RUNBOOK |
 | `SEAL_E2E_LOG_KEEP` | retencja katalogow logow w cache | SEAL_E2E_RUNBOOK |
+| `SEAL_E2E_WORKSPACE_BATCH_TIMEOUT_MS` | timeout testu workspace-batch (ms) | SEAL_E2E_RUNBOOK |
 | `SEAL_E2E_TOOLSET` | zakres narzedzi (`full`, itp.) | SEAL_E2E_RUNBOOK |
 
 ## Docker E2E

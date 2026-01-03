@@ -15,7 +15,7 @@ const {
   formatSshFailure,
 } = require("./ssh");
 const { spawnSyncSafe } = require("./spawn");
-const { fileExists, ensureDir } = require("./fsextra");
+const { fileExists, ensureDir, copyFile } = require("./fsextra");
 const { ok, info, warn } = require("./ui");
 const { normalizeRetention, filterReleaseNames, computeKeepSet } = require("./retention");
 const { getTarRoot } = require("./tarSafe");
@@ -46,6 +46,12 @@ function remoteLayout(targetCfg) {
     runner: `${installDir}/run-current.sh`,
     serviceFile: `/etc/systemd/system/${targetCfg.serviceName}.service`,
   };
+}
+
+function snapshotStamp() {
+  const d = new Date();
+  const pad = (v) => String(v).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
 
 function sshUserHost(targetCfg) {
@@ -1601,6 +1607,75 @@ function statusSsh(targetCfg) {
   }
 }
 
+function listReleasesSsh(targetCfg) {
+  const { user, host } = sshUserHost(targetCfg);
+  const appName = targetCfg.appName || targetCfg.serviceName || "app";
+  const layout = remoteLayout(targetCfg);
+  const script = [
+    "set -euo pipefail",
+    `ROOT=${shQuote(layout.installDir)}`,
+    `REL=${shQuote(layout.releasesDir)}`,
+    "CUR=\"\"",
+    "if [ -f \"$ROOT/current.buildId\" ]; then CUR=\"$(cat \"$ROOT/current.buildId\" || true)\"; fi",
+    "echo \"__SEAL_CURRENT__:$CUR\"",
+    "if [ -d \"$REL\" ]; then ls -1 \"$REL\"; fi",
+  ].join("\n");
+  const res = sshExecTarget(targetCfg, { user, host, args: ["bash","-c", script], stdio: "pipe" });
+  if (!res.ok) {
+    const combined = `${res.stdout}\n${res.stderr}`.trim();
+    throw new Error(`releases failed (status=${res.status ?? "?"})${formatSshFailure(res) || (combined ? `: ${combined}` : "")}`);
+  }
+  const lines = (res.stdout || "")
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  let current = null;
+  let rest = lines;
+  if (lines.length && lines[0].startsWith("__SEAL_CURRENT__:")) {
+    current = lines[0].slice("__SEAL_CURRENT__:".length).trim() || null;
+    rest = lines.slice(1);
+  }
+  let releases = filterReleaseNames(rest, appName).sort().reverse();
+  let previous = null;
+  if (current) {
+    const idx = releases.indexOf(current);
+    if (idx >= 0 && idx + 1 < releases.length) previous = releases[idx + 1];
+  }
+  return { current, previous, releases };
+}
+
+function snapshotConfigSsh({ projectRoot, targetName, targetCfg }) {
+  const { user, host } = sshUserHost(targetCfg);
+  const layout = remoteLayout(targetCfg);
+  const remoteCfg = `${layout.sharedDir}/config.json5`;
+  const remoteCfgQ = shQuote(remoteCfg);
+  const exists = sshExecTarget(targetCfg, { user, host, args: ["bash","-c", `test -f ${remoteCfgQ}`], stdio: "pipe" });
+  if (!exists.ok) {
+    if (exists.status === 1) return { status: "missing" };
+    const combined = `${exists.stdout}\n${exists.stderr}`.trim();
+    throw new Error(`snapshot failed (status=${exists.status ?? "?"})${formatSshFailure(exists) || (combined ? `: ${combined}` : "")}`);
+  }
+
+  const svcName = targetCfg.serviceName || targetCfg.appName || "app";
+  const tmpLocal = path.join(resolveTmpBase(), `${svcName}-remote-config.json5`);
+  ensureDir(path.dirname(tmpLocal));
+  const get = scpFromTarget(targetCfg, { user, host, remotePath: remoteCfg, localPath: tmpLocal });
+  if (!get.ok) throw new Error(`scp remote config failed${formatSshFailure(get)}`);
+
+  const remoteDir = path.join(projectRoot, "seal-out", "remote");
+  const historyDir = path.join(remoteDir, `${targetName}.history`);
+  ensureDir(historyDir);
+
+  const currentPath = path.join(remoteDir, `${targetName}.current.json5`);
+  copyFile(tmpLocal, currentPath);
+
+  const stamp = snapshotStamp();
+  const historyPath = path.join(historyDir, `${stamp}.json5`);
+  copyFile(tmpLocal, historyPath);
+
+  return { status: "ok", currentPath, historyPath };
+}
+
 function systemctlIsActiveSsh(targetCfg) {
   const { user, host } = sshUserHost(targetCfg);
   const unitName = `${targetCfg.serviceName}.service`;
@@ -2108,6 +2183,7 @@ module.exports = {
   disableSshOnly,
   disableSsh,
   rollbackSsh,
+  listReleasesSsh,
   runSshForeground,
   ensureCurrentReleaseSsh,
   waitForReadySsh,
@@ -2115,6 +2191,7 @@ module.exports = {
   downSsh,
   checkConfigDriftSsh,
   configDiffSsh,
+  snapshotConfigSsh,
   configPullSsh,
   configPushSsh,
   installServiceSsh,

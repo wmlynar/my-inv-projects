@@ -36,6 +36,12 @@ function copyAtomic(src, dest, mode) {
   fs.renameSync(tmp, dest);
 }
 
+function snapshotStamp() {
+  const d = new Date();
+  const pad = (v) => String(v).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+
 const CODEC_BIN_MAGIC = "SLCB";
 const CODEC_BIN_VERSION = 1;
 const CODEC_BIN_HASH_LEN = 32;
@@ -614,6 +620,47 @@ function ensureCurrentReleaseLocal(targetCfg) {
   return { layout, current, rel };
 }
 
+function listReleasesLocal(targetCfg) {
+  const layout = localInstallLayout(targetCfg);
+  const appName = targetCfg.appName || targetCfg.serviceName || "app";
+  let current = null;
+  if (fileExists(layout.currentFile)) {
+    current = fs.readFileSync(layout.currentFile, "utf-8").trim() || null;
+  }
+  let releases = [];
+  if (fileExists(layout.releasesDir)) {
+    releases = fs.readdirSync(layout.releasesDir, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name);
+    releases = filterReleaseNames(releases, appName).sort().reverse();
+  }
+  let previous = null;
+  if (current) {
+    const idx = releases.indexOf(current);
+    if (idx >= 0 && idx + 1 < releases.length) previous = releases[idx + 1];
+  }
+  return { current, previous, releases };
+}
+
+function snapshotConfigLocal({ projectRoot, targetName, targetCfg }) {
+  const layout = localInstallLayout(targetCfg);
+  const src = path.join(layout.sharedDir, "config.json5");
+  if (!fileExists(src)) return { status: "missing" };
+
+  const remoteDir = path.join(projectRoot, "seal-out", "remote");
+  const historyDir = path.join(remoteDir, `${targetName}.history`);
+  ensureDir(historyDir);
+
+  const currentPath = path.join(remoteDir, `${targetName}.current.json5`);
+  copyFile(src, currentPath);
+
+  const stamp = snapshotStamp();
+  const historyPath = path.join(historyDir, `${stamp}.json5`);
+  copyFile(src, historyPath);
+
+  return { status: "ok", currentPath, historyPath };
+}
+
 function statusLocal(targetCfg) {
   const ctl = systemctlArgs(targetCfg);
   spawnSyncSafe(ctl[0], ctl.slice(1).concat(["status", `${targetCfg.serviceName}.service`, "--no-pager"]), { stdio: "inherit" });
@@ -957,6 +1004,8 @@ module.exports = {
   downLocal,
   uninstallLocal,
   ensureCurrentReleaseLocal,
+  listReleasesLocal,
+  snapshotConfigLocal,
   runLocalForeground,
   waitForReadyLocal,
   checkConfigDriftLocal,

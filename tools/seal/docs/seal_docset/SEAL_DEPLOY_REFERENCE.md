@@ -1,4 +1,4 @@
-# SEAL_DEPLOY_REFERENCE – Referencyjna implementacja (v0.5)
+# SEAL_DEPLOY_REFERENCE – Referencyjna implementacja
 > **Cel:** ten dokument jest w 100% **REF**: zawiera blueprinty, przykłady, template’y i „jak to zrobić dziś”.
 >
 > **Ważne:** jeśli REF i SPEC kiedykolwiek się rozjadą, **SPEC wygrywa**.
@@ -10,10 +10,10 @@
 - 1. Co tu jest
 - 1.1 Wymagania (Ubuntu, zanim zainstalujesz SEAL)
 - 2. Blueprint: implementacja „super sealing (SEA)”
-- 3. Przykłady ergonomii v0.4 (REF)
+- 3. Przykłady ergonomii (REF)
 - 4. Artefakty `seal-out/run/` + `seal plan` (REF)
 - 5. Support bundle – sugerowany format (REF)
-- 6. UX / ergonomia CLI (v0.5)
+- 6. UX / ergonomia CLI
 - 7. Deploy-only / airgap (`seal deploy --artifact`)
 - 7.1. Minimalne przepływy CI/CD (REF)
 - 7.2. Readiness po `ship` / `deploy --restart`
@@ -26,7 +26,7 @@
 
 ## 1. Co tu jest
 
-W docsecie v0.5 wynosimy z SEAL-DEPLOY-SPEC długie elementy implementacyjne, żeby specyfikacja nie była zakładnikiem aktualnych narzędzi.
+W docsecie wynosimy z SEAL-DEPLOY-SPEC długie elementy implementacyjne, żeby specyfikacja nie była zakładnikiem aktualnych narzędzi.
 
 W szczególności: przeniesiona sekcja **14.6** (blueprint implementacji SEA).
 
@@ -161,7 +161,7 @@ Seal powinien mieć interfejs packagera, aby można było podmieniać metodę pa
 
 ---
 
-## 3. Przykłady ergonomii v0.4 (REF)
+## 3. Przykłady ergonomii (REF)
 
 ### 3.1. `seal wizard` – przykładowy output
 
@@ -467,7 +467,7 @@ Uwagi:
 
 > Intencja: odpowiednik Mavenowego `target/` – zawsze wiadomo, gdzie są najświeższe artefakty.
 
-Minimalna struktura (wymagana w v0.4):
+Minimalna struktura (wymagana):
 
 ```text
 seal-out/run/
@@ -579,7 +579,7 @@ Struktura:
 
 ---
 
-## 6. UX / ergonomia CLI (v0.5)
+## 6. UX / ergonomia CLI
 
 Ta sekcja jest stricte „jak to zaimplementować”, żeby SEAL był używalny codziennie (częste scenariusze, zero pamiętania).
 
@@ -601,7 +601,7 @@ Proponowana implementacja:
 
 ### 6.2. Rozpoznanie default target/config
 
-Minimalny algorytm (zgodny ze SPEC v0.5):
+Minimalny algorytm (zgodny ze SPEC):
 - `default_target` z `seal.json5` → jeśli istnieje,
 - inaczej `local` → jeśli istnieje,
 - inaczej jedyny target → jeśli jest dokładnie jeden,
@@ -737,13 +737,13 @@ Implementacja:
 
 ## 10. Zmiany w dokumencie
 
-### v0.5
+### Najnowsze zmiany
 - Dodane: UX wizard (`seal` bez args), `seal-out/`, `run-local`, `deploy --artifact`, multi-target, uninstall.
-- Zaktualizowane: przykłady pod SPEC v0.5.
+- Zaktualizowane: przykłady pod SPEC.
 
-### v0.4
+### Poprzednie zmiany
 - Dodane: `seal-out/run/` + przykłady `plan.json`.
 - Doprecyzowane: spójność z `seal init` / `securityProfile` + `obfuscationProfile`.
 
-### v0.3
+### Pierwsza wersja
 - Dokument dodany jako osobny „magazyn REF”, żeby SEAL_DEPLOY_SPEC mógł pozostać normatywny.

@@ -1,6 +1,6 @@
-# SEAL_CONTRACT_AI – Kontrakt dla generatorów kodu (v1.3)
+# SEAL_CONTRACT_AI – Kontrakt dla generatorów kodu
 
-> **Cel:** ten dokument jest krótki, jednoznaczny i “promptable”. Wklej go do prompta dla AI / generatora kodu, aby nowa aplikacja była kompatybilna z **Seal** (seal-deploy) i zgodna z **SEAL_STANDARD v1.3**.
+> **Cel:** ten dokument jest krótki, jednoznaczny i “promptable”. Wklej go do prompta dla AI / generatora kodu, aby nowa aplikacja była kompatybilna z **Seal** (seal-deploy) i zgodna z **SEAL_STANDARD**.
 >
 > **Priorytet:** kompatybilność z bundlowaniem + agresywną obfuskacją + single executable (Node SEA / podobny packager) oraz diagnozowalność po sealingu.
 
@@ -184,8 +184,8 @@ Przed zamknięciem zadania AI **MUST** potwierdzić:
 
 ## 11) Wersja kontraktu
 
-- `SEAL_CONTRACT_AI` v1.3 jest kompatybilny z:
-  - `SEAL_STANDARD v1.3`
-  - `SEAL-DEPLOY_SPEC v0.4`
+- `SEAL_CONTRACT_AI` jest kompatybilny z:
+  - `SEAL_STANDARD`
+  - `SEAL-DEPLOY_SPEC`
 
 Jeśli zmieni się standard lub workflow Seala, kontrakt dla AI będzie wersjonowany i aktualizowany.

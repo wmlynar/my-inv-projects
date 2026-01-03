@@ -1,4 +1,4 @@
-# SEAL_E2E_COVERAGE – Mapa pokrycia E2E (v0.5)
+# SEAL_E2E_COVERAGE – Mapa pokrycia E2E
 
 > **Cel:** szybka odpowiedź „co jest pokryte jakim testem” oraz które testy są
 > core vs gated/advanced. To nie jest manifest runnera, tylko mapa pokrycia.

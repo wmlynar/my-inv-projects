@@ -7859,6 +7859,9 @@ async function main() {
       });
       log("OK: integrity inline conflict rejected");
 
+      const tracerReadyTimeoutMs = 8000;
+      const tracerFailTimeoutMs = 8000;
+      const tracerForceAfterMs = Math.min(4000, Math.max(1200, Math.floor(tracerReadyTimeoutMs * 0.5)));
       log("Testing periodic TracerPid (forced after ready)...");
       const resD = await withTimeout("buildRelease(tracerpid interval)", buildTimeoutMs, () =>
         buildThinSplit({
@@ -7870,9 +7873,9 @@ async function main() {
       await withTimeout("tracerpid interval fail", testTimeoutMs, () =>
         runReleaseExpectFailAfterReady({
           releaseDir: resD.releaseDir,
-          readyTimeoutMs: 8000,
-          failTimeoutMs: 8000,
-          env: { SEAL_TRACERPID_FORCE: "1", SEAL_TRACERPID_FORCE_AFTER_MS: "300" },
+          readyTimeoutMs: tracerReadyTimeoutMs,
+          failTimeoutMs: tracerFailTimeoutMs,
+          env: { SEAL_TRACERPID_FORCE: "1", SEAL_TRACERPID_FORCE_AFTER_MS: String(tracerForceAfterMs) },
           expectStderr: "[thin] runtime invalid",
         })
       );
@@ -7889,9 +7892,9 @@ async function main() {
       await withTimeout("tracerpid threads fail", testTimeoutMs, () =>
         runReleaseExpectFailAfterReady({
           releaseDir: resE.releaseDir,
-          readyTimeoutMs: 8000,
-          failTimeoutMs: 8000,
-          env: { SEAL_TRACERPID_FORCE_THREADS: "1", SEAL_TRACERPID_FORCE_AFTER_MS: "300" },
+          readyTimeoutMs: tracerReadyTimeoutMs,
+          failTimeoutMs: tracerFailTimeoutMs,
+          env: { SEAL_TRACERPID_FORCE_THREADS: "1", SEAL_TRACERPID_FORCE_AFTER_MS: String(tracerForceAfterMs) },
           expectStderr: "[thin] runtime invalid",
         })
       );

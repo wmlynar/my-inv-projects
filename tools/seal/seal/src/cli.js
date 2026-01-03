@@ -13,15 +13,17 @@ const { cmdBatch } = require("./commands/batch");
 const { cmdClean } = require("./commands/clean");
 const { cmdCacheClean } = require("./commands/cache");
 const { cmdCompletion, getCompletionScript } = require("./commands/completion");
+const { cmdPlan } = require("./commands/plan");
 const { cmdRelease } = require("./commands/release");
 const { cmdVerify } = require("./commands/verify");
 const { cmdRunLocal } = require("./commands/runLocal");
 const { cmdDiag } = require("./commands/diag");
+const { cmdToolchainStatus, cmdToolchainInstall } = require("./commands/toolchain");
 const { cmdTargetAdd } = require("./commands/targetAdd");
 const { cmdConfigAdd, cmdConfigDiff, cmdConfigPull, cmdConfigPush, cmdConfigExplain } = require("./commands/config");
 const { cmdProfiles } = require("./commands/profiles");
 const { cmdSentinelProbe, cmdSentinelInspect, cmdSentinelInstall, cmdSentinelVerify, cmdSentinelUninstall } = require("./commands/sentinel");
-const { cmdDeploy, cmdShip, cmdRollback, cmdUninstall, cmdRunRemote, cmdRemote } = require("./commands/deploy");
+const { cmdDeploy, cmdShip, cmdReleases, cmdRollback, cmdUninstall, cmdRunRemote, cmdRemote } = require("./commands/deploy");
 const { loadSealFile, isWorkspaceConfig } = require("./lib/project");
 const { version } = require("./lib/version");
 
@@ -78,6 +80,35 @@ function applyFastOverlay(opts) {
   return opts;
 }
 
+function normalizeTargets(targets) {
+  if (!targets) return [];
+  if (Array.isArray(targets)) return targets.filter(Boolean);
+  return [targets].filter(Boolean);
+}
+
+async function runForTargets(label, targets, runOne) {
+  const list = targets && targets.length ? targets : [null];
+  const failures = [];
+  for (const target of list) {
+    const targetLabel = target || "(default)";
+    if (list.length > 1) {
+      console.log("");
+      console.log(`=== ${label}: ${targetLabel} ===`);
+    }
+    try {
+      await runOne(target);
+    } catch (err) {
+      failures.push({ target: targetLabel, error: err });
+      const msg = err && err.message ? err.message : String(err);
+      console.error(`[${label}] failed for ${targetLabel}: ${msg}`);
+    }
+  }
+  if (failures.length) {
+    const names = failures.map((f) => f.target).join(", ");
+    throw new Error(`${label} failed for ${failures.length}/${list.length} target(s): ${names}`);
+  }
+}
+
 function getAutoBatchRequest(argv, cwd) {
   if (process.env[BATCH_SKIP_ENV] === "1") return null;
   const args = argv.slice(2);
@@ -132,6 +163,16 @@ async function main(argv) {
     });
 
   program
+    .command("plan")
+    .description("Generate plan (decision trace) without executing release/deploy")
+    .argument("[target]", "Target name (optional; defaults to project defaultTarget)")
+    .option("--config <config>", "Override config variant", null)
+    .option("--packager <packager>", "Override packager: thin-split|sea|bundle|none|auto(=thin-split)", null)
+    .option("--profile-overlay <name>", "Apply build profile overlay (seal.json5 build.profileOverlays.<name>)", null)
+    .option("--fast", "Shorthand for --profile-overlay fast", false)
+    .action(async (target, opts) => cmdPlan(process.cwd(), target, applyFastOverlay(opts)));
+
+  program
     .command("completion")
     .description("Print shell completion script (bash)")
     .argument("[shell]", "Shell name (default: bash)", "bash")
@@ -147,6 +188,16 @@ async function main(argv) {
     .option("--profile-overlay <name>", "Apply build profile overlay (seal.json5 build.profileOverlays.<name>)", null)
     .option("--fast", "Shorthand for --profile-overlay fast", false)
     .action(async (target, opts) => cmdCheck(process.cwd(), target, applyFastOverlay(opts)));
+
+  const toolchainCmd = program.command("toolchain").description("Toolchain helpers (status/install)");
+  toolchainCmd
+    .command("status")
+    .description("Check local toolchain prerequisites")
+    .action(async () => cmdToolchainStatus());
+  toolchainCmd
+    .command("install")
+    .description("Install toolchain prerequisites (runs install-seal-deps.sh)")
+    .action(async () => cmdToolchainInstall());
 
   program
     .command("target")
@@ -218,6 +269,8 @@ async function main(argv) {
     .option("--check-cc <compiler>", "C compiler for preflight checks (e.g. gcc/clang)", null)
     .option("--packager <packager>", "Override packager: thin-split|sea|bundle|none|auto(=thin-split)", null)
     .option("--payload-only", "Build thin payload only (skip launcher/runtime; requires thin-split bootstrap)", false)
+    .option("--artifact-only", "Build artifact only (remove seal-out/release)", false)
+    .option("--out <dir>", "Output directory for release artifacts (default: seal-out)", null)
     .option("--profile-overlay <name>", "Apply build profile overlay (seal.json5 build.profileOverlays.<name>)", null)
     .option("--fast", "Shorthand for --profile-overlay fast", false)
     .option("--timing", "Print timing summary for the build", false)
@@ -276,9 +329,10 @@ async function main(argv) {
   program
     .command("deploy")
     .description("Manual deploy: copy/install release (no restart unless --restart)")
-    .argument("[target]", "Target name (default: project defaultTarget)", null)
+    .argument("[targets...]", "Target name(s) (default: project defaultTarget)", null)
     .option("--bootstrap", "Install prerequisites on the target (first time)", false)
     .option("--push-config", "Overwrite server runtime config with repo config (explicit)", false)
+    .option("--no-snapshot", "Disable remote config snapshot to seal-out/remote", false)
     .option("--skip-sentinel-verify", "Skip post-install sentinel verify (runner check)", false)
     .option("--skip-verify", "Skip preflight artifact verify (NOT recommended)", false)
     .option("--restart", "Restart target service after deploy (explicit)", false)
@@ -294,14 +348,19 @@ async function main(argv) {
     .option("--profile-overlay <name>", "Apply build profile overlay (seal.json5 build.profileOverlays.<name>)", null)
     .option("--fast", "Shorthand for --profile-overlay fast", false)
     .option("--timing", "Print timing summary for deploy steps", false)
-    .action(async (target, opts) => cmdDeploy(process.cwd(), target, applyFastOverlay(opts)));
+    .action(async (targets, opts) => {
+      const baseOpts = applyFastOverlay({ ...opts });
+      const list = normalizeTargets(targets);
+      await runForTargets("deploy", list, async (target) => cmdDeploy(process.cwd(), target, baseOpts));
+    });
 
   program
     .command("ship")
     .description("Main flow: release + deploy + restart + readiness")
-    .argument("[target]", "Target name (default: project defaultTarget)", null)
+    .argument("[targets...]", "Target name(s) (default: project defaultTarget)", null)
     .option("--bootstrap", "Install prerequisites on the target (first time)", false)
     .option("--push-config", "Overwrite server runtime config with repo config (explicit)", false)
+    .option("--no-snapshot", "Disable remote config snapshot to seal-out/remote", false)
     .option("--skip-sentinel-verify", "Skip post-install sentinel verify (runner check)", false)
     .option("--skip-verify", "Skip preflight artifact verify (NOT recommended)", false)
     .option("--no-wait", "Skip readiness wait after restart (default: wait)")
@@ -320,7 +379,18 @@ async function main(argv) {
     .option("--profile-overlay <name>", "Apply build profile overlay (seal.json5 build.profileOverlays.<name>)", null)
     .option("--fast", "Shorthand for --profile-overlay fast", false)
     .option("--timing", "Print timing summary for ship steps", false)
-    .action(async (target, opts) => cmdShip(process.cwd(), target, applyFastOverlay(opts)));
+    .action(async (targets, opts) => {
+      const baseOpts = applyFastOverlay({ ...opts });
+      const list = normalizeTargets(targets);
+      await runForTargets("ship", list, async (target) => cmdShip(process.cwd(), target, baseOpts));
+    });
+
+  program
+    .command("releases")
+    .description("List releases on target (current + last-known-good)")
+    .argument("[target]", "Target name (default: project defaultTarget)", null)
+    .option("--json", "Print machine-readable JSON", false)
+    .action(async (target, opts) => cmdReleases(process.cwd(), target, opts));
 
   program
     .command("rollback")

@@ -1,4 +1,4 @@
-# SEAL_QUICK_START – Szybki start (v0.5)
+# SEAL_QUICK_START – Szybki start
 
 > **Cel:** pierwsze 15 minut z SEAL – od „gołego projektu” do:
 > - lokalnego testu sealed (czyli: *czy zabezpieczenie działa*),
@@ -20,7 +20,7 @@ SEAL działa wtedy jak „wizard”: wykrywa stan projektu i mówi **co zrobić 
 - Brak toolchaina na buildzie → `seal check <target>` przed `seal release`.
 - Mylony `target` z `config` → pamiętaj: `target` to host, `config` to runtime config aplikacji.
 - `seal ship` na świeżym hoście bez `--bootstrap` → zakończy się błędami systemd/CHDIR.
-- Oczekiwanie cross-builda → v0.5 zakłada build na platformie docelowej (zob. `SEAL_COMPATIBILITY.md`).
+- Oczekiwanie cross-builda → obecnie zakładamy build na platformie docelowej (zob. `SEAL_COMPATIBILITY.md`).
 - Brak `config.runtime.json5` w runtime → skopiuj z `seal-config/configs/<config>.json5` lub użyj `seal run-local`.
 
 Szybkie linki: `SEAL_PITFALLS.md` + `SEAL_TROUBLESHOOTING.md`.
@@ -285,11 +285,11 @@ seal doctor
 
 ---
 
-## 9) Wersje dokumentów
+## 9) Dokumenty powiązane
 
-- `SEAL_QUICK_START` v0.5 jest kompatybilny z:
-  - `SEAL_SCENARIOS v0.5`
-  - `SEAL_DEPLOY_SPEC v0.5`
-  - `SEAL_DEPLOY_REFERENCE v0.5`
-  - `SEAL_STANDARD v1.3`
-  - `SEAL_CONTRACT_AI v1.3`
+- `SEAL_QUICK_START` jest kompatybilny z:
+  - `SEAL_SCENARIOS`
+  - `SEAL_DEPLOY_SPEC`
+  - `SEAL_DEPLOY_REFERENCE`
+  - `SEAL_STANDARD`
+  - `SEAL_CONTRACT_AI`

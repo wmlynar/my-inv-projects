@@ -1,11 +1,10 @@
 # SEAL‑SENTINEL — specyfikacja finalna (MVP‑ready)
 
-Wersja: **1.0**  
 Data: **2025‑12‑25**  
 Status: **finalna do implementacji MVP**  
-Dotyczy: **SEAL v0.6+**, builder/packager **`thin`** (launcher ELF)
+Dotyczy: **SEAL (aktualny)**, builder/packager **`thin`** (launcher ELF)
 
-Ta wersja jest spójną konsolidacją wszystkich dotychczasowych specyfikacji (v0.1–v0.6) i recenzji (Thinking + Pro).  
+Ta specyfikacja jest spójną konsolidacją wszystkich dotychczasowych specyfikacji i recenzji (Thinking + Pro).  
 Jeśli jakiś element musiał wypaść dla spójności, jest to opisane w sekcji **„Z czego zrezygnowaliśmy”**.
 
 ---
@@ -368,8 +367,8 @@ Pole `crc32` zapisujemy jako **little‑endian**.
 Żeby `version/level/flags` nie leżały jawnie:
 
 - `maskKey = sha256(b"m\0" + anchor)[0..31]`
-- bajty `0..71` (v1) albo `0..79` (v2) XOR z `maskKey[i mod 32]`
-- CRC32 liczone po **zamaskowanych** bajtach `0..71` (v1) lub `0..79` (v2)
+- bajty `0..71` albo `0..79` XOR z `maskKey[i mod 32]`
+- CRC32 liczone po **zamaskowanych** bajtach `0..71` lub `0..79`
 - runtime: najpierw CRC32 verify, potem unmask i parsowanie
 
 ### 7.5 HMAC (future, MAY)
@@ -635,7 +634,7 @@ Weryfikacja sentinela MUSI wykonać się:
 ### 11.2 Odczyt i hardening (MUST)
 - użyj `open(baseDir, O_DIRECTORY)` + `openat` dla katalogu i pliku (SHOULD, ale w MVP mocno zalecane)
 - `open(..., O_RDONLY|O_CLOEXEC|O_NOFOLLOW)`
-- `fstat`: regular file, size==76 (v1) lub 84 (v2)
+- `fstat`: regular file, size==76 lub 84
 - verify CRC32
 - (MUST) fail jeśli katalog lub plik są group‑writable/world‑writable (insecure bypass)
 
@@ -777,7 +776,7 @@ rid=uuid:deadbeef-dead-beef-dead-beefdeadbeef
 
 ### B.2 Prompt dla Codexa (pierwszy PR: core + test vectors)
 ```text
-Zaimplementuj SEAL-SENTINEL MVP zgodnie z docs/SEAL_SENTINEL_SPEC_FINAL_v1.0.md.
+Zaimplementuj SEAL-SENTINEL MVP zgodnie z docs/SEAL_SENTINEL_SPEC_FINAL.md.
 
 Zakres TEGO PR (tylko Krok 0):
 1) Dodaj moduł "sentinel-core" (TS/JS) z czystymi funkcjami:

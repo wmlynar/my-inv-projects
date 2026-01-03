@@ -98,7 +98,7 @@ Konfiguracja: `build.thin.snapshotGuard`.
 
 ### 2.4 Sentinel (anti‑clone / time limit)
 Konfiguracja: `build.sentinel.*` (w tym `build.sentinel.profile`).
-- **Blob v1/v2**: v2 dodaje `expires_at` (epoch‑sec). Blob ma 76B (v1) lub 84B (v2).
+- **Blob v1/v2**: v2 dodaje `expires_at` (epoch‑sec). Blob ma 76B lub 84B.
 - **C pre‑launch check** + **JS periodic check** (`checkIntervalMs`).
 - **L3**: PUID (product‑uuid), **L4**: external anchor (usb/file).
 - `level=auto` wybiera L3, gdy `puid` jest dostępny i `rid` stabilny; w przeciwnym razie L2/L1.
@@ -409,7 +409,7 @@ Uwagi:
 - Sentinel: external anchor lease/tpm2, xattr mode, HMAC v2.
 - VM/hypervisor heurystyki (DMI/peryferia) — odłożone; mamy tylko opcjonalny wymóg CPUID hypervisor bit.
 
-### 4.1. Plan wdrożenia (propozycja, v0.5.x → v0.6)
+### 4.1. Plan wdrożenia (propozycja)
 
 1) **Sentinel L4 (lease/tpm2) + HMAC v2**  
    Najpierw rozszerzyć istniejący model sentinel (najmniejszy koszt integracji).

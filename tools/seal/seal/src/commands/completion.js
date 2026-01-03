@@ -57,7 +57,7 @@ _seal_complete() {
     cword=$COMP_CWORD
   fi
 
-  local commands="init wizard completion check target config sentinel release run-local verify diag doctor clean clean-global-cache deploy ship rollback run uninstall remote"
+  local commands="init wizard completion plan check toolchain target config sentinel release run-local verify diag doctor clean clean-global-cache deploy ship releases rollback run uninstall remote"
   local global_opts="-h --help -V --version"
 
   if [[ "$prev" == "--packager" ]]; then
@@ -86,9 +86,15 @@ _seal_complete() {
         return
       fi
       ;;
+    toolchain)
+      if (( cword == 2 )); then
+        COMPREPLY=( $(compgen -W "status install" -- "$cur") )
+        return
+      fi
+      ;;
     config)
       if (( cword == 2 )); then
-        COMPREPLY=( $(compgen -W "add diff pull push" -- "$cur") )
+        COMPREPLY=( $(compgen -W "add explain diff pull push" -- "$cur") )
         return
       fi
       if (( cword == 3 )); then
@@ -125,7 +131,7 @@ _seal_complete() {
         return
       fi
       ;;
-    deploy|ship|rollback|run|uninstall|check|release|diag|doctor)
+    deploy|ship|rollback|run|uninstall|check|release|diag|doctor|plan|releases)
       if (( cword == 2 )); then
         if [[ "$cur" != -* ]]; then
           COMPREPLY=( $(compgen -W "$(_seal_targets)" -- "$cur") )
@@ -139,16 +145,18 @@ _seal_complete() {
   case "$cmd" in
     init) opts="--force" ;;
     check) opts="--strict --verbose --cc --profile-overlay --fast" ;;
-    release) opts="--config --skip-check --check-verbose --check-cc --packager --payload-only --profile-overlay --fast --timing" ;;
+    plan) opts="--config --packager --profile-overlay --fast" ;;
+    release) opts="--config --skip-check --check-verbose --check-cc --packager --payload-only --artifact-only --out --profile-overlay --fast --timing" ;;
     run-local) opts="--sealed --config" ;;
-    verify) opts="--explain" ;;
+    verify) opts="--explain --watermark --json" ;;
     clean) opts="" ;;
     sentinel) opts="--force --insecure --skip-verify --json" ;;
-    deploy) opts="--bootstrap --push-config --skip-sentinel-verify --restart --wait --wait-timeout --wait-interval --wait-url --wait-mode --wait-http-timeout --accept-drift --warn-drift --artifact --profile-overlay --fast --timing" ;;
-    ship) opts="--bootstrap --push-config --skip-sentinel-verify --no-wait --wait-timeout --wait-interval --wait-url --wait-mode --wait-http-timeout --accept-drift --warn-drift --skip-check --check-verbose --check-cc --packager --payload-only --profile-overlay --fast --timing" ;;
+    deploy) opts="--bootstrap --push-config --no-snapshot --skip-sentinel-verify --skip-verify --restart --wait --wait-timeout --wait-interval --wait-url --wait-mode --wait-http-timeout --accept-drift --warn-drift --artifact --profile-overlay --fast --timing" ;;
+    ship) opts="--bootstrap --push-config --no-snapshot --skip-sentinel-verify --skip-verify --no-wait --wait-timeout --wait-interval --wait-url --wait-mode --wait-http-timeout --accept-drift --warn-drift --skip-check --check-verbose --check-cc --packager --payload-only --profile-overlay --fast --timing" ;;
     run) opts="--kill --sudo --accept-drift" ;;
     rollback) opts="--accept-drift" ;;
     remote) opts="--accept-drift --skip-sentinel-verify" ;;
+    releases) opts="--json" ;;
     completion) opts="bash" ;;
   esac
   if [[ "$cmd" == "config" && "\${words[2]}" == "pull" ]]; then

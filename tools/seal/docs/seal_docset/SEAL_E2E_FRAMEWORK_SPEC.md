@@ -1,4 +1,4 @@
-# SEAL_E2E_FRAMEWORK_SPEC – Specyfikacja frameworka testow E2E (v0.1)
+# SEAL_E2E_FRAMEWORK_SPEC – Specyfikacja frameworka testow E2E
 
 Ten dokument opisuje docelowy, wspolny framework dla testow E2E w SEAL. Celem jest ujednolicenie wzorcow, wymuszenie poprawnych praktyk i eliminacja powtarzalnych bledow w testach.
 

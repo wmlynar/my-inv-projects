@@ -1,4 +1,4 @@
-# SEAL_HOST_BINDING_RUNBOOK – TPM/USB/NIC binding (v0.5)
+# SEAL_HOST_BINDING_RUNBOOK – TPM/USB/NIC binding
 
 > **Cel:** praktyczny runbook dla „wiązania” release do hosta bez serwera zewnętrznego.
 > Obejmuje `build.thin.payloadProtection` oraz sentinel `externalAnchor`.
@@ -175,5 +175,5 @@ build: {
 ## 5) Cross-reference
 
 - `SEAL_PACKAGER_THIN_SPEC_SCALONA.md` — payloadProtection i native bootstrap.
-- `SEAL_SENTINEL_SPEC_FINAL_v1.0.md` — sentinel i external anchor.
+- `SEAL_SENTINEL_SPEC_FINAL.md` — sentinel i external anchor.
 - `SEAL_ANTI_REVERSE_ENGINEERING.md` — ogólne warstwy ochrony.

@@ -1,4 +1,4 @@
-# SEAL_TROUBLESHOOTING – Najczęstsze problemy i naprawy (v0.5)
+# SEAL_TROUBLESHOOTING – Najczęstsze problemy i naprawy
 
 > **Cel:** szybkie „symptom → przyczyna → fix”. Dokument operacyjny, nie spec.
 
