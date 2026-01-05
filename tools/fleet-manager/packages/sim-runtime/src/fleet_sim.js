@@ -2375,6 +2375,28 @@ const getReservationEntryBuffer = (robot, segment) => {
     return Math.max(base, envelopeRadius, ROBOT_RADIUS);
   };
 
+  const resolveNodeLockClearance = (robot, holderRobot, segment) => {
+    if (!robot) return null;
+    const followerModel = getRobotEnvelopeModel(robot);
+    const holderModel = holderRobot ? getRobotEnvelopeModel(holderRobot) : null;
+    const followerLead = segment?.driveBackward
+      ? followerModel.tail
+      : followerModel.head;
+    const followerExtent = Number.isFinite(followerLead) && followerLead > 0
+      ? followerLead
+      : getRobotEnvelopeRadius(robot);
+    const holderExtentRaw = holderModel
+      ? Math.max(holderModel.head || 0, holderModel.tail || 0)
+      : null;
+    const holderExtent = Number.isFinite(holderExtentRaw) && holderExtentRaw > 0
+      ? holderExtentRaw
+      : holderRobot
+        ? getRobotEnvelopeRadius(holderRobot)
+        : null;
+    if (!Number.isFinite(followerExtent) || !Number.isFinite(holderExtent)) return null;
+    return followerExtent + holderExtent + ROBOT_COLLISION_MARGIN;
+  };
+
   const shouldUseNodeLocksForRuntime = (runtime) => {
     if (!trafficStrategy?.useNodeLocks?.()) return false;
     if (trafficStrategy?.useTimeReservations?.()) return false;
@@ -2673,6 +2695,7 @@ const getReservationEntryBuffer = (robot, segment) => {
     if (!lock || !lock.holderId || lock.holderId === robot.id) return null;
     const node = navGraph?.nodesById?.get(nodeId);
     if (!node?.pos) return null;
+    const holderRobot = getRobotById(lock.holderId);
     if (nodeLockMode !== 'hard') {
       const holderRuntime = getRobotRuntime(lock.holderId);
       if (holderRuntime) {
@@ -2681,7 +2704,6 @@ const getReservationEntryBuffer = (robot, segment) => {
           ['traffic', 'edge_lock', 'node_lock'].includes(holderRuntime.stallReason);
         const edgeLockedByRobot = holderRuntime.edgeLockHold?.holderId === robot.id;
         if (stalledByRobot || edgeLockedByRobot) {
-          const holderRobot = getRobotById(lock.holderId);
           const holderLockRadius = holderRobot ? resolveNodeLockRadius(holderRobot) : ROBOT_RADIUS;
           const holderClearance = Math.max(
             holderLockRadius,
@@ -2708,12 +2730,16 @@ const getReservationEntryBuffer = (robot, segment) => {
       ROBOT_STOP_DISTANCE + NODE_LOCK_APPROACH_MARGIN,
       corridorRange
     );
+    const extraClearance = resolveNodeLockClearance(robot, holderRobot, segment);
+    const holdRange = Number.isFinite(extraClearance)
+      ? Math.max(lockRange, extraClearance)
+      : lockRange;
     const dist = distanceBetweenPoints(robot.pos, node.pos);
     const remaining = Number.isFinite(segment.totalLength) &&
       Number.isFinite(runtime.route?.segmentProgress)
       ? Math.max(0, segment.totalLength - runtime.route.segmentProgress)
       : dist;
-    if (dist > lockRange && remaining > lockRange) return null;
+    if (dist > holdRange && remaining > holdRange) return null;
     return { nodeId, holderId: lock.holderId };
   };
 
