@@ -1,0 +1,30 @@
+{
+  "map": {
+    "name": "same-direction",
+    "version": "1.0.0",
+    "source": "apps/task-manager/testdata/graph-direction.json"
+  },
+  "groups": {
+    "PICK-GROUP": ["N1", "N2"],
+    "DROP-GROUP-01": ["N3"],
+    "DROP-GROUP-02": ["N3"]
+  },
+  "bin_locations": {
+    "PICK-01": { "group": "PICK-GROUP", "point": "N1", "pos": { "x": 0, "y": 0 } },
+    "PICK-02": { "group": "PICK-GROUP", "point": "N2", "pos": { "x": 5, "y": 0 } },
+    "DROP-01": { "group": "DROP-GROUP-01", "point": "N3", "pos": { "x": 10, "y": 0 } },
+    "DROP-02": { "group": "DROP-GROUP-02", "point": "N3", "pos": { "x": 10, "y": 0 } }
+  },
+  "occupancy": {
+    "pick_groups": ["PICK-GROUP"],
+    "drop_groups": ["DROP-GROUP-01", "DROP-GROUP-02"]
+  },
+  "streams": [
+    {
+      "id": "same-direction",
+      "pick_group": "PICK-GROUP",
+      "drop_group_order": ["DROP-GROUP-01", "DROP-GROUP-02"],
+      "notes": "Same-direction contention for allowSameDirection=false."
+    }
+  ]
+}

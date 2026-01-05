@@ -1,0 +1,12 @@
+{
+  "name": "@fleet-manager/core-timing",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "dependencies": {
+    "@fleet-manager/core-time": "0.1.0"
+  }
+}

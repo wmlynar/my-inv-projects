@@ -1,0 +1,32 @@
+{
+  "bindHost": "127.0.0.1",
+  "logDir": "./logs-e2e",
+  "asciiPreviewLimit": 160,
+  "logBinary": false,
+  "logBase64": false,
+  "logAscii": true,
+  "logSha256": false,
+  "splitLogs": false,
+  "throttle": {
+    "enabled": true,
+    "maxPerApi": 5,
+    "directions": ["c2s"],
+    "logSuppressed": true,
+    "excludeApis": [],
+    "maxBodyLength": 1048576
+  },
+  "mappings": [
+    {
+      "name": "state",
+      "listenPort": 19604,
+      "targetHost": "127.0.0.1",
+      "targetPort": 19504
+    },
+    {
+      "name": "task",
+      "listenPort": 19606,
+      "targetHost": "127.0.0.1",
+      "targetPort": 19506
+    }
+  ]
+}

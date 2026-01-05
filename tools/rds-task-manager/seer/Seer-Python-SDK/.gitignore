@@ -1,0 +1,8 @@
+__pycache__/*
+*.pyc
+test/
+.vscode/
+.idea/
+myapp.log
+out.json
+dist/

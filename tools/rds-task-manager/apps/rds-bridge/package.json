@@ -1,0 +1,9 @@
+{
+  "name": "@fleet-manager/rds-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.js",
+  "bin": {
+    "rds-bridge": "bin/rds-bridge.js"
+  }
+}

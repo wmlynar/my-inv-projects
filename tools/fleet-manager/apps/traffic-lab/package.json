@@ -1,0 +1,40 @@
+{
+  "name": "@fleet-manager/traffic-lab",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "e2e-spec": "node scripts/e2e-spec.js",
+    "e2e-ui": "node scripts/e2e-ui.js",
+    "e2e-two-robots": "node scripts/e2e-two-robots.js",
+    "e2e-workflow": "node scripts/e2e-workflow-pickdrop.js",
+    "e2e-map": "node scripts/e2e-map-invariants.js",
+    "e2e-sim-state": "node scripts/e2e-sim-state.js",
+    "e2e-status-contract": "node scripts/e2e-status-contract.js",
+    "e2e-routing": "node scripts/e2e-routing-planner.js",
+    "e2e-traffic-strategy": "node scripts/e2e-traffic-strategy-smoke.js",
+    "e2e-traffic-flicker": "node scripts/e2e-traffic-flicker.js",
+    "e2e-traffic-robustness": "node scripts/e2e-traffic-robustness.js",
+    "e2e-traffic": "node ../../e2e/scripts/e2e-traffic-deadlocks.js",
+    "e2e-traffic-v2": "node ../../e2e/scripts/e2e-traffic-v2-contract.js",
+    "e2e-traffic-extreme-wait": "node scripts/e2e-traffic-extreme-wait.js",
+    "e2e-traffic-collision-guard": "node scripts/e2e-traffic-collision-guard.js",
+    "watch-double-wait": "node scripts/watch-double-wait.js",
+    "e2e-fleet-delivery": "node scripts/e2e-fleet-delivery.js",
+    "e2e-ui-delivery": "node scripts/e2e-ui-delivery.js",
+    "e2e-ui-packages": "node scripts/e2e-ui-packages.js",
+    "e2e": "node scripts/e2e-spec.js && node scripts/e2e-two-robots.js && node scripts/e2e-workflow-pickdrop.js && node scripts/e2e-map-invariants.js && node scripts/e2e-sim-state.js && node scripts/e2e-status-contract.js && node scripts/e2e-routing-planner.js && node scripts/e2e-traffic-strategy-smoke.js && node scripts/e2e-traffic-flicker.js && node ../../e2e/scripts/e2e-traffic-deadlocks.js && node ../../e2e/scripts/e2e-traffic-v2-contract.js && node scripts/e2e-traffic-extreme-wait.js && node scripts/e2e-traffic-collision-guard.js && node scripts/e2e-ui.js && node scripts/e2e-fleet-delivery.js && node scripts/e2e-ui-delivery.js && node scripts/e2e-ui-packages.js"
+  },
+  "bin": {
+    "traffic-lab": "bin/traffic-lab.js"
+  },
+  "dependencies": {
+    "@fleet-manager/adapters-robokit": "0.1.0",
+    "@fleet-manager/core-graph": "0.1.0",
+    "@fleet-manager/core-mapf": "0.1.0",
+    "@fleet-manager/sim-runtime": "0.1.0",
+    "@fleet-manager/traffic-runner": "0.1.0",
+    "express": "^4.19.2"
+  }
+}

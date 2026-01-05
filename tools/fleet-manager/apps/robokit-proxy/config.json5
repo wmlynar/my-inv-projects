@@ -1,0 +1,91 @@
+{
+  // Host/IP to bind listeners
+  "bindHost": "0.0.0.0",
+
+  // Log directory (relative to this file)
+  "logDir": "./logs",
+
+  // ASCII preview length per chunk
+  "asciiPreviewLimit": 160,
+
+  // Log options
+  "logBinary": true,
+  "logBase64": true,
+  "logAscii": true,
+  "logSha256": false,
+  "splitLogs": false,
+
+  // Throttle logs per API number (avoid disk spam)
+  "throttle": {
+    "enabled": true,
+    "maxPerApi": 100,
+    "directions": ["c2s"],
+    "logSuppressed": true,
+    "excludeApis": [],
+    "maxBodyLength": 1048576
+  },
+
+  // TCP port mappings
+  "mappings": [
+    {
+      "name": "robod",
+      "listenPort": 19200,
+      "targetHost": "10.128.27.168",
+      "targetPort": 19200
+    },
+    {
+      "name": "state",
+      "listenPort": 19204,
+      "targetHost": "10.128.27.168",
+      "targetPort": 19204
+    },
+    {
+      "name": "ctrl",
+      "listenPort": 19205,
+      "targetHost": "10.128.27.168",
+      "targetPort": 19205
+    },
+    {
+      "name": "task",
+      "listenPort": 19206,
+      "targetHost": "10.128.27.168",
+      "targetPort": 19206
+    },
+    {
+      "name": "config",
+      "listenPort": 19207,
+      "targetHost": "10.128.27.168",
+      "targetPort": 19207
+    },
+    {
+      "name": "kernel",
+      "listenPort": 19208,
+      "targetHost": "10.128.27.168",
+      "targetPort": 19208
+    },
+    {
+      "name": "other",
+      "listenPort": 19210,
+      "targetHost": "10.128.27.168",
+      "targetPort": 19210
+    },
+    {
+      "name": "push",
+      "listenPort": 19301,
+      "targetHost": "10.128.27.168",
+      "targetPort": 19301
+    },
+    {
+      "name": "api-legacy",
+      "listenPort": 5045,
+      "targetHost": "10.128.27.168",
+      "targetPort": 5045
+    },
+    {
+      "name": "http-8088",
+      "listenPort": 8088,
+      "targetHost": "10.128.27.168",
+      "targetPort": 8088
+    }
+  ]
+}

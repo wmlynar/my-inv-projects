@@ -1,0 +1,21 @@
+{
+  "graph": {
+    "nodes": [
+      { "id": "N", "pos": { "x": 0, "y": 5 } },
+      { "id": "S", "pos": { "x": 0, "y": -5 } },
+      { "id": "E", "pos": { "x": 5, "y": 0 } },
+      { "id": "W", "pos": { "x": -5, "y": 0 } },
+      { "id": "C", "pos": { "x": 0, "y": 0 } }
+    ],
+    "edges": [
+      { "id": "N-C", "start": "N", "end": "C" },
+      { "id": "C-S", "start": "C", "end": "S" },
+      { "id": "W-C", "start": "W", "end": "C" },
+      { "id": "C-E", "start": "C", "end": "E" }
+    ]
+  },
+  "robots": [
+    { "id": "R1", "start": "N", "goal": "S" },
+    { "id": "R2", "start": "W", "goal": "E" }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "name": "@fleet-manager/root",
+  "private": true,
+  "version": "0.1.0",
+  "type": "commonjs",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "lint": "eslint .",
+    "format": "prettier -w .",
+    "test": "vitest run",
+    "test:unit": "vitest run -c vitest.config.js",
+    "test:e2e": "vitest run -c vitest.e2e.config.js",
+    "typecheck": "tsc -p tsconfig.base.json --noEmit",
+    "sim:run": "node apps/sim-cli/bin/sim-cli.js",
+    "check:legacy": "node tools/scripts/check-no-legacy-imports.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "eslint": "^8.57.0",
+    "fast-check": "^3.16.0",
+    "prettier": "^3.2.5",
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
+  },
+  "dependencies": {
+    "esbuild": "^0.19.12"
+  }
+}

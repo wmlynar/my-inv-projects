@@ -1,0 +1,33 @@
+{
+  "map": {
+    "name": "e2e-restart-locks",
+    "version": "1.0.0",
+    "source": "apps/task-manager/testdata/graph-traffic.json"
+  },
+  "groups": {
+    "PICK-GROUP": ["A1", "A2", "A4"],
+    "DROP-GROUP-01": ["A4"],
+    "DROP-GROUP-02": ["A2"],
+    "DROP-GROUP-03": ["A1"]
+  },
+  "bin_locations": {
+    "PICK-A1": { "group": "PICK-GROUP", "point": "A1", "pos": { "x": 0, "y": 5 } },
+    "PICK-A2": { "group": "PICK-GROUP", "point": "A2", "pos": { "x": 5, "y": 5 } },
+    "PICK-A4": { "group": "PICK-GROUP", "point": "A4", "pos": { "x": 15, "y": 5 } },
+    "DROP-A4": { "group": "DROP-GROUP-01", "point": "A4", "pos": { "x": 15, "y": 5 } },
+    "DROP-A2": { "group": "DROP-GROUP-02", "point": "A2", "pos": { "x": 5, "y": 5 } },
+    "DROP-A1": { "group": "DROP-GROUP-03", "point": "A1", "pos": { "x": 0, "y": 5 } }
+  },
+  "occupancy": {
+    "pick_groups": ["PICK-GROUP"],
+    "drop_groups": ["DROP-GROUP-01", "DROP-GROUP-02", "DROP-GROUP-03"]
+  },
+  "streams": [
+    {
+      "id": "restart-locks",
+      "pick_group": "PICK-GROUP",
+      "drop_group_order": ["DROP-GROUP-01", "DROP-GROUP-02", "DROP-GROUP-03"],
+      "notes": "Restart lock rebuild: third task should wait on corridor A locks."
+    }
+  ]
+}

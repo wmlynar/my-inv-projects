@@ -1,0 +1,35 @@
+{
+  "strategy": "nearest",
+  "traffic": {
+    "yieldRecovery": false,
+    "forwardStopDistanceM": 0
+  },
+  "models": {
+    "forklift": { "head": 0.5, "tail": 2, "width": 1 }
+  },
+  "defaultModel": "forklift",
+  "robots": [
+    {
+      "id": "RB-01",
+      "name": "Robot 01",
+      "ref": "PICK-03",
+      "model": "forklift",
+      "battery": 82,
+      "dispatchable": true,
+      "online": true,
+      "controlled": true,
+      "manualMode": false
+    },
+    {
+      "id": "RB-02",
+      "name": "Robot 02",
+      "ref": "PICK-04",
+      "model": "forklift",
+      "battery": 74,
+      "dispatchable": true,
+      "online": true,
+      "controlled": true,
+      "manualMode": false
+    }
+  ]
+}

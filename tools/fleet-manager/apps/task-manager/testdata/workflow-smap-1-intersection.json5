@@ -1,0 +1,30 @@
+{
+  "map": {
+    "name": "smap-1-intersection",
+    "version": "1.0.0",
+    "source": "seer/smap/maps/1.smap"
+  },
+  "groups": {
+    "PICK-GROUP": ["PP19", "LM7"],
+    "DROP-GROUP-01": ["AP20"],
+    "DROP-GROUP-02": ["PP19"]
+  },
+  "bin_locations": {
+    "PICK-01": { "group": "PICK-GROUP", "point": "PP19", "pos": { "x": -100.391, "y": 9.292 } },
+    "PICK-02": { "group": "PICK-GROUP", "point": "LM7", "pos": { "x": -95.623, "y": -0.62 } },
+    "DROP-01": { "group": "DROP-GROUP-01", "point": "AP20", "pos": { "x": -93.623, "y": 13.003 } },
+    "DROP-02": { "group": "DROP-GROUP-02", "point": "PP19", "pos": { "x": -100.391, "y": 9.292 } }
+  },
+  "occupancy": {
+    "pick_groups": ["PICK-GROUP"],
+    "drop_groups": ["DROP-GROUP-01", "DROP-GROUP-02"]
+  },
+  "streams": [
+    {
+      "id": "smap-1-intersection",
+      "pick_group": "PICK-GROUP",
+      "drop_group_order": ["DROP-GROUP-01", "DROP-GROUP-02"],
+      "notes": "Intersection serialization at LM21 on smap-1."
+    }
+  ]
+}

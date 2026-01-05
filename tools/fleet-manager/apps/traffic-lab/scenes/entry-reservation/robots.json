@@ -1,0 +1,30 @@
+{
+  "strategy": "nearest",
+  "traffic": {
+    "strategy": "pulse-mapf-time",
+    "reservationEntryBuffer": 0.8,
+    "allowReservationBackoff": false,
+    "dispatchingLength": 8,
+    "yieldRecovery": false
+  },
+  "models": {
+    "forklift": { "head": 0.5, "tail": 2, "width": 1 }
+  },
+  "defaultModel": "forklift",
+  "robots": [
+    {
+      "id": "RB-01",
+      "name": "Robot 01",
+      "ref": "P1",
+      "model": "forklift",
+      "manualMode": true
+    },
+    {
+      "id": "RB-02",
+      "name": "Robot 02",
+      "ref": "P2",
+      "model": "forklift",
+      "manualMode": true
+    }
+  ]
+}

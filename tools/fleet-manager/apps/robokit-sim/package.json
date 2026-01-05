@@ -1,0 +1,16 @@
+{
+  "name": "robokit-sim",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node start.js"
+  },
+  "dependencies": {
+    "@fleet-manager/adapters-robokit": "0.1.0",
+    "@fleet-manager/core-graph": "0.1.0",
+    "@fleet-manager/core-types": "0.1.0",
+    "@fleet-manager/sim-runtime": "0.1.0"
+  }
+}

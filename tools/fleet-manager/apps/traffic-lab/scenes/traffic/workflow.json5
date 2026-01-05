@@ -1,0 +1,36 @@
+{
+  "map": {
+    "name": "e2e-traffic",
+    "version": "1.0.0",
+    "source": "apps/task-manager/testdata/graph-traffic.json"
+  },
+  "groups": {
+    "PICK": ["AP1", "AP2", "AP3", "AP4"],
+    "DROP": ["AP5", "AP6", "AP7", "AP8"]
+  },
+  "bin_locations": {
+    "PICK-A1": { "group": "PICK", "point": "AP1", "pos": { "x": -0.5, "y": 5.5 } },
+    "PICK-A2": { "group": "PICK", "point": "AP2", "pos": { "x": 4.5, "y": 5.5 } },
+    "PICK-A3": { "group": "PICK", "point": "AP3", "pos": { "x": 9.5, "y": 5.5 } },
+    "PICK-A4": { "group": "PICK", "point": "AP4", "pos": { "x": 14.5, "y": 5.5 } },
+    "DROP-A1": { "group": "DROP", "point": "AP5", "pos": { "x": 0.5, "y": -0.5 } },
+    "DROP-A2": { "group": "DROP", "point": "AP6", "pos": { "x": 5.5, "y": -0.5 } },
+    "DROP-A3": { "group": "DROP", "point": "AP7", "pos": { "x": 10.5, "y": -0.5 } },
+    "DROP-A4": { "group": "DROP", "point": "AP8", "pos": { "x": 15.5, "y": -0.5 } }
+  },
+  "occupancy": {
+    "pick_groups": ["PICK"],
+    "drop_groups": ["DROP"]
+  },
+  "streams": [
+    {
+      "id": "traffic",
+      "pick_group": "PICK",
+      "drop_group_order": ["DROP"],
+      "drop_policy": {
+        "access_rule": "any_free"
+      },
+      "notes": "Transfer: any PICK* filled -> any DROP* free."
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "scenes": [
+    { "id": "corridor", "path": "scenes/corridor/scene.json" },
+    { "id": "intersection", "path": "scenes/intersection/scene.json" }
+  ]
+}

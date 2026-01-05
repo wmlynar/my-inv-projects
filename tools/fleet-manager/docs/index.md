@@ -1,0 +1,34 @@
+# Fleet Manager Docs
+
+- Architecture
+  - `docs/architecture/overview.md`
+  - `docs/architecture/time-and-reservations.md`
+  - `docs/architecture/testing-strategy.md`
+  - `docs/architecture/legacy-tests.md`
+  - `docs/architecture/release-0.1.md`
+  - `docs/architecture/legacy-snapshot.md`
+- ADRs
+  - `docs/adr/0001-modular-packages.md`
+  - `docs/adr/0002-time-intervals.md`
+  - `docs/adr/0003-reservation-transactions.md`
+  - `docs/adr/0004-runner-pipeline.md`
+  - `docs/adr/0005-legacy-snapshot-scope.md`
+- Legacy Reference
+  - `docs/fleet-manager/README.md`
+  - `docs/task-manager/README.md`
+  - `docs/task-manager/ARCHITECTURE.md`
+  - `docs/robokit-sim/README.md`
+  - `docs/robokit-proxy/README.md`
+  - `docs/rds/README.md`
+  - `docs/rds/SCRAPING.md`
+  - `docs/rds/robokit-proxy/SPEC.md`
+  - `docs/rds/nowy-styl/requirements.md`
+  - `docs/rds/nowy-styl-rds/wind-task-format.md`
+  - `docs/rds/scraped/fleet_manager_requirements.md`
+  - `docs/rds/scraped/nowy_styl_map_summary.md`
+  - `docs/rds/scraped/wiki_topics.md`
+  - `docs/rds/sanden-spec/pusta_kanwa_sanden.md`
+  - `docs/rds/docs/ARCHITECTURE.md`
+  - `docs/rds/docs/PROJECT_STATUS.md`
+  - `docs/rds/docs/STATUS_CONTRACT.md`
+  - `docs/rds/docs/ROBOKIT_API.md`

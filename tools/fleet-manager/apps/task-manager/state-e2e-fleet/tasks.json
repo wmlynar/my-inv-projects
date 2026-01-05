@@ -1,0 +1,28 @@
+[
+  {
+    "id": "task-1",
+    "robotId": "RB-01",
+    "pickId": "PICK-01",
+    "dropId": "DROP-02",
+    "status": "completed",
+    "phase": "to_park",
+    "targetId": "PP51",
+    "robotTaskId": "move-3",
+    "createdAt": 1767187124935,
+    "updatedAt": 1767187212598,
+    "completedAt": 1767187212598
+  },
+  {
+    "id": "task-2",
+    "robotId": "RB-01",
+    "pickId": "PICK-02",
+    "dropId": "DROP-04",
+    "status": "in_progress",
+    "phase": "to_pick",
+    "targetId": "AP57",
+    "robotTaskId": "move-4",
+    "createdAt": 1767187212599,
+    "updatedAt": 1767187212599,
+    "completedAt": null
+  }
+]

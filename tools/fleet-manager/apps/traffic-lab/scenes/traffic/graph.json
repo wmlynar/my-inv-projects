@@ -1,0 +1,29 @@
+{
+  "nodes": [
+    { "id": "PP1", "className": "ParkPoint", "pos": { "x": 0, "y": 6 } },
+    { "id": "PP2", "className": "ParkPoint", "pos": { "x": 15, "y": 6 } },
+    { "id": "AP1", "className": "ActionPoint", "pos": { "x": 0, "y": 5 } },
+    { "id": "AP2", "className": "ActionPoint", "pos": { "x": 5, "y": 5 } },
+    { "id": "AP3", "className": "ActionPoint", "pos": { "x": 10, "y": 5 } },
+    { "id": "AP4", "className": "ActionPoint", "pos": { "x": 15, "y": 5 } },
+    { "id": "AP5", "className": "ActionPoint", "pos": { "x": 0, "y": 0 } },
+    { "id": "AP6", "className": "ActionPoint", "pos": { "x": 5, "y": 0 } },
+    { "id": "AP7", "className": "ActionPoint", "pos": { "x": 10, "y": 0 } },
+    { "id": "AP8", "className": "ActionPoint", "pos": { "x": 15, "y": 0 } },
+    { "id": "LM1", "className": "LocationMark", "pos": { "x": 7.5, "y": 2.5 } }
+  ],
+  "edges": [
+    { "start": "PP1", "end": "AP1" },
+    { "start": "AP1", "end": "AP2" },
+    { "start": "AP2", "end": "AP3" },
+    { "start": "AP3", "end": "AP4" },
+    { "start": "AP4", "end": "PP2" },
+    { "start": "AP5", "end": "AP6" },
+    { "start": "AP6", "end": "AP7" },
+    { "start": "AP7", "end": "AP8" },
+    { "start": "AP2", "end": "LM1" },
+    { "start": "AP3", "end": "LM1" },
+    { "start": "AP6", "end": "LM1" },
+    { "start": "AP7", "end": "LM1" }
+  ]
+}

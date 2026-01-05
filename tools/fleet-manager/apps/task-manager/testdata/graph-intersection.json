@@ -1,0 +1,19 @@
+{
+  "nodes": [
+    { "id": "P1", "className": "ParkPoint", "pos": { "x": -6, "y": 0 } },
+    { "id": "P2", "className": "ParkPoint", "pos": { "x": 0, "y": 6 } },
+    { "id": "A", "className": "ActionPoint", "pos": { "x": -2, "y": 0 } },
+    { "id": "B", "className": "ActionPoint", "pos": { "x": 2, "y": 0 } },
+    { "id": "C", "className": "ActionPoint", "pos": { "x": 0, "y": 2 } },
+    { "id": "D", "className": "ActionPoint", "pos": { "x": 0, "y": -2 } },
+    { "id": "X", "className": "LocationMark", "pos": { "x": 0, "y": 0 } }
+  ],
+  "edges": [
+    { "start": "P1", "end": "A" },
+    { "start": "A", "end": "X" },
+    { "start": "X", "end": "B" },
+    { "start": "P2", "end": "C" },
+    { "start": "C", "end": "X" },
+    { "start": "X", "end": "D" }
+  ]
+}

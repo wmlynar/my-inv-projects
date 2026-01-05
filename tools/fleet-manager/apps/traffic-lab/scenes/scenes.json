@@ -1,0 +1,78 @@
+{
+  "activeSceneId": "traffic",
+  "scenes": [
+    {
+      "id": "traffic",
+      "name": "Traffic test",
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "kind": "test",
+      "maps": [
+        {
+          "id": "map-1",
+          "name": "traffic",
+          "fileName": "graph.json",
+          "smapPath": null,
+          "graphPath": "traffic/graph.json",
+          "meta": {
+            "mapName": "traffic",
+            "mapType": "test",
+            "version": "1.0.0",
+            "md5": null
+          }
+        }
+      ],
+      "activeMapId": "map-1",
+      "workflowPath": "traffic/workflow.json5",
+      "robotsPath": "traffic/robots.json",
+      "packagingPath": "traffic/packaging.json"
+    },
+    {
+      "id": "entry-reservation",
+      "name": "Entry reservation test",
+      "createdAt": "2025-01-03T00:00:00.000Z",
+      "kind": "test",
+      "maps": [
+        {
+          "id": "map-1",
+          "name": "entry-reservation",
+          "fileName": "graph.json",
+          "smapPath": null,
+          "graphPath": "entry-reservation/graph.json",
+          "meta": {
+            "mapName": "entry-reservation",
+            "mapType": "test",
+            "version": "1.0.0",
+            "md5": null
+          }
+        }
+      ],
+      "activeMapId": "map-1",
+      "workflowPath": "entry-reservation/workflow.json5",
+      "robotsPath": "entry-reservation/robots.json",
+      "packagingPath": "entry-reservation/packaging.json"
+    },
+    {
+      "id": "default",
+      "name": "20251203191014177_nowy_styl_5_po_poprawieniu_korlet",
+      "createdAt": "1970-01-01T00:00:00.000Z",
+      "kind": "builtin",
+      "maps": [
+        {
+          "id": "map-1",
+          "name": "20251203191014177_nowy_styl_5_po_poprawieniu_korlet",
+          "fileName": "20251203191014177_nowy_styl_5_po_poprawieniu_korlet.smap",
+          "smapPath": null,
+          "graphPath": "../public/data/graph.json",
+          "meta": {
+            "mapName": "20251203191014177_nowy_styl_5_po_poprawieniu_korlet",
+            "mapType": "2D-Map",
+            "version": "1.0.6",
+            "md5": "cdc913ba229e341b00f5b359e1fe04fb"
+          }
+        }
+      ],
+      "activeMapId": "map-1",
+      "workflowPath": "../public/data/workflow.json5"
+    }
+  ]
+}

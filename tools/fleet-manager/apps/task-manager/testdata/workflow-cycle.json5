@@ -1,0 +1,33 @@
+{
+  "map": {
+    "name": "e2e-cycle",
+    "version": "1.0.0",
+    "source": "apps/task-manager/testdata/graph-cycle.json"
+  },
+  "groups": {
+    "PICK-GROUP": ["N1", "N2", "N3"],
+    "DROP-GROUP-01": ["N2"],
+    "DROP-GROUP-02": ["N3"],
+    "DROP-GROUP-03": ["N1"]
+  },
+  "bin_locations": {
+    "PICK-N1": { "group": "PICK-GROUP", "point": "N1", "pos": { "x": 0, "y": 0 } },
+    "PICK-N2": { "group": "PICK-GROUP", "point": "N2", "pos": { "x": 6, "y": 0 } },
+    "PICK-N3": { "group": "PICK-GROUP", "point": "N3", "pos": { "x": 3, "y": 5 } },
+    "DROP-N2": { "group": "DROP-GROUP-01", "point": "N2", "pos": { "x": 6, "y": 0 } },
+    "DROP-N3": { "group": "DROP-GROUP-02", "point": "N3", "pos": { "x": 3, "y": 5 } },
+    "DROP-N1": { "group": "DROP-GROUP-03", "point": "N1", "pos": { "x": 0, "y": 0 } }
+  },
+  "occupancy": {
+    "pick_groups": ["PICK-GROUP"],
+    "drop_groups": ["DROP-GROUP-01", "DROP-GROUP-02", "DROP-GROUP-03"]
+  },
+  "streams": [
+    {
+      "id": "cycle",
+      "pick_group": "PICK-GROUP",
+      "drop_group_order": ["DROP-GROUP-01", "DROP-GROUP-02", "DROP-GROUP-03"],
+      "notes": "Cycle scheduling for edge_lock."
+    }
+  ]
+}

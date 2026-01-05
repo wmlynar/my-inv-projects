@@ -1,0 +1,29 @@
+{
+  "nodes": [
+    { "id": "PP1", "className": "ParkPoint", "pos": { "x": 0, "y": 6 } },
+    { "id": "PP2", "className": "ParkPoint", "pos": { "x": 15, "y": 6 } },
+    { "id": "A1", "className": "ActionPoint", "pos": { "x": 0, "y": 5 } },
+    { "id": "A2", "className": "ActionPoint", "pos": { "x": 5, "y": 5 } },
+    { "id": "A3", "className": "ActionPoint", "pos": { "x": 10, "y": 5 } },
+    { "id": "A4", "className": "ActionPoint", "pos": { "x": 15, "y": 5 } },
+    { "id": "B1", "className": "ActionPoint", "pos": { "x": 0, "y": 0 } },
+    { "id": "B2", "className": "ActionPoint", "pos": { "x": 5, "y": 0 } },
+    { "id": "B3", "className": "ActionPoint", "pos": { "x": 10, "y": 0 } },
+    { "id": "B4", "className": "ActionPoint", "pos": { "x": 15, "y": 0 } },
+    { "id": "X1", "className": "LocationMark", "pos": { "x": 7.5, "y": 2.5 } }
+  ],
+  "edges": [
+    { "start": "PP1", "end": "A1" },
+    { "start": "A1", "end": "A2" },
+    { "start": "A2", "end": "A3" },
+    { "start": "A3", "end": "A4" },
+    { "start": "A4", "end": "PP2" },
+    { "start": "B1", "end": "B2" },
+    { "start": "B2", "end": "B3" },
+    { "start": "B3", "end": "B4" },
+    { "start": "A2", "end": "X1" },
+    { "start": "A3", "end": "X1" },
+    { "start": "B2", "end": "X1" },
+    { "start": "B3", "end": "X1" }
+  ]
+}

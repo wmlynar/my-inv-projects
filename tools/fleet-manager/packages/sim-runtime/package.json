@@ -1,0 +1,17 @@
+{
+  "name": "@fleet-manager/sim-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "dependencies": {
+    "@fleet-manager/core-time": "0.1.0",
+    "@fleet-manager/core-mapf": "0.1.0",
+    "@fleet-manager/core-reservations": "0.1.0",
+    "@fleet-manager/core-scheduler": "0.1.0",
+    "@fleet-manager/core-timing": "0.1.0",
+    "@fleet-manager/core-types": "0.1.0"
+  }
+}

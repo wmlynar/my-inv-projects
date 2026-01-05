@@ -1,0 +1,33 @@
+{
+  "map": {
+    "name": "smap-1-intersection-3",
+    "version": "1.0.0",
+    "source": "seer/smap/maps/1.smap"
+  },
+  "groups": {
+    "PICK-GROUP": ["LM6", "LM7", "PP19"],
+    "DROP-GROUP-01": ["AP20"],
+    "DROP-GROUP-02": ["PP19"],
+    "DROP-GROUP-03": ["LM6"]
+  },
+  "bin_locations": {
+    "PICK-01": { "group": "PICK-GROUP", "point": "LM6", "pos": { "x": -90.695, "y": -0.62 } },
+    "PICK-02": { "group": "PICK-GROUP", "point": "LM7", "pos": { "x": -95.623, "y": -0.62 } },
+    "PICK-03": { "group": "PICK-GROUP", "point": "PP19", "pos": { "x": -100.391, "y": 9.292 } },
+    "DROP-01": { "group": "DROP-GROUP-01", "point": "AP20", "pos": { "x": -93.623, "y": 13.003 } },
+    "DROP-02": { "group": "DROP-GROUP-02", "point": "PP19", "pos": { "x": -100.391, "y": 9.292 } },
+    "DROP-03": { "group": "DROP-GROUP-03", "point": "LM6", "pos": { "x": -90.695, "y": -0.62 } }
+  },
+  "occupancy": {
+    "pick_groups": ["PICK-GROUP"],
+    "drop_groups": ["DROP-GROUP-01", "DROP-GROUP-02", "DROP-GROUP-03"]
+  },
+  "streams": [
+    {
+      "id": "smap-1-intersection-3",
+      "pick_group": "PICK-GROUP",
+      "drop_group_order": ["DROP-GROUP-01", "DROP-GROUP-02", "DROP-GROUP-03"],
+      "notes": "Intersection serialization at LM21 with three robots on smap-1."
+    }
+  ]
+}

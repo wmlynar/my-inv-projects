@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/">
+        <file>resource/Ch.qm</file>
+        <file>resource/Ch.ts</file>
+    </qresource>
+</RCC>

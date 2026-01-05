@@ -1,0 +1,42 @@
+/*
+ * Decompiled with CFR 0.152.
+ * 
+ * Could not load the following classes:
+ *  com.seer.rds.dao.WindDataCacheSplitMapper
+ *  com.seer.rds.model.wind.WindDataCacheSplit
+ *  org.springframework.data.jpa.repository.JpaRepository
+ *  org.springframework.data.jpa.repository.Modifying
+ *  org.springframework.data.jpa.repository.Query
+ *  org.springframework.stereotype.Repository
+ *  org.springframework.transaction.annotation.Transactional
+ */
+package com.seer.rds.dao;
+
+import com.seer.rds.model.wind.WindDataCacheSplit;
+import java.util.Date;
+import java.util.List;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
+
+@Repository
+public interface WindDataCacheSplitMapper
+extends JpaRepository<WindDataCacheSplit, String> {
+    public WindDataCacheSplit findByDataKey(String var1);
+
+    public List<WindDataCacheSplit> findByDataKeyIn(List<String> var1);
+
+    @Transactional
+    @Modifying
+    public int deleteByDataKey(String var1);
+
+    @Transactional
+    @Modifying
+    @Query(value="delete from WindDataCacheSplit where updatedOn < :updatedOn and keep <> 1")
+    public int deleteAllByUpdatedOnLessThan(Date var1);
+
+    public List<WindDataCacheSplit> findByUpdatedOnBefore(Date var1);
+}
+

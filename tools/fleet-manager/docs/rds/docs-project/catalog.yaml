@@ -1,0 +1,123 @@
+version: 1
+updated_at: 2026-01-03
+root: docs-project
+entries:
+  - id: project-home
+    title: Documentation Home
+    path: docs/index.md
+    area: project
+    status: draft
+    source: docs-project/README.md
+    tags: [project, overview]
+  - id: project-overview
+    title: Project Overview
+    path: docs/project/overview.md
+    area: project
+    status: draft
+    source: README.md
+    tags: [project, context]
+  - id: project-architecture
+    title: Architecture Notes
+    path: docs/project/architecture.md
+    area: project
+    status: draft
+    source: docs/ARCHITECTURE.md
+    tags: [project, architecture]
+  - id: project-status
+    title: Project Status
+    path: docs/project/status.md
+    area: project
+    status: draft
+    source: docs/PROJECT_STATUS.md
+    tags: [project, status]
+  - id: robokit-api-overview
+    title: Robokit API Overview
+    path: docs/robokit-api/overview.md
+    area: robokit
+    status: draft
+    source: docs/ROBOKIT_API.md
+    tags: [robokit, api]
+  - id: robokit-api-http
+    title: Robokit HTTP API
+    path: docs/robokit-api/http.md
+    area: robokit
+    status: draft
+    source: scraped/
+    tags: [robokit, http]
+  - id: robokit-api-tcp
+    title: Robokit TCP Protocol
+    path: docs/robokit-api/tcp.md
+    area: robokit
+    status: draft
+    source: seer/Robokit_TCP_API_py/robotkit-netprotocol-l-1.2.1.pdf
+    tags: [robokit, tcp]
+  - id: robokit-api-examples
+    title: Robokit Examples
+    path: docs/robokit-api/examples.md
+    area: robokit
+    status: draft
+    source: seer/Robokit_TCP_API_py/
+    tags: [robokit, examples]
+  - id: seer-overview
+    title: Seer Overview
+    path: docs/seer/overview.md
+    area: seer
+    status: draft
+    source: seer/
+    tags: [seer]
+  - id: seer-smap
+    title: Seer SMAP
+    path: docs/seer/smap.md
+    area: seer
+    status: draft
+    source: seer/smap/README.md
+    tags: [seer, smap]
+  - id: seer-sdk
+    title: Seer SDK
+    path: docs/seer/sdk.md
+    area: seer
+    status: draft
+    source: seer/Seer-Python-SDK/README.md
+    tags: [seer, sdk]
+  - id: examples-overview
+    title: Examples Index
+    path: docs/examples/index.md
+    area: examples
+    status: draft
+    source: examples/
+    tags: [examples]
+  - id: scraping-overview
+    title: Scraping Overview
+    path: docs/scraping/overview.md
+    area: scraping
+    status: draft
+    source: SCRAPING.md
+    tags: [scraping]
+  - id: policies
+    title: Documentation Policy
+    path: docs/policies.md
+    area: policy
+    status: draft
+    source: docs/CONFIGURATION.md
+    tags: [policy]
+  - id: glossary
+    title: Glossary
+    path: docs/glossary.md
+    area: project
+    status: draft
+    source: docs/PROTOCOL_NOTES.md
+    tags: [glossary]
+  - id: gaps
+    title: Gaps and TODO
+    path: docs/gaps.md
+    area: project
+    status: draft
+    source: docs/PROJECT_STATUS.md
+    tags: [gaps]
+  - id: decisions-index
+    title: Decisions Index
+    path: docs/decisions/README.md
+    area: project
+    status: draft
+    source: docs/ANALYSIS_WORKFLOW.md
+    tags: [decisions]

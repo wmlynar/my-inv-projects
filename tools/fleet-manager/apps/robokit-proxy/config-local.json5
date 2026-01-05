@@ -1,0 +1,135 @@
+{
+  // Local loopback proxy -> local simulator
+  "bindHost": "0.0.0.0",
+  "logDir": "./logs",
+  "asciiPreviewLimit": 160,
+  "logBinary": true,
+  "logBase64": true,
+  "logAscii": true,
+  "logSha256": false,
+  "splitLogs": false,
+  "throttle": {
+    "enabled": false,
+    "maxPerApi": 100,
+    "directions": ["c2s"],
+    "logSuppressed": true,
+    "excludeApis": [],
+    "maxBodyLength": 1048576
+  },
+  "mappings": [
+    {
+      "name": "port-12398",
+      "listenPort": 12398,
+      "targetHost": "127.0.0.1",
+      "targetPort": 22398
+    },
+    {
+      "name": "robod",
+      "listenPort": 19200,
+      "targetHost": "127.0.0.1",
+      "targetPort": 29200
+    },
+    {
+      "name": "state",
+      "listenPort": 19204,
+      "targetHost": "127.0.0.1",
+      "targetPort": 29204
+    },
+    {
+      "name": "ctrl",
+      "listenPort": 19205,
+      "targetHost": "127.0.0.1",
+      "targetPort": 29205
+    },
+    {
+      "name": "task",
+      "listenPort": 19206,
+      "targetHost": "127.0.0.1",
+      "targetPort": 29206
+    },
+    {
+      "name": "config",
+      "listenPort": 19207,
+      "targetHost": "127.0.0.1",
+      "targetPort": 29207
+    },
+    {
+      "name": "kernel",
+      "listenPort": 19208,
+      "targetHost": "127.0.0.1",
+      "targetPort": 29208
+    },
+    {
+      "name": "other",
+      "listenPort": 19210,
+      "targetHost": "127.0.0.1",
+      "targetPort": 29210
+    },
+    {
+      "name": "push",
+      "listenPort": 19301,
+      "targetHost": "127.0.0.1",
+      "targetPort": 29301
+    },
+    {
+      "name": "port-20204",
+      "listenPort": 20204,
+      "targetHost": "127.0.0.1",
+      "targetPort": 30204
+    },
+    {
+      "name": "port-20207",
+      "listenPort": 20207,
+      "targetHost": "127.0.0.1",
+      "targetPort": 30207
+    },
+    {
+      "name": "port-30204",
+      "listenPort": 30204,
+      "targetHost": "127.0.0.1",
+      "targetPort": 40204
+    },
+    {
+      "name": "port-30206",
+      "listenPort": 30206,
+      "targetHost": "127.0.0.1",
+      "targetPort": 40206
+    },
+    {
+      "name": "port-30207",
+      "listenPort": 30207,
+      "targetHost": "127.0.0.1",
+      "targetPort": 40207
+    },
+    {
+      "name": "port-3964",
+      "listenPort": 3964,
+      "targetHost": "127.0.0.1",
+      "targetPort": 13964
+    },
+    {
+      "name": "http-8080",
+      "listenPort": 8080,
+      "targetHost": "127.0.0.1",
+      "targetPort": 18080
+    },
+    {
+      "name": "http-8088",
+      "listenPort": 8088,
+      "targetHost": "127.0.0.1",
+      "targetPort": 18088
+    },
+    {
+      "name": "http-8089",
+      "listenPort": 8089,
+      "targetHost": "127.0.0.1",
+      "targetPort": 18089
+    },
+    {
+      "name": "http-8090",
+      "listenPort": 8090,
+      "targetHost": "127.0.0.1",
+      "targetPort": 18090
+    }
+  ]
+}

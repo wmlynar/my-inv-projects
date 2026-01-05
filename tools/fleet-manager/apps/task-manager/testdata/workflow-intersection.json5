@@ -1,0 +1,30 @@
+{
+  "map": {
+    "name": "e2e-intersection",
+    "version": "1.0.0",
+    "source": "apps/task-manager/testdata/graph-intersection.json"
+  },
+  "groups": {
+    "PICK-GROUP": ["A", "C"],
+    "DROP-GROUP-01": ["B"],
+    "DROP-GROUP-02": ["D"]
+  },
+  "bin_locations": {
+    "PICK-A": { "group": "PICK-GROUP", "point": "A", "pos": { "x": -2, "y": 0 } },
+    "PICK-C": { "group": "PICK-GROUP", "point": "C", "pos": { "x": 0, "y": 2 } },
+    "DROP-B": { "group": "DROP-GROUP-01", "point": "B", "pos": { "x": 2, "y": 0 } },
+    "DROP-D": { "group": "DROP-GROUP-02", "point": "D", "pos": { "x": 0, "y": -2 } }
+  },
+  "occupancy": {
+    "pick_groups": ["PICK-GROUP"],
+    "drop_groups": ["DROP-GROUP-01", "DROP-GROUP-02"]
+  },
+  "streams": [
+    {
+      "id": "intersection",
+      "pick_group": "PICK-GROUP",
+      "drop_group_order": ["DROP-GROUP-01", "DROP-GROUP-02"],
+      "notes": "Intersection path crossing for edge_lock scheduler."
+    }
+  ]
+}

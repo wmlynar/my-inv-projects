@@ -1,0 +1,30 @@
+{
+  "map": {
+    "name": "smap-1",
+    "version": "1.0.0",
+    "source": "seer/smap/maps/1.smap"
+  },
+  "groups": {
+    "PICK-GROUP": ["AP4", "AP13"],
+    "DROP-GROUP-01": ["AP13"],
+    "DROP-GROUP-02": ["AP4"]
+  },
+  "bin_locations": {
+    "PICK-01": { "group": "PICK-GROUP", "point": "AP4", "pos": { "x": -75.539, "y": 2.04 } },
+    "PICK-02": { "group": "PICK-GROUP", "point": "AP13", "pos": { "x": -99.26, "y": -7.914 } },
+    "DROP-01": { "group": "DROP-GROUP-01", "point": "AP13", "pos": { "x": -99.26, "y": -7.914 } },
+    "DROP-02": { "group": "DROP-GROUP-02", "point": "AP4", "pos": { "x": -75.539, "y": 2.04 } }
+  },
+  "occupancy": {
+    "pick_groups": ["PICK-GROUP"],
+    "drop_groups": ["DROP-GROUP-01", "DROP-GROUP-02"]
+  },
+  "streams": [
+    {
+      "id": "smap-1",
+      "pick_group": "PICK-GROUP",
+      "drop_group_order": ["DROP-GROUP-01", "DROP-GROUP-02"],
+      "notes": "Head-on scenario on smap-1 for edge_lock scheduler."
+    }
+  ]
+}

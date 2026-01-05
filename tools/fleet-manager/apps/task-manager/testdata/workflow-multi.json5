@@ -1,0 +1,61 @@
+{
+  "map": {
+    "name": "e2e-map-multi",
+    "version": "1.0.0",
+    "source": "apps/task-manager/testdata/graph-multi.json"
+  },
+  "groups": {
+    "PICK-GROUP": [
+      "AP1",
+      "AP2"
+    ],
+    "DROP-GROUP-01": [
+      "AP3"
+    ],
+    "DROP-GROUP-02": [
+      "AP4"
+    ]
+  },
+  "bin_locations": {
+    "PICK-01": {
+      "group": "PICK-GROUP",
+      "point": "AP1",
+      "pos": { "x": 1, "y": 0 }
+    },
+    "PICK-02": {
+      "group": "PICK-GROUP",
+      "point": "AP2",
+      "pos": { "x": 2, "y": 0 }
+    },
+    "DROP-01": {
+      "group": "DROP-GROUP-01",
+      "point": "AP3",
+      "pos": { "x": 3, "y": 0 }
+    },
+    "DROP-02": {
+      "group": "DROP-GROUP-02",
+      "point": "AP4",
+      "pos": { "x": 4, "y": 0 }
+    }
+  },
+  "occupancy": {
+    "pick_groups": [
+      "PICK-GROUP"
+    ],
+    "drop_groups": [
+      "DROP-GROUP-01",
+      "DROP-GROUP-02"
+    ]
+  },
+  "streams": [
+    {
+      "id": "stream_multi",
+      "pick_group": "PICK-GROUP",
+      "drop_group_order": [
+        "DROP-GROUP-01",
+        "DROP-GROUP-02"
+      ],
+      "notes": "E2E multi-robot stream: pick -> drop (two drop groups)."
+    }
+  ]
+}

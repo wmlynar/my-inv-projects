@@ -1,0 +1,186 @@
+{
+  "DROP-01": {
+    "filled": false,
+    "blocked": false
+  },
+  "DROP-02": {
+    "filled": false,
+    "blocked": false
+  },
+  "DROP-03": {
+    "filled": false,
+    "blocked": false
+  },
+  "DROP-04": {
+    "filled": false,
+    "blocked": false
+  },
+  "DROP-05": {
+    "filled": false,
+    "blocked": false
+  },
+  "DROP-06": {
+    "filled": false,
+    "blocked": false
+  },
+  "DROP-07": {
+    "filled": false,
+    "blocked": false
+  },
+  "DROP-08": {
+    "filled": false,
+    "blocked": false
+  },
+  "DROP-09": {
+    "filled": false,
+    "blocked": false
+  },
+  "DROP-10": {
+    "filled": false,
+    "blocked": false
+  },
+  "DROP-11": {
+    "filled": false,
+    "blocked": false
+  },
+  "DROP-12": {
+    "filled": false,
+    "blocked": false
+  },
+  "DROP-13": {
+    "filled": false,
+    "blocked": false
+  },
+  "DROP-14": {
+    "filled": false,
+    "blocked": false
+  },
+  "PICK-01": {
+    "filled": true,
+    "blocked": false
+  },
+  "PICK-02": {
+    "filled": true,
+    "blocked": false
+  },
+  "PICK-03": {
+    "filled": true,
+    "blocked": false
+  },
+  "PICK-04": {
+    "filled": true,
+    "blocked": false
+  },
+  "PICK-05": {
+    "filled": true,
+    "blocked": false
+  },
+  "PICK-06": {
+    "filled": true,
+    "blocked": false
+  },
+  "PICK-07": {
+    "filled": true,
+    "blocked": false
+  },
+  "PICK-08": {
+    "filled": true,
+    "blocked": false
+  },
+  "PICK-09": {
+    "filled": true,
+    "blocked": false
+  },
+  "PICK-10": {
+    "filled": true,
+    "blocked": false
+  },
+  "PICK-11": {
+    "filled": true,
+    "blocked": false
+  },
+  "PICK-12": {
+    "filled": true,
+    "blocked": false
+  },
+  "PICK-13": {
+    "filled": true,
+    "blocked": false
+  },
+  "PICK-14": {
+    "filled": true,
+    "blocked": false
+  },
+  "PICK-15": {
+    "filled": true,
+    "blocked": false
+  },
+  "PICK-16": {
+    "filled": true,
+    "blocked": false
+  },
+  "PICK-51": {
+    "filled": true,
+    "blocked": false
+  },
+  "PICK-52": {
+    "filled": true,
+    "blocked": false
+  },
+  "PICK-53": {
+    "filled": true,
+    "blocked": false
+  },
+  "PICK-54": {
+    "filled": true,
+    "blocked": false
+  },
+  "PICK-55": {
+    "filled": true,
+    "blocked": false
+  },
+  "PICK-56": {
+    "filled": true,
+    "blocked": false
+  },
+  "PICK-57": {
+    "filled": true,
+    "blocked": false
+  },
+  "PICK-58": {
+    "filled": true,
+    "blocked": false
+  },
+  "PICK-59": {
+    "filled": true,
+    "blocked": false
+  },
+  "PICK-60": {
+    "filled": true,
+    "blocked": false
+  },
+  "PICK-61": {
+    "filled": true,
+    "blocked": false
+  },
+  "PICK-62": {
+    "filled": true,
+    "blocked": false
+  },
+  "PICK-63": {
+    "filled": true,
+    "blocked": false
+  },
+  "PICK-64": {
+    "filled": true,
+    "blocked": false
+  },
+  "PICK-65": {
+    "filled": true,
+    "blocked": false
+  },
+  "PICK-66": {
+    "filled": true,
+    "blocked": false
+  }
+}

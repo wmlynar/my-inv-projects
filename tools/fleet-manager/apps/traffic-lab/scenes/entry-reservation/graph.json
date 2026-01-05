@@ -1,0 +1,16 @@
+{
+  "meta": {
+    "mapName": "entry-reservation",
+    "mapType": "test",
+    "version": "1.0.0"
+  },
+  "nodes": [
+    { "id": "P1", "className": "ParkPoint", "pos": { "x": 0, "y": 0 } },
+    { "id": "M1", "className": "ActionPoint", "pos": { "x": 5, "y": 0 } },
+    { "id": "P2", "className": "ParkPoint", "pos": { "x": 10, "y": 0 } }
+  ],
+  "edges": [
+    { "start": "P1", "end": "M1", "props": { "width": 0 } },
+    { "start": "M1", "end": "P2", "props": { "width": 0 } }
+  ]
+}

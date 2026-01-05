@@ -1,0 +1,23 @@
+version: 1
+updated_at: 2026-01-03
+sources:
+  - id: repo-docs
+    path: ../docs
+    type: repo
+    description: Project documentation and notes in the main repo.
+  - id: seer
+    path: ../seer
+    type: vendor
+    description: Seer vendor documentation, SDKs, and assets.
+  - id: scraped
+    path: ../scraped
+    type: vendor
+    description: Scraped Robokit and vendor docs.
+  - id: sanden-spec
+    path: ../sanden-spec
+    type: vendor
+    description: Sanden specification materials.
+  - id: robokit-proxy
+    path: ../robokit-proxy
+    type: repo
+    description: Robokit proxy implementation and notes.

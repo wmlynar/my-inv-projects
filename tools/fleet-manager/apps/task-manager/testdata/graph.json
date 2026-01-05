@@ -1,0 +1,38 @@
+{
+  "nodes": [
+    {
+      "id": "AP1",
+      "className": "ActionPoint",
+      "pos": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "AP2",
+      "className": "ActionPoint",
+      "pos": {
+        "x": 1,
+        "y": 0
+      }
+    },
+    {
+      "id": "AP3",
+      "className": "ActionPoint",
+      "pos": {
+        "x": 2,
+        "y": 0
+      }
+    }
+  ],
+  "edges": [
+    {
+      "start": "AP1",
+      "end": "AP2"
+    },
+    {
+      "start": "AP2",
+      "end": "AP3"
+    }
+  ]
+}

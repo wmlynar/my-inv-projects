@@ -1,0 +1,135 @@
+{
+  // Local loopback proxy -> remote RDS (for capture)
+  "bindHost": "0.0.0.0",
+  "logDir": "./logs-rds",
+  "asciiPreviewLimit": 160,
+  "logBinary": true,
+  "logBase64": true,
+  "logAscii": true,
+  "logSha256": false,
+  "splitLogs": false,
+  "throttle": {
+    "enabled": false,
+    "maxPerApi": 100,
+    "directions": ["c2s"],
+    "logSuppressed": true,
+    "excludeApis": [],
+    "maxBodyLength": 1048576
+  },
+  "mappings": [
+    {
+      "name": "port-12398",
+      "listenPort": 12398,
+      "targetHost": "10.128.27.168",
+      "targetPort": 12398
+    },
+    {
+      "name": "robod",
+      "listenPort": 19200,
+      "targetHost": "10.128.27.168",
+      "targetPort": 19200
+    },
+    {
+      "name": "state",
+      "listenPort": 19204,
+      "targetHost": "10.128.27.168",
+      "targetPort": 19204
+    },
+    {
+      "name": "ctrl",
+      "listenPort": 19205,
+      "targetHost": "10.128.27.168",
+      "targetPort": 19205
+    },
+    {
+      "name": "task",
+      "listenPort": 19206,
+      "targetHost": "10.128.27.168",
+      "targetPort": 19206
+    },
+    {
+      "name": "config",
+      "listenPort": 19207,
+      "targetHost": "10.128.27.168",
+      "targetPort": 19207
+    },
+    {
+      "name": "kernel",
+      "listenPort": 19208,
+      "targetHost": "10.128.27.168",
+      "targetPort": 19208
+    },
+    {
+      "name": "other",
+      "listenPort": 19210,
+      "targetHost": "10.128.27.168",
+      "targetPort": 19210
+    },
+    {
+      "name": "push",
+      "listenPort": 19301,
+      "targetHost": "10.128.27.168",
+      "targetPort": 19301
+    },
+    {
+      "name": "port-20204",
+      "listenPort": 20204,
+      "targetHost": "10.128.27.168",
+      "targetPort": 20204
+    },
+    {
+      "name": "port-20207",
+      "listenPort": 20207,
+      "targetHost": "10.128.27.168",
+      "targetPort": 20207
+    },
+    {
+      "name": "port-30204",
+      "listenPort": 30204,
+      "targetHost": "10.128.27.168",
+      "targetPort": 30204
+    },
+    {
+      "name": "port-30206",
+      "listenPort": 30206,
+      "targetHost": "10.128.27.168",
+      "targetPort": 30206
+    },
+    {
+      "name": "port-30207",
+      "listenPort": 30207,
+      "targetHost": "10.128.27.168",
+      "targetPort": 30207
+    },
+    {
+      "name": "port-3964",
+      "listenPort": 3964,
+      "targetHost": "10.128.27.168",
+      "targetPort": 3964
+    },
+    {
+      "name": "http-8080",
+      "listenPort": 8080,
+      "targetHost": "10.128.27.168",
+      "targetPort": 8080
+    },
+    {
+      "name": "http-8088",
+      "listenPort": 8088,
+      "targetHost": "10.128.27.168",
+      "targetPort": 8088
+    },
+    {
+      "name": "http-8089",
+      "listenPort": 8089,
+      "targetHost": "10.128.27.168",
+      "targetPort": 8089
+    },
+    {
+      "name": "http-8090",
+      "listenPort": 8090,
+      "targetHost": "10.128.27.168",
+      "targetPort": 8090
+    }
+  ]
+}

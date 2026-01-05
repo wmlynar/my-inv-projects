@@ -1,0 +1,11 @@
+{
+  "nodes": [
+    { "id": "N1", "className": "ActionPoint", "pos": { "x": 0, "y": 0 } },
+    { "id": "N2", "className": "ActionPoint", "pos": { "x": 5, "y": 0 } },
+    { "id": "N3", "className": "ActionPoint", "pos": { "x": 10, "y": 0 } }
+  ],
+  "edges": [
+    { "start": "N1", "end": "N2", "props": { "direction": 1 } },
+    { "start": "N2", "end": "N3", "props": { "direction": 1 } }
+  ]
+}

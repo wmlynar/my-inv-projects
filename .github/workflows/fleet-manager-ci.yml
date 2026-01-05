@@ -1,0 +1,35 @@
+name: fleet-manager-ci
+
+on:
+  push:
+    paths:
+      - "tools/fleet-manager/**"
+      - "tools/fleet-manager/**"
+      - ".github/workflows/fleet-manager-ci.yml"
+  pull_request:
+    paths:
+      - "tools/fleet-manager/**"
+      - ".github/workflows/fleet-manager-ci.yml"
+
+jobs:
+  fleet-manager:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install
+        run: npm install
+      - name: Lint
+        run: npm --prefix tools/fleet-manager run lint
+      - name: Typecheck
+        run: npm --prefix tools/fleet-manager run typecheck
+      - name: Unit tests
+        run: npm --prefix tools/fleet-manager run test:unit
+      - name: E2E tests
+        run: npm --prefix tools/fleet-manager run test:e2e
+      - name: Legacy tests
+        run: npm --prefix tools/fleet-manager run test:legacy
+      - name: Legacy import guard
+        run: node tools/fleet-manager/tools/scripts/check-no-legacy-imports.mjs

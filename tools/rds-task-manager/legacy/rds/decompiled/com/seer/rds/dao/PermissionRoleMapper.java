@@ -1,0 +1,20 @@
+/*
+ * Decompiled with CFR 0.152.
+ * 
+ * Could not load the following classes:
+ *  com.seer.rds.dao.PermissionRoleMapper
+ *  com.seer.rds.model.admin.PermissionRole
+ *  org.springframework.data.jpa.repository.JpaRepository
+ *  org.springframework.stereotype.Repository
+ */
+package com.seer.rds.dao;
+
+import com.seer.rds.model.admin.PermissionRole;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface PermissionRoleMapper
+extends JpaRepository<PermissionRole, String> {
+}
+
