@@ -6840,6 +6840,22 @@ const getReservationEntryBuffer = (robot, segment) => {
     if (shouldIgnoreTrafficBlocks() || !robot?.pos) {
       return { speedLimit: desiredMag, blockingId: null, blockReason: null };
     }
+    const deterministicRightOfWay = Boolean(trafficStrategy?.useDeterministicRightOfWay?.());
+    if (deterministicRightOfWay) {
+      const trafficRobots = trafficSnapshot || robots;
+      for (const other of trafficRobots) {
+        if (other.id === robot.id) continue;
+        if (other.online === false) continue;
+        if (!other.pos) continue;
+        const dx = other.pos.x - robot.pos.x;
+        const dy = other.pos.y - robot.pos.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist <= ROBOT_OVERLAP_EPS) {
+          return { speedLimit: 0, blockingId: other.id, blockReason: 'traffic_overlap' };
+        }
+      }
+      return { speedLimit: desiredMag, blockingId: null, blockReason: null };
+    }
     const trafficRobots = trafficSnapshot || robots;
     const headingBase = Number.isFinite(desiredHeading)
       ? desiredHeading
