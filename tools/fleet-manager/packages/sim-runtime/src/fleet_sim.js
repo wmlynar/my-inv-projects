@@ -2536,6 +2536,20 @@ const getReservationEntryBuffer = (robot, segment) => {
       if (!segment) {
         const nodesById = navGraph?.nodesById;
         if (nodesById?.size) {
+          let currentNodeId = null;
+          let currentDist = Number.POSITIVE_INFINITY;
+          for (const [nodeId, node] of nodesById.entries()) {
+            if (!node?.pos) continue;
+            const dist = distanceBetweenPoints(robot.pos, node.pos);
+            if (!Number.isFinite(dist) || dist > occupancyRange) continue;
+            if (dist < currentDist) {
+              currentDist = dist;
+              currentNodeId = nodeId;
+            }
+          }
+          if (currentNodeId) {
+            addNodeCandidate(currentNodeId, now, currentDist, currentDist, true);
+          }
           for (const [nodeId, node] of nodesById.entries()) {
             if (!node?.pos) continue;
             const dist = distanceBetweenPoints(robot.pos, node.pos);
@@ -11572,7 +11586,16 @@ const getReservationEntryBuffer = (robot, segment) => {
           if (Date.now() >= runtime.waitUntil) {
             setWorksiteOccupancy(runtime.dropId, 'filled');
             const parkTarget = resolveRobotParkingPoint(robot, { preferAssigned: true });
-            const park = parkTarget?.pos || robot.pos;
+            const park = parkTarget?.pos || null;
+            if (!park) {
+              robotRuntime.delete(robotId);
+              dropEntryHoldWaiterCache(robotId);
+              releaseRobotEdgeLocks(robotId);
+              refreshRouteSchedulesAfterRelease(robotId);
+              updateRobotState(robotId, { activity: 'idle', task: null });
+              updateTask(runtime.taskId, { status: 'completed', phase: 'done' });
+              return;
+            }
             const parkNodeId =
               parkTarget?.id && navGraph?.nodesById?.has(parkTarget.id) ? parkTarget.id : null;
             runtime.phase = 'to_park';
