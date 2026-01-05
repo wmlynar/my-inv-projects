@@ -382,6 +382,8 @@ const TRAFFIC_STRATEGY_LABELS = {
   sipp: "SIPP (segmenty)",
   "sipp-kinodynamic": "SIPP (kinodynamic)",
   "sipp-robust": "SIPP (robust)",
+  "sipp-deterministic": "SIPP (deterministic)",
+  deterministic: "Deterministic (no time)",
   "ecbs-sipp": "ECBS+SIPP",
   "cbs-sipp": "CBS+SIPP",
   "cbs-full": "CBS full + SIPP",

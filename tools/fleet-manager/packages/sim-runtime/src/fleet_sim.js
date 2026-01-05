@@ -108,6 +108,8 @@ const TRAFFIC_STRATEGIES = new Set([
   'sipp',
   'sipp-kinodynamic',
   'sipp-robust',
+  'sipp-deterministic',
+  'deterministic',
   'ecbs-sipp',
   'cbs-sipp',
   'cbs-full',
@@ -1084,6 +1086,9 @@ function createFleetSim(options = {}) {
     if (key === 'sipp-robust' || key === 'sipp-stn' || key === 'sipp-stable') {
       return 'sipp-robust';
     }
+    if (key === 'sipp-deterministic' || key === 'sipp-det' || key === 'sipp-deterministic-time') {
+      return 'sipp-deterministic';
+    }
     return TRAFFIC_STRATEGIES.has(key) ? key : null;
   };
 
@@ -1759,13 +1764,16 @@ function createFleetSim(options = {}) {
     if (selfPriority !== otherPriority) {
       return selfPriority > otherPriority;
     }
-    const selfSince = resolveRuntimeWaitSince(runtime);
-    const otherSince = resolveRuntimeWaitSince(otherRuntime);
-    if (Number.isFinite(selfSince) && Number.isFinite(otherSince) && selfSince !== otherSince) {
-      return selfSince < otherSince;
+    const deterministicRightOfWay = Boolean(trafficStrategy?.useDeterministicRightOfWay?.());
+    if (!deterministicRightOfWay) {
+      const selfSince = resolveRuntimeWaitSince(runtime);
+      const otherSince = resolveRuntimeWaitSince(otherRuntime);
+      if (Number.isFinite(selfSince) && Number.isFinite(otherSince) && selfSince !== otherSince) {
+        return selfSince < otherSince;
+      }
+      if (Number.isFinite(selfSince) && !Number.isFinite(otherSince)) return true;
+      if (!Number.isFinite(selfSince) && Number.isFinite(otherSince)) return false;
     }
-    if (Number.isFinite(selfSince) && !Number.isFinite(otherSince)) return true;
-    if (!Number.isFinite(selfSince) && Number.isFinite(otherSince)) return false;
     const order = String(robot?.id || '').localeCompare(String(other?.id || ''));
     if (order !== 0) return order < 0;
     return null;
@@ -1799,13 +1807,16 @@ function createFleetSim(options = {}) {
     if (selfPriority !== otherPriority) {
       return selfPriority > otherPriority ? -1 : 1;
     }
-    const selfSince = resolveRuntimeWaitSince(runtime);
-    const otherSince = resolveRuntimeWaitSince(otherRuntime);
-    if (Number.isFinite(selfSince) && Number.isFinite(otherSince) && selfSince !== otherSince) {
-      return selfSince < otherSince ? -1 : 1;
+    const deterministicRightOfWay = Boolean(trafficStrategy?.useDeterministicRightOfWay?.());
+    if (!deterministicRightOfWay) {
+      const selfSince = resolveRuntimeWaitSince(runtime);
+      const otherSince = resolveRuntimeWaitSince(otherRuntime);
+      if (Number.isFinite(selfSince) && Number.isFinite(otherSince) && selfSince !== otherSince) {
+        return selfSince < otherSince ? -1 : 1;
+      }
+      if (Number.isFinite(selfSince) && !Number.isFinite(otherSince)) return -1;
+      if (!Number.isFinite(selfSince) && Number.isFinite(otherSince)) return 1;
     }
-    if (Number.isFinite(selfSince) && !Number.isFinite(otherSince)) return -1;
-    if (!Number.isFinite(selfSince) && Number.isFinite(otherSince)) return 1;
     const order = String(robot?.id || '').localeCompare(String(other?.id || ''));
     if (order !== 0) return order;
     return 0;
@@ -2399,7 +2410,10 @@ const getReservationEntryBuffer = (robot, segment) => {
 
   const shouldUseNodeLocksForRuntime = (runtime) => {
     if (!trafficStrategy?.useNodeLocks?.()) return false;
-    if (trafficStrategy?.useTimeReservations?.()) return false;
+    if (trafficStrategy?.useTimeReservations?.()) {
+      const allow = trafficStrategy?.allowNodeLocksWithReservations?.();
+      if (!allow) return false;
+    }
     return true;
   };
 
@@ -2629,12 +2643,15 @@ const getReservationEntryBuffer = (robot, segment) => {
       );
       const occupied = list.filter((item) => item.occupied);
       const selection = occupied.length ? occupied : list;
+      const deterministicRightOfWay = Boolean(trafficStrategy?.useDeterministicRightOfWay?.());
       selection.sort((a, b) => {
         if (a.occupied !== b.occupied) return a.occupied ? -1 : 1;
         const aDist = Number.isFinite(a.dist) ? a.dist : null;
         const bDist = Number.isFinite(b.dist) ? b.dist : null;
         if (aDist !== null && bDist !== null && aDist !== bDist) return aDist - bDist;
-        if (a.expectedAt !== b.expectedAt) return a.expectedAt - b.expectedAt;
+        if (!deterministicRightOfWay && a.expectedAt !== b.expectedAt) {
+          return a.expectedAt - b.expectedAt;
+        }
         return String(a.robotId).localeCompare(String(b.robotId));
       });
       const best = selection[0];
@@ -2658,10 +2675,11 @@ const getReservationEntryBuffer = (robot, segment) => {
         }
         if (
           existingCandidate.robotId === best.robotId ||
-          (Number.isFinite(existingCandidate.expectedAt) &&
+          (!deterministicRightOfWay &&
+            Number.isFinite(existingCandidate.expectedAt) &&
             Number.isFinite(best.expectedAt) &&
-            existingCandidate.expectedAt <= best.expectedAt + switchMarginMs)
-          || withinHysteresis
+            existingCandidate.expectedAt <= best.expectedAt + switchMarginMs) ||
+          withinHysteresis
         ) {
           next.set(nodeId, { holderId: existing.holderId, until: now + ttlMs });
           return;
@@ -2757,10 +2775,14 @@ const getReservationEntryBuffer = (robot, segment) => {
       robot.speed = 0;
       return true;
     }
+    const allowEdgeLocksWithReservations =
+      Boolean(trafficStrategy?.allowEdgeLocksWithReservations?.());
     const useEdgeLocks =
       !runtime?.avoidance &&
       !ignoreTrafficBlocks &&
-      (!trafficStrategy?.useTimeReservations?.() || !runtime.route.schedule?.length);
+      (!trafficStrategy?.useTimeReservations?.() ||
+        !runtime.route.schedule?.length ||
+        allowEdgeLocksWithReservations);
     if (useEdgeLocks) {
       const lockStatus = syncEdgeCorridorLocks(robot, runtime, now);
       if (!lockStatus.ok) {
@@ -2932,6 +2954,7 @@ const getReservationEntryBuffer = (robot, segment) => {
   const syncEdgeCorridorLocks = (robot, runtime, nowMs) => {
     if (!robot?.id || !runtime?.route) return { ok: true, holder: null, edgeGroupKey: null };
     const deterministicEdgeLocks = shouldUseDeterministicEdgeLocks();
+    const deterministicRightOfWay = Boolean(trafficStrategy?.useDeterministicRightOfWay?.());
     const useQueues = deterministicEdgeLocks || trafficStrategy?.useEdgeQueues?.();
     const lockOptions = {
       nowMs,
@@ -2986,6 +3009,7 @@ const getReservationEntryBuffer = (robot, segment) => {
           ? 0
           : Math.min(Math.abs(entry.offsetStart), Math.abs(entry.offsetEnd));
       const required = entry.offsetEnd >= 0;
+      if (!required && deterministicRightOfWay) return;
       const existing = desired.get(edgeGroupKey);
       if (!existing || distance < existing.distance) {
         desired.set(edgeGroupKey, {
@@ -3040,6 +3064,58 @@ const getReservationEntryBuffer = (robot, segment) => {
       (entry) => entry.offsetStart <= 0 && entry.offsetEnd >= 0
     );
     const keepKeys = new Set();
+    if (deterministicRightOfWay) {
+      const lockOrder = desiredList
+        .filter((entry) => entry.required)
+        .sort((a, b) => String(a.edgeGroupKey).localeCompare(String(b.edgeGroupKey)));
+      if (!lockOrder.length) return { ok: true, holder: null, edgeGroupKey: null };
+      if (currentEntry?.edgeGroupKey) {
+        keepKeys.add(currentEntry.edgeGroupKey);
+      }
+      for (const entry of lockOrder) {
+        const status = reserveEdgeLock(
+          entry.edgeGroupKey,
+          robot.id,
+          entry.edgeKey,
+          resolveProgress(entry),
+          entry.totalLength,
+          resolveSpacing(entry),
+          { ...lockOptions, probe: true }
+        );
+        if (!status.ok) {
+          releaseRobotEdgeLocksExcept(robot.id, keepKeys);
+          return {
+            ok: false,
+            holder: status.holder || null,
+            edgeGroupKey: entry.edgeGroupKey || null,
+            hold: resolveEdgeLockHoldTarget(runtime.route, entry, spacingBase)
+          };
+        }
+      }
+      const requiredKeys = new Set(lockOrder.map((entry) => entry.edgeGroupKey));
+      for (const entry of lockOrder) {
+        const status = reserveEdgeLock(
+          entry.edgeGroupKey,
+          robot.id,
+          entry.edgeKey,
+          resolveProgress(entry),
+          entry.totalLength,
+          resolveSpacing(entry),
+          lockOptions
+        );
+        if (!status.ok && entry.required) {
+          releaseRobotEdgeLocksExcept(robot.id, keepKeys);
+          return {
+            ok: false,
+            holder: status.holder || null,
+            edgeGroupKey: entry.edgeGroupKey || null,
+            hold: resolveEdgeLockHoldTarget(runtime.route, entry, spacingBase)
+          };
+        }
+      }
+      releaseRobotEdgeLocksExcept(robot.id, requiredKeys);
+      return { ok: true, holder: null, edgeGroupKey: null };
+    }
     if (currentEntry?.edgeGroupKey) {
       keepKeys.add(currentEntry.edgeGroupKey);
       const status = reserveEdgeLock(
@@ -9565,10 +9641,14 @@ const getReservationEntryBuffer = (robot, segment) => {
       runtime.entryHoldBypass = null;
     }
     const deterministicEdgeLocks = shouldUseDeterministicEdgeLocks();
+    const allowEdgeLocksWithReservations =
+      Boolean(trafficStrategy?.allowEdgeLocksWithReservations?.());
     const useEdgeLocks =
       lockToRoute &&
       !ignoreTrafficBlocks &&
-      (!trafficStrategy?.useTimeReservations?.() || !route.schedule?.length);
+      (!trafficStrategy?.useTimeReservations?.() ||
+        !route.schedule?.length ||
+        allowEdgeLocksWithReservations);
     const useEdgeQueues = useEdgeLocks && (deterministicEdgeLocks || trafficStrategy?.useEdgeQueues?.());
     const edgeGroupKey = useEdgeLocks ? resolveEdgeLockKey(segment, robot) : null;
     const segmentEdgeKey = segment?.edgeKey || segment?.edgeGroupKey || null;

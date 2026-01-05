@@ -88,8 +88,38 @@
       return null;
     }
 
+    useDeterministicRightOfWay() {
+      if (typeof this.options.deterministicRightOfWay === "boolean") {
+        return this.options.deterministicRightOfWay;
+      }
+      if (typeof this.options.rightOfWayDeterministic === "boolean") {
+        return this.options.rightOfWayDeterministic;
+      }
+      return false;
+    }
+
     useNodeLocks() {
       return this.options.nodeLocks !== false;
+    }
+
+    allowNodeLocksWithReservations() {
+      if (typeof this.options.nodeLocksWithReservations === "boolean") {
+        return this.options.nodeLocksWithReservations;
+      }
+      if (typeof this.options.locksWithReservations === "boolean") {
+        return this.options.locksWithReservations;
+      }
+      return false;
+    }
+
+    allowEdgeLocksWithReservations() {
+      if (typeof this.options.edgeLocksWithReservations === "boolean") {
+        return this.options.edgeLocksWithReservations;
+      }
+      if (typeof this.options.locksWithReservations === "boolean") {
+        return this.options.locksWithReservations;
+      }
+      return false;
     }
 
     useAvoidanceZones() {
@@ -477,6 +507,26 @@
       super({ ...options, name: options.name || "sipp" });
     }
 
+    allowNodeLocksWithReservations() {
+      if (typeof this.options.nodeLocksWithReservations === "boolean") {
+        return this.options.nodeLocksWithReservations;
+      }
+      if (typeof this.options.locksWithReservations === "boolean") {
+        return this.options.locksWithReservations;
+      }
+      return true;
+    }
+
+    allowEdgeLocksWithReservations() {
+      if (typeof this.options.edgeLocksWithReservations === "boolean") {
+        return this.options.edgeLocksWithReservations;
+      }
+      if (typeof this.options.locksWithReservations === "boolean") {
+        return this.options.locksWithReservations;
+      }
+      return true;
+    }
+
     useSegmentReservations() {
       return this.options.segmentReservations !== false;
     }
@@ -528,6 +578,24 @@
 
     useRecoveryMoves() {
       return false;
+    }
+  }
+
+  class SippDeterministicStrategy extends SippStrategy {
+    constructor(options = {}) {
+      super({ ...options, name: options.name || "sipp-deterministic" });
+    }
+
+    useDeterministicRightOfWay() {
+      return true;
+    }
+
+    useDeterministicEdgeLocks() {
+      return true;
+    }
+
+    useEdgeQueues() {
+      return true;
     }
   }
 
@@ -960,6 +1028,28 @@
     }
   }
 
+  class DeterministicStrategy extends TrafficStrategy {
+    constructor(options = {}) {
+      super({ ...options, name: options.name || "deterministic" });
+    }
+
+    useDeterministicRightOfWay() {
+      return true;
+    }
+
+    useDeterministicEdgeLocks() {
+      return true;
+    }
+
+    useEdgeQueues() {
+      return true;
+    }
+
+    useNodeLocks() {
+      return true;
+    }
+  }
+
   const create = (name, options = {}) => {
     const normalizedOptions = applyReservationProfile(options);
     const key = String(name || "simple").toLowerCase();
@@ -968,6 +1058,9 @@
     }
     if (key === "simple") {
       return new TrafficStrategy(normalizedOptions);
+    }
+    if (key === "deterministic" || key === "right-of-way" || key === "deterministic-traffic") {
+      return new DeterministicStrategy(normalizedOptions);
     }
     if (
       key === "pulse-mapf-avoid" ||
@@ -999,6 +1092,13 @@
     if (key === "sipp-robust" || key === "sipp-stn" || key === "sipp-stable") {
       return new SippRobustStrategy(normalizedOptions);
     }
+    if (
+      key === "sipp-deterministic" ||
+      key === "sipp-det" ||
+      key === "sipp-deterministic-time"
+    ) {
+      return new SippDeterministicStrategy(normalizedOptions);
+    }
     if (key === "ecbs-sipp" || key === "ecbs") {
       return new EcbsSippStrategy(normalizedOptions);
     }
@@ -1025,12 +1125,14 @@
 
   const STRATEGY_NAMES = [
     "simple",
+    "deterministic",
     "pulse-mapf",
     "pulse-mapf-avoid",
     "pulse-mapf-time",
     "sipp",
     "sipp-kinodynamic",
     "sipp-robust",
+    "sipp-deterministic",
     "ecbs-sipp",
     "cbs-sipp",
     "cbs-full",
@@ -1042,12 +1144,14 @@
 
   const STRATEGY_LABELS = {
     simple: "Simple",
+    deterministic: "Deterministic (no time)",
     "pulse-mapf": "Pulse MAPF",
     "pulse-mapf-avoid": "Pulse MAPF (avoid)",
     "pulse-mapf-time": "Pulse MAPF (time)",
     sipp: "SIPP (segmenty)",
     "sipp-kinodynamic": "SIPP (kinodynamic)",
     "sipp-robust": "SIPP (robust)",
+    "sipp-deterministic": "SIPP (deterministic)",
     "ecbs-sipp": "ECBS+SIPP",
     "cbs-sipp": "CBS+SIPP",
     "cbs-full": "CBS full + SIPP",
