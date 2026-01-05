@@ -2738,14 +2738,27 @@ const getReservationEntryBuffer = (robot, segment) => {
     if (useEdgeLocks) {
       const lockStatus = syncEdgeCorridorLocks(robot, runtime, now);
       if (!lockStatus.ok) {
+        const hold = lockStatus.hold || null;
         runtime.edgeLockHold = {
           edgeGroupKey: lockStatus.edgeGroupKey || null,
-          holderId: lockStatus.holder || null
+          holderId: lockStatus.holder || null,
+          stopSegmentIndex: hold?.segmentIndex ?? null,
+          stopSegmentProgress: hold?.segmentProgress ?? null,
+          stopDistance: hold?.distance ?? null
         };
-        markRuntimeStall(runtime, 'edge_lock', lockStatus.holder || null);
-        ensureRobotMotion(robot);
-        robot.speed = 0;
-        return true;
+        const stopNow = !hold ||
+          (Number.isFinite(hold.segmentIndex) &&
+            hold.segmentIndex === runtime.route.segmentIndex &&
+            Number.isFinite(hold.segmentProgress) &&
+            Number.isFinite(runtime.route.segmentProgress) &&
+            runtime.route.segmentProgress >= hold.segmentProgress - ROUTE_PROGRESS_EPS);
+        if (stopNow) {
+          markRuntimeStall(runtime, 'edge_lock', lockStatus.holder || null);
+          ensureRobotMotion(robot);
+          robot.speed = 0;
+          return true;
+        }
+        return false;
       }
       runtime.edgeLockHold = null;
     }
@@ -2753,6 +2766,18 @@ const getReservationEntryBuffer = (robot, segment) => {
   };
 
   const getEdgeQueue = (edgeGroupKey) => edgeQueues.get(edgeGroupKey) || [];
+
+  const shouldUseDeterministicEdgeLocks = () => {
+    if (!trafficStrategy) return false;
+    const direct = trafficStrategy?.useDeterministicEdgeLocks?.();
+    if (typeof direct === 'boolean') return direct;
+    const trafficConfig = robotsConfig?.traffic || {};
+    const configValue = trafficConfig.deterministicEdgeLocks ??
+      trafficConfig.deterministicLocks ??
+      trafficConfig.edgeLockDeterministic;
+    if (typeof configValue === 'boolean') return configValue;
+    return !trafficStrategy?.useTimeReservations?.();
+  };
 
   const resolveEdgeLockLookaheadM = (robot) => {
     const explicit = trafficStrategy?.getEdgeLockLookaheadM?.(robot);
@@ -2834,32 +2859,94 @@ const getReservationEntryBuffer = (robot, segment) => {
     return corridor;
   };
 
+  const locateRouteStop = (route, distanceAhead) => {
+    if (!route?.segments?.length) return null;
+    if (!Number.isFinite(distanceAhead)) return null;
+    let remaining = Math.max(0, distanceAhead);
+    const startIndex = Number.isFinite(route.segmentIndex) ? route.segmentIndex : 0;
+    const startProgress = Number.isFinite(route.segmentProgress)
+      ? Math.max(0, route.segmentProgress)
+      : 0;
+    for (let idx = startIndex; idx < route.segments.length; idx += 1) {
+      const segment = route.segments[idx];
+      if (!segment) continue;
+      const length = Number.isFinite(segment.totalLength) ? segment.totalLength : 0;
+      const offset = idx === startIndex ? startProgress : 0;
+      const available = Math.max(0, length - offset);
+      if (remaining <= available + ROUTE_PROGRESS_EPS) {
+        return {
+          segmentIndex: idx,
+          segmentProgress: Math.min(length, offset + remaining)
+        };
+      }
+      remaining -= available;
+    }
+    const lastIndex = route.segments.length - 1;
+    const lastSegment = route.segments[lastIndex];
+    return {
+      segmentIndex: lastIndex,
+      segmentProgress: Number.isFinite(lastSegment?.totalLength) ? lastSegment.totalLength : 0
+    };
+  };
+
+  const resolveEdgeLockHoldTarget = (route, entry, bufferM) => {
+    if (!route || !entry) return null;
+    if (!Number.isFinite(entry.offsetStart)) return null;
+    const buffer = Number.isFinite(bufferM) ? Math.max(0, bufferM) : 0;
+    const stopDistance = entry.offsetStart - buffer;
+    const target = locateRouteStop(route, stopDistance);
+    if (!target) return null;
+    return {
+      ...target,
+      distance: Math.max(0, stopDistance),
+      buffer
+    };
+  };
+
   const syncEdgeCorridorLocks = (robot, runtime, nowMs) => {
     if (!robot?.id || !runtime?.route) return { ok: true, holder: null, edgeGroupKey: null };
+    const deterministicEdgeLocks = shouldUseDeterministicEdgeLocks();
+    const useQueues = deterministicEdgeLocks || trafficStrategy?.useEdgeQueues?.();
+    const lockOptions = {
+      nowMs,
+      deterministic: deterministicEdgeLocks,
+      useQueues
+    };
     const lookaheadRaw = resolveEdgeLockLookaheadM(robot);
     const lookbackRaw = resolveEdgeLockLookbackM(robot);
     const hasCorridor = Number.isFinite(lookaheadRaw) || Number.isFinite(lookbackRaw);
+    const spacingBase = (() => {
+      const spacing = getTrafficSpacing(robot);
+      return Math.max(
+        EDGE_LOCK_FOLLOW_DISTANCE,
+        spacing.stop + resolveForwardStopDistance(robot)
+      );
+    })();
     if (!hasCorridor) {
       const route = runtime.route;
       const segment = route.segments?.[route.segmentIndex] || null;
       const edgeGroupKey = resolveEdgeLockKey(segment, robot);
       if (!edgeGroupKey) return { ok: true, holder: null, edgeGroupKey: null };
-      const spacing = getTrafficSpacing(robot);
-      const minDistance = Math.max(
-        EDGE_LOCK_FOLLOW_DISTANCE,
-        spacing.stop + resolveForwardStopDistance(robot)
-      );
+      const minDistance = spacingBase;
       const lockStatus = reserveEdgeLock(
         edgeGroupKey,
         robot.id,
         segment?.edgeKey || segment?.edgeGroupKey || null,
         route.segmentProgress,
         segment?.totalLength,
-        minDistance
+        minDistance,
+        lockOptions
       );
       return lockStatus.ok
         ? { ok: true, holder: null, edgeGroupKey: null }
-        : { ok: false, holder: lockStatus.holder || null, edgeGroupKey };
+        : {
+          ok: false,
+          holder: lockStatus.holder || null,
+          edgeGroupKey,
+          hold: resolveEdgeLockHoldTarget(runtime.route, {
+            offsetStart: 0
+          }, spacingBase)
+        };
     }
     const lookaheadM = Math.max(0, Number.isFinite(lookaheadRaw) ? lookaheadRaw : 0);
     const lookbackM = Math.max(0, Number.isFinite(lookbackRaw) ? lookbackRaw : 0);
@@ -2888,7 +2975,9 @@ const getReservationEntryBuffer = (robot, segment) => {
       const existing = locks.get(robot.id);
       if (!existing) continue;
       if (!desired.has(edgeGroupKey)) {
-        releaseEdgeDirectionLock(edgeGroupKey, existing.edgeKey, nowMs);
+        if (!deterministicEdgeLocks) {
+          releaseEdgeDirectionLock(edgeGroupKey, existing.edgeKey, nowMs);
+        }
         locks.delete(robot.id);
         recordEvent('edge_lock_release', {
           robotId: robot.id,
@@ -2898,53 +2987,110 @@ const getReservationEntryBuffer = (robot, segment) => {
         if (!locks.size) {
           edgeLocks.delete(edgeGroupKey);
         }
-        if (trafficStrategy?.useEdgeQueues?.()) {
+        if (useQueues) {
           releaseEdgeQueueEntry(edgeGroupKey, robot.id);
         }
       }
     }
-    const spacingBase = (() => {
-      const spacing = getTrafficSpacing(robot);
-      return Math.max(
-        EDGE_LOCK_FOLLOW_DISTANCE,
-        spacing.stop + resolveForwardStopDistance(robot)
-      );
-    })();
-    const desiredList = Array.from(desired.values()).sort((a, b) => {
-      if (a.required !== b.required) return a.required ? -1 : 1;
-      if (a.distance !== b.distance) return a.distance - b.distance;
-      if (a.offsetStart !== b.offsetStart) return a.offsetStart - b.offsetStart;
-      return String(a.edgeGroupKey).localeCompare(String(b.edgeGroupKey));
-    });
-    for (const entry of desiredList) {
+    const desiredList = Array.from(desired.values());
+    const resolveProgress = (entry) => {
+      if (entry.offsetEnd <= 0) {
+        return Number.isFinite(entry.totalLength) ? entry.totalLength : null;
+      }
+      if (entry.offsetStart >= 0) {
+        return 0;
+      }
+      return Number.isFinite(runtime.route.segmentProgress)
+        ? runtime.route.segmentProgress
+        : 0;
+    };
+    const resolveSpacing = (entry) => {
       const totalLength = entry.totalLength;
-      const exclusiveSpacing = Number.isFinite(totalLength)
+      return Number.isFinite(totalLength)
         ? Math.max(spacingBase, totalLength + ROBOT_COLLISION_MARGIN)
         : spacingBase * 2;
-      const progress = (() => {
-        if (entry.offsetEnd <= 0) {
-          return Number.isFinite(totalLength) ? totalLength : null;
-        }
-        if (entry.offsetStart >= 0) {
-          return 0;
-        }
-        return Number.isFinite(runtime.route.segmentProgress)
-          ? runtime.route.segmentProgress
-          : 0;
-      })();
+    };
+    const currentEntry = desiredList.find(
+      (entry) => entry.offsetStart <= 0 && entry.offsetEnd >= 0
+    );
+    const keepKeys = new Set();
+    if (currentEntry?.edgeGroupKey) {
+      keepKeys.add(currentEntry.edgeGroupKey);
+      const status = reserveEdgeLock(
+        currentEntry.edgeGroupKey,
+        robot.id,
+        currentEntry.edgeKey,
+        resolveProgress(currentEntry),
+        currentEntry.totalLength,
+        resolveSpacing(currentEntry),
+        lockOptions
+      );
+      if (!status.ok) {
+        return {
+          ok: false,
+          holder: status.holder || null,
+          edgeGroupKey: currentEntry.edgeGroupKey || null,
+          hold: resolveEdgeLockHoldTarget(runtime.route, currentEntry, spacingBase)
+        };
+      }
+    }
+    const probeOrder = desiredList
+      .filter((entry) => entry.required && entry.edgeGroupKey !== currentEntry?.edgeGroupKey)
+      .sort((a, b) => {
+        if (a.offsetStart !== b.offsetStart) return a.offsetStart - b.offsetStart;
+        return String(a.edgeGroupKey).localeCompare(String(b.edgeGroupKey));
+      });
+    let blocked = null;
+    for (const entry of probeOrder) {
       const status = reserveEdgeLock(
         entry.edgeGroupKey,
         robot.id,
         entry.edgeKey,
-        progress,
-        totalLength,
-        exclusiveSpacing
+        resolveProgress(entry),
+        entry.totalLength,
+        resolveSpacing(entry),
+        { ...lockOptions, probe: true }
+      );
+      if (!status.ok) {
+        blocked = { entry, holder: status.holder || null };
+        break;
+      }
+    }
+    if (blocked) {
+      if (blocked.entry?.edgeGroupKey) {
+        keepKeys.add(blocked.entry.edgeGroupKey);
+      }
+      releaseRobotEdgeLocksExcept(robot.id, keepKeys);
+      return {
+        ok: false,
+        holder: blocked.holder || null,
+        edgeGroupKey: blocked.entry.edgeGroupKey || null,
+        hold: resolveEdgeLockHoldTarget(runtime.route, blocked.entry, spacingBase)
+      };
+    }
+    const lockOrder = desiredList
+      .filter((entry) => entry.edgeGroupKey !== currentEntry?.edgeGroupKey)
+      .sort((a, b) => String(a.edgeGroupKey).localeCompare(String(b.edgeGroupKey)));
+    for (const entry of lockOrder) {
+      const status = reserveEdgeLock(
+        entry.edgeGroupKey,
+        robot.id,
+        entry.edgeKey,
+        resolveProgress(entry),
+        entry.totalLength,
+        resolveSpacing(entry),
+        lockOptions
       );
       if (!status.ok && entry.required) {
+        if (entry.edgeGroupKey) {
+          keepKeys.add(entry.edgeGroupKey);
+        }
+        releaseRobotEdgeLocksExcept(robot.id, keepKeys);
         return {
           ok: false,
           holder: status.holder || null,
-          edgeGroupKey: entry.edgeGroupKey || null
+          edgeGroupKey: entry.edgeGroupKey || null,
+          hold: resolveEdgeLockHoldTarget(runtime.route, entry, spacingBase)
         };
       }
     }
@@ -3032,16 +3178,19 @@ const getReservationEntryBuffer = (robot, segment) => {
     });
   };
 
-  const touchEdgeQueue = (edgeGroupKey, robotId, edgeKey, nowMs) => {
+  const touchEdgeQueue = (edgeGroupKey, robotId, edgeKey, nowMs, options = {}) => {
     if (!edgeGroupKey || !robotId) return;
     const now = Number.isFinite(nowMs) ? nowMs : Date.now();
-    for (const [key, queue] of edgeQueues.entries()) {
-      if (key === edgeGroupKey) continue;
-      const next = queue.filter((entry) => entry.robotId !== robotId);
-      if (next.length) {
-        edgeQueues.set(key, next);
-      } else {
-        edgeQueues.delete(key);
+    const allowMultiple = options.allowMultiple === true;
+    if (!allowMultiple) {
+      for (const [key, queue] of edgeQueues.entries()) {
+        if (key === edgeGroupKey) continue;
+        const next = queue.filter((entry) => entry.robotId !== robotId);
+        if (next.length) {
+          edgeQueues.set(key, next);
+        } else {
+          edgeQueues.delete(key);
+        }
       }
     }
     const queue = getEdgeQueue(edgeGroupKey);
@@ -3086,6 +3235,23 @@ const getReservationEntryBuffer = (robot, segment) => {
       if (preferred) return preferred.robotId;
     }
     return queue[0]?.robotId || null;
+  };
+
+  const resolveDeterministicQueueBlocker = (queue, locks, robotId, edgeKey) => {
+    if (!Array.isArray(queue) || !queue.length) return null;
+    const index = queue.findIndex((entry) => entry.robotId === robotId);
+    if (index <= 0) return null;
+    for (let i = 0; i < index; i += 1) {
+      const entry = queue[i];
+      if (!entry?.robotId) continue;
+      if (!edgeKey || !entry.edgeKey || entry.edgeKey !== edgeKey) {
+        return entry.robotId;
+      }
+      if (locks && !locks.has(entry.robotId)) {
+        return entry.robotId;
+      }
+    }
+    return null;
   };
 
   const isEdgeQueueHead = (edgeGroupKey, robotId, nowMs) => {
@@ -3138,87 +3304,113 @@ const getReservationEntryBuffer = (robot, segment) => {
     }
   };
 
-  const reserveEdgeLock = (edgeGroupKey, robotId, edgeKey, progress, totalLength, minDistance) => {
+  const reserveEdgeLock = (
+    edgeGroupKey,
+    robotId,
+    edgeKey,
+    progress,
+    totalLength,
+    minDistance,
+    options = {}
+  ) => {
     if (!edgeGroupKey || !robotId) return { ok: true, holder: null };
     const locks = edgeLocks.get(edgeGroupKey) || new Map();
     const nextProgress = Number.isFinite(progress) ? progress : null;
-    const now = Date.now();
+    const now = Number.isFinite(options.nowMs) ? options.nowMs : Date.now();
     const spacing = Number.isFinite(minDistance) ? minDistance : EDGE_LOCK_FOLLOW_DISTANCE;
     const existing = locks.get(robotId) || null;
+    const deterministic = typeof options.deterministic === 'boolean'
+      ? options.deterministic
+      : shouldUseDeterministicEdgeLocks();
+    const probeOnly = options.probe === true;
+    const useQueues = typeof options.useQueues === 'boolean'
+      ? options.useQueues
+      : (trafficStrategy?.useEdgeQueues?.() || deterministic);
     let queue = null;
 
-    if (trafficStrategy?.useEdgeQueues?.()) {
-      touchEdgeQueue(edgeGroupKey, robotId, edgeKey, now);
+    if (useQueues) {
+      touchEdgeQueue(edgeGroupKey, robotId, edgeKey, now, { allowMultiple: deterministic });
       queue = pruneEdgeQueue(edgeGroupKey, now);
     }
     if (existing && existing.edgeKey && existing.edgeKey !== edgeKey) {
-      releaseEdgeDirectionLock(edgeGroupKey, existing.edgeKey, now);
+      if (!deterministic) {
+        releaseEdgeDirectionLock(edgeGroupKey, existing.edgeKey, now);
+      }
     }
     if (existing && existing.edgeKey === edgeKey) {
-      existing.progress = nextProgress;
-      existing.totalLength = Number.isFinite(totalLength) ? totalLength : existing.totalLength;
-      existing.updatedAt = now;
-      if (edgeKey) {
-        const lock = edgeDirectionLocks.get(edgeGroupKey);
-        if (!lock || lock.edgeKey !== edgeKey) {
-          edgeDirectionLocks.set(edgeGroupKey, {
-            edgeKey,
-            count: 1,
-            holdUntil: now + EDGE_DIRECTION_HOLD_MS,
-            lastSwitchAt: now
-          });
-        } else {
-          lock.holdUntil = now + EDGE_DIRECTION_HOLD_MS;
+      if (!probeOnly) {
+        existing.progress = nextProgress;
+        existing.totalLength = Number.isFinite(totalLength) ? totalLength : existing.totalLength;
+        existing.updatedAt = now;
+        if (edgeKey && !deterministic) {
+          const lock = edgeDirectionLocks.get(edgeGroupKey);
+          if (!lock || lock.edgeKey !== edgeKey) {
+            edgeDirectionLocks.set(edgeGroupKey, {
+              edgeKey,
+              count: 1,
+              holdUntil: now + EDGE_DIRECTION_HOLD_MS,
+              lastSwitchAt: now
+            });
+          } else {
+            lock.holdUntil = now + EDGE_DIRECTION_HOLD_MS;
+          }
         }
+        edgeLocks.set(edgeGroupKey, locks);
+        recordEvent('edge_lock', {
+          robotId,
+          edgeGroupKey,
+          edgeKey: edgeKey || null,
+          ok: true,
+          holder: robotId,
+          progress: nextProgress
+        });
       }
-      edgeLocks.set(edgeGroupKey, locks);
-      recordEvent('edge_lock', {
-        robotId,
-        edgeGroupKey,
-        edgeKey: edgeKey || null,
-        ok: true,
-        holder: robotId,
-        progress: nextProgress
-      });
       return { ok: true, holder: robotId };
     }
-    if (trafficStrategy?.useEdgeQueues?.()) {
-      const directionKey = edgeKey || null;
-      const directionLock = edgeDirectionLocks.get(edgeGroupKey) || null;
-      if (directionLock && directionLock.edgeKey && directionKey && directionLock.edgeKey !== directionKey) {
-        const directionHolder = (() => {
-          for (const lock of locks.values()) {
-            if (lock.edgeKey === directionLock.edgeKey) {
-              return lock.robotId || null;
+    if (useQueues) {
+      if (deterministic) {
+        const blocker = resolveDeterministicQueueBlocker(queue, locks, robotId, edgeKey);
+        if (blocker) {
+          return { ok: false, holder: blocker };
+        }
+      } else {
+        const directionKey = edgeKey || null;
+        const directionLock = edgeDirectionLocks.get(edgeGroupKey) || null;
+        if (directionLock && directionLock.edgeKey && directionKey && directionLock.edgeKey !== directionKey) {
+          const directionHolder = (() => {
+            for (const lock of locks.values()) {
+              if (lock.edgeKey === directionLock.edgeKey) {
+                return lock.robotId || null;
+              }
             }
+            return null;
+          })();
+          const queueHolder = findEdgeQueueHolder(queue, directionLock.edgeKey);
+          const holderId = directionHolder || queueHolder || null;
+          const sameDirQueueCount = queue.filter((entry) => entry.edgeKey === directionLock.edgeKey).length;
+          const sameDirWaiting = sameDirQueueCount > directionLock.count;
+          const maxHoldExceeded = now - directionLock.lastSwitchAt >= EDGE_DIRECTION_MAX_HOLD_MS;
+          const inCooldown = Number.isFinite(directionLock.holdUntil)
+            ? now < directionLock.holdUntil
+            : false;
+          if (directionLock.count > 0) {
+            return { ok: false, holder: holderId || directionLock.edgeKey };
           }
-          return null;
-        })();
-        const queueHolder = findEdgeQueueHolder(queue, directionLock.edgeKey);
-        const holderId = directionHolder || queueHolder || null;
-        const sameDirQueueCount = queue.filter((entry) => entry.edgeKey === directionLock.edgeKey).length;
-        const sameDirWaiting = sameDirQueueCount > directionLock.count;
-        const maxHoldExceeded = now - directionLock.lastSwitchAt >= EDGE_DIRECTION_MAX_HOLD_MS;
-        const inCooldown = Number.isFinite(directionLock.holdUntil)
-          ? now < directionLock.holdUntil
-          : false;
-        if (directionLock.count > 0) {
-          return { ok: false, holder: holderId || directionLock.edgeKey };
+          if ((sameDirWaiting || inCooldown) && !maxHoldExceeded) {
+            return { ok: false, holder: holderId || directionLock.edgeKey };
+          }
+          edgeDirectionLocks.delete(edgeGroupKey);
         }
-        if ((sameDirWaiting || inCooldown) && !maxHoldExceeded) {
-          return { ok: false, holder: holderId || directionLock.edgeKey };
-        }
-        edgeDirectionLocks.delete(edgeGroupKey);
-      }
-      const preferredDirection =
-        directionLock && directionLock.edgeKey && directionLock.edgeKey === directionKey
-          ? directionLock.edgeKey
-          : null;
-      const shouldEnforceQueueHead = !directionLock || directionLock.edgeKey !== directionKey;
-      if (shouldEnforceQueueHead) {
-        const headId = getEdgeQueueHeadId(edgeGroupKey, now, preferredDirection);
-        if (headId && headId !== robotId) {
-          return { ok: false, holder: headId };
+        const preferredDirection =
+          directionLock && directionLock.edgeKey && directionLock.edgeKey === directionKey
+            ? directionLock.edgeKey
+            : null;
+        const shouldEnforceQueueHead = !directionLock || directionLock.edgeKey !== directionKey;
+        if (shouldEnforceQueueHead) {
+          const headId = getEdgeQueueHeadId(edgeGroupKey, now, preferredDirection);
+          if (headId && headId !== robotId) {
+            return { ok: false, holder: headId };
+          }
         }
       }
     }
@@ -3263,6 +3455,10 @@ const getReservationEntryBuffer = (robot, segment) => {
       }
     }
 
+    if (probeOnly) {
+      return { ok: true, holder: robotId };
+    }
+
     locks.set(robotId, {
       robotId,
       edgeKey: edgeKey || null,
@@ -3271,7 +3467,9 @@ const getReservationEntryBuffer = (robot, segment) => {
       updatedAt: now
     });
     edgeLocks.set(edgeGroupKey, locks);
-    ensureEdgeDirectionLock(edgeGroupKey, edgeKey || null, now);
+    if (!deterministic) {
+      ensureEdgeDirectionLock(edgeGroupKey, edgeKey || null, now);
+    }
     recordEvent('edge_lock', {
       robotId,
       edgeGroupKey,
@@ -3302,7 +3500,7 @@ const getReservationEntryBuffer = (robot, segment) => {
     if (existing?.edgeKey) {
       releaseEdgeDirectionLock(edgeGroupKey, existing.edgeKey, Date.now());
     }
-    if (trafficStrategy?.useEdgeQueues?.()) {
+    if (shouldUseDeterministicEdgeLocks() || trafficStrategy?.useEdgeQueues?.()) {
       releaseEdgeQueueEntry(edgeGroupKey, robotId);
     }
   };
@@ -3310,7 +3508,7 @@ const getReservationEntryBuffer = (robot, segment) => {
   const releaseRobotEdgeLocksOnly = (robotId) => {
     if (!robotId) return;
     if (!edgeLocks.size) {
-      if (trafficStrategy?.useEdgeQueues?.()) {
+      if (shouldUseDeterministicEdgeLocks() || trafficStrategy?.useEdgeQueues?.()) {
         releaseRobotEdgeQueues(robotId);
       }
       return;
@@ -3325,15 +3523,57 @@ const getReservationEntryBuffer = (robot, segment) => {
         edgeLocks.delete(key);
       }
     }
-    if (trafficStrategy?.useEdgeQueues?.()) {
+    if (shouldUseDeterministicEdgeLocks() || trafficStrategy?.useEdgeQueues?.()) {
       releaseRobotEdgeQueues(robotId);
+    }
+  };
+
+  const releaseRobotEdgeQueuesExcept = (robotId, keepKeys) => {
+    if (!robotId || !edgeQueues.size) return;
+    for (const [key, queue] of edgeQueues.entries()) {
+      if (keepKeys && keepKeys.has(key)) continue;
+      const next = queue.filter((entry) => entry.robotId !== robotId);
+      if (next.length) {
+        edgeQueues.set(key, next);
+      } else {
+        edgeQueues.delete(key);
+      }
+    }
+  };
+
+  const releaseRobotEdgeLocksExcept = (robotId, keepKeys) => {
+    if (!robotId) return;
+    if (!edgeLocks.size) {
+      if (shouldUseDeterministicEdgeLocks() || trafficStrategy?.useEdgeQueues?.()) {
+        releaseRobotEdgeQueuesExcept(robotId, keepKeys);
+      }
+      return;
+    }
+    for (const [key, locks] of edgeLocks.entries()) {
+      if (keepKeys && keepKeys.has(key)) continue;
+      const existing = locks.get(robotId);
+      if (existing) {
+        releaseEdgeDirectionLock(key, existing.edgeKey, Date.now());
+        locks.delete(robotId);
+        recordEvent('edge_lock_release', {
+          robotId,
+          edgeGroupKey: key,
+          edgeKey: existing.edgeKey || null
+        });
+      }
+      if (!locks.size) {
+        edgeLocks.delete(key);
+      }
+    }
+    if (shouldUseDeterministicEdgeLocks() || trafficStrategy?.useEdgeQueues?.()) {
+      releaseRobotEdgeQueuesExcept(robotId, keepKeys);
     }
   };
 
   const releaseRobotEdgeLocks = (robotId) => {
     if (!robotId) return;
     if (!edgeLocks.size) {
-      if (trafficStrategy?.useEdgeQueues?.()) {
+      if (shouldUseDeterministicEdgeLocks() || trafficStrategy?.useEdgeQueues?.()) {
         releaseRobotEdgeQueues(robotId);
       }
       releaseTimeReservations(robotId);
@@ -3355,7 +3595,7 @@ const getReservationEntryBuffer = (robot, segment) => {
         edgeLocks.delete(key);
       }
     }
-    if (trafficStrategy?.useEdgeQueues?.()) {
+    if (shouldUseDeterministicEdgeLocks() || trafficStrategy?.useEdgeQueues?.()) {
       releaseRobotEdgeQueues(robotId);
     }
     releaseTimeReservations(robotId);
@@ -3382,7 +3622,12 @@ const getReservationEntryBuffer = (robot, segment) => {
                 lock.edgeKey || null,
                 lock.progress,
                 lock.totalLength,
-                minDistance
+                minDistance,
+                {
+                  nowMs,
+                  deterministic: shouldUseDeterministicEdgeLocks(),
+                  useQueues: shouldUseDeterministicEdgeLocks() || trafficStrategy?.useEdgeQueues?.()
+                }
               );
               continue;
             }
@@ -3391,7 +3636,7 @@ const getReservationEntryBuffer = (robot, segment) => {
             if (lock?.edgeKey) {
               releaseEdgeDirectionLock(key, lock.edgeKey, nowMs);
             }
-            if (trafficStrategy?.useEdgeQueues?.()) {
+            if (shouldUseDeterministicEdgeLocks() || trafficStrategy?.useEdgeQueues?.()) {
               releaseEdgeQueueEntry(key, robotId);
             }
           }
@@ -3401,7 +3646,7 @@ const getReservationEntryBuffer = (robot, segment) => {
         }
       }
     }
-    if (trafficStrategy?.useEdgeQueues?.()) {
+    if (shouldUseDeterministicEdgeLocks() || trafficStrategy?.useEdgeQueues?.()) {
       pruneEdgeQueues(nowMs);
     }
     pruneEdgeDirectionLocks(nowMs);
@@ -3837,7 +4082,7 @@ const getReservationEntryBuffer = (robot, segment) => {
     const nextEdgeGroupKey = getRouteFirstEdgeGroupKey(trimmed, robot);
     if (previousEdgeGroupKey && previousEdgeGroupKey !== nextEdgeGroupKey) {
       releaseEdgeLock(previousEdgeGroupKey, robot.id);
-      if (trafficStrategy?.useEdgeQueues()) {
+      if (shouldUseDeterministicEdgeLocks() || trafficStrategy?.useEdgeQueues?.()) {
         releaseRobotEdgeQueues(robot.id);
       }
     }
@@ -9293,18 +9538,20 @@ const getReservationEntryBuffer = (robot, segment) => {
     if (runtime?.entryHoldBypass && runtime.entryHoldBypass.segmentIndex !== currentSegmentIndex) {
       runtime.entryHoldBypass = null;
     }
+    const deterministicEdgeLocks = shouldUseDeterministicEdgeLocks();
     const useEdgeLocks =
       lockToRoute &&
       !ignoreTrafficBlocks &&
       (!trafficStrategy?.useTimeReservations?.() || !route.schedule?.length);
+    const useEdgeQueues = useEdgeLocks && (deterministicEdgeLocks || trafficStrategy?.useEdgeQueues?.());
     const edgeGroupKey = useEdgeLocks ? resolveEdgeLockKey(segment, robot) : null;
     const segmentEdgeKey = segment?.edgeKey || segment?.edgeGroupKey || null;
     let queueTouched = false;
     const touchQueue = (groupKey, edgeKey) => {
       if (queueTouched) return;
-      if (!trafficStrategy?.useEdgeQueues?.()) return;
+      if (!useEdgeQueues) return;
       if (!groupKey || !robot?.id) return;
-      touchEdgeQueue(groupKey, robot.id, edgeKey, nowMs);
+      touchEdgeQueue(groupKey, robot.id, edgeKey, nowMs, { allowMultiple: deterministicEdgeLocks });
       queueTouched = true;
     };
     if (
@@ -9738,21 +9985,35 @@ const getReservationEntryBuffer = (robot, segment) => {
       touchQueue(entryHoldGroupKey || edgeGroupKey, entryHoldEdgeKey || segmentEdgeKey);
       return false;
     }
+    let edgeHold = null;
+    let edgeHoldBlocker = null;
     if (lockToRoute && useEdgeLocks && robot?.id) {
       const lockStatus = syncEdgeCorridorLocks(robot, runtime, nowMs);
       if (!lockStatus.ok) {
+        edgeHold = lockStatus.hold || null;
+        edgeHoldBlocker = lockStatus.holder || null;
         if (runtime) {
           runtime.edgeLockHold = {
             edgeGroupKey: lockStatus.edgeGroupKey || edgeGroupKey || null,
-            holderId: lockStatus.holder || null
+            holderId: lockStatus.holder || null,
+            stopSegmentIndex: edgeHold?.segmentIndex ?? null,
+            stopSegmentProgress: edgeHold?.segmentProgress ?? null,
+            stopDistance: edgeHold?.distance ?? null
           };
         }
-        markRuntimeStall(runtime, 'edge_lock', lockStatus.holder || null);
-        ensureRobotMotion(robot);
-        robot.speed = 0;
-        return false;
-      }
-      if (runtime?.edgeLockHold) {
+        const stopNow = !edgeHold ||
+          (Number.isFinite(edgeHold.segmentIndex) &&
+            edgeHold.segmentIndex === route.segmentIndex &&
+            Number.isFinite(edgeHold.segmentProgress) &&
+            Number.isFinite(route.segmentProgress) &&
+            route.segmentProgress >= edgeHold.segmentProgress - ROUTE_PROGRESS_EPS);
+        if (stopNow) {
+          markRuntimeStall(runtime, 'edge_lock', lockStatus.holder || null);
+          ensureRobotMotion(robot);
+          robot.speed = 0;
+          return false;
+        }
+      } else if (runtime?.edgeLockHold) {
         runtime.edgeLockHold = null;
       }
     }
@@ -9828,6 +10089,12 @@ const getReservationEntryBuffer = (robot, segment) => {
       }
     }
     let maxProgress = segment.totalLength;
+    const edgeHoldStop = edgeHold &&
+      Number.isFinite(edgeHold.segmentIndex) &&
+      edgeHold.segmentIndex === route.segmentIndex &&
+      Number.isFinite(edgeHold.segmentProgress)
+      ? edgeHold.segmentProgress
+      : null;
     if (entryHold && segment?.polyline) {
       const stopAt = Math.max(0, segment.totalLength - entryHold.buffer);
       if (stopAt < maxProgress) {
@@ -9835,6 +10102,9 @@ const getReservationEntryBuffer = (robot, segment) => {
           maxProgress = stopAt;
         }
       }
+    }
+    if (Number.isFinite(edgeHoldStop) && edgeHoldStop < maxProgress) {
+      maxProgress = edgeHoldStop;
     }
     const nextProgress = Math.min(
       maxProgress,
@@ -9849,6 +10119,12 @@ const getReservationEntryBuffer = (robot, segment) => {
         : pose.heading;
     }
     route.segmentProgress = nextProgress;
+    if (Number.isFinite(edgeHoldStop) && nextProgress >= edgeHoldStop - ROUTE_PROGRESS_EPS) {
+      ensureRobotMotion(robot);
+      robot.speed = 0;
+      markRuntimeStall(runtime, 'edge_lock', edgeHoldBlocker || null);
+      return false;
+    }
     if (entryHold && maxProgress < segment.totalLength && nextProgress >= maxProgress - ROUTE_PROGRESS_EPS) {
       ensureRobotMotion(robot);
       robot.speed = 0;
@@ -12158,7 +12434,11 @@ const getReservationEntryBuffer = (robot, segment) => {
             segment.edgeKey || segment.edgeGroupKey || null,
             runtime.route.segmentProgress,
             segment.totalLength,
-            minDistance
+            minDistance,
+            {
+              deterministic: shouldUseDeterministicEdgeLocks(),
+              useQueues: shouldUseDeterministicEdgeLocks() || trafficStrategy?.useEdgeQueues?.()
+            }
           );
         }
       }

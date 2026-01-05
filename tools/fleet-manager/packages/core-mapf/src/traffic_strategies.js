@@ -78,6 +78,16 @@
       return false;
     }
 
+    useDeterministicEdgeLocks() {
+      if (typeof this.options.deterministicEdgeLocks === "boolean") {
+        return this.options.deterministicEdgeLocks;
+      }
+      if (typeof this.options.deterministicLocks === "boolean") {
+        return this.options.deterministicLocks;
+      }
+      return null;
+    }
+
     useNodeLocks() {
       return this.options.nodeLocks !== false;
     }
