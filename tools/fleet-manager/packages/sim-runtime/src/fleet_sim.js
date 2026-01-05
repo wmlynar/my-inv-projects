@@ -1669,6 +1669,37 @@ function createFleetSim(options = {}) {
     return projection < 0;
   };
 
+  const TRAFFIC_HOLD_REASONS = new Set(['traffic', 'traffic_overlap']);
+
+  const resolveTrafficHoldPriority = (robot, other, nowMs) => {
+    const now = Number.isFinite(nowMs) ? nowMs : Date.now();
+    const selfRuntime = robotRuntime.get(robot?.id);
+    const otherRuntime = robotRuntime.get(other?.id);
+    const selfHold = selfRuntime?.lastTrafficBlock || null;
+    const otherHold = otherRuntime?.lastTrafficBlock || null;
+    const selfYield =
+      selfHold &&
+      TRAFFIC_HOLD_REASONS.has(selfHold.reason) &&
+      selfHold.blockingId === other?.id &&
+      (Number.isFinite(selfHold.holdUntil)
+        ? now < selfHold.holdUntil
+        : Number.isFinite(selfHold.at)
+          ? now - selfHold.at <= HOLD_STATE_GRACE_MS
+          : false);
+    if (selfYield) return false;
+    const otherYield =
+      otherHold &&
+      TRAFFIC_HOLD_REASONS.has(otherHold.reason) &&
+      otherHold.blockingId === robot?.id &&
+      (Number.isFinite(otherHold.holdUntil)
+        ? now < otherHold.holdUntil
+        : Number.isFinite(otherHold.at)
+          ? now - otherHold.at <= HOLD_STATE_GRACE_MS
+          : false);
+    if (otherYield) return true;
+    return null;
+  };
+
   const isRobotNearNode = (robot, nodeId) => {
     if (!robot?.pos || !nodeId) return false;
     const node = navGraph?.nodesById?.get(nodeId);
@@ -1717,6 +1748,8 @@ function createFleetSim(options = {}) {
       const nodeLockPriority = resolveNodeLockPriority(robot, other);
       if (nodeLockPriority !== null) return nodeLockPriority;
     }
+    const trafficHoldPriority = resolveTrafficHoldPriority(robot, other);
+    if (trafficHoldPriority !== null) return trafficHoldPriority;
     const directional = resolveDirectionalPriority(robot, other);
     if (directional !== null) return directional;
     const reservationPriority = resolveReservationPriority(robot, other);
@@ -1755,6 +1788,8 @@ function createFleetSim(options = {}) {
       const nodeLockPriority = resolveNodeLockPriority(robot, other);
       if (nodeLockPriority !== null) return nodeLockPriority ? -1 : 1;
     }
+    const trafficHoldPriority = resolveTrafficHoldPriority(robot, other);
+    if (trafficHoldPriority !== null) return trafficHoldPriority ? -1 : 1;
     const directional = resolveDirectionalPriority(robot, other);
     if (directional !== null) return directional ? -1 : 1;
     const reservationPriority = resolveReservationPriority(robot, other);
@@ -3769,24 +3804,18 @@ const getReservationEntryBuffer = (robot, segment) => {
     const segments = [];
     for (const segment of route.segments) {
       if (!segment || remaining <= 0) break;
-      if (!Number.isFinite(segment.totalLength) || segment.totalLength <= remaining) {
+      const length = Number.isFinite(segment.totalLength) ? segment.totalLength : null;
+      if (segments.length === 0) {
         segments.push({ ...segment });
-        remaining -= segment.totalLength || 0;
+        remaining -= length || 0;
         continue;
       }
-      const startPose = polylineAtDistance(segment.polyline, 0);
-      const endPose = polylineAtDistance(segment.polyline, remaining);
-      const polyline = buildPolyline([
-        { x: startPose.x, y: startPose.y },
-        { x: endPose.x, y: endPose.y }
-      ]);
-      segments.push({
-        ...segment,
-        polyline,
-        totalLength: polyline.totalLength,
-        toNodeId: null
-      });
-      remaining = 0;
+      if (length == null || length <= remaining) {
+        segments.push({ ...segment });
+        remaining -= length || 0;
+        continue;
+      }
+      break;
     }
     if (!segments.length) return route;
     const last = segments[segments.length - 1];
@@ -6421,6 +6450,25 @@ const getReservationEntryBuffer = (robot, segment) => {
     });
     const replanned = runtime.route && runtime.route !== previousRoute;
     return replanned;
+  };
+
+  const shouldContinueRollingPlan = (robot, runtime) => {
+    if (!robot?.pos || !runtime?.routeGoal?.pos) return false;
+    if (!Number.isFinite(runtime.routeLimit)) return false;
+    const goalDist = distanceBetweenPoints(robot.pos, runtime.routeGoal.pos);
+    if (!Number.isFinite(goalDist)) return false;
+    return goalDist > ROBOT_ARRIVAL_DISTANCE;
+  };
+
+  const triggerRollingReplan = (robot, runtime, options = {}) => {
+    if (!robot || !runtime?.routeGoal?.pos) return false;
+    const previousRoute = runtime.route;
+    setRuntimeRoute(runtime, robot, runtime.routeGoal.pos, runtime.routeGoal.nodeId, {
+      constraints: runtime.cbsConstraints,
+      replanReason: options.reason || 'rolling',
+      countReplan: true
+    });
+    return runtime.route && runtime.route !== previousRoute;
   };
 
   const maybeTriggerReplanForHold = (robot, runtime, nowMs) => {
@@ -10149,6 +10197,10 @@ const getReservationEntryBuffer = (robot, segment) => {
       if (runtime.route) {
         const aligned = alignRobotHeading(robot, runtime.route.finalTarget?.heading, deltaMs);
         if (aligned) {
+          if (shouldContinueRollingPlan(robot, runtime)) {
+            triggerRollingReplan(robot, runtime);
+            return { arrived: false, blocked: false, diverted: true };
+          }
           finalizeRuntimeRoute(robot, runtime);
           runtime.route = null;
           runtime.targetHeading = null;
@@ -10238,6 +10290,10 @@ const getReservationEntryBuffer = (robot, segment) => {
       }
       const aligned = alignRobotHeading(robot, runtime.route.finalTarget?.heading, deltaMs);
       if (aligned) {
+        if (shouldContinueRollingPlan(robot, runtime)) {
+          triggerRollingReplan(robot, runtime);
+          return { arrived: false, blocked: false, diverted: true };
+        }
         finalizeRuntimeRoute(robot, runtime);
         runtime.route = null;
         runtime.targetHeading = null;
@@ -10506,8 +10562,12 @@ const getReservationEntryBuffer = (robot, segment) => {
     if (!robot) return null;
     const allowOccupied = options.allowOccupied !== false;
     const preferAssigned = options.preferAssigned === true;
+    const assignedOnly = options.assignedOnly === true;
     const preferred = robotParking.get(robot.id) || null;
-    const explicitId = resolveExplicitParkingId(robot);
+    let explicitId = resolveExplicitParkingId(robot);
+    if (!explicitId && robot?.ref && parkingPointIndex.has(robot.ref)) {
+      explicitId = robot.ref;
+    }
     const explicitPoint = explicitId ? parkingPointIndex.get(explicitId) : null;
     let explicitTarget = explicitPoint || null;
     if (!explicitTarget && explicitId) {
@@ -10515,6 +10575,9 @@ const getReservationEntryBuffer = (robot, segment) => {
       if (explicitPos) {
         explicitTarget = { id: explicitId, pos: explicitPos, kind: 'custom' };
       }
+    }
+    if (assignedOnly) {
+      return explicitTarget || null;
     }
     if (preferAssigned) {
       if (explicitTarget) return explicitTarget;
@@ -11057,7 +11120,10 @@ const getReservationEntryBuffer = (robot, segment) => {
       if (!robot?.id || !robot.pos) return;
       if (!canDispatchRobot(robot)) return;
       if (getRobotRuntime(robot.id)) return;
-      const parkTarget = resolveRobotParkingPoint(robot, { preferAssigned: true });
+      const parkTarget = resolveRobotParkingPoint(robot, {
+        preferAssigned: true,
+        assignedOnly: true
+      });
       const parkPos = parkTarget?.pos || null;
       if (!parkPos) return;
       const dist = distanceBetweenPoints(robot.pos, parkPos);
@@ -11585,7 +11651,10 @@ const getReservationEntryBuffer = (robot, segment) => {
         } else if (runtime.phase === 'dropping') {
           if (Date.now() >= runtime.waitUntil) {
             setWorksiteOccupancy(runtime.dropId, 'filled');
-            const parkTarget = resolveRobotParkingPoint(robot, { preferAssigned: true });
+            const parkTarget = resolveRobotParkingPoint(robot, {
+              preferAssigned: true,
+              assignedOnly: true
+            });
             const park = parkTarget?.pos || null;
             if (!park) {
               robotRuntime.delete(robotId);
