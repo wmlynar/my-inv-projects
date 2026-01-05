@@ -10318,6 +10318,10 @@ const getReservationEntryBuffer = (robot, segment) => {
     runtime.avoidanceHold = false;
     const holdReplan =
       typeof options.replanReason === 'string' && options.replanReason.startsWith('hold:');
+    const deterministicRightOfWay = Boolean(trafficStrategy?.useDeterministicRightOfWay?.());
+    const replanReason = typeof options.replanReason === 'string' ? options.replanReason : '';
+    const replanIsDeadlock = replanReason === 'deadlock' || replanReason.startsWith('deadlock:');
+    const keepStall = deterministicRightOfWay && (holdReplan || replanIsDeadlock);
     if (!holdReplan) {
       runtime.holdState = null;
     }
@@ -10334,7 +10338,7 @@ const getReservationEntryBuffer = (robot, segment) => {
     runtime.deadlockResolvedAt = null;
     runtime.edgeLockYield = null;
     runtime.edgeLockYieldAt = null;
-    clearRuntimeStall(runtime, holdReplan ? { silent: true } : {});
+    clearRuntimeStall(runtime, holdReplan || keepStall ? { silent: true } : {});
     clearRuntimeStuck(runtime);
     runtime.yieldStartedAt = null;
     runtime.yieldAttempts = 0;
