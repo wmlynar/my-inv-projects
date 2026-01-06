@@ -819,6 +819,18 @@ function createFleetSim(options = {}) {
     }
   };
 
+  const recordTrafficStrategyEvent = (reason = null) => {
+    if (!trafficStrategy) return;
+    const name = trafficStrategy.getName
+      ? trafficStrategy.getName()
+      : resolveTrafficStrategyName(robotsConfig);
+    recordEvent('traffic_strategy', {
+      name,
+      deterministicRightOfWay: Boolean(trafficStrategy?.useDeterministicRightOfWay?.()),
+      reason
+    });
+  };
+
   const resolveEventLogConfig = (trafficConfig = {}) => {
     const envEnabledRaw = process.env.FLEET_EVENT_LOG || process.env.EVENT_LOG;
     const envLimitRaw = process.env.FLEET_EVENT_LOG_LIMIT || process.env.EVENT_LOG_LIMIT;
@@ -12164,6 +12176,7 @@ const getReservationEntryBuffer = (robot, segment) => {
     dispatchStrategy = resolveDispatchStrategy(robotsConfig);
     trafficStrategy = buildTrafficStrategy(robotsConfig);
     rebuildRobustnessState(robotsConfig, graphData);
+    recordTrafficStrategyEvent('load');
     reservationTable = null;
     reservationConfig = null;
     navGraph = buildNavigationGraph(graphData);
@@ -14293,6 +14306,7 @@ const getReservationEntryBuffer = (robot, segment) => {
     }
     rebuildRobustnessState(robotsConfig, graphData);
     resetTrafficState();
+    recordTrafficStrategyEvent('update');
     if (rebuildNavGraph && graphData) {
       navGraph = buildNavigationGraph(graphData);
       edgeConflictThresholds = resolveEdgeConflictThresholds(robots);
