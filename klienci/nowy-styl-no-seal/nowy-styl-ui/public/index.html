@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <title>Tablety A i B – pola odkładcze</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: #020617; /* bardzo ciemne tło */
+      color: #e5e7eb;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        sans-serif;
+    }
+
+    .app {
+      background: #0f172a;
+      border-radius: 16px;
+      padding: 16px 20px 20px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+
+      /* wspólny "tabletowy" format */
+      width: min(100vw - 32px, 1160px);
+      height: min(100vh - 32px, 720px);
+
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 8px;
+      flex-shrink: 0;
+    }
+
+    header h1 {
+      font-size: 18px;
+      margin: 0;
+    }
+
+    header .hint {
+      font-size: 12px;
+      color: #9ca3af;
+    }
+
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: stretch;
+      align-items: stretch;
+      gap: 8px;
+      padding-top: 4px;
+    }
+
+    /* Taby A/B */
+
+    .tabs {
+      display: inline-flex;
+      align-self: flex-start;
+      background: #020617;
+      border-radius: 999px;
+      padding: 4px;
+      gap: 4px;
+      border: 1px solid #1f2937;
+    }
+
+    .tab-button {
+      all: unset;
+      cursor: pointer;
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 12px;
+      color: #e5e7eb;
+      background: transparent;
+      transition: background-color 0.15s ease, color 0.15s ease;
+      touch-action: none;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .tab-button:hover {
+      background: #111827;
+    }
+
+    .tab-button.active {
+      background: #f59e0b;
+      color: #111827;
+      font-weight: 600;
+    }
+
+    /* Wspólne cechy korytarzy */
+
+    .corridor-a,
+    .corridor-b {
+      flex: 1 1 auto;
+      display: flex;
+      justify-content: center;
+      align-items: stretch;
+      padding: 24px 32px;
+      border-radius: 16px;
+      background: #020617;
+      margin: 0 auto;
+      width: 100%;
+      max-width: 1100px;
+    }
+
+    /* --- TABLET A + B: rząd kolumn i słupków --- */
+
+    .column-slot {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 0 4px;
+    }
+
+    .column-slot-narrow {
+      flex: 0 0 54px;
+      max-width: 54px;
+    }
+
+    .column-slot-wide {
+      flex: 0 0 90px;   /* szerokie sloty */
+      max-width: 90px;
+    }
+
+    .column-pillar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 16px;
+      flex: 0 0 40px;
+    }
+
+    .pillar-square {
+      width: 26px;
+      height: 26px;
+      border-radius: 4px;
+      background: #d1d5db;
+    }
+
+    .column-gap {
+      flex: 0 0 40px;
+      max-width: 40px;
+      margin: 0 16px; /* wizualna przerwa w układzie */
+    }
+
+    /* --- Sloty wspólne dla A i B --- */
+
+    .slot {
+      all: unset;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 8px 4px;
+      min-height: 80px;
+      margin: 2px 3px;
+      border-radius: 8px;
+      border: 2px solid #4b5563;
+      box-sizing: border-box;
+      cursor: pointer;
+      user-select: none;
+      transition:
+        background-color 0.15s ease,
+        border-color 0.15s ease,
+        transform 0.05s ease;
+      font-size: 11px;
+      flex: 1 1 0;
+      width: 100%;
+      touch-action: none;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .slot:hover {
+      transform: translateY(-1px);
+    }
+
+    .slot-empty {
+      background: #111827;
+      border-color: #4b5563;
+      color: #e5e7eb;
+    }
+
+    .slot-filled {
+      background: #f59e0b;
+      border-color: #fbbf24;
+      color: #111827;
+      font-weight: 600;
+    }
+
+    .slot-label {
+      font-size: 12px;
+      margin-bottom: 2px;
+    }
+
+    .slot-type {
+      font-size: 9px;
+      opacity: 0.8;
+      text-transform: none;
+    }
+
+    .slot-status {
+      font-size: 11px;
+      margin-top: 2px;
+    }
+
+    .backend-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(2, 6, 23, 0.8);
+      color: #f8fafc;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      z-index: 9999;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+      backdrop-filter: blur(2px);
+    }
+
+    .backend-overlay.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .backend-overlay .overlay-box {
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 18px 22px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+      max-width: 420px;
+    }
+
+    .backend-overlay .overlay-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    .backend-overlay .overlay-sub {
+      font-size: 13px;
+      color: #cbd5f5;
+    }
+
+    .debug-toast {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      background: rgba(15, 23, 42, 0.95);
+      color: #f8fafc;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 13px;
+      box-shadow: 0 12px 24px rgba(0, 0, 0, 0.35);
+      opacity: 0;
+      transform: translateY(6px);
+      pointer-events: none;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      z-index: 10000;
+    }
+
+    .debug-toast.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .debug-badge {
+      position: fixed;
+      left: 16px;
+      top: 16px;
+      background: rgba(2, 6, 23, 0.7);
+      color: #e2e8f0;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+      z-index: 10000;
+    }
+
+    .debug-badge.visible {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+  <div id="backend-overlay" class="backend-overlay" aria-live="polite" aria-hidden="true">
+    <div class="overlay-box">
+      <div class="overlay-title" id="backend-overlay-title">Brak połączenia z serwerem aplikacji</div>
+      <div class="overlay-sub" id="backend-overlay-sub">Czekam na wznowienie połączenia. Zgłoś: brak połączenia z serwerem aplikacji.</div>
+    </div>
+  </div>
+  <div id="debug-toast" class="debug-toast" aria-live="polite"></div>
+  <div id="debug-badge" class="debug-badge"></div>
+  <div class="app">
+    <header>
+      <h1>Pola odkładcze – tablety A / B</h1>
+      <div class="hint">Kliknięcie pola = zmiana stanu Wolne / Zajęte (auto-odświeżanie z RDS co 500 ms)</div>
+    </header>
+
+    <div class="main">
+      <div class="tabs">
+        <button class="tab-button active" data-target="A">Tablet A</button>
+        <button class="tab-button" data-target="B">Tablet B</button>
+      </div>
+
+      <!-- Widok tabletu A -->
+      <section class="corridor-a" id="corridor-a"></section>
+
+      <!-- Widok tabletu B -->
+      <section class="corridor-b" id="corridor-b" style="display: none;"></section>
+    </div>
+  </div>
+
+  <script>
+    // --- KONFIGURACJA TABLETU A ---
+    // Sekwencja: wide, słupek, wide, wide, wide, wide, słupek, wide, przerwa, wide, wide
+
+    const columnsA = [
+      {
+        kind: "slot",
+        width: "WIDE",
+        slots: [
+          { id: "A02", filled: 0 },
+          { id: "A01", filled: 0 }
+        ]
+      },
+      { kind: "pillar" },
+      {
+        kind: "slot",
+        width: "WIDE",
+        slots: [
+          { id: "A04", filled: 0 },
+          { id: "A03", filled: 0 }
+        ]
+      },
+      {
+        kind: "slot",
+        width: "WIDE",
+        slots: [
+          { id: "A06", filled: 0 },
+          { id: "A05", filled: 0 }
+        ]
+      },
+      {
+        kind: "slot",
+        width: "WIDE",
+        slots: [
+          { id: "A08", filled: 0 },
+          { id: "A07", filled: 0 }
+        ]
+      },
+      {
+        kind: "slot",
+        width: "WIDE",
+        slots: [
+          { id: "A10", filled: 0 },
+          { id: "A09", filled: 0 }
+        ]
+      },
+      { kind: "pillar" },
+      {
+        kind: "slot",
+        width: "WIDE",
+        slots: [
+          { id: "A12", filled: 0 },
+          { id: "A11", filled: 0 }
+        ]
+      },
+      {
+        kind: "slot",
+        width: "WIDE",
+        slots: [
+          { id: "A14", filled: 0 },
+          { id: "A13", filled: 0 }
+        ]
+      }
+    ];
+
+    // --- LAYOUT TABLETU B (oryginalny) ---
+
+    const columnsB = [
+      // Blok 1: szeroka + 4 wąskie
+      {
+        kind: "slot",
+        width: "WIDE",
+        slots: [
+          { id: "B01", filled: 0 },
+          { id: "B13", filled: 0 }
+        ]
+      },
+      {
+        kind: "slot",
+        width: "NARROW",
+        slots: [
+          { id: "B02", filled: 0 },
+          { id: "B14", filled: 0 }
+        ]
+      },
+      {
+        kind: "slot",
+        width: "NARROW",
+        slots: [
+          { id: "B03", filled: 0 },
+          { id: "B15", filled: 0 }
+        ]
+      },
+      {
+        kind: "slot",
+        width: "NARROW",
+        slots: [
+          { id: "B04", filled: 0 },
+          { id: "B16", filled: 0 }
+        ]
+      },
+      {
+        kind: "slot",
+        width: "NARROW",
+        slots: [
+          { id: "B05", filled: 0 },
+          { id: "B17", filled: 0 }
+        ]
+      },
+
+      // Słupek między blokami
+      { kind: "pillar" },
+
+      // Blok 2: szeroka + 4 wąskie
+      {
+        kind: "slot",
+        width: "WIDE",
+        slots: [
+          { id: "B06", filled: 0 },
+          { id: "B18", filled: 0 }
+        ]
+      },
+      {
+        kind: "slot",
+        width: "NARROW",
+        slots: [
+          { id: "B07", filled: 0 },
+          { id: "B19", filled: 0 }
+        ]
+      },
+      {
+        kind: "slot",
+        width: "NARROW",
+        slots: [
+          { id: "B08", filled: 0 },
+          { id: "B20", filled: 0 }
+        ]
+      },
+      {
+        kind: "slot",
+        width: "NARROW",
+        slots: [
+          { id: "B09", filled: 0 },
+          { id: "B21", filled: 0 }
+        ]
+      },
+      {
+        kind: "slot",
+        width: "NARROW",
+        slots: [
+          { id: "B10", filled: 0 },
+          { id: "B22", filled: 0 }
+        ]
+      },
+
+      // Drugi słupek
+      { kind: "pillar" },
+
+      // Blok 3: 2 wąskie
+      {
+        kind: "slot",
+        width: "NARROW",
+        slots: [
+          { id: "B11", filled: 0 },
+          { id: "B23", filled: 0 }
+        ]
+      },
+      {
+        kind: "slot",
+        width: "NARROW",
+        slots: [
+          { id: "B12", filled: 0 },
+          { id: "B24", filled: 0 }
+        ]
+      }
+    ];
+
+    const allSlots = [];
+    const lastLocalChange = {};
+    const LOCAL_UPDATE_GRACE_MS = 500;
+
+    async function syncSlotToRds(slotId, filled) {
+      try {
+        const resp = await fetchWithTimeout(
+          `/api/slots/${encodeURIComponent(slotId)}/set-filled`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ filled: !!filled })
+          },
+          4000
+        );
+        if (!resp.ok) {
+          console.error("Błąd /api/slots:", await resp.text());
+        }
+      } catch (e) {
+        console.error("Błąd fetch do /api/slots:", e);
+      }
+    }
+
+    function setupPressAction(button, handler) {
+      if (!button) return;
+
+      const END_SLOP_PX = 22;
+      const IGNORE_CLICK_MS = 800;
+
+      let isDown = false;
+      let activePointerId = null;
+      let lastActivateTs = 0;
+      let activatedOnDown = false;
+
+      const run = (e) => {
+        const res = handler(e);
+        if (res && typeof res.catch === "function") {
+          res.catch((err) => console.error("Button action failed:", err));
+        }
+      };
+
+      const activate = (e) => {
+        lastActivateTs = Date.now();
+        run(e);
+      };
+
+      button.addEventListener("contextmenu", (e) => e.preventDefault());
+
+      const hasPointer = typeof window !== "undefined" && "PointerEvent" in window;
+      if (hasPointer) {
+        button.addEventListener("pointerdown", (e) => {
+          if (typeof e.button === "number" && e.button !== 0) return;
+          const isTouchLike = e.pointerType === "touch" || e.pointerType === "pen";
+          if (isTouchLike) e.preventDefault();
+
+          isDown = true;
+          activePointerId = e.pointerId;
+          try {
+            button.setPointerCapture(e.pointerId);
+          } catch {
+            // ignore
+          }
+
+          if (isTouchLike) {
+            activatedOnDown = true;
+            activate(e);
+          }
+        });
+
+        button.addEventListener("pointercancel", () => {
+          isDown = false;
+          activePointerId = null;
+          activatedOnDown = false;
+        });
+
+        button.addEventListener("pointerup", (e) => {
+          if (!isDown || e.pointerId !== activePointerId) return;
+
+          isDown = false;
+          activePointerId = null;
+
+          try {
+            button.releasePointerCapture(e.pointerId);
+          } catch {
+            // ignore
+          }
+
+          if (activatedOnDown && (e.pointerType === "touch" || e.pointerType === "pen")) {
+            activatedOnDown = false;
+            return;
+          }
+
+          const rect = button.getBoundingClientRect();
+          const inside =
+            e.clientX >= rect.left - END_SLOP_PX &&
+            e.clientX <= rect.right + END_SLOP_PX &&
+            e.clientY >= rect.top - END_SLOP_PX &&
+            e.clientY <= rect.bottom + END_SLOP_PX;
+          if (!inside) return;
+
+          activate(e);
+        });
+      } else {
+        let activeTouch = false;
+        button.addEventListener("touchstart", (e) => {
+          activeTouch = true;
+          e.preventDefault();
+          activate(e);
+        });
+        button.addEventListener("touchend", (e) => {
+          if (!activeTouch) return;
+          activeTouch = false;
+          e.preventDefault();
+        });
+        button.addEventListener("touchcancel", () => {
+          activeTouch = false;
+        });
+      }
+
+      button.addEventListener("click", (e) => {
+        if (Date.now() - lastActivateTs < IGNORE_CLICK_MS) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        activate(e);
+      });
+
+      button.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          activate(e);
+        }
+      });
+    }
+
+    function createSlotButton(slot, slotType) {
+      const btn = document.createElement("button");
+      btn.className = "slot " + (slot.filled ? "slot-filled" : "slot-empty");
+      btn.dataset.id = slot.id;
+      btn.dataset.type = slotType;
+
+      btn.innerHTML = `
+        <div class="slot-label">${slot.id}</div>
+        <div class="slot-type">${slotType === "WIDE" ? "szeroka" : "wąska"}</div>
+        <div class="slot-status">${slot.filled ? "Zajęte" : "Wolne"}</div>
+      `;
+
+      setupPressAction(btn, () => {
+        const s = allSlots.find((x) => x.id === slot.id);
+        if (!s) return;
+
+        // optymistyczna zmiana w UI
+        s.filled = s.filled ? 0 : 1;
+        lastLocalChange[s.id] = Date.now();
+
+        btn.classList.toggle("slot-filled", !!s.filled);
+        btn.classList.toggle("slot-empty", !s.filled);
+        btn.querySelector(".slot-status").textContent = s.filled
+          ? "Zajęte"
+          : "Wolne";
+
+        syncSlotToRds(s.id, s.filled);
+      });
+
+      return btn;
+    }
+
+    function renderCorridor(columns, containerId) {
+      const container = document.getElementById(containerId);
+      container.innerHTML = "";
+
+      columns.forEach((col) => {
+        if (col.kind === "pillar") {
+          const pillarCol = document.createElement("div");
+          pillarCol.className = "column-pillar";
+          const square = document.createElement("div");
+          square.className = "pillar-square";
+          pillarCol.appendChild(square);
+          container.appendChild(pillarCol);
+          return;
+        }
+
+        if (col.kind === "gap") {
+          const gapCol = document.createElement("div");
+          gapCol.className = "column-gap";
+          container.appendChild(gapCol);
+          return;
+        }
+
+        const colEl = document.createElement("div");
+        colEl.className =
+          "column-slot column-slot-" +
+          (col.width === "WIDE" ? "wide" : "narrow");
+
+        col.slots.forEach((slotDef) => {
+          const slot = {
+            id: slotDef.id,
+            filled: slotDef.filled,
+            slotType: col.width
+          };
+          allSlots.push(slot);
+
+          const btn = createSlotButton(slot, col.width);
+          colEl.appendChild(btn);
+        });
+
+        container.appendChild(colEl);
+      });
+    }
+
+    function setupTabs() {
+      const tabs = document.querySelectorAll(".tab-button");
+      const corridorA = document.getElementById("corridor-a");
+      const corridorB = document.getElementById("corridor-b");
+
+      tabs.forEach((tab) => {
+        setupPressAction(tab, () => {
+          tabs.forEach((t) => t.classList.remove("active"));
+          tab.classList.add("active");
+
+          const target = tab.dataset.target;
+          if (target === "A") {
+            corridorA.style.display = "flex";
+            corridorB.style.display = "none";
+          } else {
+            corridorA.style.display = "none";
+            corridorB.style.display = "flex";
+          }
+        });
+      });
+    }
+
+    // Auto-refresh z RDS / backendu co 500 ms
+    async function refreshStateFromServer() {
+      try {
+        const resp = await fetchWithTimeout("/api/state");
+        let data = null;
+        try {
+          data = await resp.json();
+        } catch {
+          updateConnectionOverlay();
+          return;
+        }
+
+        if (!data || data.rdsOk !== false) {
+          rdsMonitor.lastOkAt = Date.now();
+        }
+        updateConnectionOverlay();
+        if (!data || !data.slots) return;
+
+        const stateMap = {};
+        for (const s of data.slots) {
+          stateMap[s.slotId] = !!s.filled;
+        }
+
+        // zaktualizuj wszystkie sloty, jeśli stan się zmienił
+        allSlots.forEach((slot) => {
+          const newFilled = stateMap[slot.id];
+          if (typeof newFilled !== "boolean") return;
+
+          const lastTs = lastLocalChange[slot.id] || 0;
+          if (Date.now() - lastTs < LOCAL_UPDATE_GRACE_MS) return;
+
+          if (!!slot.filled !== newFilled) {
+            slot.filled = newFilled;
+            const btn = document.querySelector(`.slot[data-id="${slot.id}"]`);
+            if (btn) {
+              btn.classList.toggle("slot-filled", newFilled);
+              btn.classList.toggle("slot-empty", !newFilled);
+              const statusEl = btn.querySelector(".slot-status");
+              if (statusEl) {
+                statusEl.textContent = newFilled ? "Zajęte" : "Wolne";
+              }
+            }
+          }
+        });
+      } catch (e) {
+        // cicho, żeby nie spamować konsoli
+        updateConnectionOverlay();
+      }
+    }
+
+    const backendMonitor = {
+      lastOkAt: Date.now(),
+      lastBuildId: null,
+      inFlight: false,
+      reloadPending: false
+    };
+
+    const FETCH_TIMEOUT_MS = 2500;
+    const BACKEND_POLL_MS = 1000;
+    const BACKEND_GRACE_MS = 2000;
+
+    const DEBUG_UI = (() => {
+      try {
+        const v = new URLSearchParams(window.location.search || "").get("debug");
+        if (!v) return false;
+        return ["1", "true", "yes", "on"].includes(v.toLowerCase());
+      } catch {
+        return false;
+      }
+    })();
+
+    let debugToastTimer = null;
+
+    function updateDebugBadge(buildId) {
+      if (!DEBUG_UI) return;
+      const badge = document.getElementById("debug-badge");
+      if (!badge) return;
+      const idText = buildId ? buildId : "brak";
+      const timeText = new Date().toLocaleTimeString();
+      badge.textContent = `buildId: ${idText} · ${timeText}`;
+      badge.classList.add("visible");
+    }
+
+    function showDebugToast(message) {
+      if (!DEBUG_UI) return;
+      const toast = document.getElementById("debug-toast");
+      if (!toast) return;
+      toast.textContent = message;
+      toast.classList.add("visible");
+      if (debugToastTimer) clearTimeout(debugToastTimer);
+      debugToastTimer = setTimeout(() => {
+        toast.classList.remove("visible");
+      }, 1200);
+    }
+
+    const RDS_GRACE_MS = 2000;
+    const rdsMonitor = { lastOkAt: Date.now() };
+
+    function updateConnectionOverlay() {
+      const overlay = document.getElementById("backend-overlay");
+      if (!overlay) return;
+      const titleEl = document.getElementById("backend-overlay-title");
+      const subEl = document.getElementById("backend-overlay-sub");
+
+      const backendDown = Date.now() - backendMonitor.lastOkAt > BACKEND_GRACE_MS;
+      const rdsDown = Date.now() - rdsMonitor.lastOkAt > RDS_GRACE_MS;
+
+      let visible = false;
+      let title = "";
+      let sub = "";
+
+      if (backendDown) {
+        visible = true;
+        title = "Brak połączenia z serwerem aplikacji";
+        sub = "Czekam na wznowienie połączenia. Zgłoś: brak połączenia z serwerem aplikacji.";
+      } else if (rdsDown) {
+        visible = true;
+        title = "Brak połączenia serwera z RDS";
+        sub = "Serwer aplikacji działa, ale nie ma dostępu do RDS. Zgłoś: brak połączenia z RDS.";
+      }
+
+      overlay.classList.toggle("visible", visible);
+      overlay.setAttribute("aria-hidden", visible ? "false" : "true");
+      if (titleEl && title) titleEl.textContent = title;
+      if (subEl && sub) subEl.textContent = sub;
+    }
+
+    async function fetchWithTimeout(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
+      if (typeof AbortController === "undefined") return fetch(url, options);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        return await fetch(url, { ...options, signal: controller.signal });
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    async function pollBackendStatus() {
+      if (backendMonitor.inFlight) return;
+      backendMonitor.inFlight = true;
+      try {
+        const resp = await fetchWithTimeout("/api/status", { cache: "no-store" });
+        if (!resp.ok) throw new Error(`status ${resp.status}`);
+        const data = await resp.json();
+        backendMonitor.lastOkAt = Date.now();
+        updateConnectionOverlay();
+        if (data && data.buildId) {
+          if (backendMonitor.lastBuildId && data.buildId !== backendMonitor.lastBuildId) {
+            if (!backendMonitor.reloadPending) {
+              backendMonitor.reloadPending = true;
+              if (DEBUG_UI) {
+                showDebugToast("Nowa wersja — odświeżam");
+                setTimeout(() => window.location.reload(), 700);
+              } else {
+                window.location.reload();
+              }
+            }
+            return;
+          }
+          backendMonitor.lastBuildId = data.buildId;
+        }
+        updateDebugBadge(backendMonitor.lastBuildId);
+      } catch {
+        // cicho: overlay ogarnie brak połączenia
+        updateConnectionOverlay();
+      } finally {
+        backendMonitor.inFlight = false;
+      }
+    }
+
+    function startBackendMonitor() {
+      pollBackendStatus();
+      setInterval(() => {
+        pollBackendStatus();
+        updateConnectionOverlay();
+      }, BACKEND_POLL_MS);
+    }
+
+    renderCorridor(columnsA, "corridor-a");
+    renderCorridor(columnsB, "corridor-b");
+    setupTabs();
+    startBackendMonitor();
+
+    // polling co 500 ms
+    setInterval(refreshStateFromServer, 500);
+  </script>
+</body>
+</html>

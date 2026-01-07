@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <title>Robot Task Manager – UI</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>Robot Task Manager</h1>
+      <div class="header-right">
+        <span id="health-indicator" class="health health-unknown">Sprawdzam...</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="card">
+        <h2>Roboty w systemie RDS</h2>
+
+        <!-- zostawiamy pasek statusu na akcje i błędy, ale nie spamujemy nim odświeżeniami -->
+        <div id="status-bar" class="status-bar"></div>
+
+        <div class="table-wrapper">
+          <table id="robots-table">
+            <thead>
+              <tr>
+                <th>Robot</th>
+                <th>Dispatchable</th>
+                <th>Połączenie</th>
+                <th>Task</th>
+                <th>Stacja</th>
+                <th>Akcje</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td colspan="6" class="placeholder">
+                  Wczytywanie listy robotów...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>HTTP API: <code>/api/robots</code>, <code>/api/robots/:id/*</code></span>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

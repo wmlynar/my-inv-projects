@@ -1,0 +1,45 @@
+{
+  "code": 200,
+  "msg": "Success",
+  "data": {
+    "report": [
+      {
+        "uuid": "INV-CDD14-01",
+        "vehicle_id": "INV-CDD14-01",
+        "connection_status": 1,
+        "dispatchable": true,
+        "current_order": {
+          "id": "PP32c4c56d-3320-44fd-9d15-e098222face9",
+          "state": "FINISHED"
+        },
+        "isLoaded": false,
+        "rbk_report": {
+          "x": -23.476,
+          "y": 25.568,
+          "angle": 3.1416,
+          "battery_level": 1,
+          "confidence": 1,
+          "blocked": true,
+          "emergency": false,
+          "current_station": "PP237",
+          "last_station": "LM238",
+          "fork": {
+            "fork_height": 0
+          },
+          "alarms": {
+            "fatals": [],
+            "errors": [],
+            "warnings": [],
+            "notices": []
+          }
+        }
+      }
+    ],
+    "alarms": {
+      "fatals": [],
+      "errors": [],
+      "warnings": [],
+      "notices": []
+    }
+  }
+}
