@@ -1,0 +1,8 @@
+{
+  "BIND_HOST": "::",
+  "STATE_PORT": 19204,
+  "CONFIG_PORT": 19207,
+  "KERNEL_PORT": 19208,
+  "HTTP_HOST": "::",
+  "HTTP_PORTS": "8088"
+}

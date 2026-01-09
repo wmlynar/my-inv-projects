@@ -1,0 +1,102 @@
+{
+  "session": {
+    "name": "robokit_all",
+    "description": "Capture RoboKit TCP ports plus HTTP.",
+    "targetKind": "robot",
+    "operator": "automation",
+    "rootDir": "~/robokit_logs"
+  },
+  "limits": {
+    "warnSessionSizeGb": 5,
+    "rotateFileMb": 512,
+    "noThrottling": true,
+    "captureRawBytes": false,
+    "captureFrames": true,
+    "includeRawFrameBase64": false,
+    "includeBinaryTailBase64": false,
+    "hexPreviewBytes": 0,
+    "httpCaptureBodies": true
+  },
+  "capture": {
+    "omitLasers": false,
+    "omitPointCloud": false,
+    "rawFrameBase64Apis": []
+  },
+  "listeners": [
+    {
+      "name": "robod",
+      "protocol": "tcp",
+      "listen": { "host": "0.0.0.0", "port": 19200 },
+      "upstream": { "host": "10.0.0.11", "port": 19200 },
+      "decode": { "kind": "robocore" }
+    },
+    {
+      "name": "state",
+      "protocol": "tcp",
+      "listen": { "host": "0.0.0.0", "port": 19204 },
+      "upstream": { "host": "10.0.0.11", "port": 19204 },
+      "decode": { "kind": "robocore" }
+    },
+    {
+      "name": "ctrl",
+      "protocol": "tcp",
+      "listen": { "host": "0.0.0.0", "port": 19205 },
+      "upstream": { "host": "10.0.0.11", "port": 19205 },
+      "decode": { "kind": "robocore" }
+    },
+    {
+      "name": "task",
+      "protocol": "tcp",
+      "listen": { "host": "0.0.0.0", "port": 19206 },
+      "upstream": { "host": "10.0.0.11", "port": 19206 },
+      "decode": { "kind": "robocore" }
+    },
+    {
+      "name": "config",
+      "protocol": "tcp",
+      "listen": { "host": "0.0.0.0", "port": 19207 },
+      "upstream": { "host": "10.0.0.11", "port": 19207 },
+      "decode": { "kind": "robocore" }
+    },
+    {
+      "name": "kernel",
+      "protocol": "tcp",
+      "listen": { "host": "0.0.0.0", "port": 19208 },
+      "upstream": { "host": "10.0.0.11", "port": 19208 },
+      "decode": { "kind": "robocore" }
+    },
+    {
+      "name": "other",
+      "protocol": "tcp",
+      "listen": { "host": "0.0.0.0", "port": 19210 },
+      "upstream": { "host": "10.0.0.11", "port": 19210 },
+      "decode": { "kind": "robocore" }
+    },
+    {
+      "name": "push",
+      "protocol": "tcp",
+      "listen": { "host": "0.0.0.0", "port": 19301 },
+      "upstream": { "host": "10.0.0.11", "port": 19301 },
+      "decode": { "kind": "robocore" }
+    },
+    {
+      "name": "api-legacy",
+      "protocol": "tcp",
+      "listen": { "host": "0.0.0.0", "port": 5045 },
+      "upstream": { "host": "10.0.0.11", "port": 5045 },
+      "decode": { "kind": "none" }
+    },
+    {
+      "name": "http-8088",
+      "protocol": "http",
+      "listen": { "host": "0.0.0.0", "port": 8088 },
+      "upstream": { "host": "10.0.0.11", "port": 8088 }
+    },
+    {
+      "name": "http-9301",
+      "protocol": "http",
+      "listen": { "host": "0.0.0.0", "port": 9301 },
+      "upstream": { "host": "10.0.0.11", "port": 9301 }
+    }
+  ]
+}

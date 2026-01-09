@@ -1,0 +1,4920 @@
+{
+  "Calib": {
+    "ClearStoreMsg": {
+      "advanced": false,
+      "defaultValue": true,
+      "desc": "Whether to clear msg after getmsg",
+      "group": "Calibration",
+      "type": "bool",
+      "value": true
+    }
+  },
+  "CalibrationTask": {
+    "BiSteerCalibSpeed": {
+      "advanced": false,
+      "defaultValue": 0.2,
+      "desc": "Speed in the bi-steer vehicle steer angle offset calibration (m/s)",
+      "group": "Calibration",
+      "maxValue": 1,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 0.2
+    },
+    "BiSteerMeanOffsetCalibSize": {
+      "advanced": false,
+      "defaultValue": 2,
+      "desc": "Route length of the bi-steer vehicle mean steer angle offset calibration (m)",
+      "group": "Calibration",
+      "maxValue": 5,
+      "minValue": 1,
+      "type": "double",
+      "value": 2
+    },
+    "BiSteerMeanOffsetCalibSpeed": {
+      "advanced": false,
+      "defaultValue": 0.2,
+      "desc": "Speed in the bi-steer vehicle mean steer angle offset calibration (m/s)",
+      "group": "Calibration",
+      "maxValue": 1,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 0.2
+    },
+    "BiSteerOffsetCalibSize": {
+      "advanced": false,
+      "defaultValue": 5,
+      "desc": "Route length of the bi-steer vehicle steer angle offset calibration (m)",
+      "group": "Calibration",
+      "maxValue": 10,
+      "minValue": 1,
+      "type": "double",
+      "value": 5
+    },
+    "CalibrationDebugMode": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "Calibration debug mode switch",
+      "group": "Calibration",
+      "type": "bool",
+      "value": false
+    },
+    "DiffLaserOdomCalibSize": {
+      "advanced": false,
+      "defaultValue": 3,
+      "desc": "Side length of the moving space in laser-odom calibration for differential vehicle (m)",
+      "group": "Calibration",
+      "maxValue": 5,
+      "minValue": 0.5,
+      "type": "double",
+      "value": 3
+    },
+    "EmptyOperationForMoveTest": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Use empty operation for data processing to test movements",
+      "group": "Calibration",
+      "type": "bool",
+      "value": false
+    },
+    "FlagFilterData": {
+      "advanced": false,
+      "defaultValue": true,
+      "desc": "Whether to screen out the data sections with higher fitting error in laser-odom calibration",
+      "group": "Calibration",
+      "type": "bool",
+      "value": true
+    },
+    "FlagForceUseClawRoute": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "Whether force to use bird's claw shaped route in laser-odometer or laser external calibrations",
+      "group": "Calibration",
+      "type": "bool",
+      "value": false
+    },
+    "FlagLaserOdomOptCalib": {
+      "advanced": false,
+      "defaultValue": true,
+      "desc": "Whether to use optimization-based identification method in laser-odom calibration rather than step-by-step linear method",
+      "group": "Calibration",
+      "type": "bool",
+      "value": true
+    },
+    "ForkTestMoveAcc": {
+      "advanced": false,
+      "defaultValue": 0.02,
+      "desc": "Acceration in fork test move (m/s^2)",
+      "group": "Calibration",
+      "maxValue": 0.1,
+      "minValue": -0.1,
+      "type": "double",
+      "value": 0.02
+    },
+    "ForkTestMoveAccTest": {
+      "advanced": false,
+      "defaultValue": true,
+      "desc": "TRUE for acceleration response, FALSE for deceleration response",
+      "group": "Calibration",
+      "type": "bool",
+      "value": true
+    },
+    "ForkTestMoveBleed": {
+      "advanced": false,
+      "defaultValue": 0.1,
+      "desc": "Distance to stop fork test move away from the maxHeight (m)",
+      "group": "Calibration",
+      "maxValue": 1,
+      "minValue": 0.05,
+      "type": "double",
+      "value": 0.1
+    },
+    "ForkTestMoveConstTime": {
+      "advanced": false,
+      "defaultValue": 2,
+      "desc": "Constant speed moving time in deceleration test (s)",
+      "group": "Calibration",
+      "maxValue": 10,
+      "minValue": 1,
+      "type": "double",
+      "value": 2
+    },
+    "ForkTestMoveDiffWin": {
+      "advanced": false,
+      "defaultValue": 0.3,
+      "desc": "Width of windowed derivative for fork height (s)",
+      "group": "Calibration",
+      "maxValue": 1,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 0.3
+    },
+    "ForkTestMoveMaxSpeed": {
+      "advanced": false,
+      "defaultValue": 0.2,
+      "desc": "Max speed of fork test move (m/s)",
+      "group": "Calibration",
+      "maxValue": 1,
+      "minValue": 0.01,
+      "type": "double",
+      "value": 0.2
+    },
+    "ForkTestMoveNavSpeed": {
+      "advanced": false,
+      "defaultValue": 0.1,
+      "desc": "Speed to navigate to the start height in fork test move (m/s)",
+      "group": "Calibration",
+      "maxValue": 0.5,
+      "minValue": 0.01,
+      "type": "double",
+      "value": 0.1
+    },
+    "ForkTestMoveStartHeight": {
+      "advanced": false,
+      "defaultValue": 0.1,
+      "desc": "Starting height of fork test move (m)",
+      "group": "Calibration",
+      "maxValue": 5,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.1
+    },
+    "ForkTestMoveWin": {
+      "advanced": false,
+      "defaultValue": 1,
+      "desc": "Watch window width in fork test move (s)",
+      "group": "Calibration",
+      "maxValue": 3,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 1
+    },
+    "IMUCalibAccDec": {
+      "advanced": false,
+      "defaultValue": 1,
+      "desc": "Acc and dec in IMU initial calibration (m/s^2), NOT ACTIVE YET",
+      "group": "Calibration",
+      "maxValue": 3,
+      "minValue": 0.5,
+      "type": "double",
+      "value": 1
+    },
+    "IMUCalibGoBackandForthCnt": {
+      "advanced": false,
+      "defaultValue": 3,
+      "desc": "How many times will the vehicle run forward and backward in IMU initial calibrations",
+      "group": "Calibration",
+      "maxValue": 5,
+      "minValue": 1,
+      "type": "int32",
+      "value": 3
+    },
+    "IMUCalibGoCircleCnt": {
+      "advanced": false,
+      "defaultValue": 2,
+      "desc": "How many pairs of forward and backward circles (540 degs) will the vehicle execute in IMU initial calibrations",
+      "group": "Calibration",
+      "maxValue": 10,
+      "minValue": 1,
+      "type": "int32",
+      "value": 2
+    },
+    "IMUCalibRotSpeed_v2": {
+      "advanced": false,
+      "defaultValue": 30,
+      "desc": "Angular speed in IMU initial calibration (deg/s)",
+      "group": "Calibration",
+      "maxValue": 120,
+      "minValue": 1,
+      "type": "double",
+      "value": 30
+    },
+    "IMUCalibRotateCycleCnt": {
+      "advanced": false,
+      "defaultValue": 2,
+      "desc": "How many pairs of positive and negative rotations (540 degs) will the vehicle execute in IMU initial calibrations",
+      "group": "Calibration",
+      "maxValue": 5,
+      "minValue": 1,
+      "type": "int32",
+      "value": 2
+    },
+    "IMUCalibSize": {
+      "advanced": false,
+      "defaultValue": 2,
+      "desc": "Side length of the moving space in IMU initial calibration (m)",
+      "group": "Calibration",
+      "maxValue": 5,
+      "minValue": 1,
+      "type": "double",
+      "value": 2
+    },
+    "IMUCalibSpeed": {
+      "advanced": false,
+      "defaultValue": 1,
+      "desc": "Speed in IMU initial calibration (m/s)",
+      "group": "Calibration",
+      "maxValue": 3,
+      "minValue": 0.5,
+      "type": "double",
+      "value": 1
+    },
+    "IMUCalibSteerBleed": {
+      "advanced": true,
+      "defaultValue": 0.5,
+      "desc": "Steer angle bleed in IMU initial calibrations",
+      "group": "Calibration",
+      "maxValue": 5,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.5
+    },
+    "LaserOdomCalibCnt": {
+      "advanced": false,
+      "defaultValue": 2,
+      "desc": "How many cycles of movements will the vehicle execute in laser-odom calibration or laser calibration on odometer",
+      "group": "Calibration",
+      "maxValue": 5,
+      "minValue": 1,
+      "type": "int32",
+      "value": 2
+    },
+    "LaserOdomCalibSpeed": {
+      "advanced": false,
+      "defaultValue": 0.2,
+      "desc": "Speed in laser-odom calibration (m/s)",
+      "group": "Calibration",
+      "maxValue": 1,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 0.2
+    },
+    "LaserOdomMaxRotVel": {
+      "advanced": false,
+      "defaultValue": 30,
+      "desc": "Max rotational velocity allowed for differential vehicle in laser-odom calibration (deg/s)",
+      "group": "Calibration",
+      "maxValue": 90,
+      "minValue": 10,
+      "type": "double",
+      "value": 30
+    },
+    "OdomLocCompareTestLinSpeed": {
+      "advanced": false,
+      "defaultValue": 0.5,
+      "desc": "Max linear velocity in odometer-localization trajectory compare test (m/s)",
+      "group": "Calibration",
+      "maxValue": 5,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 0.5
+    },
+    "OdomLocCompareTestRotSpeed": {
+      "advanced": false,
+      "defaultValue": 30,
+      "desc": "Max rotation velocity in odometer-localization trajectory compare test (deg/s)",
+      "group": "Calibration",
+      "maxValue": 120,
+      "minValue": 5,
+      "type": "double",
+      "value": 30
+    },
+    "OdomLocCompareTestSize": {
+      "advanced": false,
+      "defaultValue": 3,
+      "desc": "Side length of the moving area in odometer-localization trajectory compare test (m)",
+      "group": "Calibration",
+      "maxValue": 10,
+      "minValue": 1,
+      "type": "double",
+      "value": 3
+    },
+    "OmniMoveCnt": {
+      "advanced": false,
+      "defaultValue": 4,
+      "desc": "How many moves (forward and back) to take that split 180 deg range in roller angle calibration",
+      "group": "Calibration",
+      "maxValue": 20,
+      "minValue": 2,
+      "type": "int32",
+      "value": 4
+    },
+    "OmniMoveLength": {
+      "advanced": false,
+      "defaultValue": 2,
+      "desc": "Omnidirectional movement distance in roller angle calibration (m)",
+      "group": "Calibration",
+      "maxValue": 5,
+      "minValue": 0.5,
+      "type": "double",
+      "value": 2
+    },
+    "OmniMoveSpeed": {
+      "advanced": false,
+      "defaultValue": 0.3,
+      "desc": "Omnidirectional movement speed in roller angle calibration (m/s)",
+      "group": "Calibration",
+      "maxValue": 1,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 0.3
+    },
+    "PGVCalibLinSpeed": {
+      "advanced": false,
+      "defaultValue": 0.05,
+      "desc": "Linear speed in PGV calibration (m/s)",
+      "group": "Calibration",
+      "maxValue": 0.2,
+      "minValue": 0.01,
+      "type": "double",
+      "value": 0.05
+    },
+    "PGVCalibMoveCnt": {
+      "advanced": false,
+      "defaultValue": 10,
+      "desc": "How many times will the vehicle move back and forth in PGV calibration",
+      "group": "Calibration",
+      "maxValue": 20,
+      "minValue": 1,
+      "type": "int32",
+      "value": 10
+    },
+    "PGVCalibRotAngle": {
+      "advanced": false,
+      "defaultValue": 180,
+      "desc": "Angule in PGV calibration (deg)",
+      "group": "Calibration",
+      "maxValue": 360,
+      "minValue": 5,
+      "type": "double",
+      "value": 180
+    },
+    "PGVCalibRotSpeed": {
+      "advanced": false,
+      "defaultValue": 30,
+      "desc": "Angular speed in PGV calibration (deg/s)",
+      "group": "Calibration",
+      "maxValue": 90,
+      "minValue": 10,
+      "type": "double",
+      "value": 30
+    },
+    "PGVCalibSize": {
+      "advanced": false,
+      "defaultValue": 0.1,
+      "desc": "Route length of the PGV calibration (m)",
+      "group": "Calibration",
+      "maxValue": 1,
+      "minValue": 0.05,
+      "type": "double",
+      "value": 0.1
+    },
+    "PGVOdomCalibAngle": {
+      "advanced": false,
+      "defaultValue": 360,
+      "desc": "Rotation angle of PGV-odometer calibration (deg)",
+      "group": "Calibration",
+      "maxValue": 720,
+      "minValue": 90,
+      "type": "double",
+      "value": 360
+    },
+    "PGVOdomCalibGoBackandForthCnt": {
+      "advanced": false,
+      "defaultValue": 2,
+      "desc": "How many times will the vehicle run forward and backward in PGV-odometer calibrations",
+      "group": "Calibration",
+      "maxValue": 10,
+      "minValue": 1,
+      "type": "int32",
+      "value": 2
+    },
+    "PGVOdomCalibLength": {
+      "advanced": false,
+      "defaultValue": 1,
+      "desc": "Route length of PGV-odometer calibration (m)",
+      "group": "Calibration",
+      "maxValue": 3,
+      "minValue": 0.5,
+      "type": "double",
+      "value": 1
+    },
+    "PGVOdomCalibRotBackandForthCnt": {
+      "advanced": false,
+      "defaultValue": 1,
+      "desc": "How many times will the vehicle rotate forward and backward in PGV-odometer calibrations",
+      "group": "Calibration",
+      "maxValue": 10,
+      "minValue": 1,
+      "type": "int32",
+      "value": 1
+    },
+    "PGVOdomCalibRotSpeed": {
+      "advanced": false,
+      "defaultValue": 30,
+      "desc": "Rotational speed of PGV-odometer calibration (deg/s)",
+      "group": "Calibration",
+      "maxValue": 90,
+      "minValue": 10,
+      "type": "double",
+      "value": 30
+    },
+    "PGVOdomCalibSpeed": {
+      "advanced": false,
+      "defaultValue": 0.2,
+      "desc": "Linear speed of PGV-odometer calibration (m/s)",
+      "group": "Calibration",
+      "maxValue": 1,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 0.2
+    },
+    "ParamConsistencyCalib": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "Use parameter consistency calibration",
+      "group": "Calibration",
+      "type": "bool",
+      "value": false
+    },
+    "QRCodeNormal": {
+      "advanced": false,
+      "defaultValue": true,
+      "desc": "Whether the QR code is orthogonal",
+      "group": "Calibration",
+      "type": "bool",
+      "value": true
+    },
+    "RepeatLaserOdomCalibCnt": {
+      "advanced": false,
+      "defaultValue": 20,
+      "desc": "Repeated times of the calibration movements in repeated laser-odom calibration",
+      "group": "Calibration",
+      "maxValue": 100,
+      "minValue": 1,
+      "type": "int32",
+      "value": 20
+    },
+    "ShowExperimentalCalib": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "Whether to show the experimental calibration operations",
+      "group": "Calibration",
+      "type": "bool",
+      "value": false
+    },
+    "SteerAngularSpeed": {
+      "advanced": false,
+      "defaultValue": 5,
+      "desc": "Angular speed for the steer angle range calibration (deg/s)",
+      "group": "Calibration",
+      "maxValue": 10,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 5
+    },
+    "SteerCalibAngleRangeBleed": {
+      "advanced": true,
+      "defaultValue": 5,
+      "desc": "Steer angle range bleeding in sectional laser-odometer calibration for steer vehicles (deg)",
+      "group": "Calibration",
+      "maxValue": 10,
+      "minValue": 1,
+      "type": "double",
+      "value": 5
+    },
+    "SteerCalibAngleResolution": {
+      "advanced": true,
+      "defaultValue": 10,
+      "desc": "Steer angle resolution in sectional laser-odometer calibration for steer vehicles (deg)",
+      "group": "Calibration",
+      "maxValue": 30,
+      "minValue": 5,
+      "type": "double",
+      "value": 10
+    },
+    "SteerCalibAngleSampleCnt": {
+      "advanced": false,
+      "defaultValue": 11,
+      "desc": "Sample number of steer angle in sectional laser-odometer calibration for steer vehicles",
+      "group": "Calibration",
+      "maxValue": 20,
+      "minValue": 3,
+      "type": "int32",
+      "value": 11
+    },
+    "SteerCalibAngleSampleInterval": {
+      "advanced": false,
+      "defaultValue": 30,
+      "desc": "Steer angle sampling interval in sectional laser-odometer calibration for steer vehicles (deg)",
+      "group": "Calibration",
+      "maxValue": 45,
+      "minValue": 20,
+      "type": "double",
+      "value": 30
+    },
+    "SteerCalibArcLen": {
+      "advanced": false,
+      "defaultValue": 2.5,
+      "desc": "Arc length for piecewise laser-odometer calibration for steer vehicles (m)",
+      "group": "Calibration",
+      "maxValue": 5,
+      "minValue": 2,
+      "type": "double",
+      "value": 2.5
+    },
+    "SteerCalibMaxSpeed": {
+      "advanced": false,
+      "defaultValue": 0.6,
+      "desc": "Maximum wheel speed in sectional laser-odometer calibration for steer vehicles (m/s)",
+      "group": "Calibration",
+      "maxValue": 3,
+      "minValue": 0.3,
+      "type": "double",
+      "value": 0.6
+    },
+    "SteerCalibMinSpeed": {
+      "advanced": false,
+      "defaultValue": 0.1,
+      "desc": "Minimum wheel speed in sectional laser-odometer calibration for steer vehicles (m/s)",
+      "group": "Calibration",
+      "maxValue": 0.3,
+      "minValue": 0.05,
+      "type": "double",
+      "value": 0.1
+    },
+    "SteerCalibSpeedResolution": {
+      "advanced": true,
+      "defaultValue": 0.2,
+      "desc": "Wheel speed resolution in sectional laser-odometer calibration for steer vehicles (m/s)",
+      "group": "Calibration",
+      "maxValue": 0.5,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 0.2
+    },
+    "SteerCalibSpeedSampleCnt": {
+      "advanced": false,
+      "defaultValue": 3,
+      "desc": "Sample number of wheel speed in sectional laser-odometer calibration for steer vehicles",
+      "group": "Calibration",
+      "maxValue": 10,
+      "minValue": 1,
+      "type": "int32",
+      "value": 3
+    },
+    "SteerLaserOdomCalibSize": {
+      "advanced": false,
+      "defaultValue": 3,
+      "desc": "Side length of the moving space in laser-odom calibration for steer vehicle (m)",
+      "group": "Calibration",
+      "maxValue": 5,
+      "minValue": 0.5,
+      "type": "double",
+      "value": 3
+    },
+    "SteerRangeWaitTime": {
+      "advanced": false,
+      "defaultValue": 3,
+      "desc": "Wait time before monitoring the steer angle response (s)",
+      "group": "Calibration",
+      "maxValue": 10,
+      "minValue": 1,
+      "type": "double",
+      "value": 3
+    },
+    "SteerRangeWinTime": {
+      "advanced": false,
+      "defaultValue": 0.5,
+      "desc": "Window time for monitoring the steer angle response (s)",
+      "group": "Calibration",
+      "maxValue": 1,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 0.5
+    },
+    "SteerRangeWinTol": {
+      "advanced": false,
+      "defaultValue": 0.1,
+      "desc": "Angle variation tolerance for taking the steer angle response as steady within the window (deg)",
+      "group": "Calibration",
+      "maxValue": 1,
+      "minValue": 0.01,
+      "type": "double",
+      "value": 0.1
+    },
+    "SteerStartBackStep": {
+      "advanced": false,
+      "defaultValue": 10,
+      "desc": "Backstep angle from the steer angle limit in the model file for the steer angle range calibration to start (deg)",
+      "group": "Calibration",
+      "maxValue": 30,
+      "minValue": 1,
+      "type": "double",
+      "value": 10
+    },
+    "TempRotCenterDiffTime": {
+      "advanced": false,
+      "defaultValue": 2,
+      "desc": "Differential time for temporal rotation center monitoring",
+      "group": "Calibration",
+      "maxValue": 5,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 2
+    },
+    "TempSteerOffsetCalibCurvature": {
+      "advanced": false,
+      "defaultValue": 0,
+      "desc": "Curvature of the TempSteerOffsetCalib (rad/m), reciprocal of the radius",
+      "group": "Calibration",
+      "maxValue": 1,
+      "minValue": -1,
+      "type": "double",
+      "value": 0
+    },
+    "TempSteerOffsetCalibSize": {
+      "advanced": false,
+      "defaultValue": 10,
+      "desc": "Route length of the TempSteerOffsetCalib (m)",
+      "group": "Calibration",
+      "maxValue": 20,
+      "minValue": 1,
+      "type": "double",
+      "value": 10
+    },
+    "TempSteerOffsetCalibSpeed": {
+      "advanced": false,
+      "defaultValue": 0.5,
+      "desc": "Speed of the TempSteerOffsetCalib (m/s), sign determining direction",
+      "group": "Calibration",
+      "maxValue": 1,
+      "minValue": -1,
+      "type": "double",
+      "value": 0.5
+    },
+    "UseAdvancedCalib": {
+      "advanced": false,
+      "defaultValue": true,
+      "desc": "Whether to use advanced calibration types rather than the basic ones",
+      "group": "Calibration",
+      "type": "bool",
+      "value": true
+    }
+  },
+  "ChargerAdapter": {
+    "LipingChargerReadTimeout": {
+      "advanced": true,
+      "defaultValue": 15,
+      "desc": "read timeout for liping charger",
+      "group": "Network",
+      "maxValue": 180,
+      "minValue": 5,
+      "type": "uint32",
+      "value": 15
+    }
+  },
+  "DSPChassis": {
+    "CalibRunning": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "calibration is running",
+      "group": "Chassis",
+      "type": "bool",
+      "value": false
+    },
+    "DIODebug": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "debug for digital input",
+      "group": "Chassis",
+      "type": "bool",
+      "value": false
+    },
+    "DmxTestFlag": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "flag for dmx512 led test",
+      "group": "Led",
+      "type": "bool",
+      "value": false
+    },
+    "GyroFlyTd": {
+      "advanced": true,
+      "defaultValue": 0.25,
+      "desc": "to judge the gyro if flying",
+      "group": "Chassis",
+      "maxValue": 0.3,
+      "minValue": 0.25,
+      "type": "double",
+      "value": 0.25
+    },
+    "ModbusDINum": {
+      "advanced": false,
+      "defaultValue": 0,
+      "desc": "number of digital output for Modbus IO",
+      "group": "Chassis",
+      "maxValue": 64,
+      "minValue": 0,
+      "type": "int32",
+      "value": 0
+    },
+    "ModbusDIOffset": {
+      "advanced": false,
+      "defaultValue": 0,
+      "desc": "offset of digital input for Modbus IO",
+      "group": "Chassis",
+      "maxValue": 65535,
+      "minValue": 0,
+      "type": "uint32",
+      "value": 0
+    },
+    "ModbusDONum": {
+      "advanced": false,
+      "defaultValue": 0,
+      "desc": "number of digital input for Modbus IO",
+      "group": "Chassis",
+      "maxValue": 64,
+      "minValue": 0,
+      "type": "int32",
+      "value": 0
+    },
+    "ModbusDOOffset": {
+      "advanced": false,
+      "defaultValue": 0,
+      "desc": "offset of digital output for Modbus IO",
+      "group": "Chassis",
+      "maxValue": 65535,
+      "minValue": 0,
+      "type": "uint32",
+      "value": 0
+    },
+    "ModbusIODebug": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "debug for Modbus IO",
+      "group": "Chassis",
+      "type": "bool",
+      "value": false
+    },
+    "ModbusIP": {
+      "advanced": false,
+      "defaultValue": "192.168.192.66",
+      "desc": "ip of Modbus IO extend module",
+      "group": "Chassis",
+      "type": "string",
+      "value": "192.168.192.66"
+    },
+    "ModbusPort": {
+      "advanced": false,
+      "defaultValue": 502,
+      "desc": "port of Modbus IO extend module",
+      "group": "Chassis",
+      "maxValue": 65535,
+      "minValue": 0,
+      "type": "uint32",
+      "value": 502
+    },
+    "MotorDebugPrintFrameRate": {
+      "advanced": true,
+      "defaultValue": 6,
+      "desc": "motor print debug counter",
+      "group": "Chassis",
+      "maxValue": 100,
+      "minValue": 1,
+      "type": "uint32",
+      "value": 6
+    },
+    "MotorTimeoutT": {
+      "advanced": false,
+      "defaultValue": 300,
+      "desc": "threshold for motor timeout",
+      "group": "Motor",
+      "maxValue": 10000,
+      "minValue": 120,
+      "type": "uint32",
+      "value": 300
+    },
+    "NewSpeedTimeoutSlowT": {
+      "advanced": true,
+      "defaultValue": 25,
+      "desc": "newspeed timeout deceleration time after triggering: NewSpeedTimeoutSlowT*20 ms",
+      "group": "Motor",
+      "maxValue": 150,
+      "minValue": 1,
+      "type": "uint32",
+      "value": 25
+    },
+    "NewSpeedTimeoutThreshold": {
+      "advanced": true,
+      "defaultValue": 300,
+      "desc": "newspeedtimeout timer threshold",
+      "group": "Motor",
+      "maxValue": 2000,
+      "minValue": 20,
+      "type": "uint32",
+      "value": 300
+    },
+    "QueryEncoderFreq": {
+      "advanced": false,
+      "defaultValue": 10,
+      "desc": "the frequency of query encoder",
+      "group": "Motor",
+      "maxValue": 100,
+      "minValue": 1,
+      "type": "uint32",
+      "value": 10
+    },
+    "SecondCalibVel": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "Spin Reversal calib velocity after spin zeroDI triggered",
+      "group": "Motor",
+      "maxValue": 10,
+      "minValue": 0.01,
+      "type": "double",
+      "value": 1
+    },
+    "SendWatchDogFreq": {
+      "advanced": false,
+      "defaultValue": 50,
+      "desc": "the frequency of send watchdog",
+      "group": "Motor",
+      "maxValue": 10000,
+      "minValue": 1,
+      "type": "uint32",
+      "value": 50
+    },
+    "SpinDynamicCalib": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "Spin use dynamic calibrating when pass zeroDI",
+      "group": "Motor",
+      "type": "bool",
+      "value": false
+    },
+    "SpinErr": {
+      "advanced": true,
+      "defaultValue": 0.1,
+      "desc": "spin error ",
+      "group": "Motor",
+      "maxValue": 10,
+      "minValue": 0.01,
+      "type": "double",
+      "value": 0.1
+    },
+    "UseModbusIOBoard": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "enable Modbus IO extend module",
+      "group": "Chassis",
+      "type": "bool",
+      "value": false
+    }
+  },
+  "GNSSModulesDriver": {
+    "logDualAntennaData": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "GNSS log dual antenna data to rawmap",
+      "group": "Other",
+      "type": "bool",
+      "value": false
+    }
+  },
+  "LocalReMap": {
+    "lrm StartSlam": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "lrm use slam in rbk",
+      "group": "Laser",
+      "type": "bool",
+      "value": true
+    },
+    "lrm angle_threshold": {
+      "advanced": true,
+      "defaultValue": 0.5,
+      "desc": "lrm angle threshold",
+      "group": "Laser",
+      "maxValue": 90,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.5
+    },
+    "lrm distance_threshold": {
+      "advanced": true,
+      "defaultValue": 0.2,
+      "desc": "lrm distance threshold",
+      "group": "Laser",
+      "maxValue": 90,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.2
+    },
+    "lrm max_range": {
+      "advanced": true,
+      "defaultValue": 20,
+      "desc": "lrm max range",
+      "group": "Laser",
+      "maxValue": 150,
+      "minValue": 0,
+      "type": "double",
+      "value": 20
+    },
+    "lrm save_submap_threshold": {
+      "advanced": true,
+      "defaultValue": 0.15,
+      "desc": "lrm save submap threshold",
+      "group": "Laser",
+      "maxValue": 0.5,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.15
+    },
+    "lrm time gap": {
+      "advanced": true,
+      "defaultValue": 10,
+      "desc": "lrm time gap between current task and last task (s)",
+      "group": "Laser",
+      "maxValue": 99,
+      "minValue": 0,
+      "type": "int32",
+      "value": 10
+    },
+    "lrm use_icp": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "lrm use icp",
+      "group": "Laser",
+      "type": "bool",
+      "value": false
+    },
+    "lrm use_nav_pose_threshold": {
+      "advanced": true,
+      "defaultValue": 0.7,
+      "desc": "lrm use nav pose threshold",
+      "group": "Laser",
+      "maxValue": 1,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.7
+    },
+    "lrm use_optimization": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "lrm use optimization",
+      "group": "Laser",
+      "type": "bool",
+      "value": true
+    }
+  },
+  "MCLoc": {
+    "3DLocType": {
+      "advanced": false,
+      "defaultValue": 1,
+      "desc": "3D Localization Type(Need Reboot)",
+      "group": "Localization",
+      "maxValue": 2,
+      "minValue": 0,
+      "type": "int32",
+      "value": 1
+    },
+    "3DLocalizationWeight": {
+      "advanced": false,
+      "defaultValue": 1,
+      "desc": "3D Localization weight",
+      "group": "Localization",
+      "maxValue": 1,
+      "minValue": 0,
+      "type": "double",
+      "value": 1
+    },
+    "3DSourceDownSize": {
+      "advanced": false,
+      "defaultValue": 0.4,
+      "desc": "3D Points DownSample Size",
+      "group": "Localization",
+      "maxValue": 1,
+      "minValue": 0.05,
+      "type": "double",
+      "value": 0.4
+    },
+    "AutoRelocGirdSize": {
+      "advanced": true,
+      "defaultValue": 0.2,
+      "desc": "Auto Relocation Gird Size",
+      "group": "Localization",
+      "maxValue": 5,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 0.2
+    },
+    "CheckAngleDistribution": {
+      "advanced": false,
+      "defaultValue": true,
+      "desc": "check angle distribution",
+      "group": "Localization",
+      "type": "bool",
+      "value": true
+    },
+    "FMCellOccRatio": {
+      "advanced": false,
+      "defaultValue": 1.01,
+      "desc": "the occupancy ratio of cell",
+      "group": "Localization",
+      "maxValue": 1.1,
+      "minValue": 1.01,
+      "type": "double",
+      "value": 1.01
+    },
+    "FMLineRemThd": {
+      "advanced": false,
+      "defaultValue": 0.7,
+      "desc": "the remove thd of lines",
+      "group": "Localization",
+      "maxValue": 0.9,
+      "minValue": 0.5,
+      "type": "double",
+      "value": 0.7
+    },
+    "FMMinLineRatio": {
+      "advanced": false,
+      "defaultValue": 5,
+      "desc": "the min ratio to flit lines",
+      "group": "Localization",
+      "maxValue": 40,
+      "minValue": 4,
+      "type": "double",
+      "value": 5
+    },
+    "FMOnlyUsePFUpdate": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "Only use pf update feature map",
+      "group": "Localization",
+      "type": "bool",
+      "value": false
+    },
+    "FMSaveNewFTMap": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "Save new feature map",
+      "group": "Localization",
+      "type": "bool",
+      "value": false
+    },
+    "FMSaveRate": {
+      "advanced": false,
+      "defaultValue": 40,
+      "desc": "the rate to save new feature map",
+      "group": "Localization",
+      "maxValue": 400,
+      "minValue": 10,
+      "type": "double",
+      "value": 40
+    },
+    "FMUpdateCloudMap": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "Use feature map update cloud map",
+      "group": "Localization",
+      "type": "bool",
+      "value": false
+    },
+    "FMUpdateDis": {
+      "advanced": false,
+      "defaultValue": 1,
+      "desc": "the dis to update feature map",
+      "group": "Localization",
+      "maxValue": 5,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 1
+    },
+    "FMUpdateRange": {
+      "advanced": false,
+      "defaultValue": 6,
+      "desc": "the range of feature map update",
+      "group": "Localization",
+      "maxValue": 20,
+      "minValue": 5,
+      "type": "double",
+      "value": 6
+    },
+    "FTDegradationThd": {
+      "advanced": false,
+      "defaultValue": 18,
+      "desc": "degradation thd of feature loc",
+      "group": "Localization",
+      "maxValue": 100,
+      "minValue": 5,
+      "type": "double",
+      "value": 18
+    },
+    "FTIterationThd": {
+      "advanced": false,
+      "defaultValue": 0.001,
+      "desc": "iteration thd of feature loc",
+      "group": "Localization",
+      "maxValue": 0.1,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.001
+    },
+    "FTMatchErrThd": {
+      "advanced": false,
+      "defaultValue": 1.4,
+      "desc": "match err thd of feature loc",
+      "group": "Localization",
+      "maxValue": 1.6,
+      "minValue": 1.2,
+      "type": "double",
+      "value": 1.4
+    },
+    "FTMaxIterTimes": {
+      "advanced": false,
+      "defaultValue": 10,
+      "desc": "max iter times of feature loc",
+      "group": "Localization",
+      "maxValue": 50,
+      "minValue": 1,
+      "type": "double",
+      "value": 10
+    },
+    "FTMinMatchSize": {
+      "advanced": false,
+      "defaultValue": 150,
+      "desc": "min match size of feature loc",
+      "group": "Localization",
+      "maxValue": 1000,
+      "minValue": 50,
+      "type": "double",
+      "value": 150
+    },
+    "FTNeedDivide": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "weather consider dir of lines for feature loc",
+      "group": "Localization",
+      "type": "bool",
+      "value": false
+    },
+    "FTRotateThd": {
+      "advanced": false,
+      "defaultValue": 180,
+      "desc": "rotate thd of feature loc",
+      "group": "Localization",
+      "maxValue": 180,
+      "minValue": 0,
+      "type": "double",
+      "value": 180
+    },
+    "FTScoreErrThd": {
+      "advanced": false,
+      "defaultValue": 15,
+      "desc": "score err thd of feature loc",
+      "group": "Localization",
+      "maxValue": 100,
+      "minValue": 1,
+      "type": "double",
+      "value": 15
+    },
+    "FTScoreForUpdate": {
+      "advanced": false,
+      "defaultValue": 0.7,
+      "desc": "feature loc confidence to feature map update",
+      "group": "Localization",
+      "maxValue": 0.9,
+      "minValue": 0.6,
+      "type": "double",
+      "value": 0.7
+    },
+    "FTScoreThd": {
+      "advanced": false,
+      "defaultValue": 0.65,
+      "desc": "score thd of feature loc",
+      "group": "Localization",
+      "maxValue": 0.9,
+      "minValue": 0.61,
+      "type": "double",
+      "value": 0.65
+    },
+    "FTSearchType": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "The type of search: Type = 0--kdtree,Type = 1--cellmap",
+      "group": "Localization",
+      "maxValue": 1,
+      "minValue": 0,
+      "type": "int32",
+      "value": 1
+    },
+    "FTShockDetect": {
+      "advanced": false,
+      "defaultValue": true,
+      "desc": "weather need shock detection for feature loc",
+      "group": "Localization",
+      "type": "bool",
+      "value": true
+    },
+    "FTUseOdom": {
+      "advanced": false,
+      "defaultValue": true,
+      "desc": "weather use odom for feature loc",
+      "group": "Localization",
+      "type": "bool",
+      "value": true
+    },
+    "FTValidRange": {
+      "advanced": false,
+      "defaultValue": 20,
+      "desc": "valid range of feature loc",
+      "group": "Localization",
+      "maxValue": 200,
+      "minValue": 10,
+      "type": "double",
+      "value": 20
+    },
+    "FeatureLocEnable": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "feature loc enable",
+      "group": "Localization",
+      "type": "bool",
+      "value": false
+    },
+    "FeatureMapUpdateEnable": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "feature map update enable",
+      "group": "Localization",
+      "type": "bool",
+      "value": false
+    },
+    "NDTResolution": {
+      "advanced": false,
+      "defaultValue": 1.5,
+      "desc": "NDT Resolution",
+      "group": "Localization",
+      "maxValue": 10,
+      "minValue": 0.5,
+      "type": "double",
+      "value": 1.5
+    },
+    "PFScoreForUpdate": {
+      "advanced": false,
+      "defaultValue": 0.6,
+      "desc": "particle filter confidence to feature map update",
+      "group": "Localization",
+      "maxValue": 0.9,
+      "minValue": 0.4,
+      "type": "double",
+      "value": 0.6
+    },
+    "PatLogSkip": {
+      "advanced": false,
+      "defaultValue": 10,
+      "desc": "Pat Log Skip",
+      "group": "Localization",
+      "maxValue": 40,
+      "minValue": 1,
+      "type": "int32",
+      "value": 10
+    },
+    "RTKWeight": {
+      "advanced": false,
+      "defaultValue": 0.05,
+      "desc": "rtk particles weight",
+      "group": "Localization",
+      "maxValue": 1,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.05
+    },
+    "RecordAllLocLaser": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "whether to record all laser data for loc",
+      "group": "Localization",
+      "type": "bool",
+      "value": false
+    },
+    "ReflectorRSSI": {
+      "advanced": true,
+      "defaultValue": 200,
+      "desc": "The rssi threshold of detecting reflector",
+      "group": "Localization",
+      "maxValue": 255,
+      "minValue": 1,
+      "type": "double",
+      "value": 200
+    },
+    "SkidCorrectionEnable": {
+      "advanced": false,
+      "defaultValue": true,
+      "desc": "enable skid correction",
+      "group": "Localization",
+      "type": "bool",
+      "value": true
+    },
+    "TagErrorDistance": {
+      "advanced": true,
+      "defaultValue": 2,
+      "desc": "distance cannot see the tag report error",
+      "group": "Localization",
+      "maxValue": 10,
+      "minValue": 0,
+      "type": "double",
+      "value": 2
+    },
+    "TagWaringDistance": {
+      "advanced": true,
+      "defaultValue": 1.5,
+      "desc": "distance cannot see the tag report warning",
+      "group": "Localization",
+      "maxValue": 10,
+      "minValue": 0,
+      "type": "double",
+      "value": 1.5
+    },
+    "Type": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "The type of reflector: Type = 0--circle,Type = 1--plane",
+      "group": "Localization",
+      "maxValue": 1,
+      "minValue": 0,
+      "type": "int32",
+      "value": 1
+    },
+    "UseOpenCLWithPF": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "whether to Use OpenCL with PF",
+      "group": "Localization",
+      "type": "bool",
+      "value": false
+    },
+    "UseOpenCLWithSLAM": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "whether to Use OpenCL with SLAM",
+      "group": "Localization",
+      "type": "bool",
+      "value": false
+    },
+    "UsePFOptimize": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "whether to use particle filter optimization",
+      "group": "Localization",
+      "type": "bool",
+      "value": true
+    },
+    "enable_inter_loc": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "open interpolate localization",
+      "group": "Localization",
+      "type": "bool",
+      "value": false
+    },
+    "enable_point_to_plane_reloc": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "enable point to plane reloc",
+      "group": "Localization",
+      "type": "bool",
+      "value": false
+    },
+    "estimate_laser_yaw_bias": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "estimate laser yaw bias",
+      "group": "Localization",
+      "type": "bool",
+      "value": false
+    },
+    "locInTag": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "automatic localization in Tag",
+      "group": "Localization",
+      "type": "bool",
+      "value": true
+    },
+    "pose_additional_delay_step": {
+      "advanced": true,
+      "defaultValue": 0,
+      "desc": "time delay step",
+      "group": "Localization",
+      "maxValue": 9,
+      "minValue": 0,
+      "type": "int32",
+      "value": 0
+    },
+    "useOpticalMotion": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Use optical motion track localization",
+      "group": "Localization",
+      "type": "bool",
+      "value": false
+    },
+    "useRTKLocalization": {
+      "advanced": false,
+      "defaultValue": true,
+      "desc": "use RTK Localization",
+      "group": "Localization",
+      "type": "bool",
+      "value": true
+    },
+    "useThirdPartyLoc": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "Using third-party location positioning data",
+      "group": "Localization",
+      "type": "bool",
+      "value": false
+    }
+  },
+  "MagneticSensor": {
+    "magneticDebugEn": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "debug for magnetic",
+      "group": "Chassis",
+      "type": "bool",
+      "value": false
+    },
+    "magneticLogFreq": {
+      "advanced": true,
+      "defaultValue": 10,
+      "desc": "magnetic log freq",
+      "group": "Chassis",
+      "maxValue": 50,
+      "minValue": 1,
+      "type": "int32",
+      "value": 10
+    }
+  },
+  "MailSender": {
+    "EmailSendInterval": {
+      "advanced": false,
+      "defaultValue": 60,
+      "desc": "Minimum send email interval for each error code",
+      "group": "Other",
+      "maxValue": 4294967295,
+      "minValue": 0,
+      "type": "uint32",
+      "value": 60
+    },
+    "SmsSendInterval": {
+      "advanced": false,
+      "defaultValue": 60,
+      "desc": "Minimum send sms message interval for each error code",
+      "group": "Other",
+      "maxValue": 4294967295,
+      "minValue": 0,
+      "type": "uint32",
+      "value": 60
+    }
+  },
+  "MoveFactory": {
+    "3DCameraHole": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Whether the navigation uses a 3D camera to detect potholes",
+      "group": "Safety",
+      "type": "bool",
+      "value": false
+    },
+    "AutoSpinToZero": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "Automatically reset to zero when the non-spin-up tray is lifted",
+      "group": "Differential",
+      "type": "bool",
+      "value": true
+    },
+    "AutoSpinToZeroInUnload": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "Automatically reset to zero when the non-spin-up tray is not lifted",
+      "group": "Differential",
+      "type": "bool",
+      "value": true
+    },
+    "AutoStopJerk": {
+      "advanced": true,
+      "defaultValue": 2,
+      "desc": "Jerk in auto mode while stopping(m/s^3)",
+      "group": "Safety",
+      "maxValue": 100,
+      "minValue": 0.01,
+      "type": "double",
+      "value": 2
+    },
+    "BackBasedOnRecPath": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "Return using recognized path",
+      "group": "Navigation",
+      "type": "bool",
+      "value": true
+    },
+    "BendOffDistance": {
+      "advanced": true,
+      "defaultValue": 0.02,
+      "desc": "Estimated turning offset distance (m)",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 0.02
+    },
+    "BiSteer_maxQx": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "The x value of the omnidirectional car LQR, the larger the follow-up effect, the better the jitter",
+      "group": "Omni",
+      "maxValue": 100,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 1
+    },
+    "BiSteer_vKd": {
+      "advanced": true,
+      "defaultValue": 0.1,
+      "desc": "VKd value of omnidirectional vehicle PID",
+      "group": "Omni",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.1
+    },
+    "BiSteer_vKp": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "VKp value of omnidirectional vehicle PID",
+      "group": "Omni",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "double",
+      "value": 1
+    },
+    "BiSteer_wKd": {
+      "advanced": true,
+      "defaultValue": 0.1,
+      "desc": "wKd value of omnidirectional vehicle PID",
+      "group": "Omni",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.1
+    },
+    "BiSteer_wKp": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "WKp value of omnidirectional vehicle PID",
+      "group": "Omni",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "double",
+      "value": 1
+    },
+    "BlockToAlarm": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "Whether to alarm after being blocked",
+      "group": "Safety",
+      "type": "bool",
+      "value": true
+    },
+    "BlockToAlarmTime": {
+      "advanced": true,
+      "defaultValue": 2,
+      "desc": "Alarm(s) will start after being blocked (s)",
+      "group": "Safety",
+      "maxValue": 6000,
+      "minValue": 0,
+      "type": "double",
+      "value": 2
+    },
+    "BlockToAvoidTime": {
+      "advanced": true,
+      "defaultValue": 2,
+      "desc": "Obstacle bypass: a few seconds after being blocked, start bypassing(s)",
+      "group": "Navigation",
+      "maxValue": 6000,
+      "minValue": 0,
+      "type": "int32",
+      "value": 2
+    },
+    "BlockToMoveTime": {
+      "advanced": true,
+      "defaultValue": 1.5,
+      "desc": "Extra stay time after the end of the block (s)",
+      "group": "Safety",
+      "maxValue": 10,
+      "minValue": 0,
+      "type": "double",
+      "value": 1.5
+    },
+    "BlockToRecoveryTime": {
+      "advanced": true,
+      "defaultValue": 5,
+      "desc": "Recovery(s) will start after being blocked (s)",
+      "group": "Safety",
+      "maxValue": 6000,
+      "minValue": 0,
+      "type": "double",
+      "value": 5
+    },
+    "CalibrationNoAcc": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Acceleration is not considered for translational rotation",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "CeMaxSpeed": {
+      "advanced": true,
+      "defaultValue": 0.3,
+      "desc": "The maximum speed of the CE vehicle(m/s)",
+      "group": "Navigation",
+      "maxValue": 5,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 0.5
+    },
+    "CheckSelfRotateError": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "In-situ rotation report error check of steering wheel",
+      "group": "Navigation",
+      "type": "bool",
+      "value": true
+    },
+    "CollisionPointNum": {
+      "advanced": true,
+      "defaultValue": 2,
+      "desc": "Collision Points Threshold Number",
+      "group": "Navigation",
+      "maxValue": 1000,
+      "minValue": 1,
+      "type": "int32",
+      "value": 2
+    },
+    "CollisionPointNumCamera": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "DepthCamera Collision Points Threshold Number",
+      "group": "Navigation",
+      "maxValue": 1000,
+      "minValue": 1,
+      "type": "int32",
+      "value": 1
+    },
+    "ControlTime": {
+      "advanced": true,
+      "defaultValue": 0.06,
+      "desc": "Control Time (s)",
+      "group": "Navigation",
+      "maxValue": 10000,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 0.06
+    },
+    "CurrentPointDist": {
+      "advanced": true,
+      "defaultValue": 0.3,
+      "desc": "The nearest station distance threshold (m)",
+      "group": "Navigation",
+      "maxValue": 2,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 0.3
+    },
+    "D_MagstripeDebug": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Magnetic stripe debug output",
+      "group": "Differential",
+      "type": "bool",
+      "value": false
+    },
+    "D_MagstripeMaxValid": {
+      "advanced": true,
+      "defaultValue": 6,
+      "desc": "Number read by the magnetic stripe sensor",
+      "group": "Differential",
+      "maxValue": 100,
+      "minValue": 1,
+      "type": "int32",
+      "value": 6
+    },
+    "D_TrackingAvoid": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Follow to open obstacle avoidance",
+      "group": "Differential",
+      "type": "bool",
+      "value": false
+    },
+    "D_TrackingReachAngle": {
+      "advanced": true,
+      "defaultValue": 5,
+      "desc": "The angle difference with the follower (degrees)",
+      "group": "Differential",
+      "maxValue": 90,
+      "minValue": 0,
+      "type": "double",
+      "value": 5
+    },
+    "D_TrackingReachDist": {
+      "advanced": true,
+      "defaultValue": 0.2,
+      "desc": "The distance to the follower (meters)",
+      "group": "Differential",
+      "maxValue": 10,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.2
+    },
+    "D_maxQ": {
+      "advanced": true,
+      "defaultValue": 10,
+      "desc": "The Q value of the differential car LQR, the larger the follow-up effect, the better the jitter",
+      "group": "Differential",
+      "maxValue": 100,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 10
+    },
+    "DecObsExpansion": {
+      "advanced": false,
+      "defaultValue": 0.2,
+      "desc": "Robot expansion width for deceleration collision prediction (m)",
+      "group": "Safety",
+      "maxValue": 1,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.2
+    },
+    "DelayTime": {
+      "advanced": true,
+      "defaultValue": 0.4,
+      "desc": "Bending Delay(s)",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.4
+    },
+    "DualDiff_steerKd": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "steer Kd value of differential module car",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "double",
+      "value": 1
+    },
+    "DualDiff_steerKp": {
+      "advanced": true,
+      "defaultValue": 10,
+      "desc": "Steer Kp value of differential module car",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "double",
+      "value": 10
+    },
+    "DualDiff_vKd": {
+      "advanced": true,
+      "defaultValue": 0.1,
+      "desc": "VKd value of two-wheel differential module car",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.1
+    },
+    "DualDiff_vKp": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "The vKp value of the two-wheel differential module car",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "double",
+      "value": 1
+    },
+    "DualDiff_wKd": {
+      "advanced": true,
+      "defaultValue": 0.1,
+      "desc": "wKd value of two-wheel differential module car",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.1
+    },
+    "DualDiff_wKp": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "The wKp value of the two-wheel differential module car",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "double",
+      "value": 1
+    },
+    "DynamicObsDist": {
+      "advanced": true,
+      "defaultValue": 0.1,
+      "desc": "Distance threshold for judging whether it is a dynamic obstacle",
+      "group": "Safety",
+      "maxValue": 1,
+      "minValue": 0.01,
+      "type": "double",
+      "value": 0.1
+    },
+    "EmergencyStopDist": {
+      "advanced": true,
+      "defaultValue": 0,
+      "desc": "Emergency Stop Distance (m)",
+      "group": "Safety",
+      "maxValue": 10,
+      "minValue": 0,
+      "type": "double",
+      "value": 0
+    },
+    "EmergencyTime": {
+      "advanced": true,
+      "defaultValue": 0.5,
+      "desc": "Emergency Time (s)",
+      "group": "Safety",
+      "maxValue": 10,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 0.5
+    },
+    "ErrorReachAngleThred": {
+      "advanced": true,
+      "defaultValue": 6,
+      "desc": "To-point accuracy alarm angle threshold (°)",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": 1,
+      "type": "double",
+      "value": 6
+    },
+    "ErrorReachDistThred": {
+      "advanced": true,
+      "defaultValue": 0.3,
+      "desc": "To-point accuracy alarm distance threshold (m)",
+      "group": "Navigation",
+      "maxValue": 0.5,
+      "minValue": 0.01,
+      "type": "double",
+      "value": 0.3
+    },
+    "FG_AwayObsDist": {
+      "advanced": true,
+      "defaultValue": 0.1,
+      "desc": "Away obstacle distance in Free navigation",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.1
+    },
+    "FG_FitPath": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "Free Navigation Whether Use Fit",
+      "group": "Navigation",
+      "type": "bool",
+      "value": true
+    },
+    "FG_LocalAstarTime": {
+      "advanced": true,
+      "defaultValue": 100,
+      "desc": "Free navigation local search path maximum time (ms)",
+      "group": "Navigation",
+      "maxValue": 200,
+      "minValue": 10,
+      "type": "double",
+      "value": 100
+    },
+    "FG_LocalPlanAheadDist": {
+      "advanced": true,
+      "defaultValue": 5,
+      "desc": "Free navigation local planning lead distance (m)",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": 1,
+      "type": "double",
+      "value": 5
+    },
+    "FG_LocalPlanStartDist": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "Free navigation loacl planning start distance (m)",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": 0,
+      "type": "double",
+      "value": 1
+    },
+    "FG_LocalTotalTime": {
+      "advanced": true,
+      "defaultValue": 200,
+      "desc": "Free navigation local planning maximum time (ms)",
+      "group": "Navigation",
+      "maxValue": 300,
+      "minValue": 10,
+      "type": "double",
+      "value": 200
+    },
+    "FG_MaxRotAcc": {
+      "advanced": true,
+      "defaultValue": 90,
+      "desc": "Free navigation max rotation speed (°)",
+      "group": "Navigation",
+      "maxValue": 360,
+      "minValue": -1,
+      "type": "double",
+      "value": 90
+    },
+    "FG_MinStep": {
+      "advanced": true,
+      "defaultValue": 0.2,
+      "desc": "Free navigation min step",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 0.2
+    },
+    "FG_ObsDistPlus": {
+      "advanced": true,
+      "defaultValue": 3,
+      "desc": "Extra predicted distance of free navigation obstacles on ObsStopDist (m)",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": 0,
+      "type": "double",
+      "value": 3
+    },
+    "FG_PathPlanFailTime": {
+      "advanced": true,
+      "defaultValue": -1,
+      "desc": "Maximum duration of failure of free navigation planning (s)",
+      "group": "Navigation",
+      "maxValue": 1000,
+      "minValue": -1,
+      "type": "double",
+      "value": -1
+    },
+    "FG_PathReplaceQualityThreshold": {
+      "advanced": true,
+      "defaultValue": 0.7,
+      "desc": "Free navigation path replace quality threshold",
+      "group": "Navigation",
+      "maxValue": 1,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.7
+    },
+    "FG_PlanStep": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "Free navigation planning step",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0.02,
+      "type": "double",
+      "value": 1
+    },
+    "FG_RealTimeAvoid": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "Whether to bypass in real time",
+      "group": "Navigation",
+      "type": "bool",
+      "value": true
+    },
+    "FG_RecoveryEnable": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "Whether enable recovery",
+      "group": "Navigation",
+      "type": "bool",
+      "value": true
+    },
+    "FG_ReplanMaxCurve": {
+      "advanced": true,
+      "defaultValue": 1.5,
+      "desc": "Free navigation path replan curvature threshold(m-1)",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": 0,
+      "type": "double",
+      "value": 1.5
+    },
+    "FG_ReplanMinObsDist": {
+      "advanced": true,
+      "defaultValue": 3,
+      "desc": "Free navigation path replan obstacle distance threshold",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": 0,
+      "type": "double",
+      "value": 3
+    },
+    "FG_ReplanTimeInterval": {
+      "advanced": true,
+      "defaultValue": 3000,
+      "desc": "Free navigation path replan time threshold(ms)",
+      "group": "Navigation",
+      "maxValue": 100000,
+      "minValue": 1000,
+      "type": "double",
+      "value": 3000
+    },
+    "FG_SmoothAO": {
+      "advanced": true,
+      "defaultValue": 10,
+      "desc": "Free navigation smooth curve parameter",
+      "group": "Navigation",
+      "maxValue": 1000000,
+      "minValue": 0,
+      "type": "double",
+      "value": 10
+    },
+    "FG_SmoothAP": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "Free navigation smooth curve parameter",
+      "group": "Navigation",
+      "maxValue": 1000000,
+      "minValue": 0,
+      "type": "double",
+      "value": 1
+    },
+    "FG_SmoothNum": {
+      "advanced": true,
+      "defaultValue": 200,
+      "desc": "Free navigation smooth curve iteration times",
+      "group": "Navigation",
+      "maxValue": 1000000,
+      "minValue": 0,
+      "type": "int32",
+      "value": 200
+    },
+    "FG_SmoothRate": {
+      "advanced": true,
+      "defaultValue": 0.2,
+      "desc": "Free navigation smooth curve parameter",
+      "group": "Navigation",
+      "maxValue": 1,
+      "minValue": 0.0001,
+      "type": "double",
+      "value": 0.2
+    },
+    "FG_TargetObsReachDist": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "Free navigation reach distance when robot blocked for target has obstacle",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": 0,
+      "type": "double",
+      "value": 1
+    },
+    "ForbiddenDirectGo": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Whether to prohibit lines with the same starting point and ending point",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "ForkDiDist": {
+      "advanced": false,
+      "defaultValue": 0.1,
+      "desc": "Fork Di effective distance (m), effective at any position less than 0",
+      "group": "Navigation",
+      "maxValue": 1,
+      "minValue": -1,
+      "type": "double",
+      "value": 0.1
+    },
+    "Fork_LoadHeight": {
+      "advanced": true,
+      "defaultValue": -1,
+      "desc": "Override recognition height, less than 0 do not enable (m)",
+      "group": "Steer",
+      "maxValue": 10,
+      "minValue": -10,
+      "type": "double",
+      "value": 0
+    },
+    "Fork_LoadInitHeight": {
+      "advanced": true,
+      "defaultValue": 0.1,
+      "desc": "Forklift recognition, the height of the fork (m)",
+      "group": "Steer",
+      "maxValue": 2,
+      "minValue": -1,
+      "type": "double",
+      "value": 0
+    },
+    "Fork_UnloadInitHeight": {
+      "advanced": true,
+      "defaultValue": 1.5,
+      "desc": "The height of the fork (m)",
+      "group": "Steer",
+      "maxValue": 2,
+      "minValue": -1,
+      "type": "double",
+      "value": 1.5
+    },
+    "Fork_UpHeight": {
+      "advanced": true,
+      "defaultValue": 0.3,
+      "desc": "After the forklift picks up the goods, the extra lift height of the fork (m)",
+      "group": "Steer",
+      "maxValue": 1,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.3
+    },
+    "FrictionalFactor": {
+      "advanced": false,
+      "defaultValue": 0.02,
+      "desc": "Frictional factor",
+      "group": "Navigation",
+      "maxValue": 1,
+      "minValue": 1e-05,
+      "type": "double",
+      "value": 0.02
+    },
+    "GoAngle": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "Go Angle(°)",
+      "group": "Navigation",
+      "maxValue": 180,
+      "minValue": 0,
+      "type": "double",
+      "value": 1
+    },
+    "JerkAcc": {
+      "advanced": false,
+      "defaultValue": 0.02,
+      "desc": "Max acceleration Jerk(m/s^3)",
+      "group": "Navigation",
+      "maxValue": 1000,
+      "minValue": 0.0001,
+      "type": "double",
+      "value": 0.02
+    },
+    "JerkRot": {
+      "advanced": false,
+      "defaultValue": 4,
+      "desc": "Maximum rotational acceleration Jerk(°/s^3)",
+      "group": "Navigation",
+      "maxValue": 3600,
+      "minValue": 0.0001,
+      "type": "double",
+      "value": 4
+    },
+    "LaserShelfFilter": {
+      "advanced": true,
+      "defaultValue": 3,
+      "desc": "Shelf laser noise deduction angle (deg)",
+      "group": "Navigation",
+      "maxValue": 90,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 3
+    },
+    "LoadAgainError": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "ignore Jack Load Error",
+      "group": "Navigation",
+      "type": "bool",
+      "value": true
+    },
+    "Load_DecObsExpansion": {
+      "advanced": false,
+      "defaultValue": 0.25,
+      "desc": "Load deceleration collision prediction robot expansion width (m)",
+      "group": "Safety",
+      "maxValue": 0.5,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.25
+    },
+    "Load_MaxAcc": {
+      "advanced": false,
+      "defaultValue": 0.5,
+      "desc": "Load maximum acceleration (m/s^2)",
+      "group": "Navigation",
+      "maxValue": 5,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 0.5
+    },
+    "Load_MaxBackSpeed": {
+      "advanced": false,
+      "defaultValue": 0.3,
+      "desc": "Load maximum reverse speed (m/s)",
+      "group": "Navigation",
+      "maxValue": 2.4842174585945647,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 0.3
+    },
+    "Load_MaxDec": {
+      "advanced": false,
+      "defaultValue": 0.15,
+      "desc": "Load maximum deceleration (m/s^2)",
+      "group": "Navigation",
+      "maxValue": 5,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 0.15
+    },
+    "Load_MaxRot": {
+      "advanced": false,
+      "defaultValue": 60,
+      "desc": "Load maximum rotation speed (°/s)",
+      "group": "Navigation",
+      "maxValue": 108.09687386599987,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 60
+    },
+    "Load_MaxRotAcc": {
+      "advanced": false,
+      "defaultValue": 15,
+      "desc": "Load maximum rotation acceleration (°/s^2)",
+      "group": "Navigation",
+      "maxValue": 360,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 15
+    },
+    "Load_MaxRotDec": {
+      "advanced": false,
+      "defaultValue": 15,
+      "desc": "Load maximum rotation speed (°/s^2)",
+      "group": "Navigation",
+      "maxValue": 360,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 15
+    },
+    "Load_MaxSpeed": {
+      "advanced": false,
+      "defaultValue": 0.5,
+      "desc": "Load maximum speed (m/s)",
+      "group": "Navigation",
+      "maxValue": 2.4842174585945647,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 2
+    },
+    "Load_ObsDecDist": {
+      "advanced": false,
+      "defaultValue": 5,
+      "desc": "Load deceleration prediction distance (m)",
+      "group": "Safety",
+      "maxValue": 10,
+      "minValue": 0,
+      "type": "double",
+      "value": 5
+    },
+    "Load_ObsExpansion": {
+      "advanced": false,
+      "defaultValue": 0.15,
+      "desc": "Load collision prediction robot expansion width (m)",
+      "group": "Safety",
+      "maxValue": 0.5,
+      "minValue": -0.5,
+      "type": "double",
+      "value": 0.15
+    },
+    "Load_ObsStopDist": {
+      "advanced": false,
+      "defaultValue": 1,
+      "desc": "Load collision prediction distance (m)",
+      "group": "Safety",
+      "maxValue": 10,
+      "minValue": 0,
+      "type": "double",
+      "value": 1
+    },
+    "Load_StopAcc": {
+      "advanced": true,
+      "defaultValue": 2,
+      "desc": "Load emergency stop deceleration (m/s^2), if it is less than 0 then emergency stop",
+      "group": "Safety",
+      "maxValue": 10000,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 2
+    },
+    "Load_StopRotAcc": {
+      "advanced": true,
+      "defaultValue": 150,
+      "desc": "Load emergency stop deceleration speed (°/s^2), less than 0 then emergency stop",
+      "group": "Safety",
+      "maxValue": 1000,
+      "minValue": -1,
+      "type": "double",
+      "value": 150
+    },
+    "MPCMode": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "Use mpc mode to follow",
+      "group": "Navigation",
+      "type": "bool",
+      "value": true
+    },
+    "MPC_DELAY": {
+      "advanced": false,
+      "defaultValue": 100,
+      "desc": "MPC_DELAY",
+      "group": "Navigation",
+      "maxValue": 1000,
+      "minValue": 0,
+      "type": "double",
+      "value": 300
+    },
+    "MPC_PENA": {
+      "advanced": false,
+      "defaultValue": 30,
+      "desc": "MPC_PENA",
+      "group": "Navigation",
+      "maxValue": 10000,
+      "minValue": 1,
+      "type": "double",
+      "value": 80
+    },
+    "MPC_PENA_DIST": {
+      "advanced": false,
+      "defaultValue": 0.5,
+      "desc": "MPC_PENA_DIST",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": -1,
+      "type": "double",
+      "value": 0.5
+    },
+    "MPC_Q": {
+      "advanced": false,
+      "defaultValue": 1,
+      "desc": "MPC_Q",
+      "group": "Navigation",
+      "maxValue": 1000,
+      "minValue": 0,
+      "type": "double",
+      "value": 1
+    },
+    "MPC_Q_ANGLE": {
+      "advanced": false,
+      "defaultValue": 0.2,
+      "desc": "MPC_Q_ANGLE",
+      "group": "Navigation",
+      "maxValue": 1000,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.2
+    },
+    "MPC_Q_ANGLE_2": {
+      "advanced": false,
+      "defaultValue": 0.4,
+      "desc": "MPC_Q_ANGLE",
+      "group": "Navigation",
+      "maxValue": 1000,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.4
+    },
+    "ManualBlock": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "Whether to enable the stop function in manual mode",
+      "group": "Safety",
+      "type": "bool",
+      "value": true
+    },
+    "ManualSlowDownDist": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "Slowdown distance in manual mode (m)",
+      "group": "Safety",
+      "maxValue": 3,
+      "minValue": 0.01,
+      "type": "double",
+      "value": 1
+    },
+    "ManualStopAngle": {
+      "advanced": true,
+      "defaultValue": 20,
+      "desc": "Stop angle threshold in manual mode (°)",
+      "group": "Safety",
+      "maxValue": 180,
+      "minValue": 0.01,
+      "type": "double",
+      "value": 20
+    },
+    "ManualStopDist": {
+      "advanced": true,
+      "defaultValue": 0.3,
+      "desc": "Stop distance in manual mode (m)",
+      "group": "Safety",
+      "maxValue": 1,
+      "minValue": 0.01,
+      "type": "double",
+      "value": 0.3
+    },
+    "ManualStopJerk": {
+      "advanced": true,
+      "defaultValue": 0.5,
+      "desc": "Jerk in manual mode while stopping(m/s^3)",
+      "group": "Safety",
+      "maxValue": 100,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 0.5
+    },
+    "ManualStopJerkAngle": {
+      "advanced": true,
+      "defaultValue": 30,
+      "desc": "Angle jerk in manual mode while stopping(°/s^3)",
+      "group": "Safety",
+      "maxValue": 3600,
+      "minValue": 0.01,
+      "type": "double",
+      "value": 30
+    },
+    "MaxAcc": {
+      "advanced": false,
+      "defaultValue": 0.5,
+      "desc": "Max acceleration (m/s^2)",
+      "group": "Navigation",
+      "maxValue": 5,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 0.5
+    },
+    "MaxBackSpeed": {
+      "advanced": false,
+      "defaultValue": 0.3,
+      "desc": "Maximum reverse speed (m/s)",
+      "group": "Navigation",
+      "maxValue": 2.4842174585945647,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 0.3
+    },
+    "MaxDec": {
+      "advanced": false,
+      "defaultValue": 0.15,
+      "desc": "Maximum Deceleration (m/s^2)",
+      "group": "Navigation",
+      "maxValue": 5,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 0.15
+    },
+    "MaxManualAcc": {
+      "advanced": false,
+      "defaultValue": 0.5,
+      "desc": "Maximum manual acceleration (m/s^2)",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 0.5
+    },
+    "MaxManualDec": {
+      "advanced": false,
+      "defaultValue": 3,
+      "desc": "Max manual deceleration (m/s^2)",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 3
+    },
+    "MaxManualRotAcc": {
+      "advanced": false,
+      "defaultValue": 30,
+      "desc": "Max manual rotation acceleration (°/s^2)",
+      "group": "Navigation",
+      "maxValue": 3600,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 30
+    },
+    "MaxManualRotDec": {
+      "advanced": false,
+      "defaultValue": 360,
+      "desc": "Maximum manual rotation speed (°/s^2)",
+      "group": "Navigation",
+      "maxValue": 3600,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 360
+    },
+    "MaxRecTimes": {
+      "advanced": true,
+      "defaultValue": -1,
+      "desc": "Maximum number of recognitions, -1 means always recognizing",
+      "group": "Navigation",
+      "maxValue": 1000,
+      "minValue": -1,
+      "type": "int32",
+      "value": -1
+    },
+    "MaxRot": {
+      "advanced": false,
+      "defaultValue": 60,
+      "desc": "Maximum rotation speed (°/s)",
+      "group": "Navigation",
+      "maxValue": 108.09687386599987,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 60
+    },
+    "MaxRotAcc": {
+      "advanced": false,
+      "defaultValue": 30,
+      "desc": "Maximum rotation acceleration (°/s^2)",
+      "group": "Navigation",
+      "maxValue": 360,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 30
+    },
+    "MaxRotDec": {
+      "advanced": false,
+      "defaultValue": 30,
+      "desc": "Maximum rotation speed (°/s^2)",
+      "group": "Navigation",
+      "maxValue": 360,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 30
+    },
+    "MaxSpeed": {
+      "advanced": false,
+      "defaultValue": 0.5,
+      "desc": "Max Speed (m/s)",
+      "group": "Navigation",
+      "maxValue": 2.4842174585945647,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 2
+    },
+    "MaxSpinRot": {
+      "advanced": false,
+      "defaultValue": 30,
+      "desc": "Maximum tray rotation angular velocity (°/s)",
+      "group": "Navigation",
+      "maxValue": 360,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 30
+    },
+    "MaxSpinRotAcc": {
+      "advanced": false,
+      "defaultValue": 30,
+      "desc": "Maximum tray rotation angular acceleration (°/s^2)",
+      "group": "Navigation",
+      "maxValue": 360,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 30
+    },
+    "MaxSpinRotDec": {
+      "advanced": false,
+      "defaultValue": 30,
+      "desc": "Maximum pallet rotation angle deceleration (°/s^2)",
+      "group": "Navigation",
+      "maxValue": 36,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 30
+    },
+    "MinSpinAngle": {
+      "advanced": true,
+      "defaultValue": 0.1,
+      "desc": "Minimum Turntable Speed",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 0.1
+    },
+    "MinSteerAngle": {
+      "advanced": false,
+      "defaultValue": 0.5,
+      "desc": "Minimum rudder angle resolution (degrees)",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 0.5
+    },
+    "MotionPlanAheadDist": {
+      "advanced": true,
+      "defaultValue": 2,
+      "desc": "Motion Planning Parameters",
+      "group": "Navigation",
+      "maxValue": 1000,
+      "minValue": 0,
+      "type": "double",
+      "value": 2
+    },
+    "ObsDecDist": {
+      "advanced": false,
+      "defaultValue": 3,
+      "desc": "Deceleration prediction distance (m)",
+      "group": "Safety",
+      "maxValue": 10,
+      "minValue": 0,
+      "type": "double",
+      "value": 3
+    },
+    "ObsDecSpeed": {
+      "advanced": true,
+      "defaultValue": 0.2,
+      "desc": "Deceleration Speed ​​(m/s)",
+      "group": "Safety",
+      "maxValue": 2,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.2
+    },
+    "ObsExpansion": {
+      "advanced": false,
+      "defaultValue": 0.1,
+      "desc": "Collision prediction robot expansion width (m)",
+      "group": "Safety",
+      "maxValue": 0.5,
+      "minValue": -0.5,
+      "type": "double",
+      "value": 0.1
+    },
+    "ObsStopDist": {
+      "advanced": false,
+      "defaultValue": 1,
+      "desc": "Collision prediction distance (m)",
+      "group": "Safety",
+      "maxValue": 10,
+      "minValue": 0,
+      "type": "double",
+      "value": 0
+    },
+    "Omni_maxQt": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "The theta value of the LQR of an omnidirectional car, the larger the follow-up effect, the better the jitter",
+      "group": "Omni",
+      "maxValue": 100,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 1
+    },
+    "Omni_maxQx": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "The x value of the omnidirectional car LQR, the larger the following effect, the better, but the jitter will also increase",
+      "group": "Omni",
+      "maxValue": 100,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 1
+    },
+    "Omni_maxQy": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "The y value of the omnidirectional car LQR, the larger the follow-up effect, the better the jitter",
+      "group": "Omni",
+      "maxValue": 100,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 1
+    },
+    "OpenCeMaxSpeed": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "Whether or not the maximum speed limit is enabled on the CE vehicle",
+      "group": "Navigation",
+      "type": "bool",
+      "value": true
+    },
+    "OpenSpeedChargeTime": {
+      "advanced": false,
+      "defaultValue": 2,
+      "desc": "Charge leaving open loop linear motion time(s)",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 2
+    },
+    "OutPathDist": {
+      "advanced": true,
+      "defaultValue": 0.3,
+      "desc": "The maximum distance the robot deviates from the line (m)",
+      "group": "Safety",
+      "maxValue": 10,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 0.3
+    },
+    "OutPathError": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "Whether the robot alarms outside the line",
+      "group": "Safety",
+      "type": "bool",
+      "value": true
+    },
+    "PGVAdjustMaxTheta": {
+      "advanced": true,
+      "defaultValue": 10,
+      "desc": "PGV adjust maximum angle",
+      "group": "Navigation",
+      "maxValue": 90,
+      "minValue": 1,
+      "type": "double",
+      "value": 10
+    },
+    "PGVError": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "PGV did not see whether the QR code reported an error",
+      "group": "Navigation",
+      "type": "bool",
+      "value": true
+    },
+    "PGVFilterThreshold": {
+      "advanced": true,
+      "defaultValue": 2,
+      "desc": "PGV filter parameter threshold",
+      "group": "Navigation",
+      "maxValue": 1000,
+      "minValue": 0,
+      "type": "int32",
+      "value": 2
+    },
+    "PGVJerkAcc": {
+      "advanced": false,
+      "defaultValue": 0.05,
+      "desc": "Max acceleration Jerk(m/s^3) in PGV Adjust",
+      "group": "Navigation",
+      "maxValue": 1000,
+      "minValue": 0.0001,
+      "type": "double",
+      "value": 0.05
+    },
+    "PGVJerkRot": {
+      "advanced": false,
+      "defaultValue": 1,
+      "desc": "Maximum rotational acceleration Jerk(°/s^3) in PGV Adjust",
+      "group": "Navigation",
+      "maxValue": 3600,
+      "minValue": 0.0001,
+      "type": "double",
+      "value": 1
+    },
+    "PGV_AdjustMaxTime": {
+      "advanced": true,
+      "defaultValue": 0,
+      "desc": "PGV max adjust time",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "int32",
+      "value": 0
+    },
+    "PGV_AverageTime": {
+      "advanced": true,
+      "defaultValue": 2.5,
+      "desc": "PGV Average Data Time",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "double",
+      "value": 2.5
+    },
+    "PGV_ReachAngle": {
+      "advanced": true,
+      "defaultValue": 0.1,
+      "desc": "PGV Reach Angle (degree)",
+      "group": "Navigation",
+      "maxValue": 180,
+      "minValue": 1e-05,
+      "type": "double",
+      "value": 0.1
+    },
+    "PGV_ReachAngleTor": {
+      "advanced": true,
+      "defaultValue": 0.0001,
+      "desc": "PGV Reach Angle calibration tolerance (degree)",
+      "group": "Navigation",
+      "maxValue": 180,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.0001
+    },
+    "PGV_ReachDist": {
+      "advanced": true,
+      "defaultValue": 0.001,
+      "desc": "PGV Reach Dist (m)",
+      "group": "Navigation",
+      "maxValue": 0.1,
+      "minValue": 1e-06,
+      "type": "double",
+      "value": 0.001
+    },
+    "PGV_ReachDistTor": {
+      "advanced": true,
+      "defaultValue": 0.001,
+      "desc": "PGV Reach Dist calibration tolerance (m) ",
+      "group": "Navigation",
+      "maxValue": 0.1,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.001
+    },
+    "PGV_Rot": {
+      "advanced": true,
+      "defaultValue": 10,
+      "desc": "PGV Rot Speed",
+      "group": "Navigation",
+      "maxValue": 180,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 10
+    },
+    "PGV_Speed": {
+      "advanced": true,
+      "defaultValue": 0.5,
+      "desc": "PGV Speed",
+      "group": "Navigation",
+      "maxValue": 1,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 0.5
+    },
+    "PGV_Time": {
+      "advanced": true,
+      "defaultValue": 5,
+      "desc": "PGV Rec Times",
+      "group": "Navigation",
+      "maxValue": 1000000,
+      "minValue": 0,
+      "type": "int32",
+      "value": 5
+    },
+    "PathWidth": {
+      "advanced": true,
+      "defaultValue": 0,
+      "desc": "Global default path width (m), 0 means not considering path width",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": 0,
+      "type": "double",
+      "value": 0
+    },
+    "ReachAngle": {
+      "advanced": true,
+      "defaultValue": 0.5,
+      "desc": "ReachAngle(°)",
+      "group": "Navigation",
+      "maxValue": 50,
+      "minValue": -1,
+      "type": "double",
+      "value": 0.5
+    },
+    "ReachDist": {
+      "advanced": true,
+      "defaultValue": 0.005,
+      "desc": "Distance to point accuracy (m)",
+      "group": "Navigation",
+      "maxValue": 1,
+      "minValue": 1e-06,
+      "type": "double",
+      "value": 0.005
+    },
+    "RecAdjust": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "Adjust orientation before awareness",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "RecBezierCurve": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "Recognize Bezier curve planning",
+      "group": "Navigation",
+      "type": "bool",
+      "value": true
+    },
+    "RecBezierMaxCurve": {
+      "advanced": true,
+      "defaultValue": 0.002,
+      "desc": "Identify the maximum optimized curvature of Bezier curve",
+      "group": "Navigation",
+      "maxValue": 1,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.002
+    },
+    "RecBezierMaxStr": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "Recognize Bezier curve forward distance (m)",
+      "group": "Navigation",
+      "maxValue": 3,
+      "minValue": 0,
+      "type": "double",
+      "value": 1
+    },
+    "RecGoAngle": {
+      "advanced": false,
+      "defaultValue": 0.5,
+      "desc": "Identify the starting angle accuracy of following the path (°)",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 0.5
+    },
+    "RecOdo": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "The identified path uses pure mileage mode (forklift)",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "RecPalletAngleErr": {
+      "advanced": true,
+      "defaultValue": -1,
+      "desc": "Forklift recognition shelf angle maximum deviation (deg)",
+      "group": "Navigation",
+      "maxValue": 360,
+      "minValue": -1,
+      "type": "double",
+      "value": -1
+    },
+    "RecPalletLateralErr": {
+      "advanced": true,
+      "defaultValue": -1,
+      "desc": "Forklift recognition shelf lateral maximum deviation (m)",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": -1,
+      "type": "double",
+      "value": -1
+    },
+    "RecQRCode_AheadDist": {
+      "advanced": false,
+      "defaultValue": 0.8,
+      "desc": "Recognition planning lead distance (m)",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.8
+    },
+    "RecQRCode_BackLength": {
+      "advanced": false,
+      "defaultValue": 0.5,
+      "desc": "Back distance after identification point (m)",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": -10,
+      "type": "double",
+      "value": 0.5
+    },
+    "RecQRCode_MinAheadDist": {
+      "advanced": false,
+      "defaultValue": -1,
+      "desc": "Recognition planning initial minimum lead distance, less than 0 do not enable (m)",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": -1,
+      "type": "double",
+      "value": -1
+    },
+    "RecQRCode_PathSpeed": {
+      "advanced": false,
+      "defaultValue": 0.1,
+      "desc": "Recognize path speed (m/s)",
+      "group": "Navigation",
+      "maxValue": 1.5,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 0.1
+    },
+    "RecRotLoc": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "Laser positioning when rotating in place after recognition",
+      "group": "Navigation",
+      "type": "bool",
+      "value": true
+    },
+    "RecShelf_AheadDist": {
+      "advanced": true,
+      "defaultValue": 0.5,
+      "desc": "Recognition planning lead distance (m)",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.5
+    },
+    "RecShelf_MaxDist": {
+      "advanced": false,
+      "defaultValue": -1,
+      "desc": "The maximum deviation distance between the recognition result and the point position (m)",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": -1,
+      "type": "double",
+      "value": -1
+    },
+    "RecShelf_MinAheadDist": {
+      "advanced": true,
+      "defaultValue": -1,
+      "desc": "Recognition planning initial minimum lead distance, less than 0 do not enable (m)",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": -1,
+      "type": "double",
+      "value": -1
+    },
+    "RecShelf_PathSpeed": {
+      "advanced": true,
+      "defaultValue": 0.1,
+      "desc": "Recognition path speed (m/s)",
+      "group": "Navigation",
+      "maxValue": 1.5,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 0.1
+    },
+    "RecStopTime": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "Waiting time before recognition",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": -1,
+      "type": "double",
+      "value": 1
+    },
+    "RecStrMinAngle": {
+      "advanced": true,
+      "defaultValue": 20,
+      "desc": "Recognize the maximum included angle of a straight line (°)",
+      "group": "Navigation",
+      "maxValue": 90,
+      "minValue": 0,
+      "type": "double",
+      "value": 20
+    },
+    "RecTagAngleErr": {
+      "advanced": true,
+      "defaultValue": -1,
+      "desc": "Forklift recognition tag angle maximum deviation (deg)",
+      "group": "Navigation",
+      "maxValue": 360,
+      "minValue": -1,
+      "type": "double",
+      "value": -1
+    },
+    "RecTagLateralErr": {
+      "advanced": true,
+      "defaultValue": -1,
+      "desc": "Forklift recognition tag lateral maximum deviation (m)",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": -1,
+      "type": "double",
+      "value": -1
+    },
+    "Rec_SlowDownDist": {
+      "advanced": false,
+      "defaultValue": 0.3,
+      "desc": "Recognize the effective distance of the target speed (m), only support fork to pick the pallet",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": -1,
+      "type": "double",
+      "value": 0.3
+    },
+    "Rec_SlowDownSpeed": {
+      "advanced": false,
+      "defaultValue": 0.05,
+      "desc": "The speed to identify the target point (m/s), only supports fork to pick the pallet",
+      "group": "Navigation",
+      "maxValue": 1.5,
+      "minValue": -1,
+      "type": "double",
+      "value": 0.05
+    },
+    "RecoveryGoods": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "recovery goods when reboot agv",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "RecwKp": {
+      "advanced": true,
+      "defaultValue": 5,
+      "desc": "WKp value of line patrol PID in rec",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "double",
+      "value": 5
+    },
+    "RepeatSetDO": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Do not check DO status before setting DO",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "ReshapeDist": {
+      "advanced": true,
+      "defaultValue": 0.1,
+      "desc": "How far away from the line to start re-planning",
+      "group": "Navigation",
+      "maxValue": 1,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.1
+    },
+    "SecondAdjustMaxTime": {
+      "advanced": true,
+      "defaultValue": 3,
+      "desc": "Second max adjust time",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "int32",
+      "value": 3
+    },
+    "SecondReachAngle": {
+      "advanced": true,
+      "defaultValue": 0.5,
+      "desc": "SecondReachAngle(°)",
+      "group": "Navigation",
+      "maxValue": 50,
+      "minValue": -1,
+      "type": "double",
+      "value": 0.5
+    },
+    "SecondReachDistX": {
+      "advanced": true,
+      "defaultValue": 0.01,
+      "desc": "Distance to point accuracy (m)",
+      "group": "Navigation",
+      "maxValue": 1,
+      "minValue": 1e-06,
+      "type": "double",
+      "value": 0.01
+    },
+    "SecondReachDistY": {
+      "advanced": true,
+      "defaultValue": 0.02,
+      "desc": "Distance to point accuracy (m)",
+      "group": "Navigation",
+      "maxValue": 1,
+      "minValue": 1e-06,
+      "type": "double",
+      "value": 0.02
+    },
+    "SimDt": {
+      "advanced": true,
+      "defaultValue": 0.2,
+      "desc": "Simulation time step (s)",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.2
+    },
+    "SimTime": {
+      "advanced": true,
+      "defaultValue": 1.2,
+      "desc": "Simulation time(s)",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": 0,
+      "type": "double",
+      "value": 1.2
+    },
+    "SlipWarnTime": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "Slip Warnig time threshold (s)",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "double",
+      "value": 1
+    },
+    "SmartRotation": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "SmartRotation",
+      "group": "Navigation",
+      "type": "bool",
+      "value": true
+    },
+    "SpinDs": {
+      "advanced": true,
+      "defaultValue": 0.04,
+      "desc": "tray deviation from error threshold",
+      "group": "Navigation",
+      "maxValue": 1,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.04
+    },
+    "SpinGoTheta": {
+      "advanced": true,
+      "defaultValue": 2,
+      "desc": "When the angle of the pallet and the angle required to start is less than this threshold, it is complete (°)",
+      "group": "Navigation",
+      "maxValue": 360,
+      "minValue": 0.01,
+      "type": "double",
+      "value": 2
+    },
+    "SpinKd": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "SpinKd",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "double",
+      "value": 1
+    },
+    "SpinKi": {
+      "advanced": true,
+      "defaultValue": 0.01,
+      "desc": "Spin Ki",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.01
+    },
+    "SpinKp": {
+      "advanced": true,
+      "defaultValue": 0.6,
+      "desc": "Spin Kp",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.6
+    },
+    "SpinRefThreshold": {
+      "advanced": true,
+      "defaultValue": 0,
+      "desc": "Follow-up reference angular velocity threshold",
+      "group": "Navigation",
+      "maxValue": 360,
+      "minValue": 0,
+      "type": "double",
+      "value": 0
+    },
+    "SpinTheta1": {
+      "advanced": true,
+      "defaultValue": 0.1,
+      "desc": "When the angle of the tray and the target angle are less than this threshold, complete (°)",
+      "group": "Navigation",
+      "maxValue": 360,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.1
+    },
+    "SpinTheta2": {
+      "advanced": true,
+      "defaultValue": 90,
+      "desc": "When the angle of the tray and the target angle are greater than this threshold, an error (°)",
+      "group": "Navigation",
+      "maxValue": 360,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 90
+    },
+    "SteerSpeed": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "steer speed (°/s)",
+      "group": "Navigation",
+      "maxValue": 180,
+      "minValue": 0.0001,
+      "type": "double",
+      "value": 1
+    },
+    "StopAcc": {
+      "advanced": true,
+      "defaultValue": 2,
+      "desc": "emergency stop deceleration (m/s^2), if less than 0, emergency stop",
+      "group": "Safety",
+      "maxValue": 10000,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 2
+    },
+    "StopRotAcc": {
+      "advanced": true,
+      "defaultValue": 150,
+      "desc": "Emergency stop deceleration speed (°/s^2), if it is less than 0 then emergency stop",
+      "group": "Safety",
+      "maxValue": 1000,
+      "minValue": -1,
+      "type": "double",
+      "value": 150
+    },
+    "StopSpinJerk": {
+      "advanced": true,
+      "defaultValue": 50,
+      "desc": "Jerk for spin motor while stopping(°/s^3)",
+      "group": "Safety",
+      "maxValue": 3600,
+      "minValue": 0.01,
+      "type": "double",
+      "value": 50
+    },
+    "TargetObsDist": {
+      "advanced": true,
+      "defaultValue": 0,
+      "desc": "Detection distance of obstacles at the end point (m)",
+      "group": "Safety",
+      "maxValue": 1000,
+      "minValue": 0,
+      "type": "double",
+      "value": 0
+    },
+    "TaskReplanAngle": {
+      "advanced": true,
+      "defaultValue": 5,
+      "desc": "Robot replanning task angle threshold (°)",
+      "group": "Navigation",
+      "maxValue": 180,
+      "minValue": 1,
+      "type": "double",
+      "value": 5
+    },
+    "TaskReplanDist": {
+      "advanced": true,
+      "defaultValue": 0.02,
+      "desc": "Robot replanning task distance threshold (m)",
+      "group": "Navigation",
+      "maxValue": 1,
+      "minValue": 0.01,
+      "type": "double",
+      "value": 0.02
+    },
+    "TurnAngle": {
+      "advanced": true,
+      "defaultValue": 10,
+      "desc": "Turn Angle(°)",
+      "group": "Navigation",
+      "maxValue": 180,
+      "minValue": 0,
+      "type": "double",
+      "value": 10
+    },
+    "UnloadSpin": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Whether to follow in the non-lifting state",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "a2PGVtheta": {
+      "advanced": true,
+      "defaultValue": 0,
+      "desc": "relative anchor theta in pgv coordiante (degree)",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": -100,
+      "type": "double",
+      "value": 0
+    },
+    "a2PGVx": {
+      "advanced": true,
+      "defaultValue": 0,
+      "desc": "relative anchor x position in pgv coordiante (m)",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": -100,
+      "type": "double",
+      "value": 0
+    },
+    "a2PGVy": {
+      "advanced": true,
+      "defaultValue": 0,
+      "desc": "relative anchor y position in pgv coordiante (m)",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": -100,
+      "type": "double",
+      "value": 0
+    },
+    "magKd": {
+      "advanced": true,
+      "defaultValue": 0.1,
+      "desc": "WKd value of line patrol PID in mag navigation",
+      "group": "Navigation",
+      "maxValue": 1000000,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.1
+    },
+    "magKp": {
+      "advanced": true,
+      "defaultValue": 0.2,
+      "desc": "WKp value of line patrol PID in mag navigation",
+      "group": "Navigation",
+      "maxValue": 1000000,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.2
+    },
+    "steerKd": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "steer Kd",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "double",
+      "value": 1
+    },
+    "steerKp": {
+      "advanced": true,
+      "defaultValue": 10,
+      "desc": "Steer Kp",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "double",
+      "value": 10
+    },
+    "vKd": {
+      "advanced": true,
+      "defaultValue": 0.1,
+      "desc": "VKd value of patrol PID",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.1
+    },
+    "vKp": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "VKp value of patrol PID",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "double",
+      "value": 1
+    },
+    "wKd": {
+      "advanced": true,
+      "defaultValue": 0.1,
+      "desc": "WKd value of line patrol PID",
+      "group": "Navigation",
+      "maxValue": 10000,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.1
+    },
+    "wKp": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "WKp value of line patrol PID",
+      "group": "Navigation",
+      "maxValue": 10000,
+      "minValue": 0,
+      "type": "double",
+      "value": 1
+    }
+  },
+  "MultiDcamera": {
+    "GroundHeight": {
+      "advanced": true,
+      "defaultValue": 0.05,
+      "desc": "obstacle height which can be detected",
+      "group": "Vision",
+      "maxValue": 0.5,
+      "minValue": 0.01,
+      "type": "double",
+      "value": 0.08
+    },
+    "Hole_Depth": {
+      "advanced": true,
+      "defaultValue": -0.05,
+      "desc": "hole depth",
+      "group": "Vision",
+      "maxValue": 0.5,
+      "minValue": -0.5,
+      "type": "double",
+      "value": -0.05
+    },
+    "RecordCloudData": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "record camera pointcloud",
+      "group": "Vision",
+      "type": "bool",
+      "value": false
+    }
+  },
+  "MultiLaser": {
+    "DataLostTimeThd": {
+      "advanced": true,
+      "defaultValue": 300,
+      "desc": "Data lost time thd(ms)",
+      "group": "Laser",
+      "maxValue": 2000,
+      "minValue": 10,
+      "type": "int32",
+      "value": 300
+    },
+    "LaserFilter": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Filtering parameters",
+      "group": "Laser",
+      "type": "bool",
+      "value": false
+    },
+    "LaserRecordInterval": {
+      "advanced": true,
+      "defaultValue": 2,
+      "desc": "Laser data recording time interval (s)",
+      "group": "Laser",
+      "maxValue": 5,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 2
+    }
+  },
+  "NetProtocol": {
+    "BeamsSamplingSize": {
+      "advanced": true,
+      "defaultValue": 5,
+      "desc": "The size of 3D laser Beams Sampling (deprecated)",
+      "group": "Network",
+      "maxValue": 20,
+      "minValue": 1,
+      "type": "uint32",
+      "value": 5
+    },
+    "BeamsSamplingStep": {
+      "advanced": true,
+      "defaultValue": 0.5,
+      "desc": "The step of 3D laser Beams Sampling",
+      "group": "Network",
+      "maxValue": 15,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 0.5
+    },
+    "CPUTempNotifThreshold": {
+      "advanced": true,
+      "defaultValue": 75,
+      "desc": "CPU temperature notification threshold(°C)",
+      "group": "Other",
+      "maxValue": 200,
+      "minValue": 0,
+      "type": "double",
+      "value": 75
+    },
+    "ConfidenceLowConfirm": {
+      "advanced": false,
+      "defaultValue": 0.3,
+      "desc": "It is forbidden to confirm localization when the confidence is lower than this value",
+      "group": "Localization",
+      "maxValue": 0.95,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.3
+    },
+    "ControlMotionDuration": {
+      "advanced": true,
+      "defaultValue": 500,
+      "desc": "The duration of open-loop motion instruction issuing speed (ms)",
+      "group": "Network",
+      "maxValue": 5000,
+      "minValue": 0,
+      "type": "uint32",
+      "value": 500
+    },
+    "CycleInterval": {
+      "advanced": true,
+      "defaultValue": 100,
+      "desc": "dispatch task status cycle (ms)",
+      "group": "Network",
+      "maxValue": 500,
+      "minValue": 30,
+      "type": "uint32",
+      "value": 100
+    },
+    "DefaultAutoMode": {
+      "advanced": false,
+      "defaultValue": true,
+      "desc": "Default to automatic mode",
+      "group": "Network",
+      "type": "bool",
+      "value": true
+    },
+    "DisconnectError": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "Alarm after disconnecting from the dispatch system",
+      "group": "Network",
+      "type": "bool",
+      "value": true
+    },
+    "DisconnectInterval": {
+      "advanced": true,
+      "defaultValue": 5,
+      "desc": "Interval of disconnection detection with dispatch system (s)",
+      "group": "Network",
+      "maxValue": 120,
+      "minValue": 2,
+      "type": "uint32",
+      "value": 5
+    },
+    "IncreaseSteerAngle": {
+      "advanced": true,
+      "defaultValue": 15,
+      "desc": "In steer mode, the steer angle increment value (°)",
+      "group": "Network",
+      "maxValue": 180,
+      "minValue": 1,
+      "type": "uint32",
+      "value": 15
+    },
+    "JoystickActivateDI": {
+      "advanced": true,
+      "defaultValue": -1,
+      "desc": "Activate joystick when the DI is on, ignore it if it equals to -1",
+      "group": "Joystick",
+      "maxValue": 999,
+      "minValue": -1,
+      "type": "int32",
+      "value": -1
+    },
+    "JoystickCurRot": {
+      "advanced": true,
+      "defaultValue": 45,
+      "desc": "Current rotation speed when controlled by controller (°/s)",
+      "group": "Joystick",
+      "maxValue": 90,
+      "minValue": 0,
+      "type": "double",
+      "value": 45
+    },
+    "JoystickCurSpeed": {
+      "advanced": true,
+      "defaultValue": 0.6,
+      "desc": "Current speed when controlled by controller (m/s)",
+      "group": "Joystick",
+      "maxValue": 1,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.6
+    },
+    "JoystickCurSpeedFork": {
+      "advanced": true,
+      "defaultValue": 0.2,
+      "desc": "Current speed of fork when controlled by controller (m/s)",
+      "group": "Joystick",
+      "maxValue": 1,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.2
+    },
+    "JoystickInitPoint": {
+      "advanced": true,
+      "defaultValue": "LM1",
+      "desc": "Init point when controlled by controller",
+      "group": "Joystick",
+      "type": "string",
+      "value": "LM1"
+    },
+    "JoystickMaxRot": {
+      "advanced": true,
+      "defaultValue": 90,
+      "desc": "Maximum rotation speed can be modified by controller (°/s)",
+      "group": "Joystick",
+      "maxValue": 90,
+      "minValue": 0,
+      "type": "double",
+      "value": 90
+    },
+    "JoystickMaxSpeed": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "Maximum speed that can be modified by controller (m/s)",
+      "group": "Joystick",
+      "maxValue": 1,
+      "minValue": 0,
+      "type": "double",
+      "value": 1
+    },
+    "JoystickMaxSpeedFork": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "Maximum speed of fork that can be modified by controller (m/s)",
+      "group": "Joystick",
+      "maxValue": 1,
+      "minValue": 0,
+      "type": "double",
+      "value": 1
+    },
+    "JoystickMinRot": {
+      "advanced": true,
+      "defaultValue": 0,
+      "desc": "Minimum rotation speed can be modified by controller (°/s)",
+      "group": "Joystick",
+      "maxValue": 90,
+      "minValue": 0,
+      "type": "double",
+      "value": 0
+    },
+    "JoystickMinSpeed": {
+      "advanced": true,
+      "defaultValue": 0,
+      "desc": "Minimum speed that can be modified by controller (m/s)",
+      "group": "Joystick",
+      "maxValue": 1,
+      "minValue": 0,
+      "type": "double",
+      "value": 0
+    },
+    "JoystickMinSpeedFork": {
+      "advanced": true,
+      "defaultValue": 0,
+      "desc": "Minimum speed of fork that can be modified by controller (m/s)",
+      "group": "Joystick",
+      "maxValue": 1,
+      "minValue": 0,
+      "type": "double",
+      "value": 0
+    },
+    "JoystickThreshold": {
+      "advanced": true,
+      "defaultValue": 10000,
+      "desc": "Threshold for joystick values",
+      "group": "Joystick",
+      "maxValue": 32768,
+      "minValue": 0,
+      "type": "int32",
+      "value": 10000
+    },
+    "LaserSample": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "Whether to perform laser sampling in TCP API (the sampling resolution is 0.5°)",
+      "group": "Network",
+      "type": "bool",
+      "value": true
+    },
+    "LoggerMonitorEnable": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Enable or disable logger monitoring. Take effect after restart.",
+      "group": "Other",
+      "type": "bool",
+      "value": false
+    },
+    "ManualVMax": {
+      "advanced": true,
+      "defaultValue": 6,
+      "desc": "Max Manual V Speed",
+      "group": "Network",
+      "maxValue": 10,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 6
+    },
+    "ModbusDebug": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Debug mode of ModBus",
+      "group": "Network",
+      "type": "bool",
+      "value": false
+    },
+    "ModbusPort": {
+      "advanced": true,
+      "defaultValue": 502,
+      "desc": "Port of ModBus TCP",
+      "group": "Network",
+      "maxValue": 65535,
+      "minValue": 0,
+      "type": "uint32",
+      "value": 502
+    },
+    "ProtocolVersion": {
+      "advanced": true,
+      "defaultValue": 2,
+      "desc": "Protocol version of dispatch system, change the IP and port simultaneously (restart to become effective) (1=redis_v1, 2=redis_v2, 3=tcp)",
+      "group": "Network",
+      "maxValue": 3,
+      "minValue": 1,
+      "type": "uint32",
+      "value": 2
+    },
+    "PubInterval": {
+      "advanced": true,
+      "defaultValue": 15,
+      "desc": "Information publish interval (s)",
+      "group": "Network",
+      "maxValue": 180,
+      "minValue": 1,
+      "type": "uint32",
+      "value": 15
+    },
+    "PublishInterval": {
+      "advanced": true,
+      "defaultValue": 500,
+      "desc": "19301 data publish interval (ms)",
+      "group": "Network",
+      "maxValue": 15000,
+      "minValue": 50,
+      "type": "uint32",
+      "value": 500
+    },
+    "RobotConfigAPITCPServerMaximumConnections": {
+      "advanced": true,
+      "defaultValue": 10,
+      "desc": "Maximum connections of config API",
+      "group": "Network",
+      "maxValue": 20,
+      "minValue": 1,
+      "type": "uint32",
+      "value": 10
+    },
+    "RobotControlAPITCPServerMaxConnections": {
+      "advanced": true,
+      "defaultValue": 5,
+      "desc": "Maximum connections of control API",
+      "group": "Network",
+      "maxValue": 20,
+      "minValue": 1,
+      "type": "uint32",
+      "value": 5
+    },
+    "RobotHome1": {
+      "advanced": false,
+      "defaultValue": "",
+      "desc": "Robot Home 1",
+      "group": "Network",
+      "type": "string",
+      "value": ""
+    },
+    "RobotHome2": {
+      "advanced": false,
+      "defaultValue": "",
+      "desc": "Robot Home 2",
+      "group": "Network",
+      "type": "string",
+      "value": ""
+    },
+    "RobotHome3": {
+      "advanced": false,
+      "defaultValue": "",
+      "desc": "Robot Home 3",
+      "group": "Network",
+      "type": "string",
+      "value": ""
+    },
+    "RobotHome4": {
+      "advanced": false,
+      "defaultValue": "",
+      "desc": "Robot Home 4",
+      "group": "Network",
+      "type": "string",
+      "value": ""
+    },
+    "RobotHome5": {
+      "advanced": false,
+      "defaultValue": "",
+      "desc": "Robot Home 5",
+      "group": "Network",
+      "type": "string",
+      "value": ""
+    },
+    "RobotName": {
+      "advanced": true,
+      "defaultValue": "AMB-01",
+      "desc": "Robot name",
+      "group": "Network",
+      "type": "string",
+      "value": "AMB-01"
+    },
+    "RobotNote": {
+      "advanced": true,
+      "defaultValue": "",
+      "desc": "Robot note, used to note the robot, easy to remember",
+      "group": "Network",
+      "type": "string",
+      "value": ""
+    },
+    "RobotOtherAPITCPServerMaximumConnections": {
+      "advanced": true,
+      "defaultValue": 10,
+      "desc": "Maximum connections of other API",
+      "group": "Network",
+      "maxValue": 20,
+      "minValue": 1,
+      "type": "uint32",
+      "value": 10
+    },
+    "RobotPushTCPServerMaxConnections": {
+      "advanced": true,
+      "defaultValue": 10,
+      "desc": "Maximum connections of push API",
+      "group": "Network",
+      "maxValue": 20,
+      "minValue": 1,
+      "type": "uint32",
+      "value": 10
+    },
+    "RobotStatusAPITCPServerMaxConnections": {
+      "advanced": true,
+      "defaultValue": 10,
+      "desc": "Maximum connections of status API",
+      "group": "Network",
+      "maxValue": 20,
+      "minValue": 1,
+      "type": "uint32",
+      "value": 10
+    },
+    "RobotTaskAPITCPServerMaxConnections": {
+      "advanced": true,
+      "defaultValue": 5,
+      "desc": "Maximum connections of task API",
+      "group": "Network",
+      "maxValue": 20,
+      "minValue": 1,
+      "type": "uint32",
+      "value": 5
+    },
+    "RobotUDPInterval": {
+      "advanced": true,
+      "defaultValue": 300,
+      "desc": "Push data interval of general purpose graphic UDP server (ms)",
+      "group": "Network",
+      "maxValue": 15000,
+      "minValue": 10,
+      "type": "uint32",
+      "value": 300
+    },
+    "RobotUDPServerMaxConnections": {
+      "advanced": true,
+      "defaultValue": 5,
+      "desc": "Maximum connections of general purpose graphic UDP server",
+      "group": "Network",
+      "maxValue": 40,
+      "minValue": 1,
+      "type": "uint32",
+      "value": 5
+    },
+    "RobotUDPServerPort": {
+      "advanced": true,
+      "defaultValue": 19999,
+      "desc": "Port of general purpose graphic UDP server (restart to become effective)",
+      "group": "Network",
+      "maxValue": 65535,
+      "minValue": 0,
+      "type": "uint32",
+      "value": 19999
+    },
+    "Server.IP": {
+      "advanced": true,
+      "defaultValue": "192.168.1.121",
+      "desc": "IP address of dispatch system",
+      "group": "Network",
+      "type": "string",
+      "value": "192.168.1.121"
+    },
+    "Server.Port": {
+      "advanced": true,
+      "defaultValue": 6379,
+      "desc": "Port of dispatch system (default: 6379=redis, 15400=tcp)",
+      "group": "Network",
+      "maxValue": 65535,
+      "minValue": 0,
+      "type": "uint32",
+      "value": 6379
+    },
+    "SrdPort": {
+      "advanced": true,
+      "defaultValue": 7100,
+      "desc": "Port of SRD",
+      "group": "Network",
+      "maxValue": 65535,
+      "minValue": 0,
+      "type": "uint32",
+      "value": 7100
+    },
+    "StatusInterval": {
+      "advanced": true,
+      "defaultValue": 500,
+      "desc": "The interval for reporting status data to dispatch system (ms)",
+      "group": "Network",
+      "maxValue": 3000,
+      "minValue": 30,
+      "type": "uint32",
+      "value": 500
+    },
+    "Taskchain": {
+      "advanced": true,
+      "defaultValue": "",
+      "desc": "Startup taskchain",
+      "group": "Network",
+      "type": "string",
+      "value": ""
+    },
+    "UpdatePushDataInterval": {
+      "advanced": true,
+      "defaultValue": 50,
+      "desc": "Interval of push API data (ms)",
+      "group": "Network",
+      "maxValue": 300,
+      "minValue": 30,
+      "type": "uint32",
+      "value": 50
+    },
+    "UpdatePushDataTimeout": {
+      "advanced": true,
+      "defaultValue": 20,
+      "desc": "Timeout of push API data (s)",
+      "group": "Network",
+      "maxValue": 120,
+      "minValue": 3,
+      "type": "uint32",
+      "value": 20
+    },
+    "VisionHttpPort": {
+      "advanced": true,
+      "defaultValue": 8899,
+      "desc": "HTTP port of vision server",
+      "group": "Network",
+      "maxValue": 65535,
+      "minValue": 0,
+      "type": "uint32",
+      "value": 8899
+    },
+    "VisionIP": {
+      "advanced": true,
+      "defaultValue": "192.168.1.189",
+      "desc": "IP address of vision server",
+      "group": "Network",
+      "type": "string",
+      "value": "192.168.1.189"
+    },
+    "modbusSlaveId": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "slave id of ModBus TCP, -1 means not specified, take effect after restart",
+      "group": "Network",
+      "maxValue": 247,
+      "minValue": -1,
+      "type": "int32",
+      "value": 1
+    }
+  },
+  "OdoCalculator": {
+    "FlagCumEncPoseMode": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "Whether enable the accumulated differential encoder value mode for pose calculation in odometer",
+      "group": "Chassis",
+      "type": "bool",
+      "value": true
+    },
+    "FlagOdomDebugMode": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Whether enable the detailed debug log of the odometer",
+      "group": "Chassis",
+      "type": "bool",
+      "value": false
+    },
+    "FlagSpeedPoseMode": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": " Using the speed of motors to calculate odometer",
+      "group": "Chassis",
+      "type": "bool",
+      "value": false
+    }
+  },
+  "OnlineMapLogger": {
+    "UseMid360ForMapping": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "OM use mid360 for mapping or not",
+      "group": "Laser",
+      "type": "bool",
+      "value": false
+    },
+    "imuCntEachLidarForMapping": {
+      "advanced": true,
+      "defaultValue": 5,
+      "desc": "OM imu cnt for each lidar need to record",
+      "group": "Laser",
+      "maxValue": 100,
+      "minValue": 1,
+      "type": "int32",
+      "value": 5
+    },
+    "laserUndistortion": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "OM enable laser undistort",
+      "group": "Laser",
+      "type": "bool",
+      "value": true
+    },
+    "skipTimeThdForMapping": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "OM time to record after stop",
+      "group": "Laser",
+      "maxValue": 10,
+      "minValue": 0,
+      "type": "double",
+      "value": 1
+    },
+    "useAllLaser": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "OM All lasers are used for mapping",
+      "group": "Localization",
+      "type": "bool",
+      "value": false
+    },
+    "zipDataCnt": {
+      "advanced": true,
+      "defaultValue": 50,
+      "desc": "OM log number in one zip file",
+      "group": "Laser",
+      "maxValue": 10000,
+      "minValue": 1,
+      "type": "int32",
+      "value": 50
+    }
+  },
+  "OpticalMotionCapture": null,
+  "RFIDSensor": null,
+  "RecoFactory": {
+    "ForkLength": {
+      "advanced": true,
+      "defaultValue": 0.35,
+      "desc": "fork length to AGV center",
+      "group": "Vision",
+      "maxValue": 5,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 0.35
+    },
+    "HorizontalProjectionDistance": {
+      "advanced": true,
+      "defaultValue": 6,
+      "desc": "Horizontal projection distance, used to detect removal of ground points",
+      "group": "Vision",
+      "maxValue": 10,
+      "minValue": 0,
+      "type": "double",
+      "value": 6
+    },
+    "PalletDetectRatio": {
+      "advanced": true,
+      "defaultValue": 0.3,
+      "desc": "threshold of pallet detect ratio",
+      "group": "Vision",
+      "maxValue": 1,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 0.3
+    },
+    "PalletOffset": {
+      "advanced": true,
+      "defaultValue": 0.3,
+      "desc": "distance threshold between AGV and pallet in y direction",
+      "group": "Vision",
+      "maxValue": 5,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 0.3
+    },
+    "PalletRealtimeRecognition": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "pallet realtime recognition",
+      "group": "Vision",
+      "type": "bool",
+      "value": false
+    },
+    "PalletSimilarity": {
+      "advanced": true,
+      "defaultValue": 0.5,
+      "desc": "threshold of pallet similarity",
+      "group": "Vision",
+      "maxValue": 1,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 0.5
+    },
+    "SetRoiMinPtsNum": {
+      "advanced": true,
+      "defaultValue": 50,
+      "desc": "The Scope of Roi min pts num",
+      "group": "Vision",
+      "maxValue": 5000,
+      "minValue": 0,
+      "type": "int32",
+      "value": 50
+    },
+    "Tag_Height": {
+      "advanced": true,
+      "defaultValue": 0.45,
+      "desc": "tag center height from ground",
+      "group": "Vision",
+      "maxValue": 200,
+      "minValue": -200,
+      "type": "double",
+      "value": 0.556
+    },
+    "Tag_disFromCenter": {
+      "advanced": true,
+      "defaultValue": 0.2,
+      "desc": "The distance between AGV center and tag center",
+      "group": "Vision",
+      "maxValue": 200,
+      "minValue": -200,
+      "type": "double",
+      "value": 1.19
+    },
+    "Tagsize": {
+      "advanced": true,
+      "defaultValue": 0.12,
+      "desc": "tag size",
+      "group": "Vision",
+      "maxValue": 2,
+      "minValue": 0.01,
+      "type": "double",
+      "value": 0.12
+    },
+    "ThresholdInAngle": {
+      "advanced": true,
+      "defaultValue": 20,
+      "desc": "angle threshold between AGV and pallet",
+      "group": "Vision",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "double",
+      "value": 20
+    },
+    "binLength": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "detectBinShape ",
+      "group": "Vision",
+      "maxValue": 10,
+      "minValue": 0,
+      "type": "double",
+      "value": 1
+    },
+    "binMinLength": {
+      "advanced": true,
+      "defaultValue": 0.35,
+      "desc": "detectBinShape ",
+      "group": "Vision",
+      "maxValue": 2,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.35
+    },
+    "binWidth": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "detectBinShape ",
+      "group": "Vision",
+      "maxValue": 5,
+      "minValue": 0,
+      "type": "double",
+      "value": 1
+    },
+    "candiate_angle": {
+      "advanced": true,
+      "defaultValue": 30,
+      "desc": "candiateAngle",
+      "group": "Vision",
+      "maxValue": 90,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 30
+    },
+    "cluster_angle_thresh": {
+      "advanced": true,
+      "defaultValue": 0.1,
+      "desc": "Laser Rec",
+      "group": "Vision",
+      "maxValue": 3.14,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.1
+    },
+    "cluster_length_thresh": {
+      "advanced": true,
+      "defaultValue": 0.1,
+      "desc": "Laser Rec",
+      "group": "Vision",
+      "maxValue": 1,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.1
+    },
+    "cluster_max_size": {
+      "advanced": true,
+      "defaultValue": 200,
+      "desc": "Laser Rec",
+      "group": "Vision",
+      "maxValue": 1000,
+      "minValue": 2,
+      "type": "int32",
+      "value": 200
+    },
+    "cluster_min_size": {
+      "advanced": true,
+      "defaultValue": 3,
+      "desc": "Laser Rec",
+      "group": "Vision",
+      "maxValue": 1000,
+      "minValue": 2,
+      "type": "int32",
+      "value": 3
+    },
+    "cluster_shadows_filter_thresh": {
+      "advanced": true,
+      "defaultValue": 0.1,
+      "desc": "Laser Rec",
+      "group": "Vision",
+      "maxValue": 3.14,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.1
+    },
+    "cluster_split_thresh": {
+      "advanced": true,
+      "defaultValue": 0.03,
+      "desc": "Laser Rec",
+      "group": "Vision",
+      "maxValue": 1,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.03
+    },
+    "cluster_tolerance": {
+      "advanced": true,
+      "defaultValue": 0.03,
+      "desc": "Laser Rec",
+      "group": "Vision",
+      "maxValue": 1,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.03
+    },
+    "disBetweenTag": {
+      "advanced": true,
+      "defaultValue": 0.45,
+      "desc": "The distance between two tag center",
+      "group": "Vision",
+      "maxValue": 200,
+      "minValue": -200,
+      "type": "double",
+      "value": 0.405
+    },
+    "distanceBeyondPallet": {
+      "advanced": true,
+      "defaultValue": 0,
+      "desc": "distance Beyond Pallet,0 is not do detect",
+      "group": "Vision",
+      "maxValue": 1,
+      "minValue": -1,
+      "type": "double",
+      "value": 0
+    },
+    "farthestExceedDist": {
+      "advanced": true,
+      "defaultValue": 0.2,
+      "desc": "farthest detection distance",
+      "group": "Vision",
+      "maxValue": 1,
+      "minValue": -1,
+      "type": "double",
+      "value": 0.2
+    },
+    "heightExceedDist": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "heigher will not be  detected",
+      "group": "Vision",
+      "maxValue": 3,
+      "minValue": 0,
+      "type": "double",
+      "value": 1
+    },
+    "maxDetectionZ": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "detectBinShape ",
+      "group": "Vision",
+      "maxValue": 5,
+      "minValue": 0,
+      "type": "double",
+      "value": 1
+    },
+    "mergeDist": {
+      "advanced": true,
+      "defaultValue": 0.05,
+      "desc": "pallet segment param,Clustering ablation distance threshold (unit :m), distances less than this distance will be merged,0 indicates disabled",
+      "group": "Vision",
+      "maxValue": 1,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.05
+    },
+    "minDetectionZ": {
+      "advanced": true,
+      "defaultValue": 0.3,
+      "desc": "detectBinShape ",
+      "group": "Vision",
+      "maxValue": 2,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.3
+    },
+    "minimumNumberOfPoints": {
+      "advanced": true,
+      "defaultValue": 50,
+      "desc": "The minimum number of points that is considered an object",
+      "group": "Vision",
+      "maxValue": 10000,
+      "minValue": 5,
+      "type": "int32",
+      "value": 50
+    },
+    "multiRecognizationTimes": {
+      "advanced": true,
+      "defaultValue": 3,
+      "desc": "The number of detection used for tag detection",
+      "group": "Vision",
+      "maxValue": 50,
+      "minValue": 1,
+      "type": "int32",
+      "value": 3
+    },
+    "obeject_direction": {
+      "advanced": true,
+      "defaultValue": 0.2,
+      "desc": "Laser Rec",
+      "group": "Vision",
+      "maxValue": 3.14,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.2
+    },
+    "object_to_robot_direction": {
+      "advanced": true,
+      "defaultValue": 0.5,
+      "desc": "Laser Rec",
+      "group": "Vision",
+      "maxValue": 3.14,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.5
+    },
+    "palletMatchMethod": {
+      "advanced": false,
+      "defaultValue": 0,
+      "desc": "pallet Match Method",
+      "group": "Vision",
+      "maxValue": 1,
+      "minValue": 0,
+      "type": "int32",
+      "value": 0
+    },
+    "palletMaxDis": {
+      "advanced": true,
+      "defaultValue": 3,
+      "desc": "The max distance betweend pallet and AGV in X direction",
+      "group": "Vision",
+      "maxValue": 5,
+      "minValue": 1,
+      "type": "double",
+      "value": 3
+    },
+    "score_pallet": {
+      "advanced": true,
+      "defaultValue": 0.7,
+      "desc": "pallet score",
+      "group": "Vision",
+      "maxValue": 1,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 0.7
+    },
+    "score_plane": {
+      "advanced": true,
+      "defaultValue": 0.34,
+      "desc": "plane score",
+      "group": "Vision",
+      "maxValue": 1,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 0.34
+    },
+    "threshold": {
+      "advanced": true,
+      "defaultValue": 0.53,
+      "desc": "pallet detection score threshold",
+      "group": "Vision",
+      "maxValue": 1,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 0.53
+    }
+  },
+  "Scanner": {
+    "ScannerDebug": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "ScannerDebug调试",
+      "group": "Scanner",
+      "type": "bool",
+      "value": false
+    },
+    "ScannerLogFreq": {
+      "advanced": true,
+      "defaultValue": 10,
+      "desc": "Scanner log freq",
+      "group": "Scanner",
+      "maxValue": 50,
+      "minValue": 0,
+      "type": "int32",
+      "value": 10
+    },
+    "ScannerPrintOrigData": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "ScannerPrintOrigData",
+      "group": "Scanner",
+      "type": "bool",
+      "value": false
+    }
+  },
+  "SeerRoller": {
+    "ErrReportThresh": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "Peripheral ModbusTCP connection problem times>This parameter will report an error",
+      "group": "Peripheral",
+      "maxValue": 100,
+      "minValue": 1,
+      "type": "int32",
+      "value": 1
+    },
+    "ModbusIP": {
+      "advanced": true,
+      "defaultValue": "192.168.192.6",
+      "desc": "Peripheral ModbusTCP IP address",
+      "group": "Peripheral",
+      "type": "string",
+      "value": "192.168.192.6"
+    },
+    "ModbusPort": {
+      "advanced": true,
+      "defaultValue": 502,
+      "desc": "Peripheral ModbusTCP port",
+      "group": "Peripheral",
+      "maxValue": 65535,
+      "minValue": 0,
+      "type": "uint32",
+      "value": 502
+    },
+    "ReControlCnts,": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "It is allowed to fail the parameter times in the Action before the error is reported",
+      "group": "Peripheral",
+      "maxValue": 100,
+      "minValue": 1,
+      "type": "int32",
+      "value": 1
+    },
+    "UseInput": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "Peripheral ModbusTCP allows the use of read-only address bits",
+      "group": "Peripheral",
+      "type": "bool",
+      "value": true
+    },
+    "UserDataMaxCount": {
+      "advanced": true,
+      "defaultValue": 16,
+      "desc": "Peripheral user data max count",
+      "group": "Peripheral",
+      "maxValue": 128,
+      "minValue": 16,
+      "type": "uint32",
+      "value": 16
+    }
+  },
+  "SensorFuser": {
+    "3DLaserMinHeight": {
+      "advanced": true,
+      "defaultValue": 0.05,
+      "desc": "3D Laser MinHeight(m)",
+      "group": "SensorFuser",
+      "maxValue": 10,
+      "minValue": -10,
+      "type": "double",
+      "value": 0.05
+    },
+    "3DResolution": {
+      "advanced": true,
+      "defaultValue": 0.05,
+      "desc": "3D Laser point cloud resolution(m)",
+      "group": "SensorFuser",
+      "maxValue": 0.5,
+      "minValue": 0.01,
+      "type": "double",
+      "value": 0.05
+    },
+    "CameraFilterNum": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "Camera point cloud filter number",
+      "group": "SensorFuser",
+      "maxValue": 10,
+      "minValue": 0,
+      "type": "int32",
+      "value": 1
+    },
+    "DepthCameraResolution": {
+      "advanced": true,
+      "defaultValue": 0.01,
+      "desc": "Camera point cloud resolution (m)",
+      "group": "SensorFuser",
+      "maxValue": 0.1,
+      "minValue": 0.01,
+      "type": "double",
+      "value": 0.01
+    },
+    "DepthXRange": {
+      "advanced": true,
+      "defaultValue": 10,
+      "desc": "Depth camera maximum X range (m)",
+      "group": "SensorFuser",
+      "maxValue": 100,
+      "minValue": 1,
+      "type": "double",
+      "value": 10
+    },
+    "DepthYRange": {
+      "advanced": true,
+      "defaultValue": 10,
+      "desc": "Depth camera maximum Y range (m)",
+      "group": "SensorFuser",
+      "maxValue": 100,
+      "minValue": 1,
+      "type": "double",
+      "value": 10
+    },
+    "FusedLaserDebug": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Sensor Fusion Data Debugging Switch",
+      "group": "SensorFuser",
+      "type": "bool",
+      "value": false
+    },
+    "FuserSleepTime": {
+      "advanced": true,
+      "defaultValue": 30,
+      "desc": "Sleep Time (ms)",
+      "group": "SensorFuser",
+      "maxValue": 10000,
+      "minValue": 1,
+      "type": "double",
+      "value": 30
+    },
+    "LaserDebugType": {
+      "advanced": true,
+      "defaultValue": 0,
+      "desc": "sensor fusion data debugging type. 0: local; 1: global; 2: all",
+      "group": "SensorFuser",
+      "maxValue": 2,
+      "minValue": 0,
+      "type": "int32",
+      "value": 0
+    },
+    "LaserFilterMinNeighbor": {
+      "advanced": true,
+      "defaultValue": 2,
+      "desc": "Laser Filter Min Neighbor",
+      "group": "SensorFuser",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "int32",
+      "value": 2
+    },
+    "LaserFilterRadius": {
+      "advanced": true,
+      "defaultValue": 0.05,
+      "desc": "Laser Filter Radius(m)",
+      "group": "SensorFuser",
+      "maxValue": 1,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.05
+    },
+    "LaserFilterRange": {
+      "advanced": true,
+      "defaultValue": 3,
+      "desc": "Laser Filter Range(m)",
+      "group": "SensorFuser",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "double",
+      "value": 3
+    },
+    "MapPointRadius": {
+      "advanced": true,
+      "defaultValue": 0.04,
+      "desc": "Map point maximum radius (m)",
+      "group": "SensorFuser",
+      "maxValue": 1,
+      "minValue": 0.0001,
+      "type": "double",
+      "value": 0.04
+    },
+    "OpenGlobalPoints": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "enable global points",
+      "group": "SensorFuser",
+      "type": "bool",
+      "value": true
+    },
+    "OpenLaserFilterBeforeSampl": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Sensor Fusion Data Debugging Switch",
+      "group": "SensorFuser",
+      "type": "bool",
+      "value": false
+    },
+    "PointReservedTime": {
+      "advanced": false,
+      "defaultValue": 3,
+      "desc": "Laser Point Retention Time(s)",
+      "group": "SensorFuser",
+      "maxValue": 1000,
+      "minValue": 0,
+      "type": "double",
+      "value": 3
+    },
+    "ScanUsedNum": {
+      "advanced": true,
+      "defaultValue": 361,
+      "desc": "The number of laser points after resampling",
+      "group": "SensorFuser",
+      "maxValue": 10000,
+      "minValue": 0,
+      "type": "int32",
+      "value": 361
+    },
+    "VirtualPointReservedDist": {
+      "advanced": false,
+      "defaultValue": 5,
+      "desc": "Sensor point cloud retention point distance",
+      "group": "SensorFuser",
+      "maxValue": 10,
+      "minValue": 2,
+      "type": "double",
+      "value": 5
+    },
+    "VirtualPointStep": {
+      "advanced": false,
+      "defaultValue": 1,
+      "desc": "The angular interval of virtual laser points (°)",
+      "group": "SensorFuser",
+      "maxValue": 10,
+      "minValue": 0.5,
+      "type": "double",
+      "value": 1
+    }
+  },
+  "SlaMapping": {
+    "StartSlam": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "Start SLAM in rbk",
+      "group": "Laser",
+      "type": "bool",
+      "value": true
+    }
+  },
+  "SoundPlayer": null,
+  "TaskManager": null,
+  "create_on": "2026-01-09T00:06:05.429-1100",
+  "ret_code": 0
+}

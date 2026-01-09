@@ -1,0 +1,171 @@
+{
+  "model": "module",
+  "deviceTypes": [
+    {
+      "name": "module",
+      "desc": "机构",
+      "maxCount": 100,
+      "devices": [
+        {
+          "name": "linear",
+          "desc": "电机名称",
+          "deviceParams": [
+            {
+              "key": "mode",
+              "desc": "模式",
+              "type": "comboParam",
+              "comboParam": {
+                "childKey": "position",
+                "childParams": [
+                  {
+                    "key": "position",
+                    "desc": "运动到某个位置",
+                    "params": [
+                      {
+                        "key": "maxSpeed",
+                        "type": "double",
+                        "doubleValue": 0,
+                        "doubleMaxvalue": 0.055,
+                        "doubleMinvalue": 0,
+                        "unit": "m/s",
+                        "desc": "最大速度"
+                      },
+                      {
+                        "key": "position",
+                        "type": "double",
+                        "doubleValue": 0.058,
+                        "doubleMaxvalue": 3,
+                        "doubleMinvalue": 0.058,
+                        "unit": "m",
+                        "desc": "目标位置"
+                      },
+                      {
+                        "key": "stopDI",
+                        "type": "int32",
+                        "int32Value": -1,
+                        "int32Maxvalue": 100,
+                        "int32Minvalue": -1,
+                        "desc": "停止DI"
+                      },
+                      {
+                        "key": "operationTime",
+                        "type": "double",
+                        "doubleValue": 300,
+                        "doubleMaxvalue": 1000,
+                        "doubleMinvalue": 0,
+                        "unit": "s",
+                        "desc": "动作持续的时间"
+                      }
+                    ]
+                  },
+                  {
+                    "key": "speed",
+                    "desc": "以某个速度运动",
+                    "params": [
+                      {
+                        "key": "speed",
+                        "type": "double",
+                        "doubleValue": 0,
+                        "doubleMaxvalue": 0.055,
+                        "doubleMinvalue": -0.055,
+                        "unit": "m/s",
+                        "desc": "运行速度"
+                      },
+                      {
+                        "key": "stopDI",
+                        "type": "int32",
+                        "int32Value": -1,
+                        "int32Maxvalue": 100,
+                        "int32Minvalue": -1,
+                        "desc": "停止DI"
+                      },
+                      {
+                        "key": "operationTime",
+                        "type": "double",
+                        "doubleValue": 300,
+                        "doubleMaxvalue": 1000,
+                        "doubleMinvalue": 0,
+                        "unit": "s",
+                        "desc": "动作持续的时间"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "waitDI",
+          "desc": "等待DI触发机构",
+          "deviceParams": [
+            {
+              "key": "waitDI",
+              "desc": "等待DI触发机构",
+              "type": "arrayParam",
+              "arrayParam": {
+                "params": [
+                  {
+                    "key": "id",
+                    "type": "int32",
+                    "int32Value": -1,
+                    "int32Maxvalue": 1000,
+                    "int32Minvalue": -1,
+                    "desc": "DI的id号"
+                  },
+                  {
+                    "key": "stableTime",
+                    "type": "double",
+                    "doubleValue": -1,
+                    "doubleMaxvalue": 1000,
+                    "doubleMinvalue": -1,
+                    "unit": "s",
+                    "desc": "DI触发的稳定时间"
+                  },
+                  {
+                    "key": "operationTime",
+                    "type": "double",
+                    "doubleValue": -1,
+                    "doubleMaxvalue": 1000,
+                    "doubleMinvalue": -1,
+                    "unit": "s",
+                    "desc": "等待DI触发的时间"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "openDO",
+          "desc": "打开DO机构",
+          "deviceParams": [
+            {
+              "key": "openDO",
+              "desc": "打开DO机构",
+              "type": "arrayParam",
+              "arrayParam": {
+                "params": [
+                  {
+                    "key": "id",
+                    "type": "int32",
+                    "int32Value": -1,
+                    "int32Maxvalue": 1000,
+                    "int32Minvalue": -1,
+                    "desc": "DO的id号"
+                  },
+                  {
+                    "key": "opened",
+                    "type": "bool",
+                    "boolValue": true,
+                    "desc": "是关闭还是打开"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

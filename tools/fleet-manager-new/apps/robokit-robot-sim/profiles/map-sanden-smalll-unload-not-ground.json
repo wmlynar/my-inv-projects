@@ -1,0 +1,11 @@
+{
+  "MAP_NAME": "sanden_smalll_17_58",
+  "ROBOT_CONFIG_MAP_PATH": "data/config_map_data_17_58.json",
+  "START_NODE_ID": "LM10",
+  "START_POSE_X": -1.8116,
+  "START_POSE_Y": -0.6845,
+  "START_POSE_ANGLE": 2.812607291740194,
+  "START_FORK_HEIGHT": 0.5,
+  "SPEED_M_S": 0.16,
+  "FORK_SPEED_M_S": 0.018
+}

@@ -1,0 +1,17 @@
+{
+  "name": "proxy-recorder",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "bin": {
+    "proxy-recorder": "cli/cli.js"
+  },
+  "scripts": {
+    "start": "node cli/cli.js start",
+    "status": "node cli/cli.js status",
+    "stop": "node cli/cli.js stop",
+    "archive": "node cli/cli.js archive",
+    "test:config": "node tests/config.test.js",
+    "test": "npm run test:config"
+  }
+}

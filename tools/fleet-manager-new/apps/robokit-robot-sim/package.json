@@ -1,0 +1,10 @@
+{
+  "name": "robokit-robot-sim",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node start.js"
+  }
+}

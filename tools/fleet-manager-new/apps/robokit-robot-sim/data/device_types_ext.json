@@ -1,0 +1,313 @@
+{
+  "deviceTypes": [
+    {
+      "name": "motor",
+      "devices": [
+        {
+          "name": "steer",
+          "isDisplay": true,
+          "isEnabled": true,
+          "deviceParams": [
+            {
+              "key": "func",
+              "type": "comboParam",
+              "comboParam": {
+                "childParams": [
+                  {
+                    "key": "steer",
+                    "params": [
+                      {
+                        "key": "steerOffsetFile",
+                        "type": "string",
+                        "stringValue": "{\"SteerNSpeedN\":true,\"SteerNSpeedP\":true,\"SteerPSpeedN\":true,\"SteerPSpeedP\":true,\"data_sample\":[{\"steer_angle\":2,\"value\":0.005782576846270396,\"wheel_speed\":1},{\"steer_angle\":2,\"value\":0.021974939294795694,\"wheel_speed\":0},{\"steer_angle\":1,\"value\":0.01354477443102826,\"wheel_speed\":1},{\"steer_angle\":1,\"value\":0.011713956674540704,\"wheel_speed\":0},{\"steer_angle\":0,\"value\":0.025156346806793236,\"wheel_speed\":1},{\"steer_angle\":0,\"value\":0.003747458953004863,\"wheel_speed\":0}],\"grid_vector\":[{\"grid_sample\":[{\"value\":-1.5707963267948966},{\"value\":0.0},{\"value\":1.5707963267948966}],\"name\":\"steer_angle\"},{\"grid_sample\":[{\"value\":-0.1},{\"value\":0.1}],\"name\":\"wheel_speed\"}],\"ifZeroBackwardCalibed\":true,\"ifZeroForwardCalibed\":true}"
+                      },
+                      {
+                        "key": "minAngle",
+                        "type": "double",
+                        "doubleValue": -20.002430054913944
+                      },
+                      {
+                        "key": "maxAngle",
+                        "type": "double",
+                        "doubleValue": 20.008228885519287
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "key": "basic",
+              "type": "arrayParam",
+              "arrayParam": {
+                "params": [
+                  {
+                    "key": "x",
+                    "type": "double",
+                    "doubleValue": 0.005404206911523213
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "walk",
+          "isDisplay": true,
+          "isEnabled": true,
+          "deviceParams": [
+            {
+              "key": "basic",
+              "type": "arrayParam",
+              "arrayParam": {
+                "params": [
+                  {
+                    "key": "x",
+                    "type": "double",
+                    "doubleValue": 0.005404206911523213
+                  }
+                ]
+              }
+            },
+            {
+              "key": "func",
+              "type": "comboParam",
+              "comboParam": {
+                "childParams": [
+                  {
+                    "key": "walk",
+                    "params": [
+                      {
+                        "key": "wheelRadius",
+                        "type": "double",
+                        "doubleValue": 0.001331468054251994
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "laser",
+      "devices": [
+        {
+          "name": "laser3",
+          "isDisplay": true,
+          "isEnabled": true,
+          "deviceParams": [
+            {
+              "key": "basic",
+              "type": "arrayParam",
+              "arrayParam": {
+                "params": [
+                  {
+                    "key": "x",
+                    "type": "double",
+                    "doubleValue": 0.07185842462215941
+                  },
+                  {
+                    "key": "y",
+                    "type": "double",
+                    "doubleValue": 0.07849128731553723
+                  },
+                  {
+                    "key": "yaw",
+                    "type": "double",
+                    "doubleValue": 1.387586045383703
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "laser2",
+          "isDisplay": true,
+          "isEnabled": true,
+          "deviceParams": [
+            {
+              "key": "basic",
+              "type": "arrayParam",
+              "arrayParam": {
+                "params": [
+                  {
+                    "key": "x",
+                    "type": "double",
+                    "doubleValue": -0.09285085347154087
+                  },
+                  {
+                    "key": "y",
+                    "type": "double",
+                    "doubleValue": 0.007766989158434878
+                  },
+                  {
+                    "key": "yaw",
+                    "type": "double",
+                    "doubleValue": -8.230969275772537
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "laser1",
+          "isDisplay": true,
+          "isEnabled": true,
+          "deviceParams": [
+            {
+              "key": "basic",
+              "type": "arrayParam",
+              "arrayParam": {
+                "params": [
+                  {
+                    "key": "x",
+                    "type": "double",
+                    "doubleValue": -0.08521955599680897
+                  },
+                  {
+                    "key": "y",
+                    "type": "double",
+                    "doubleValue": 0.024731834554200915
+                  },
+                  {
+                    "key": "yaw",
+                    "type": "double",
+                    "doubleValue": 8.137178662951492
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "laser",
+          "isDisplay": true,
+          "isEnabled": true,
+          "deviceParams": [
+            {
+              "key": "basic",
+              "type": "arrayParam",
+              "arrayParam": {
+                "params": [
+                  {
+                    "key": "y",
+                    "type": "double",
+                    "doubleValue": 0
+                  },
+                  {
+                    "key": "x",
+                    "type": "double",
+                    "doubleValue": 0.0020709737196041834
+                  },
+                  {
+                    "key": "yaw",
+                    "type": "double",
+                    "doubleValue": 0.007880956496034354
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "camera",
+      "devices": [
+        {
+          "name": "Pace-cat",
+          "isDisplay": true,
+          "isEnabled": true,
+          "deviceParams": [
+            {
+              "key": "basic",
+              "type": "arrayParam",
+              "arrayParam": {
+                "params": [
+                  {
+                    "key": "x",
+                    "type": "double",
+                    "doubleValue": 0
+                  },
+                  {
+                    "key": "y",
+                    "type": "double",
+                    "doubleValue": 0
+                  },
+                  {
+                    "key": "z",
+                    "type": "double",
+                    "doubleValue": -0.006410684585571258
+                  },
+                  {
+                    "key": "roll",
+                    "type": "double",
+                    "doubleValue": -7.850356922845399
+                  },
+                  {
+                    "key": "yaw",
+                    "type": "double",
+                    "doubleValue": 0
+                  },
+                  {
+                    "key": "pitch",
+                    "type": "double",
+                    "doubleValue": 69.0858983847431
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Weigan",
+          "deviceParams": [
+            {
+              "key": "basic",
+              "type": "arrayParam",
+              "arrayParam": {
+                "params": [
+                  {
+                    "key": "x",
+                    "type": "double",
+                    "doubleValue": -0.0027448576628684718
+                  },
+                  {
+                    "key": "y",
+                    "type": "double",
+                    "doubleValue": -0.02851390931566572
+                  },
+                  {
+                    "key": "z",
+                    "type": "double",
+                    "doubleValue": -0.02259113146351055
+                  },
+                  {
+                    "key": "roll",
+                    "type": "double",
+                    "doubleValue": 3.8990785351587363
+                  },
+                  {
+                    "key": "yaw",
+                    "type": "double",
+                    "doubleValue": 359.387305857771
+                  },
+                  {
+                    "key": "pitch",
+                    "type": "double",
+                    "doubleValue": 0.8944634239426565
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,2706 @@
+{
+  "deviceTypes": [
+    {
+      "desc": "5a6a5pyf55S16YeP5qCh5YeG",
+      "devices": [
+        {
+          "desc": "\u5b9a\u671f\u7535\u91cf\u6821\u51c6",
+          "deviceParams": [
+            {
+              "arrayParam": {
+                "params": [
+                  {
+                    "cloneEnable": false,
+                    "desc": "5py65Zmo5Lq65YiG57uE",
+                    "key": "Group",
+                    "stringValue": "",
+                    "type": "string",
+                    "unit": "\u7ec4\u522b"
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "5py65Zmo5Lq65qCH562+",
+                    "key": "Label",
+                    "stringValue": "",
+                    "type": "string",
+                    "unit": "\u6807\u7b7e"
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "6Kem5Y+R6Ze06ZqU",
+                    "doubleMaxvalue": 1000000,
+                    "doubleMinvalue": 0,
+                    "doubleValue": 0,
+                    "key": "Interval",
+                    "type": "double",
+                    "unit": "\u5c0f\u65f6"
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "5oyB57ut5pe26Ze0",
+                    "doubleMaxvalue": 1000000,
+                    "doubleMinvalue": 0,
+                    "doubleValue": 0,
+                    "key": "Duration",
+                    "type": "double",
+                    "unit": "\u5c0f\u65f6"
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "5pyA5aSn55S16YeP",
+                    "doubleMaxvalue": 100,
+                    "doubleMinvalue": 0,
+                    "doubleValue": 0,
+                    "key": "MaxBattery",
+                    "type": "double",
+                    "unit": "\u7535\u91cf"
+                  }
+                ]
+              },
+              "cloneEnable": true,
+              "desc": "5pSv5oyB5LiN5ZCM5py65Zmo5Lq657uE5Lul5Y+K5qCH562+5L2/55So5LiN5ZCM55qE5Y+C5pWw",
+              "key": "Parameters",
+              "type": "arrayParam"
+            }
+          ],
+          "isDisplay": true,
+          "isEnabled": false,
+          "name": "BMS"
+        }
+      ],
+      "maxCount": 1,
+      "name": "BMS",
+      "ord": 0
+    },
+    {
+      "desc": "bin status check config",
+      "devices": [
+        {
+          "desc": "bin status check config",
+          "deviceParams": [
+            {
+              "arrayParam": {
+                "params": [
+                  {
+                    "cloneEnable": false,
+                    "desc": "name of operation/binTask",
+                    "key": "name",
+                    "stringValue": "SampleOperationOrBinTask",
+                    "type": "string",
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "expected bin status, 0 for empty, 1 for filled",
+                    "int32Maxvalue": 1,
+                    "int32Minvalue": 0,
+                    "int32Value": 0,
+                    "key": "expectedBinStatus",
+                    "type": "int32",
+                    "unit": ""
+                  }
+                ]
+              },
+              "cloneEnable": true,
+              "desc": "",
+              "key": "binStatusCheckItem",
+              "type": ""
+            }
+          ],
+          "isDisplay": true,
+          "isEnabled": false,
+          "name": "BinStatusCheckConfig"
+        }
+      ],
+      "maxCount": 100,
+      "name": "BinStatusCheckConfig",
+      "ord": 0
+    },
+    {
+      "desc": "6YCJ6L2m5p2D5YC8",
+      "devices": [
+        {
+          "desc": "\u9009\u8f66\u6743\u503c",
+          "deviceParams": [
+            {
+              "arrayParam": {
+                "params": [
+                  {
+                    "cloneEnable": false,
+                    "desc": "6Led56a75p2D5YC8",
+                    "doubleMaxvalue": 10000000,
+                    "doubleMinvalue": 0.001,
+                    "doubleValue": 1,
+                    "key": "distRatio",
+                    "type": "double",
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "5LyY5YWI57qn5p2D5YC8",
+                    "doubleMaxvalue": 100000000,
+                    "doubleMinvalue": 0.001,
+                    "doubleValue": 100000,
+                    "key": "priorityRatio",
+                    "type": "double",
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "562J5b6F5pe26Ze05p2D5YC8",
+                    "doubleMaxvalue": 100000000,
+                    "doubleMinvalue": 0.001,
+                    "doubleValue": 1,
+                    "key": "waitTimeRatio",
+                    "type": "double",
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "5py65Zmo5Lq656m66Zey5pe26Ze05p2D5YC8",
+                    "doubleMaxvalue": 100000000,
+                    "doubleMinvalue": 0,
+                    "doubleValue": 0,
+                    "key": "vehicleIdleTimeRatio",
+                    "type": "double",
+                    "unit": ""
+                  },
+                  {
+                    "boolValue": false,
+                    "cloneEnable": false,
+                    "desc": "5LyY5YWI6YCJ5oup5Zyo6K6i5Y2V6LW354K55qW85bGC55qE5py65Zmo5Lq6",
+                    "key": "preferVehicleInSameFloor",
+                    "type": "bool",
+                    "unit": ""
+                  },
+                  {
+                    "boolValue": false,
+                    "cloneEnable": false,
+                    "desc": "6L+e57ut5Y+W5pS+6LSn",
+                    "key": "consecutiveLoadUnload",
+                    "type": "bool",
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "6YeN5YiG6YWN6ZiI5YC8",
+                    "doubleMaxvalue": 100000000,
+                    "doubleMinvalue": 0,
+                    "doubleValue": 1,
+                    "key": "reassignThreshold",
+                    "type": "double",
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "5Y6f5Zyw5pS+6LSn5Lu75Yqh5LyY5YWI56iL5bqm",
+                    "doubleMaxvalue": 100000000,
+                    "doubleMinvalue": -100000000,
+                    "doubleValue": 0,
+                    "key": "selfPositionLoadPreference",
+                    "type": "double",
+                    "unit": ""
+                  }
+                ]
+              },
+              "cloneEnable": false,
+              "desc": "5Z+656GA5Y+C5pWw",
+              "key": "basic",
+              "type": "arrayParam"
+            }
+          ],
+          "isDisplay": true,
+          "isEnabled": true,
+          "name": "ChooseAGV"
+        }
+      ],
+      "maxCount": 1,
+      "name": "ChooseAGV",
+      "ord": 0
+    },
+    {
+      "desc": "5riF5rSB5py65Zmo5Lq655u45YWz6K6+572u",
+      "devices": [
+        {
+          "desc": "\u6e05\u6d01\u673a\u5668\u4eba\u76f8\u5173\u8bbe\u7f6e",
+          "deviceParams": [
+            {
+              "arrayParam": {
+                "params": [
+                  {
+                    "cloneEnable": false,
+                    "desc": "6ISa5pys5ZCN56ew",
+                    "key": "scriptName",
+                    "stringValue": "clean_robot.py",
+                    "type": "string",
+                    "unit": ""
+                  },
+                  {
+                    "boolValue": false,
+                    "cloneEnable": false,
+                    "desc": "5piv5ZCm5Zyo5Ye65Y+j5YmN572u54K55YWz6Zet55S15py6",
+                    "key": "closeMotorAtPrePoint",
+                    "type": "bool",
+                    "unit": ""
+                  },
+                  {
+                    "boolValue": true,
+                    "cloneEnable": false,
+                    "desc": "5riF5rSB5py65Zmo5Lq66Ieq5Yqo5o2i5rC05Yqf6IO95byA5YWz",
+                    "key": "autoChangeWater",
+                    "type": "bool",
+                    "unit": ""
+                  },
+                  {
+                    "boolValue": true,
+                    "cloneEnable": false,
+                    "desc": "5riF5rSB5py65Zmo5Lq66Ieq5Yqo5o2i5rC05aSx6LSl5ZCO6Ieq5Yqo6YeN5YGa",
+                    "key": "redoChangeWaterFailed",
+                    "type": "bool",
+                    "unit": ""
+                  },
+                  {
+                    "boolValue": false,
+                    "cloneEnable": false,
+                    "desc": "5riF5rSB5py65Zmo5Lq65Y+q5YWB6K645Zyo5YGc6Z2g54K56Kem5Y+R5o2i5rC0",
+                    "key": "onlyChangeWaterInPP",
+                    "type": "bool",
+                    "unit": ""
+                  }
+                ]
+              },
+              "cloneEnable": false,
+              "desc": "5Z+656GA5Y+C5pWw",
+              "key": "basic",
+              "type": "arrayParam"
+            }
+          ],
+          "isDisplay": true,
+          "isEnabled": true,
+          "name": "CleanRobot"
+        }
+      ],
+      "maxCount": 1,
+      "name": "CleanRobot",
+      "ord": 0
+    },
+    {
+      "desc": "6Ieq5a6a5LmJ5YWF55S15qGp5omn6KGM6ISa5pys",
+      "devices": [
+        {
+          "desc": "\u81ea\u5b9a\u4e49\u5145\u7535\u6869\u6267\u884c\u811a\u672c",
+          "deviceParams": [
+            {
+              "arrayParam": {
+                "params": [
+                  {
+                    "cloneEnable": false,
+                    "desc": "5YWF55S154K55ZCN56ew",
+                    "key": "chargePoint",
+                    "stringValue": "CP1",
+                    "type": "string",
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "5byA5aeL5YWF55S15pe255qE5omn6KGM5Yqo5L2c",
+                    "key": "startOperation",
+                    "stringValue": "Charge",
+                    "type": "string",
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "57uT5p2f5YWF55S15pe26LCD55So55qE6ISa5pys5ZCN56ew",
+                    "key": "stopScriptName",
+                    "stringValue": "stop.py",
+                    "type": "string",
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "57uT5ZCI5YWF55S16ISa5pys55qE6LCD55So5oql5paH",
+                    "key": "stopScriptArgs",
+                    "stringValue": "json",
+                    "type": "string",
+                    "unit": ""
+                  }
+                ]
+              },
+              "cloneEnable": true,
+              "desc": "5Z+656GA5Y+C5pWw",
+              "key": "basic",
+              "type": "arrayParam"
+            }
+          ],
+          "isDisplay": true,
+          "isEnabled": false,
+          "name": "CustomCharger"
+        }
+      ],
+      "maxCount": 1,
+      "name": "CustomCharger",
+      "ord": 0
+    },
+    {
+      "desc": "6Ieq5a6a5LmJ5LiN5pi+56S655qE6ZSZ6K+v56CB",
+      "devices": [
+        {
+          "desc": "6Ieq5a6a5LmJ5LiN5pi+56S655qE6ZSZ6K+v56CB",
+          "deviceParams": [
+            {
+              "arrayParam": {
+                "params": [
+                  {
+                    "cloneEnable": false,
+                    "desc": "5LiN5pi+56S655qE6ZSZ6K+v56CB",
+                    "key": "errCode",
+                    "type": "uint32",
+                    "uint32Maxvalue": 99999,
+                    "uint32Minvalue": 0,
+                    "uint32Value": 0,
+                    "unit": ""
+                  }
+                ]
+              },
+              "cloneEnable": false,
+              "desc": "5Z+656GA5Y+C5pWw",
+              "key": "basic",
+              "type": "arrayParam"
+            }
+          ],
+          "isDisplay": true,
+          "isEnabled": false,
+          "name": "CustomErrorCode"
+        }
+      ],
+      "maxCount": 10,
+      "name": "CustomErrorCode",
+      "ord": 0
+    },
+    {
+      "desc": "SFRUUOWbnuWMhQ==",
+      "devices": [
+        {
+          "desc": "HTTP\u56de\u5305\u6a21\u677f",
+          "deviceParams": [
+            {
+              "arrayParam": {
+                "params": [
+                  {
+                    "cloneEnable": false,
+                    "desc": "5pyN5Yqh5ZmoSVA=",
+                    "key": "ip",
+                    "stringValue": "127.0.0.1",
+                    "type": "string",
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "5pyN5Yqh5Zmo56uv5Y+j",
+                    "key": "port",
+                    "type": "uint32",
+                    "uint32Maxvalue": 65535,
+                    "uint32Minvalue": 1,
+                    "uint32Value": 8787,
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "6K+35rGC6Lev5b6E",
+                    "key": "path",
+                    "stringValue": "/echo",
+                    "type": "string",
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "5YyF5ZCr55qE5a2X5q61",
+                    "key": "includedFields",
+                    "stringValue": "[\"orderId\", \"orderState\", \"blockId\", \"blockState\", \"location\"]",
+                    "type": "string",
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "6ZmE5Yqg5a2X5q61",
+                    "key": "additionalJSON",
+                    "stringValue": "{\"type\":\"LOAD\"}",
+                    "type": "json",
+                    "unit": ""
+                  }
+                ]
+              },
+              "cloneEnable": false,
+              "desc": "6K+35rGC5Y+C5pWw",
+              "key": "request",
+              "type": "arrayParam"
+            },
+            {
+              "arrayParam": {
+                "params": [
+                  {
+                    "cloneEnable": false,
+                    "desc": "SFRUUOeKtuaAgeeggQ==",
+                    "key": "statusCode",
+                    "type": "uint32",
+                    "uint32Maxvalue": 99999,
+                    "uint32Minvalue": 0,
+                    "uint32Value": 0,
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "",
+                    "key": "responseBody",
+                    "stringValue": "{\"msg\":\"success\", \"code\":1000}",
+                    "type": "string",
+                    "unit": ""
+                  }
+                ]
+              },
+              "cloneEnable": false,
+              "desc": "5oiQ5Yqf5p2h5Lu2",
+              "key": "condition",
+              "type": "arrayParam"
+            },
+            {
+              "arrayParam": {
+                "params": [
+                  {
+                    "boolValue": false,
+                    "cloneEnable": false,
+                    "desc": "5ZCv55So6YeN6K+V",
+                    "key": "enabled",
+                    "type": "bool",
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "6YeN6K+V6Ze06ZqU",
+                    "key": "interval",
+                    "type": "uint32",
+                    "uint32Maxvalue": 99999,
+                    "uint32Minvalue": 1,
+                    "uint32Value": 1,
+                    "unit": "s"
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "5pyA5aSn6YeN6K+V5qyh5pWw",
+                    "key": "maxTimes",
+                    "type": "uint32",
+                    "uint32Maxvalue": 99999,
+                    "uint32Minvalue": 0,
+                    "uint32Value": 0,
+                    "unit": ""
+                  }
+                ]
+              },
+              "cloneEnable": false,
+              "desc": "6YeN6K+V",
+              "key": "retry",
+              "type": "arrayParam"
+            },
+            {
+              "arrayParam": {
+                "params": [
+                  {
+                    "boolValue": false,
+                    "cloneEnable": false,
+                    "desc": "5aSx6LSl5pe25L2/QmxvY2vlpLHotKU=",
+                    "key": "failBlock",
+                    "type": "bool",
+                    "unit": ""
+                  }
+                ]
+              },
+              "cloneEnable": false,
+              "desc": "5aSx6LSl5aSE55CG",
+              "key": "failure",
+              "type": "arrayParam"
+            }
+          ],
+          "isDisplay": true,
+          "isEnabled": true,
+          "name": "HttpPostTemplate"
+        }
+      ],
+      "maxCount": 100,
+      "name": "HttpPost",
+      "ord": 0
+    },
+    {
+      "desc": "5ou85ZCI5Y2V",
+      "devices": [
+        {
+          "desc": "\u62fc\u5408\u5355",
+          "deviceParams": [
+            {
+              "arrayParam": {
+                "params": [
+                  {
+                    "boolValue": false,
+                    "cloneEnable": false,
+                    "desc": "5pm66IO95Y+W5raI5Yet5Y2V5Lu75YqhLCDkvJroh6rliqjlsIbljbjotKfnmoTotKfnianmlL7lm57lj5botKflj6M=",
+                    "key": "smartTerminate",
+                    "type": "bool",
+                    "unit": ""
+                  },
+                  {
+                    "boolValue": false,
+                    "cloneEnable": false,
+                    "desc": "5oyJ54Wn5o6l5Yiw6K6i5Y2V55qE6aG65bqP6L+b6KGM5ou85Y2V",
+                    "key": "joinByReceiveTime",
+                    "type": "bool",
+                    "unit": ""
+                  },
+                  {
+                    "boolValue": false,
+                    "cloneEnable": false,
+                    "desc": "5aaC5p6c56m66Zey6L2m5pu06L+R77yM5bCx5LiN6L+b6KGM5ou85Y2V",
+                    "key": "preferIdleVehicleToJoin",
+                    "type": "bool",
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "5ou85Y2V562J5b6F5pe26Ze06ZiI5YC877yM6LaF6L+H6ZiI5YC85pyq5YiG6YWN77yM5Lya5pS+5a695ou85Y2V6ZmQ5Yi2",
+                    "int32Maxvalue": 100000000,
+                    "int32Minvalue": 0,
+                    "int32Value": 300,
+                    "key": "waitTimeThresholdSeconds",
+                    "type": "int32",
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "5ou85Y2V6LaF6L+H562J5b6F5pe26Ze06ZiI5YC85LmL5ZCO77yM6KGl5YG/55qE5q+U5L6L",
+                    "doubleMaxvalue": 100000000,
+                    "doubleMinvalue": 0,
+                    "doubleValue": 0.1,
+                    "key": "waitTimeCompensateRatio",
+                    "type": "double",
+                    "unit": ""
+                  }
+                ]
+              },
+              "cloneEnable": false,
+              "desc": "5Z+656GA5Y+C5pWw",
+              "key": "basic",
+              "type": "arrayParam"
+            }
+          ],
+          "isDisplay": true,
+          "isEnabled": true,
+          "name": "JoinOrder"
+        }
+      ],
+      "maxCount": 1,
+      "name": "JoinOrder",
+      "ord": 0
+    },
+    {
+      "desc": "6aKE5rWL6L+Q5Y2V5a6M5oiQ5pe26Ze0",
+      "devices": [
+        {
+          "desc": "\u9884\u6d4b\u8ba2\u5355\u5b8c\u6210\u65f6\u95f4",
+          "deviceParams": [
+            {
+              "arrayParam": {
+                "params": [
+                  {
+                    "cloneEnable": false,
+                    "desc": "5py65Zmo5Lq657uE5ZCN56ew",
+                    "key": "robotGroup",
+                    "stringValue": "",
+                    "type": "string",
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "5py65Zmo5Lq655qE5bmz5Z2H6YCf5bqm",
+                    "doubleMaxvalue": 99,
+                    "doubleMinvalue": 0,
+                    "doubleValue": 0.5,
+                    "key": "averageSpeed",
+                    "type": "double",
+                    "unit": "m/s"
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "5py65Zmo5Lq655qE5bmz5Z2H6KeS6YCf5bqm",
+                    "doubleMaxvalue": 180,
+                    "doubleMinvalue": 0,
+                    "doubleValue": 30,
+                    "key": "averageRotSpeed",
+                    "type": "double",
+                    "unit": "deg/s"
+                  }
+                ]
+              },
+              "cloneEnable": true,
+              "desc": "5Z+656GA5Y+C5pWw",
+              "key": "basic",
+              "type": "arrayParam"
+            }
+          ],
+          "isDisplay": true,
+          "isEnabled": true,
+          "name": "OrderPredict"
+        }
+      ],
+      "maxCount": 1,
+      "name": "OrderPredict",
+      "ord": 0
+    },
+    {
+      "desc": "6Lev5b6E6KeE5YiS",
+      "devices": [
+        {
+          "desc": "\u8def\u5f84\u89c4\u5212",
+          "deviceParams": [
+            {
+              "arrayParam": {
+                "params": [
+                  {
+                    "cloneEnable": false,
+                    "desc": "6KeS5bqm57O75pWw",
+                    "doubleMaxvalue": 10000000000,
+                    "doubleMinvalue": 0,
+                    "doubleValue": 1,
+                    "key": "angleFactor",
+                    "type": "double",
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "5puy546H57O75pWw",
+                    "doubleMaxvalue": 10000000000,
+                    "doubleMinvalue": 0,
+                    "doubleValue": 0.01,
+                    "key": "curveFactor",
+                    "type": "double",
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "5o6S6Zif57O75pWw77yM6LaK5aSn5aaC5p6c5YmN5pa56L2m6LaK5aSa5Y+v6IO95Lya5o+Q5YmN57uV5byA",
+                    "doubleMaxvalue": 10000000000,
+                    "doubleMinvalue": 0,
+                    "doubleValue": 1,
+                    "key": "queueFactor",
+                    "type": "double",
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "5YeP6YCf57O75pWw77yM6LaK5aSn5aaC5p6c5YmN5pa56L2m5YeP6YCf5Y+v6IO95Lya5o+Q5YmN57uV5byA",
+                    "doubleMaxvalue": 10000000000,
+                    "doubleMinvalue": 0,
+                    "doubleValue": 1,
+                    "key": "slowDownFactor",
+                    "type": "double",
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "5YGc6L2m57O75pWw77yM6LaK5aSn5aaC5p6c5YmN5pa56L2m5YGc5LiL5p2l5Y+v6IO95Lya5o+Q5YmN57uV5byA",
+                    "doubleMaxvalue": 10000000000,
+                    "doubleMinvalue": 0,
+                    "doubleValue": 100,
+                    "key": "stopFactor",
+                    "type": "double",
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "55S15qKv5YmN57q/6Lev6ZW/5bqm57O75pWw",
+                    "doubleMaxvalue": 10000000000,
+                    "doubleMinvalue": 0.1,
+                    "doubleValue": 1,
+                    "key": "liftFactor",
+                    "type": "double",
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "6Zeo5omA5Zyo57q/6Lev6ZW/5bqm57O75pWw",
+                    "doubleMaxvalue": 10000000000,
+                    "doubleMinvalue": 0.1,
+                    "doubleValue": 1,
+                    "key": "doorFactor",
+                    "type": "double",
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "5paw6KeE5YiS55qE57q/6Lev55+t5LqO5LmL5YmN55qE57q/6Lev5aSa5bCRbeaJjeabtOaWsA==",
+                    "doubleMaxvalue": 10000000000,
+                    "doubleMinvalue": 0.001,
+                    "doubleValue": 1,
+                    "key": "updateThreshold",
+                    "type": "double",
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "57q/6Lev5bGe5oCn5YWB6K6455qE5pyA5aSn5Yiw54K55YGP5beu",
+                    "doubleMaxvalue": 0.5,
+                    "doubleMinvalue": 0,
+                    "doubleValue": 0.05,
+                    "key": "pathPropertyDeviation",
+                    "type": "double",
+                    "unit": "m"
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "MDog5Y+v5Lul6YCa6L+H5pyJ6LSn5bqT5L2NCjE6IOS4jeWPr+S7pemAmui/h+aciei0p+W6k+S9jQoyOiDlj6rmnInovb3otKfmnLrlmajkurrkuI3lj6/pgJrov4fmnInotKflupPkvY0=",
+                    "key": "binOccupyLimit",
+                    "type": "uint32",
+                    "uint32Maxvalue": 2,
+                    "uint32Minvalue": 0,
+                    "uint32Value": 0,
+                    "unit": ""
+                  },
+                  {
+                    "boolValue": true,
+                    "cloneEnable": false,
+                    "desc": "5L6d5o2u5YW25LuW5Y2g5pyJ6Lev5b6E5oOF5Ya177yM5a6e5pe25pu05paw6Lev5b6E57O75pWw",
+                    "key": "updateRealTime",
+                    "type": "bool",
+                    "unit": ""
+                  },
+                  {
+                    "boolValue": true,
+                    "cloneEnable": false,
+                    "desc": "5Yid5aeL5YyW5Zy65pmv5pe26aKE5aSE55CG6Lev57q/",
+                    "key": "preProcessPath",
+                    "type": "bool",
+                    "unit": ""
+                  }
+                ]
+              },
+              "cloneEnable": false,
+              "desc": "5Z+656GA5Y+C5pWw",
+              "key": "basic",
+              "type": "arrayParam"
+            }
+          ],
+          "isDisplay": true,
+          "isEnabled": true,
+          "name": "PathPlanning"
+        }
+      ],
+      "maxCount": 1,
+      "name": "PathPlanning",
+      "ord": 0
+    },
+    {
+      "desc": "5raI5oGv5o6o6YCB5o6l5pS256uv",
+      "devices": [
+        {
+          "desc": "\u6d88\u606f\u63a8\u9001\u63a5\u6536\u7aef",
+          "deviceParams": [
+            {
+              "cloneEnable": false,
+              "comboParam": {
+                "childKey": "none",
+                "childParams": [
+                  {
+                    "desc": "QmxvY2tTdGF0ZUNoYW5nZQ==",
+                    "key": "BlockStateChange",
+                    "params": []
+                  }
+                ]
+              },
+              "desc": "dG9waWM=",
+              "key": "topic",
+              "type": "comboParam"
+            },
+            {
+              "cloneEnable": true,
+              "comboParam": {
+                "childKey": "HTTP",
+                "childParams": [
+                  {
+                    "desc": "SFRUUA==",
+                    "key": "HTTP",
+                    "params": [
+                      {
+                        "cloneEnable": false,
+                        "desc": "aHR0cCByZWNlaXZlciBpcA==",
+                        "key": "ip",
+                        "stringValue": "127.0.0.1",
+                        "type": "string",
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "aHR0cCByZWNlaXZlciBwb3J0",
+                        "key": "port",
+                        "type": "uint32",
+                        "uint32Maxvalue": 65535,
+                        "uint32Minvalue": 1,
+                        "uint32Value": 12345,
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "aHR0cCByZWNlaXZlciBwYXRo",
+                        "key": "path",
+                        "stringValue": "/block-state-change",
+                        "type": "string",
+                        "unit": ""
+                      }
+                    ]
+                  }
+                ]
+              },
+              "desc": "cmVjZWl2ZXI=",
+              "key": "receiver",
+              "type": "comboParam"
+            }
+          ],
+          "isDisplay": true,
+          "isEnabled": true,
+          "name": "Receiver"
+        }
+      ],
+      "maxCount": 100,
+      "name": "Receiver",
+      "ord": 0
+    },
+    {
+      "desc": "5YiG5pe25YWF55S1562W55Wl",
+      "devices": [
+        {
+          "desc": "\u5206\u65f6\u5145\u7535\u7b56\u7565",
+          "deviceParams": [
+            {
+              "cloneEnable": true,
+              "comboParam": {
+                "childKey": "",
+                "childParams": [
+                  {
+                    "desc": "6K6+572u5bqU55So6K+l6K6+572u55qE5py65Zmo5Lq66IyD5Zu0",
+                    "key": "Range",
+                    "params": [
+                      {
+                        "cloneEnable": false,
+                        "desc": "5py65Zmo5Lq65YiG57uE",
+                        "key": "Group",
+                        "stringValue": "",
+                        "type": "string",
+                        "unit": "\u7ec4\u522b"
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "5py65Zmo5Lq65qCH562+",
+                        "key": "Label",
+                        "stringValue": "",
+                        "type": "string",
+                        "unit": "\u6807\u7b7e"
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "5byA5aeL5pe26Ze0",
+                        "key": "Begin",
+                        "stringValue": "00:00",
+                        "type": "string",
+                        "unit": "\u5c0f\u65f6:\u5206\u949f"
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "5oyB57ut5pe26Ze0",
+                        "doubleMaxvalue": 10000,
+                        "doubleMinvalue": 0,
+                        "doubleValue": 0,
+                        "key": "Duration",
+                        "type": "double",
+                        "unit": "\u5206\u949f"
+                      }
+                    ]
+                  },
+                  {
+                    "desc": "6K6+572u5LqU5Liq5YWF55S155u45YWz55qE5Y+C5pWw",
+                    "key": "Param",
+                    "params": [
+                      {
+                        "cloneEnable": false,
+                        "desc": "5b+F6aG75YWF55S1",
+                        "doubleMaxvalue": 100,
+                        "doubleMinvalue": 0,
+                        "doubleValue": 0,
+                        "key": "ChargeOnly",
+                        "type": "double",
+                        "unit": "%"
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "6ZyA6KaB5YWF55S1",
+                        "doubleMaxvalue": 100,
+                        "doubleMinvalue": 0,
+                        "doubleValue": 0,
+                        "key": "ChargeNeed",
+                        "type": "double",
+                        "unit": "%"
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "5Y+v5YGa5Lu75Yqh",
+                        "doubleMaxvalue": 100,
+                        "doubleMinvalue": 0,
+                        "doubleValue": 0,
+                        "key": "ChargeOk",
+                        "type": "double",
+                        "unit": "%"
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "5bey57uP5YWF5ruh",
+                        "doubleMaxvalue": 100,
+                        "doubleMinvalue": 0,
+                        "doubleValue": 0,
+                        "key": "ChargeFull",
+                        "type": "double",
+                        "unit": "%"
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "5a6J5YWo6ZiI5YC8",
+                        "doubleMaxvalue": 100,
+                        "doubleMinvalue": 0,
+                        "doubleValue": 0,
+                        "key": "ChargeSafe",
+                        "type": "double",
+                        "unit": "%"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "desc": "5pSv5oyB5LiN5ZCM5pe26Ze05q615L2/55So5LiN5ZCM55qE5YWF55S15Y+C5pWw57uE",
+              "key": "Parameters",
+              "type": "comboParam"
+            }
+          ],
+          "isDisplay": true,
+          "isEnabled": false,
+          "name": "SegmentedCharge"
+        }
+      ],
+      "maxCount": 1,
+      "name": "SegmentedCharge",
+      "ord": 0
+    },
+    {
+      "desc": "5YiG5pe25YGc6Z2g562W55Wl",
+      "devices": [
+        {
+          "desc": "\u5206\u65f6\u505c\u9760\u7b56\u7565",
+          "deviceParams": [
+            {
+              "arrayParam": {
+                "params": [
+                  {
+                    "cloneEnable": false,
+                    "desc": "5py65Zmo5Lq65YiG57uE",
+                    "key": "Group",
+                    "stringValue": "",
+                    "type": "string",
+                    "unit": "\u7ec4\u522b"
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "5py65Zmo5Lq65qCH562+",
+                    "key": "Label",
+                    "stringValue": "",
+                    "type": "string",
+                    "unit": "\u6807\u7b7e"
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "5byA5aeL5pe26Ze0",
+                    "key": "Begin",
+                    "stringValue": "00:00",
+                    "type": "string",
+                    "unit": "\u5c0f\u65f6:\u5206\u949f"
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "5oyB57ut5pe26Ze0",
+                    "key": "Duration",
+                    "type": "uint32",
+                    "uint32Maxvalue": 10000,
+                    "uint32Minvalue": 0,
+                    "uint32Value": 0,
+                    "unit": "\u5206\u949f"
+                  }
+                ]
+              },
+              "cloneEnable": true,
+              "desc": "5pSv5oyB5LiN5ZCM5pe26Ze05q616K6+572u56aB5q2i5YGc6Z2g",
+              "key": "Parameters",
+              "type": "arrayParam"
+            }
+          ],
+          "isDisplay": true,
+          "isEnabled": false,
+          "name": "SegmentedPark"
+        }
+      ],
+      "maxCount": 1,
+      "name": "SegmentedPark",
+      "ord": 0
+    },
+    {
+      "desc": "5pyN5Yqh5Zmo56Gs5Lu2SUQ=",
+      "devices": [
+        {
+          "desc": "\u670d\u52a1\u5668\u786c\u4ef6ID",
+          "deviceParams": [
+            {
+              "arrayParam": {
+                "params": [
+                  {
+                    "cloneEnable": false,
+                    "desc": "56Gs5Lu2aWQ=",
+                    "key": "hardware_id",
+                    "stringValue": "xxx",
+                    "type": "string",
+                    "unit": ""
+                  }
+                ]
+              },
+              "cloneEnable": false,
+              "desc": "5Z+656GA5Y+C5pWw",
+              "key": "basic",
+              "type": "arrayParam"
+            }
+          ],
+          "isDisplay": true,
+          "isEnabled": true,
+          "name": "SeverHardwareId"
+        }
+      ],
+      "maxCount": 100,
+      "name": "ServerHardwareId",
+      "ord": 0
+    },
+    {
+      "desc": "dGFzayBzdHJhdGVneQ==",
+      "devices": [
+        {
+          "desc": "task strategy",
+          "deviceParams": [
+            {
+              "cloneEnable": false,
+              "comboParam": {
+                "childKey": "",
+                "childParams": [
+                  {
+                    "desc": "cmVEb0NoYXJnZUZhaWw=",
+                    "key": "reDoChargeFail",
+                    "params": [
+                      {
+                        "boolValue": false,
+                        "cloneEnable": false,
+                        "desc": "cmVkbyBmYWlsIHRhc2sgYW5kIGF1dG8gY2xlYXIgZXJyb3Igd2hlbiBjaGFyZ2luZyBpcyBmYWlsZWQ=",
+                        "key": "ClearErr",
+                        "type": "bool",
+                        "unit": ""
+                      }
+                    ]
+                  },
+                  {
+                    "desc": "Zm9yaw==",
+                    "key": "fork",
+                    "params": [
+                      {
+                        "boolValue": true,
+                        "cloneEnable": false,
+                        "desc": "Z290byBwcmVQb2ludCBmaXJzdGx5LCB3aGVuIGZvcmsgY2FuIGRpcmVjdGx5IGdvdG8gdGFyZ2V0",
+                        "key": "gotoPrePoint",
+                        "type": "bool",
+                        "unit": ""
+                      }
+                    ]
+                  }
+                ]
+              },
+              "desc": "dGFzayB0eXBl",
+              "key": "type",
+              "type": "comboParam"
+            }
+          ],
+          "isDisplay": true,
+          "isEnabled": true,
+          "name": "TaskStrategy"
+        }
+      ],
+      "maxCount": 100,
+      "name": "TaskStrategy",
+      "ord": 0
+    },
+    {
+      "desc": "5Lu/55yf6K6i5Y2V",
+      "devices": [
+        {
+          "desc": "\u4eff\u771f\u8ba2\u5355",
+          "deviceParams": [
+            {
+              "cloneEnable": false,
+              "comboParam": {
+                "childKey": "none",
+                "childParams": [
+                  {
+                    "desc": "5YWz6Zet",
+                    "key": "TurnOff",
+                    "params": []
+                  },
+                  {
+                    "desc": "5YWo5Zu+6ZqP5py66K6i5Y2V",
+                    "key": "Random",
+                    "params": []
+                  },
+                  {
+                    "desc": "54m55a6a54K55L2N6ZqP5py66K6i5Y2VICA=",
+                    "key": "PPAPCP",
+                    "params": []
+                  },
+                  {
+                    "desc": "6auY57qn57uE5Y+W5pS+6LSn6K6i5Y2V",
+                    "key": "Pickup",
+                    "params": []
+                  },
+                  {
+                    "desc": "6auY57qn57uE54m55a6a54K55L2N6K6i5Y2V",
+                    "key": "Direct",
+                    "params": []
+                  }
+                ]
+              },
+              "desc": "6K6i5Y2V57G75Z6L6YCJ5oup",
+              "key": "type",
+              "type": "comboParam"
+            },
+            {
+              "arrayParam": {
+                "params": [
+                  {
+                    "boolValue": true,
+                    "cloneEnable": false,
+                    "desc": "5Yib5bu66K6i5Y2V5pe277yM5piv5ZCm55u05o6l5oyH5a6a5py65Zmo5Lq6",
+                    "key": "assign",
+                    "type": "bool",
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "6K6i5Y2V5pyA5aSn5pWw6YeP",
+                    "int32Maxvalue": 999,
+                    "int32Minvalue": -1,
+                    "int32Value": -1,
+                    "key": "maxOrderNum",
+                    "type": "int32",
+                    "unit": "\u4e2a\u8ba2\u5355"
+                  }
+                ]
+              },
+              "cloneEnable": false,
+              "desc": "5Z+656GA5L+h5oGv6K6+572u",
+              "key": "basic",
+              "type": "arrayParam"
+            },
+            {
+              "arrayParam": {
+                "params": [
+                  {
+                    "cloneEnable": false,
+                    "desc": "5pe26Ze06IqC5ouNLCDmr4/pmpQgdGltZVJoeXRobSDnp5Llj5HpgIEgbnVtX1JoeXRobSDljZU=",
+                    "doubleMaxvalue": 999,
+                    "doubleMinvalue": 0,
+                    "doubleValue": 0,
+                    "key": "timeRhythm",
+                    "type": "double",
+                    "unit": "\u79d2"
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "5pWw6YeP6IqC5ouNLCDmr4/pmpQgdGltZVJoeXRobSDnp5Llj5HpgIEgbnVtX1JoeXRobSDljZU=",
+                    "doubleMaxvalue": 999,
+                    "doubleMinvalue": 0,
+                    "doubleValue": 0,
+                    "key": "numRhythm",
+                    "type": "double",
+                    "unit": "\u5355"
+                  }
+                ]
+              },
+              "cloneEnable": false,
+              "desc": "5Y+R5Y2V6IqC5ouN",
+              "key": "rhythm",
+              "type": "arrayParam"
+            },
+            {
+              "arrayParam": {
+                "params": [
+                  {
+                    "boolValue": true,
+                    "cloneEnable": false,
+                    "desc": "5byA5ZCv6K6i5Y2V57uf6K6h",
+                    "key": "openOrderStatistics",
+                    "type": "bool",
+                    "unit": ""
+                  },
+                  {
+                    "boolValue": false,
+                    "cloneEnable": false,
+                    "desc": "5riF56m657uf6K6h5L+h5oGvLCDnrYnku7fkuo4gcmVzZXQg6YeN572u",
+                    "key": "clearOrderStatistics",
+                    "type": "bool",
+                    "unit": ""
+                  }
+                ]
+              },
+              "cloneEnable": false,
+              "desc": "6K6i5Y2V57uf6K6h",
+              "key": "statistics",
+              "type": "arrayParam"
+            }
+          ],
+          "isDisplay": true,
+          "isEnabled": false,
+          "name": "TestOrder"
+        }
+      ],
+      "maxCount": 1,
+      "name": "TestOrder",
+      "ord": 0
+    },
+    {
+      "desc": "rds trigger",
+      "devices": [
+        {
+          "desc": "Sample trigger config",
+          "deviceParams": [
+            {
+              "cloneEnable": true,
+              "comboParam": {
+                "childKey": "",
+                "childParams": [
+                  {
+                    "desc": "Robot DI",
+                    "key": "DI",
+                    "params": [
+                      {
+                        "cloneEnable": false,
+                        "desc": "",
+                        "int32Value": 3,
+                        "key": "diNumber",
+                        "type": "int32",
+                        "unit": ""
+                      },
+                      {
+                        "boolValue": false,
+                        "cloneEnable": false,
+                        "desc": "",
+                        "key": "oldValue",
+                        "type": "bool",
+                        "unit": ""
+                      },
+                      {
+                        "boolValue": true,
+                        "cloneEnable": false,
+                        "desc": "",
+                        "key": "newValue",
+                        "type": "bool",
+                        "unit": ""
+                      }
+                    ]
+                  },
+                  {
+                    "desc": "Robot emergency stop",
+                    "key": "EmergencyStop",
+                    "params": [
+                      {
+                        "boolValue": false,
+                        "cloneEnable": false,
+                        "desc": "",
+                        "key": "oldValue",
+                        "type": "bool",
+                        "unit": ""
+                      },
+                      {
+                        "boolValue": true,
+                        "cloneEnable": false,
+                        "desc": "",
+                        "key": "newValue",
+                        "type": "bool",
+                        "unit": ""
+                      }
+                    ]
+                  },
+                  {
+                    "desc": "Robot new error",
+                    "key": "RobotNewError",
+                    "params": []
+                  },
+                  {
+                    "desc": "Robot error change",
+                    "key": "RobotErrorChange",
+                    "params": []
+                  },
+                  {
+                    "desc": "Core error changed",
+                    "key": "CoreErrorChange",
+                    "params": []
+                  },
+                  {
+                    "desc": "Order stopped",
+                    "key": "OrderStopped",
+                    "params": []
+                  },
+                  {
+                    "desc": "Order state changed",
+                    "key": "OrderStateChanged",
+                    "params": []
+                  }
+                ]
+              },
+              "desc": "",
+              "key": "condition",
+              "type": ""
+            },
+            {
+              "cloneEnable": true,
+              "comboParam": {
+                "childKey": "",
+                "childParams": [
+                  {
+                    "desc": "Terminate robot current order",
+                    "key": "TerminateCurrentOrder",
+                    "params": []
+                  },
+                  {
+                    "desc": "Fail current order",
+                    "key": "FailCurrentBlock",
+                    "params": []
+                  },
+                  {
+                    "desc": "Manually finish current BLOCK",
+                    "key": "ManuallyFinishCurrentBlock",
+                    "params": []
+                  },
+                  {
+                    "desc": "Manually finish current ORDER",
+                    "key": "ManuallyFinishCurrentOrder",
+                    "params": []
+                  },
+                  {
+                    "desc": "Set robot dispatchable",
+                    "key": "SetRobotDispatchable",
+                    "params": [
+                      {
+                        "boolValue": true,
+                        "cloneEnable": false,
+                        "desc": "",
+                        "key": "dispatchable",
+                        "type": "bool",
+                        "unit": ""
+                      },
+                      {
+                        "boolValue": false,
+                        "cloneEnable": false,
+                        "desc": "",
+                        "key": "undispatchable_unignore",
+                        "type": "bool",
+                        "unit": ""
+                      },
+                      {
+                        "boolValue": false,
+                        "cloneEnable": false,
+                        "desc": "",
+                        "key": "undispatchable_ignore",
+                        "type": "bool",
+                        "unit": ""
+                      }
+                    ]
+                  },
+                  {
+                    "desc": "Http request",
+                    "key": "HttpRequest",
+                    "params": [
+                      {
+                        "cloneEnable": false,
+                        "desc": "",
+                        "key": "schemeHostPort",
+                        "stringValue": "http://192.168.8.71:12875",
+                        "type": "string",
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "",
+                        "key": "path",
+                        "stringValue": "/report",
+                        "type": "string",
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "",
+                        "int32Maxvalue": 100000,
+                        "int32Minvalue": 0,
+                        "int32Value": 200,
+                        "key": "expectedStatusCode",
+                        "type": "int32",
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "",
+                        "key": "expectedResponseBody",
+                        "stringValue": "{\"msg\":\"success\", \"code\":1000}",
+                        "type": "string",
+                        "unit": ""
+                      },
+                      {
+                        "boolValue": false,
+                        "cloneEnable": false,
+                        "desc": "",
+                        "key": "retryEnabled",
+                        "type": "bool",
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "",
+                        "key": "retryInterval",
+                        "type": "uint32",
+                        "uint32Maxvalue": 99999,
+                        "uint32Minvalue": 0,
+                        "uint32Value": 1,
+                        "unit": "s"
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "",
+                        "key": "retryMaxTimes",
+                        "type": "uint32",
+                        "uint32Maxvalue": 99999,
+                        "uint32Minvalue": 0,
+                        "uint32Value": 0,
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "\u9644\u52a0\u5b57\u6bb5",
+                        "key": "additionalJson",
+                        "stringValue": "{\"key\":\"REPORT\"}",
+                        "type": "json",
+                        "unit": ""
+                      }
+                    ]
+                  }
+                ]
+              },
+              "desc": "",
+              "key": "action",
+              "type": ""
+            }
+          ],
+          "isDisplay": true,
+          "isEnabled": false,
+          "name": "Sample"
+        }
+      ],
+      "maxCount": 0,
+      "name": "Trigger",
+      "ord": 0
+    },
+    {
+      "desc": "V2luZFNob3dlcg==",
+      "devices": [
+        {
+          "desc": "WindShower",
+          "deviceParams": [
+            {
+              "cloneEnable": true,
+              "comboParam": {
+                "childKey": "ModbusTCP",
+                "childParams": [
+                  {
+                    "desc": "TW9kYnVzVENQ",
+                    "key": "ModbusTCP",
+                    "params": [
+                      {
+                        "cloneEnable": false,
+                        "desc": "cHJveHkgbmFtZQ==",
+                        "key": "ProxyName",
+                        "stringValue": "proxy name",
+                        "type": "string",
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIGZ1bmN0aW9uIGNvZGU=",
+                        "key": "FunctionCode",
+                        "type": "uint32",
+                        "uint32Maxvalue": 16,
+                        "uint32Minvalue": 1,
+                        "uint32Value": 6,
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIGFkZHJlc3M=",
+                        "key": "Address",
+                        "type": "uint32",
+                        "uint32Maxvalue": 65535,
+                        "uint32Minvalue": 0,
+                        "uint32Value": 1,
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIHZhbHVl",
+                        "int32Maxvalue": 32767,
+                        "int32Minvalue": -32767,
+                        "int32Value": 1,
+                        "key": "Value",
+                        "type": "int32",
+                        "unit": ""
+                      }
+                    ]
+                  }
+                ]
+              },
+              "desc": "ZW50ZXJEb29yT3BlbkNvbW1hbmQ=",
+              "key": "enterDoorOpenCommand",
+              "type": "comboParam"
+            },
+            {
+              "cloneEnable": true,
+              "comboParam": {
+                "childKey": "ModbusTCP",
+                "childParams": [
+                  {
+                    "desc": "TW9kYnVzVENQ",
+                    "key": "ModbusTCP",
+                    "params": [
+                      {
+                        "cloneEnable": false,
+                        "desc": "cHJveHkgbmFtZQ==",
+                        "key": "ProxyName",
+                        "stringValue": "proxy name",
+                        "type": "string",
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIGZ1bmN0aW9uIGNvZGU=",
+                        "key": "FunctionCode",
+                        "type": "uint32",
+                        "uint32Maxvalue": 16,
+                        "uint32Minvalue": 1,
+                        "uint32Value": 6,
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIGFkZHJlc3M=",
+                        "key": "Address",
+                        "type": "uint32",
+                        "uint32Maxvalue": 65535,
+                        "uint32Minvalue": 0,
+                        "uint32Value": 1,
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIHZhbHVl",
+                        "int32Maxvalue": 32767,
+                        "int32Minvalue": -32767,
+                        "int32Value": 1,
+                        "key": "Value",
+                        "type": "int32",
+                        "unit": ""
+                      }
+                    ]
+                  }
+                ]
+              },
+              "desc": "ZW50ZXJEb29yQ2xvc2VDb21tYW5k",
+              "key": "enterDoorCloseCommand",
+              "type": "comboParam"
+            },
+            {
+              "cloneEnable": true,
+              "comboParam": {
+                "childKey": "ModbusTCP",
+                "childParams": [
+                  {
+                    "desc": "TW9kYnVzVENQ",
+                    "key": "ModbusTCP",
+                    "params": [
+                      {
+                        "cloneEnable": false,
+                        "desc": "cHJveHkgbmFtZQ==",
+                        "key": "ProxyName",
+                        "stringValue": "proxy name",
+                        "type": "string",
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIGZ1bmN0aW9uIGNvZGU=",
+                        "key": "FunctionCode",
+                        "type": "uint32",
+                        "uint32Maxvalue": 16,
+                        "uint32Minvalue": 1,
+                        "uint32Value": 6,
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIGFkZHJlc3M=",
+                        "key": "Address",
+                        "type": "uint32",
+                        "uint32Maxvalue": 65535,
+                        "uint32Minvalue": 0,
+                        "uint32Value": 1,
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIHZhbHVl",
+                        "int32Maxvalue": 32767,
+                        "int32Minvalue": -32767,
+                        "int32Value": 1,
+                        "key": "Value",
+                        "type": "int32",
+                        "unit": ""
+                      }
+                    ]
+                  }
+                ]
+              },
+              "desc": "ZW50ZXJEb29yT3BlbkRvbmVTdGF0dXM=",
+              "key": "enterDoorOpenDoneStatus",
+              "type": "comboParam"
+            },
+            {
+              "cloneEnable": true,
+              "comboParam": {
+                "childKey": "ModbusTCP",
+                "childParams": [
+                  {
+                    "desc": "TW9kYnVzVENQ",
+                    "key": "ModbusTCP",
+                    "params": [
+                      {
+                        "cloneEnable": false,
+                        "desc": "cHJveHkgbmFtZQ==",
+                        "key": "ProxyName",
+                        "stringValue": "proxy name",
+                        "type": "string",
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIGZ1bmN0aW9uIGNvZGU=",
+                        "key": "FunctionCode",
+                        "type": "uint32",
+                        "uint32Maxvalue": 16,
+                        "uint32Minvalue": 1,
+                        "uint32Value": 6,
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIGFkZHJlc3M=",
+                        "key": "Address",
+                        "type": "uint32",
+                        "uint32Maxvalue": 65535,
+                        "uint32Minvalue": 0,
+                        "uint32Value": 1,
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIHZhbHVl",
+                        "int32Maxvalue": 32767,
+                        "int32Minvalue": -32767,
+                        "int32Value": 1,
+                        "key": "Value",
+                        "type": "int32",
+                        "unit": ""
+                      }
+                    ]
+                  }
+                ]
+              },
+              "desc": "ZW50ZXJEb29yQ2xvc2VEb25lU3RhdHVz",
+              "key": "enterDoorCloseDoneStatus",
+              "type": "comboParam"
+            },
+            {
+              "cloneEnable": true,
+              "comboParam": {
+                "childKey": "ModbusTCP",
+                "childParams": [
+                  {
+                    "desc": "TW9kYnVzVENQ",
+                    "key": "ModbusTCP",
+                    "params": [
+                      {
+                        "cloneEnable": false,
+                        "desc": "cHJveHkgbmFtZQ==",
+                        "key": "ProxyName",
+                        "stringValue": "proxy name",
+                        "type": "string",
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIGZ1bmN0aW9uIGNvZGU=",
+                        "key": "FunctionCode",
+                        "type": "uint32",
+                        "uint32Maxvalue": 16,
+                        "uint32Minvalue": 1,
+                        "uint32Value": 6,
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIGFkZHJlc3M=",
+                        "key": "Address",
+                        "type": "uint32",
+                        "uint32Maxvalue": 65535,
+                        "uint32Minvalue": 0,
+                        "uint32Value": 1,
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIHZhbHVl",
+                        "int32Maxvalue": 32767,
+                        "int32Minvalue": -32767,
+                        "int32Value": 1,
+                        "key": "Value",
+                        "type": "int32",
+                        "unit": ""
+                      }
+                    ]
+                  }
+                ]
+              },
+              "desc": "bGVhdmVEb29yT3BlbkNvbW1hbmQ=",
+              "key": "leaveDoorOpenCommand",
+              "type": "comboParam"
+            },
+            {
+              "cloneEnable": true,
+              "comboParam": {
+                "childKey": "ModbusTCP",
+                "childParams": [
+                  {
+                    "desc": "TW9kYnVzVENQ",
+                    "key": "ModbusTCP",
+                    "params": [
+                      {
+                        "cloneEnable": false,
+                        "desc": "cHJveHkgbmFtZQ==",
+                        "key": "ProxyName",
+                        "stringValue": "proxy name",
+                        "type": "string",
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIGZ1bmN0aW9uIGNvZGU=",
+                        "key": "FunctionCode",
+                        "type": "uint32",
+                        "uint32Maxvalue": 16,
+                        "uint32Minvalue": 1,
+                        "uint32Value": 6,
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIGFkZHJlc3M=",
+                        "key": "Address",
+                        "type": "uint32",
+                        "uint32Maxvalue": 65535,
+                        "uint32Minvalue": 0,
+                        "uint32Value": 1,
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIHZhbHVl",
+                        "int32Maxvalue": 32767,
+                        "int32Minvalue": -32767,
+                        "int32Value": 1,
+                        "key": "Value",
+                        "type": "int32",
+                        "unit": ""
+                      }
+                    ]
+                  }
+                ]
+              },
+              "desc": "bGVhdmVEb29yQ2xvc2VDb21tYW5k",
+              "key": "leaveDoorCloseCommand",
+              "type": "comboParam"
+            },
+            {
+              "cloneEnable": true,
+              "comboParam": {
+                "childKey": "ModbusTCP",
+                "childParams": [
+                  {
+                    "desc": "TW9kYnVzVENQ",
+                    "key": "ModbusTCP",
+                    "params": [
+                      {
+                        "cloneEnable": false,
+                        "desc": "cHJveHkgbmFtZQ==",
+                        "key": "ProxyName",
+                        "stringValue": "proxy name",
+                        "type": "string",
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIGZ1bmN0aW9uIGNvZGU=",
+                        "key": "FunctionCode",
+                        "type": "uint32",
+                        "uint32Maxvalue": 16,
+                        "uint32Minvalue": 1,
+                        "uint32Value": 6,
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIGFkZHJlc3M=",
+                        "key": "Address",
+                        "type": "uint32",
+                        "uint32Maxvalue": 65535,
+                        "uint32Minvalue": 0,
+                        "uint32Value": 1,
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIHZhbHVl",
+                        "int32Maxvalue": 32767,
+                        "int32Minvalue": -32767,
+                        "int32Value": 1,
+                        "key": "Value",
+                        "type": "int32",
+                        "unit": ""
+                      }
+                    ]
+                  }
+                ]
+              },
+              "desc": "bGVhdmVEb29yT3BlbkRvbmVTdGF0dXM=",
+              "key": "leaveDoorOpenDoneStatus",
+              "type": "comboParam"
+            },
+            {
+              "cloneEnable": true,
+              "comboParam": {
+                "childKey": "ModbusTCP",
+                "childParams": [
+                  {
+                    "desc": "TW9kYnVzVENQ",
+                    "key": "ModbusTCP",
+                    "params": [
+                      {
+                        "cloneEnable": false,
+                        "desc": "cHJveHkgbmFtZQ==",
+                        "key": "ProxyName",
+                        "stringValue": "proxy name",
+                        "type": "string",
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIGZ1bmN0aW9uIGNvZGU=",
+                        "key": "FunctionCode",
+                        "type": "uint32",
+                        "uint32Maxvalue": 16,
+                        "uint32Minvalue": 1,
+                        "uint32Value": 6,
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIGFkZHJlc3M=",
+                        "key": "Address",
+                        "type": "uint32",
+                        "uint32Maxvalue": 65535,
+                        "uint32Minvalue": 0,
+                        "uint32Value": 1,
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIHZhbHVl",
+                        "int32Maxvalue": 32767,
+                        "int32Minvalue": -32767,
+                        "int32Value": 1,
+                        "key": "Value",
+                        "type": "int32",
+                        "unit": ""
+                      }
+                    ]
+                  }
+                ]
+              },
+              "desc": "bGVhdmVEb29yQ2xvc2VEb25lU3RhdHVz",
+              "key": "leaveDoorCloseDoneStatus",
+              "type": "comboParam"
+            },
+            {
+              "cloneEnable": true,
+              "comboParam": {
+                "childKey": "ModbusTCP",
+                "childParams": [
+                  {
+                    "desc": "TW9kYnVzVENQ",
+                    "key": "ModbusTCP",
+                    "params": [
+                      {
+                        "cloneEnable": false,
+                        "desc": "cHJveHkgbmFtZQ==",
+                        "key": "ProxyName",
+                        "stringValue": "proxy name",
+                        "type": "string",
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIGZ1bmN0aW9uIGNvZGU=",
+                        "key": "FunctionCode",
+                        "type": "uint32",
+                        "uint32Maxvalue": 16,
+                        "uint32Minvalue": 1,
+                        "uint32Value": 6,
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIGFkZHJlc3M=",
+                        "key": "Address",
+                        "type": "uint32",
+                        "uint32Maxvalue": 65535,
+                        "uint32Minvalue": 0,
+                        "uint32Value": 1,
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIHZhbHVl",
+                        "int32Maxvalue": 32767,
+                        "int32Minvalue": -32767,
+                        "int32Value": 1,
+                        "key": "Value",
+                        "type": "int32",
+                        "unit": ""
+                      }
+                    ]
+                  }
+                ]
+              },
+              "desc": "d2luZFNob3dlclN0YXJ0Q29tbWFuZA==",
+              "key": "windShowerStartCommand",
+              "type": "comboParam"
+            },
+            {
+              "cloneEnable": true,
+              "comboParam": {
+                "childKey": "ModbusTCP",
+                "childParams": [
+                  {
+                    "desc": "TW9kYnVzVENQ",
+                    "key": "ModbusTCP",
+                    "params": [
+                      {
+                        "cloneEnable": false,
+                        "desc": "cHJveHkgbmFtZQ==",
+                        "key": "ProxyName",
+                        "stringValue": "proxy name",
+                        "type": "string",
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIGZ1bmN0aW9uIGNvZGU=",
+                        "key": "FunctionCode",
+                        "type": "uint32",
+                        "uint32Maxvalue": 16,
+                        "uint32Minvalue": 1,
+                        "uint32Value": 6,
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIGFkZHJlc3M=",
+                        "key": "Address",
+                        "type": "uint32",
+                        "uint32Maxvalue": 65535,
+                        "uint32Minvalue": 0,
+                        "uint32Value": 1,
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIHZhbHVl",
+                        "int32Maxvalue": 32767,
+                        "int32Minvalue": -32767,
+                        "int32Value": 1,
+                        "key": "Value",
+                        "type": "int32",
+                        "unit": ""
+                      }
+                    ]
+                  }
+                ]
+              },
+              "desc": "d2luZFNob3dlckRvbmVTdGF0dXM=",
+              "key": "windShowerDoneStatus",
+              "type": "comboParam"
+            },
+            {
+              "cloneEnable": true,
+              "comboParam": {
+                "childKey": "ModbusTCP",
+                "childParams": [
+                  {
+                    "desc": "TW9kYnVzVENQ",
+                    "key": "ModbusTCP",
+                    "params": [
+                      {
+                        "cloneEnable": false,
+                        "desc": "cHJveHkgbmFtZQ==",
+                        "key": "ProxyName",
+                        "stringValue": "proxy name",
+                        "type": "string",
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIGZ1bmN0aW9uIGNvZGU=",
+                        "key": "FunctionCode",
+                        "type": "uint32",
+                        "uint32Maxvalue": 16,
+                        "uint32Minvalue": 1,
+                        "uint32Value": 6,
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIGFkZHJlc3M=",
+                        "key": "Address",
+                        "type": "uint32",
+                        "uint32Maxvalue": 65535,
+                        "uint32Minvalue": 0,
+                        "uint32Value": 1,
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIHZhbHVl",
+                        "int32Maxvalue": 32767,
+                        "int32Minvalue": -32767,
+                        "int32Value": 1,
+                        "key": "Value",
+                        "type": "int32",
+                        "unit": ""
+                      }
+                    ]
+                  }
+                ]
+              },
+              "desc": "d2luZFNob3dlckVycm9yU3RhdHVz",
+              "key": "windShowerErrorStatus",
+              "type": "comboParam"
+            },
+            {
+              "arrayParam": {
+                "params": [
+                  {
+                    "cloneEnable": false,
+                    "desc": "",
+                    "key": "StartPoint",
+                    "stringValue": "LM100",
+                    "type": "string",
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "",
+                    "key": "EndPoint",
+                    "stringValue": "LM101",
+                    "type": "string",
+                    "unit": ""
+                  }
+                ]
+              },
+              "cloneEnable": false,
+              "desc": "ZW50ZXJEb29yRW50ZXJQYXRo",
+              "key": "enterDoorEnterPath",
+              "type": "arrayParam"
+            },
+            {
+              "arrayParam": {
+                "params": [
+                  {
+                    "cloneEnable": false,
+                    "desc": "",
+                    "key": "StartPoint",
+                    "stringValue": "LM100",
+                    "type": "string",
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "",
+                    "key": "EndPoint",
+                    "stringValue": "LM101",
+                    "type": "string",
+                    "unit": ""
+                  }
+                ]
+              },
+              "cloneEnable": false,
+              "desc": "ZW50ZXJEb29yTGVhdmVQYXRo",
+              "key": "enterDoorLeavePath",
+              "type": "arrayParam"
+            },
+            {
+              "arrayParam": {
+                "params": [
+                  {
+                    "cloneEnable": false,
+                    "desc": "",
+                    "key": "StartPoint",
+                    "stringValue": "LM100",
+                    "type": "string",
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "",
+                    "key": "EndPoint",
+                    "stringValue": "LM101",
+                    "type": "string",
+                    "unit": ""
+                  }
+                ]
+              },
+              "cloneEnable": false,
+              "desc": "bGVhdmVEb29yRW50ZXJQYXRo",
+              "key": "leaveDoorEnterPath",
+              "type": "arrayParam"
+            },
+            {
+              "arrayParam": {
+                "params": [
+                  {
+                    "cloneEnable": false,
+                    "desc": "",
+                    "key": "StartPoint",
+                    "stringValue": "LM100",
+                    "type": "string",
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "",
+                    "key": "EndPoint",
+                    "stringValue": "LM101",
+                    "type": "string",
+                    "unit": ""
+                  }
+                ]
+              },
+              "cloneEnable": false,
+              "desc": "bGVhdmVEb29yTGVhdmVQYXRo",
+              "key": "leaveDoorLeavePath",
+              "type": "arrayParam"
+            },
+            {
+              "arrayParam": {
+                "params": [
+                  {
+                    "cloneEnable": false,
+                    "desc": "",
+                    "key": "WindShowerPoint",
+                    "stringValue": "AP111",
+                    "type": "string",
+                    "unit": ""
+                  }
+                ]
+              },
+              "cloneEnable": false,
+              "desc": "d2luZFNob3dlclBvaW50",
+              "key": "windShowerPoint",
+              "type": "arrayParam"
+            }
+          ],
+          "isDisplay": true,
+          "isEnabled": true,
+          "name": "WindShower"
+        }
+      ],
+      "maxCount": 0,
+      "name": "WindShower",
+      "ord": 0
+    },
+    {
+      "desc": "Y2hhcmdlcg==",
+      "devices": [
+        {
+          "desc": "5YWF55S15py65p6E",
+          "deviceParams": [
+            {
+              "cloneEnable": false,
+              "comboParam": {
+                "childKey": "src-800",
+                "childParams": [
+                  {
+                    "desc": "c3JjLTgwMA==",
+                    "key": "src-800",
+                    "params": [
+                      {
+                        "cloneEnable": false,
+                        "desc": "c3JjIGNoYXJnZXIgc3BvdCBpcA==",
+                        "key": "ip",
+                        "stringValue": "192.168.1.1",
+                        "type": "ip",
+                        "unit": ""
+                      }
+                    ]
+                  }
+                ]
+              },
+              "desc": "YnJhbmQ=",
+              "key": "brand",
+              "type": "comboParam"
+            }
+          ],
+          "isDisplay": true,
+          "isEnabled": true,
+          "name": "charger"
+        }
+      ],
+      "maxCount": 0,
+      "name": "charger",
+      "ord": 0
+    },
+    {
+      "desc": "bWFpbHNlbmRlcg==",
+      "devices": [
+        {
+          "desc": "bWFpbHNlbmRlcg==",
+          "deviceParams": [
+            {
+              "arrayParam": {
+                "params": [
+                  {
+                    "cloneEnable": false,
+                    "desc": "U01UUOmCruS7tuacjeWKoeWZqOWcsOWdgA==",
+                    "key": "address",
+                    "stringValue": "smtp.feishu.cn",
+                    "type": "string",
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "55So5oi35ZCN",
+                    "key": "username",
+                    "stringValue": "alarm@seer-group.com",
+                    "type": "string",
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "5a+G56CB",
+                    "key": "password",
+                    "stringValue": "",
+                    "type": "string",
+                    "unit": ""
+                  }
+                ]
+              },
+              "cloneEnable": false,
+              "desc": "U01UUOmCrueuseacjeWKoeWZqA==",
+              "key": "email server",
+              "type": "arrayParam"
+            },
+            {
+              "arrayParam": {
+                "params": [
+                  {
+                    "cloneEnable": true,
+                    "desc": "6YKu566x5Zyw5Z2A",
+                    "key": "address",
+                    "stringValue": "",
+                    "type": "string",
+                    "unit": ""
+                  }
+                ]
+              },
+              "cloneEnable": false,
+              "desc": "6YKu5Lu25o6l5pS26ICF",
+              "key": "emails",
+              "type": "arrayParam"
+            },
+            {
+              "arrayParam": {
+                "params": [
+                  {
+                    "cloneEnable": false,
+                    "desc": "5oql6K2m56CB",
+                    "key": "code",
+                    "type": "uint32",
+                    "uint32Maxvalue": 53999,
+                    "uint32Minvalue": 52000,
+                    "uint32Value": 52000,
+                    "unit": ""
+                  }
+                ]
+              },
+              "cloneEnable": true,
+              "desc": "6YCa55+l",
+              "key": "alarms",
+              "type": "arrayParam"
+            }
+          ],
+          "isDisplay": true,
+          "isEnabled": false,
+          "name": "mailsender"
+        }
+      ],
+      "maxCount": 100,
+      "name": "mailsender",
+      "ord": 0
+    },
+    {
+      "desc": "dGV4dCBtZXNzYWdlIHNlbmRlcg==",
+      "devices": [
+        {
+          "desc": "dGV4dCBtZXNzYWdlIHNlbmRlcg==",
+          "deviceParams": [
+            {
+              "arrayParam": {
+                "params": [
+                  {
+                    "cloneEnable": true,
+                    "desc": "55S16K+d5Y+356CB",
+                    "key": "phone number",
+                    "stringValue": "",
+                    "type": "string",
+                    "unit": ""
+                  }
+                ]
+              },
+              "cloneEnable": false,
+              "desc": "55S16K+d5Y+356CB",
+              "key": "phone number",
+              "type": "arrayParam"
+            },
+            {
+              "arrayParam": {
+                "params": [
+                  {
+                    "cloneEnable": true,
+                    "desc": "5oql6K2m56CB",
+                    "key": "code",
+                    "type": "uint32",
+                    "uint32Maxvalue": 53999,
+                    "uint32Minvalue": 52000,
+                    "uint32Value": 52000,
+                    "unit": ""
+                  }
+                ]
+              },
+              "cloneEnable": false,
+              "desc": "5oql6K2m56CB",
+              "key": "alarms",
+              "type": "arrayParam"
+            }
+          ],
+          "isDisplay": false,
+          "isEnabled": false,
+          "name": "messagesender"
+        }
+      ],
+      "maxCount": 20,
+      "name": "messagesender",
+      "ord": 0
+    },
+    {
+      "desc": "cHJveHk=",
+      "devices": [
+        {
+          "desc": "proxy",
+          "deviceParams": [
+            {
+              "cloneEnable": false,
+              "comboParam": {
+                "childKey": "ModbusTCP",
+                "childParams": [
+                  {
+                    "desc": "TW9kYnVzVENQ",
+                    "key": "ModbusTCP",
+                    "params": [
+                      {
+                        "cloneEnable": false,
+                        "desc": "bW9kYnVzVGNwIGlw",
+                        "key": "ip",
+                        "stringValue": "127.0.0.1",
+                        "type": "string",
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "bW9kYnVzVGNwIHBvcnQ=",
+                        "key": "port",
+                        "type": "uint32",
+                        "uint32Maxvalue": 65535,
+                        "uint32Minvalue": 1,
+                        "uint32Value": 503,
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "bW9kYnVzVGNwIHNsYXZlSWQ=",
+                        "key": "slaveId",
+                        "type": "uint32",
+                        "uint32Maxvalue": 65535,
+                        "uint32Minvalue": 1,
+                        "uint32Value": 1,
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "dGltZW91dCB0aW1lKHMp",
+                        "key": "timeout",
+                        "type": "uint32",
+                        "uint32Maxvalue": 65535,
+                        "uint32Minvalue": 1,
+                        "uint32Value": 10,
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "bWluIGlvIGludGVydmFsKG1zKQ==",
+                        "key": "interval",
+                        "type": "uint32",
+                        "uint32Maxvalue": 100000,
+                        "uint32Minvalue": 1,
+                        "uint32Value": 50,
+                        "unit": ""
+                      }
+                    ]
+                  },
+                  {
+                    "desc": "TW9kYnVzVENQU3BlY2lmaWNJUA==",
+                    "key": "ModbusTCPSpecificIP",
+                    "params": [
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIHNsYXZlIElQ",
+                        "key": "serverIp",
+                        "stringValue": "192.168.1.21",
+                        "type": "string",
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIHNsYXZlIHBvcnQ=",
+                        "key": "port",
+                        "type": "uint32",
+                        "uint32Maxvalue": 65535,
+                        "uint32Minvalue": 1,
+                        "uint32Value": 503,
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIHNsYXZlIGlk",
+                        "key": "slaveId",
+                        "type": "uint32",
+                        "uint32Maxvalue": 65535,
+                        "uint32Minvalue": 1,
+                        "uint32Value": 1,
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "dGltZW91dCB0aW1lKHMp",
+                        "key": "timeout",
+                        "type": "uint32",
+                        "uint32Maxvalue": 65535,
+                        "uint32Minvalue": 1,
+                        "uint32Value": 10,
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "bWluIGlvIGludGVydmFsKG1zKQ==",
+                        "key": "interval",
+                        "type": "uint32",
+                        "uint32Maxvalue": 100000,
+                        "uint32Minvalue": 1,
+                        "uint32Value": 50,
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "TW9kYnVzVENQIG1hc3RlciBJUA==",
+                        "key": "clientIp",
+                        "stringValue": "127.0.0.1",
+                        "type": "string",
+                        "unit": ""
+                      }
+                    ]
+                  },
+                  {
+                    "desc": "SFRUUA==",
+                    "key": "HTTP",
+                    "params": [
+                      {
+                        "cloneEnable": false,
+                        "desc": "SFRUUCBiYXNlIHVybA==",
+                        "key": "baseurl",
+                        "stringValue": "http://example.com",
+                        "type": "string",
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "SFRUUCBtYXggY29uY3VycmVudCByZXF1ZXN0IGNvdW50",
+                        "key": "parallelism",
+                        "type": "uint32",
+                        "uint32Maxvalue": 100,
+                        "uint32Minvalue": 1,
+                        "uint32Value": 1,
+                        "unit": ""
+                      }
+                    ]
+                  },
+                  {
+                    "desc": "VURQ",
+                    "key": "UDP",
+                    "params": [
+                      {
+                        "cloneEnable": false,
+                        "desc": "dWRwIHNlcnZlciBpcA==",
+                        "key": "ip",
+                        "stringValue": "127.0.0.1",
+                        "type": "string",
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "dWRwIHNlcnZlciBwb3J0",
+                        "key": "port",
+                        "type": "uint32",
+                        "uint32Maxvalue": 65535,
+                        "uint32Minvalue": 1,
+                        "uint32Value": 5050,
+                        "unit": ""
+                      },
+                      {
+                        "cloneEnable": false,
+                        "desc": "dWRwIHRpbWVvdXQocyk=",
+                        "key": "timeout",
+                        "type": "uint32",
+                        "uint32Maxvalue": 65535,
+                        "uint32Minvalue": 1,
+                        "uint32Value": 10,
+                        "unit": ""
+                      }
+                    ]
+                  }
+                ]
+              },
+              "desc": "dHlwZQ==",
+              "key": "type",
+              "type": "comboParam"
+            }
+          ],
+          "isDisplay": true,
+          "isEnabled": false,
+          "name": "proxy"
+        }
+      ],
+      "maxCount": 0,
+      "name": "proxy",
+      "ord": 0
+    },
+    {
+      "desc": "5Yqo5L2c5Z2X6YeN5YGa562W55Wl",
+      "devices": [
+        {
+          "desc": "\u52a8\u4f5c\u5757\u91cd\u505a\u7b56\u7565",
+          "deviceParams": [
+            {
+              "arrayParam": {
+                "params": [
+                  {
+                    "boolValue": true,
+                    "cloneEnable": false,
+                    "desc": "5Y+J6L2m6K+G5Yir5aSx6LSl5ZCOLCDmmK/lkKboh6rliqjop4TliJLph43lgZo=",
+                    "key": "ForkRecFail",
+                    "type": "bool",
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "6YeN5YGa5qyh5pWw6ZmQ5Yi2",
+                    "int32Maxvalue": 10000,
+                    "int32Minvalue": -1,
+                    "int32Value": 10,
+                    "key": "CountLimit",
+                    "type": "int32",
+                    "unit": ""
+                  },
+                  {
+                    "cloneEnable": false,
+                    "desc": "6YeN5YGa6Ze06ZqU5pe26Ze0",
+                    "int32Maxvalue": 10000,
+                    "int32Minvalue": 0,
+                    "int32Value": 0,
+                    "key": "RetryIntervalMs",
+                    "type": "int32",
+                    "unit": "ms"
+                  }
+                ]
+              },
+              "cloneEnable": false,
+              "desc": "5Z+656GA5Y+C5pWw",
+              "key": "basic",
+              "type": "arrayParam"
+            }
+          ],
+          "isDisplay": true,
+          "isEnabled": true,
+          "name": "rePlanBlock"
+        }
+      ],
+      "maxCount": 1,
+      "name": "rePlanBlock",
+      "ord": 0
+    }
+  ],
+  "model": "AMB-150"
+}

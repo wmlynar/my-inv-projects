@@ -1,0 +1,45 @@
+{
+  "architecture": "x86_64",
+  "create_on": "2026-01-08T21:01:35.382Z",
+  "current_map": "",
+  "current_map_md5": "",
+  "dsp_version": "RDS core",
+  "echoid": "41880164-4236872d-b5be4e82-fc53d265",
+  "echoid_type": "0x2",
+  "features": [
+    {
+      "active": false,
+      "name": "core"
+    },
+    {
+      "active": false,
+      "name": "rds_custom"
+    },
+    {
+      "active": false,
+      "name": "rds_operator"
+    },
+    {
+      "active": false,
+      "name": "rds_bizCommon"
+    },
+    {
+      "active": false,
+      "name": "rds_syncService"
+    },
+    {
+      "active": false,
+      "name": "rds_forkApp"
+    }
+  ],
+  "gyro_version": "RDS core",
+  "id": "41880164-4236872d-b5be4e82-fc53d265",
+  "model": "AMB-150",
+  "model_md5": "37a63ba417e16fa02449a06ac720980b",
+  "product": "RDSCore",
+  "ret_code": 0,
+  "roboshop_min_version_required": "v2.3.2.6",
+  "robot_note": "RDSCore",
+  "vehicle_id": "RDS core",
+  "version": "0.1.9.250814"
+}

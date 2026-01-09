@@ -1,0 +1,74 @@
+{
+  "create_on": "2026-01-09T00:06:06.729-1100",
+  "list": [
+    {
+      "md5": "cd9df3bc5141f8a9a0446a14d045a337",
+      "relative_path": "arc/a0001.arc"
+    },
+    {
+      "md5": "40805cb95a4e4cada207b4cf4c9cd3cb",
+      "relative_path": "battery/b0001.battery"
+    },
+    {
+      "md5": "923d44ca1a47f4dca87ee3b1df687da8",
+      "relative_path": "charger/amb.charger"
+    },
+    {
+      "md5": "923d44ca1a47f4dca87ee3b1df687da8",
+      "relative_path": "charger/c0001.charger"
+    },
+    {
+      "md5": "90ec0ecd8237dd43070e2a0b934666c8",
+      "relative_path": "chargerspot/fork.chargerspot"
+    },
+    {
+      "md5": "d79261b04364597ec2bb30887f05dd9a",
+      "relative_path": "code/c0001.code"
+    },
+    {
+      "md5": "e10b07d9c166ec98dd2d3a8bbe2c97d0",
+      "relative_path": "container/c0001.container"
+    },
+    {
+      "md5": "ffe1f59acc2f0f6bb41ffdba3576c8ff",
+      "relative_path": "label/l0001.label"
+    },
+    {
+      "md5": "b97a86a1074d2e376fe0ea4d0ec7ef0e",
+      "relative_path": "mark/mark3D.mark"
+    },
+    {
+      "md5": "70049ec600f5fd468dd258480ee6794b",
+      "relative_path": "multi/m0001.multi"
+    },
+    {
+      "md5": "f923b709d53db01464f8c8d6a1016aa7",
+      "relative_path": "multi/m0002.multi"
+    },
+    {
+      "md5": "a592acbf6f71ec6541909ebcc76bda1e",
+      "relative_path": "pallet/p0001.pallet"
+    },
+    {
+      "md5": "1eacb920b99962e04c654685e70cf02b",
+      "relative_path": "palletobject/p0001.palletobject"
+    },
+    {
+      "md5": "fc818132b77fb3d841f532d923490c02",
+      "relative_path": "plt/p0001.plt"
+    },
+    {
+      "md5": "af4b70ad028cb014f3673f0268e3c742",
+      "relative_path": "shelf/s0001.shelf"
+    },
+    {
+      "md5": "af4b70ad028cb014f3673f0268e3c742",
+      "relative_path": "shelf/s0002.shelf"
+    },
+    {
+      "md5": "ec6749c689ae3bf39fe7344b4a3ec5d7",
+      "relative_path": "supporting/s0001.supporting"
+    }
+  ],
+  "ret_code": 0
+}

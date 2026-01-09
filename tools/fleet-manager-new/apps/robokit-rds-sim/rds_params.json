@@ -1,0 +1,2202 @@
+{
+  "MailSender": {
+    "EmailSendInterval": {
+      "advanced": false,
+      "defaultValue": 60,
+      "desc": "Minimum send email interval for each error code",
+      "group": "Other",
+      "maxValue": 4294967295,
+      "minValue": 0,
+      "type": "uint32",
+      "value": 60
+    },
+    "SmsSendInterval": {
+      "advanced": false,
+      "defaultValue": 60,
+      "desc": "Minimum send sms message interval for each error code",
+      "group": "Other",
+      "maxValue": 4294967295,
+      "minValue": 0,
+      "type": "uint32",
+      "value": 60
+    }
+  },
+  "RDSChargerProxy": null,
+  "RDSDBCleaner": {
+    "ClearOldOrdersDisabled": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "\u5173\u95ed\u81ea\u52a8\u6e05\u7406\u8ba2\u5355\u7684\u529f\u80fd",
+      "group": "Other",
+      "type": "bool",
+      "value": false
+    },
+    "ClearOldOrdersKeepTime": {
+      "advanced": false,
+      "defaultValue": 8760,
+      "desc": "\u4fdd\u5b58\u8001\u6570\u636e\u7684\u65f6\u95f4\uff08\u5c0f\u65f6\uff09",
+      "group": "Other",
+      "maxValue": 26280,
+      "minValue": -1,
+      "type": "int32",
+      "value": 8760
+    },
+    "ClearOldOrdersOrdersCount": {
+      "advanced": false,
+      "defaultValue": 10000,
+      "desc": "\u89e6\u53d1\u81ea\u52a8\u6e05\u7406\u7684\u8ba2\u5355\u6570\u91cf",
+      "group": "Other",
+      "maxValue": 10000,
+      "minValue": 0,
+      "type": "int32",
+      "value": 10000
+    },
+    "ClearStatKeepTime": {
+      "advanced": false,
+      "defaultValue": 24,
+      "desc": "\u4fdd\u5b58\u7edf\u8ba1\u6570\u636e\u7684\u65f6\u95f4\uff08\u5c0f\u65f6\uff09",
+      "group": "Other",
+      "maxValue": 2400,
+      "minValue": -1,
+      "type": "int32",
+      "value": 24
+    },
+    "DBCleanerSleepTime": {
+      "advanced": false,
+      "defaultValue": 3600,
+      "desc": "\u6e05\u7406\u6570\u636e\u7684\u95f4\u9694\u65f6\u95f4\uff08\u79d2\uff09",
+      "group": "Other",
+      "maxValue": 86400,
+      "minValue": 0,
+      "type": "int32",
+      "value": 3600
+    }
+  },
+  "RDSDispatcher": {
+    "AllowManuallyFinsihNoError": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Allow finish block manually without error",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "AlternateCharge": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Alternate Charge",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "AlternateChargePercentage": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "battery above chargedOK enable alternate charge",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "double",
+      "value": 1
+    },
+    "AppendAfterIncompleteOrder": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "\u5f53\u524d\u8fd0\u5355\u672a\u5b8c\u6210\u65f6\u9884\u63a5\u8ba2\u5355",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "AreaOrderLoadBinTask": {
+      "advanced": true,
+      "defaultValue": "QuickLoad",
+      "desc": "fromBinAreas related binTask-area to area order",
+      "group": "Navigation",
+      "type": "string",
+      "value": "QuickLoad"
+    },
+    "AreaOrderUnloadBinTask": {
+      "advanced": true,
+      "defaultValue": "QuickUnload",
+      "desc": "toBinAreas related binTask-area to area order",
+      "group": "Navigation",
+      "type": "string",
+      "value": "QuickUnload"
+    },
+    "AutoCharge": {
+      "advanced": false,
+      "defaultValue": true,
+      "desc": "Auto Charge",
+      "group": "Navigation",
+      "type": "bool",
+      "value": true
+    },
+    "AutoLock": {
+      "advanced": false,
+      "defaultValue": true,
+      "desc": "Auto Lock",
+      "group": "Navigation",
+      "type": "bool",
+      "value": true
+    },
+    "AutoMovablePark": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "\u4efb\u52a1\u673a\u5668\u4eba\u76ee\u6807\u70b9\u548c\u65e0\u4efb\u52a1\u673a\u5668\u4eba\u4f4d\u7f6e\u51b2\u7a81\u65f6, \u79fb\u8d70\u65e0\u4efb\u52a1\u673a\u5668\u4eba",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "AutoPark": {
+      "advanced": false,
+      "defaultValue": true,
+      "desc": "Auto Park",
+      "group": "Navigation",
+      "type": "bool",
+      "value": true
+    },
+    "AutoQueuePark": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "Queue Park",
+      "group": "Navigation",
+      "type": "bool",
+      "value": true
+    },
+    "AvoidErrorRobot": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Avoid error robot",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "AvoidPlanDist": {
+      "advanced": true,
+      "defaultValue": 3,
+      "desc": "avoid plan dist (m)",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 1,
+      "type": "double",
+      "value": 21
+    },
+    "AvoidRetryTime": {
+      "advanced": true,
+      "defaultValue": 10,
+      "desc": "Retry avoid upon rbk error time (s)",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "int32",
+      "value": 10
+    },
+    "BMS": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Charge forcely periodically",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "BinStatusExpireTime": {
+      "advanced": true,
+      "defaultValue": 10,
+      "desc": "Bin status expire time",
+      "group": "Navigation",
+      "maxValue": 1000,
+      "minValue": 1,
+      "type": "int32",
+      "value": 10
+    },
+    "BlockGroupOtherSysRequestInterval": {
+      "advanced": true,
+      "defaultValue": 500,
+      "desc": "Interval between two requests for block group managed by other sys (ms)",
+      "group": "Navigation",
+      "maxValue": 10000,
+      "minValue": 0,
+      "type": "int32",
+      "value": 500
+    },
+    "BlockToAvoidErrorRobotTime": {
+      "advanced": true,
+      "defaultValue": 10,
+      "desc": "Block to avoid error robot time (s)",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "int32",
+      "value": 10
+    },
+    "BlockToAvoidTime": {
+      "advanced": true,
+      "defaultValue": 2,
+      "desc": "Block to avoid time (s)",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "int32",
+      "value": 2
+    },
+    "CancelLaserLoopOrder": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "\u9488\u5bf9\u73af\u7ebf\u8ba2\u5355, \u6fc0\u5149\u963b\u6321\u53d6\u6d88\u8ba2\u5355",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "ChargeRelease": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "\u673a\u5668\u4eba\u6ca1\u6709\u5b8c\u5168\u79bb\u5f00\u5145\u7535\u6869\u65f6\uff0c\u5141\u8bb8\u5176\u4ed6\u673a\u5668\u4eba\u751f\u6210\u5145\u7535\u4efb\u52a1",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "CheckRotateSmallAngle": {
+      "advanced": false,
+      "defaultValue": true,
+      "desc": "\u68c0\u6d4b\u65cb\u8f6c\u78b0\u649e\u65f6\uff0c\u53ea\u68c0\u6d4b\u65cb\u8f6c\u89d2\u8f83\u5c0f\u7684\u65b9\u5411",
+      "group": "Navigation",
+      "type": "bool",
+      "value": true
+    },
+    "CheckRotateTogether": {
+      "advanced": false,
+      "defaultValue": true,
+      "desc": "\u68c0\u6d4b\u4e24\u4e2a\u673a\u5668\u4eba\u540c\u65f6\u65cb\u8f6c\u7684\u78b0\u649e",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "ClearDBOnStart": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Clear database on start",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "CloseChargeParkError": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Close park error and charge error",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "CloseDoorAtDeadEnd": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Close door even if point pass door is dead end",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "CloseLiftDoorOtherFloor": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "Close lift door when lift is at other floor",
+      "group": "Navigation",
+      "type": "bool",
+      "value": true
+    },
+    "CompatibleOldRBK": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "compatible with rbk version 3.3.4 or < 3.3.5.19",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "ControlWhenSwitchMap": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "\u5207\u6362\u5730\u56fe\u65f6\u4e5f\u63a7\u5236\u8f66",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "DelayFinishTime": {
+      "advanced": false,
+      "defaultValue": 0,
+      "desc": "Seconds of Waiting Next Order",
+      "group": "Navigation",
+      "maxValue": 10000,
+      "minValue": 0,
+      "type": "int32",
+      "value": 0
+    },
+    "DetailedAutoOrderLog": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "\u8f93\u51fa\u66f4\u8be6\u7ec6\u7684\u81ea\u52a8\u4efb\u52a1\u65e5\u5fd7",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "DisableSpecialContainer": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "\u4e0d\u4f7f\u7528\u6599\u7bb1\u8f66\u5939\u722a",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "DispatchIgnoreDynamic": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "\u5206\u914d\u8ba2\u5355\u65f6\u4e0d\u8003\u8651\u8f7d\u8d27\u72b6\u6001",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "DispatchIntervalSeconds": {
+      "advanced": true,
+      "defaultValue": 0,
+      "desc": "Number of seconds between two dispatch attempts of the same order",
+      "group": "Navigation",
+      "maxValue": 1000,
+      "minValue": 0,
+      "type": "int32",
+      "value": 0
+    },
+    "DispatchWithOB": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "\u5206\u914d\u8ba2\u5355\u65f6\uff0c\u8003\u8651\u9884\u6d4b\u5b8c\u6210\u65f6\u95f4",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "DistributionLoadTask": {
+      "advanced": true,
+      "defaultValue": "Load",
+      "desc": "fromLoc related binTask-distribute order",
+      "group": "Navigation",
+      "type": "string",
+      "value": "Load"
+    },
+    "DistributionReturnTask": {
+      "advanced": true,
+      "defaultValue": "Return",
+      "desc": "returnLoc related binTask-distribute order",
+      "group": "Navigation",
+      "type": "string",
+      "value": "Return"
+    },
+    "DistributionUnloadTask": {
+      "advanced": true,
+      "defaultValue": "Unload",
+      "desc": "toLocList related binTask-distribute order",
+      "group": "Navigation",
+      "type": "string",
+      "value": "Unload"
+    },
+    "DistributionUnloadTaskReleaseTimeout": {
+      "advanced": true,
+      "defaultValue": 0,
+      "desc": "Timeout for distribute task release(s)",
+      "group": "Navigation",
+      "maxValue": 1000,
+      "minValue": 0,
+      "type": "int32",
+      "value": 0
+    },
+    "ErrorRelease": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "If robot has an error, core will relase robot's resource",
+      "group": "Navigation",
+      "type": "bool",
+      "value": true
+    },
+    "FasterAutoParkCharge": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "Searching PP-CP-Point Based on MAPF",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "ForbidParkDiffArea": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "\u7981\u6b62\u673a\u5668\u4eba\u8de8\u697c\u5c42\u505c\u9760",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "ForkForbidBinAsPrePoint": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "\u5904\u7406\u539f\u5730\u4efb\u52a1\u65f6, \u7981\u6b62\u91c7\u7528\u7ed1\u5b9a\u5e93\u4f4d\u7684\u70b9\u4f4d\u4f5c\u4e3a\u524d\u7f6e\u70b9",
+      "group": "Navigation",
+      "type": "bool",
+      "value": true
+    },
+    "FromBinTask": {
+      "advanced": true,
+      "defaultValue": "Load",
+      "desc": "fromLoc related binTask",
+      "group": "Navigation",
+      "type": "string",
+      "value": "Load"
+    },
+    "G-MAPF": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "Global Multi-Agent Path Finding",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-AutoRelease": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Allow Algorithm Modify Properties of Points to Release Automatically",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-AutoRotateDt": {
+      "advanced": true,
+      "defaultValue": 0,
+      "desc": "Auto condition for recover in detection of rotation",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "double",
+      "value": 0
+    },
+    "G-MAPF-AutoSpacing": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Auto Spacing Between Robots",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-AutoStrategy": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Allow Algorithm Modify Strategy of MAPF Automatically",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-BinDefect": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Forbid Transfer in Bin",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-BinRecognition": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Recognize Goods in Bin",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-Chronoscope": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Show Chronoscope of G-MAPF",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-CircleCount": {
+      "advanced": true,
+      "defaultValue": 3,
+      "desc": "Number of AGVs of Circle Conflicts",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "int32",
+      "value": 3
+    },
+    "G-MAPF-CircleLock": {
+      "advanced": true,
+      "defaultValue": 5,
+      "desc": "Make AGVs keep distance at least (meter)",
+      "group": "Navigation",
+      "maxValue": 50,
+      "minValue": 0,
+      "type": "double",
+      "value": 5
+    },
+    "G-MAPF-CircleScale": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "Length of Step of Circle Conflicts",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "int32",
+      "value": 1
+    },
+    "G-MAPF-CollisionDetection": {
+      "advanced": true,
+      "defaultValue": 0.05,
+      "desc": "Safety threshold for collision detection",
+      "group": "Navigation",
+      "maxValue": 1,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.05
+    },
+    "G-MAPF-Continuity": {
+      "advanced": true,
+      "defaultValue": 0,
+      "desc": "Continuity of Planning",
+      "group": "Navigation",
+      "maxValue": 4,
+      "minValue": 0,
+      "type": "int32",
+      "value": 0
+    },
+    "G-MAPF-CustomizedAstar": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Apply Customized A* Algorithm",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-DetailConflict": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Use detail func to search conflict",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-DetailedLog": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Most Detailed Log",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-Detour": {
+      "advanced": true,
+      "defaultValue": 50,
+      "desc": "The longest detour dist",
+      "group": "Navigation",
+      "maxValue": 500,
+      "minValue": 0,
+      "type": "double",
+      "value": 50
+    },
+    "G-MAPF-DiffLeafSize": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Exists Different Size of AGVs",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-DispatchingLength": {
+      "advanced": true,
+      "defaultValue": 8,
+      "desc": "Max Distance of Dispatching Path (m)",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 1,
+      "type": "int32",
+      "value": 8
+    },
+    "G-MAPF-EF-1": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "Apply E-MAPF Detection",
+      "group": "Navigation",
+      "type": "bool",
+      "value": true
+    },
+    "G-MAPF-EF-2": {
+      "advanced": true,
+      "defaultValue": 3,
+      "desc": "Degree of Auto Highway",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "int32",
+      "value": 3
+    },
+    "G-MAPF-EF-3": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Ranked Strongly",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-EF-5": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Disperse Edge to Single Point",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-EF-6": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Advanced Auto Queue of AGVs",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-EF-7": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "The Stress of EF-5",
+      "group": "Navigation",
+      "maxValue": 2,
+      "minValue": 0,
+      "type": "double",
+      "value": 1
+    },
+    "G-MAPF-EF-8": {
+      "advanced": true,
+      "defaultValue": 2,
+      "desc": "The Stress of Auto Expand",
+      "group": "Navigation",
+      "maxValue": 9,
+      "minValue": 0,
+      "type": "double",
+      "value": 2
+    },
+    "G-MAPF-EF-9": {
+      "advanced": true,
+      "defaultValue": 0,
+      "desc": "Proximation for curve to avoid collision",
+      "group": "Navigation",
+      "maxValue": 1,
+      "minValue": 0,
+      "type": "double",
+      "value": 0
+    },
+    "G-MAPF-ErrorLocation": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Display the reason of error to AGVs",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-ExtraRadius": {
+      "advanced": true,
+      "defaultValue": 0,
+      "desc": "Extra Radius for AGVs",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": 0,
+      "type": "double",
+      "value": 0
+    },
+    "G-MAPF-FixOperation": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Optimal Resource and Operation",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-ForcedProperty": {
+      "advanced": true,
+      "defaultValue": 0.99,
+      "desc": "To modify size of AGV in forced points",
+      "group": "Navigation",
+      "maxValue": 2,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.99
+    },
+    "G-MAPF-HiddenObjective": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Learning to Learn",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-IgnoreAwayPath": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "AGV will be reset when its flag is awaypath",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-KernelLog": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Output G-MAPF Kernel Log",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-KernelTest-1": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Test G-MAPF Kernel, Load All",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-KernelTest-2": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Test G-MAPF Kernel, Bind All",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-LeafSize": {
+      "advanced": true,
+      "defaultValue": 0.25,
+      "desc": "Size of Points of Leaf",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.25
+    },
+    "G-MAPF-LocationPrecise": {
+      "advanced": true,
+      "defaultValue": 0.15,
+      "desc": "Location Precise for Path Planning",
+      "group": "Navigation",
+      "maxValue": 5,
+      "minValue": 0.15,
+      "type": "double",
+      "value": 0.15
+    },
+    "G-MAPF-Monitor": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Monitor Running Status",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-Monitor-BlockedPoints": {
+      "advanced": true,
+      "defaultValue": 15,
+      "desc": "Number of Displayed Blocked Points",
+      "group": "Navigation",
+      "maxValue": 1000,
+      "minValue": 1,
+      "type": "int32",
+      "value": 15
+    },
+    "G-MAPF-Monitor-Condition": {
+      "advanced": true,
+      "defaultValue": 2,
+      "desc": "Condition for Displaying of Order Complete Status",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "int32",
+      "value": 2
+    },
+    "G-MAPF-Monitor-DispFreedom": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Monitor will Display Freedom Info",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-Monitor-DispRanking": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "Monitor will Display Ranking Info",
+      "group": "Navigation",
+      "type": "bool",
+      "value": true
+    },
+    "G-MAPF-Monitor-DispRunning": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Monitor will Display Running Info",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-Monitor-DispWaiting": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "Monitor will Display Waiting Info",
+      "group": "Navigation",
+      "type": "bool",
+      "value": true
+    },
+    "G-MAPF-Monitor-OutputInterval": {
+      "advanced": true,
+      "defaultValue": 30,
+      "desc": "Interval of Displaying Info (second)",
+      "group": "Navigation",
+      "maxValue": 10000,
+      "minValue": 0,
+      "type": "int32",
+      "value": 30
+    },
+    "G-MAPF-Monitor-PathCompact": {
+      "advanced": true,
+      "defaultValue": 5,
+      "desc": "Coefficient of Definition of Compact Path (meter)",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 1,
+      "type": "int32",
+      "value": 5
+    },
+    "G-MAPF-Monitor-ReservedOrders": {
+      "advanced": true,
+      "defaultValue": 200,
+      "desc": "Number of Reserved Orders",
+      "group": "Navigation",
+      "maxValue": 10000,
+      "minValue": 10,
+      "type": "int32",
+      "value": 200
+    },
+    "G-MAPF-Monitor-ShrinkLimit": {
+      "advanced": true,
+      "defaultValue": 10000,
+      "desc": "Condition for Cleaning Data of Monitor",
+      "group": "Navigation",
+      "maxValue": 10000000,
+      "minValue": 100,
+      "type": "int32",
+      "value": 10000
+    },
+    "G-MAPF-MovablePark": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Movable Park-Point Based on MAPF",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-MovingFirst": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Robots in motion have higher planning priority",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-MultiLiftCapacity": {
+      "advanced": true,
+      "defaultValue": 3,
+      "desc": "multi lift capacity",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": 1,
+      "type": "int32",
+      "value": 3
+    },
+    "G-MAPF-MultiLifts": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Strategy for Multi-lifts",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-MutexRelease": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "All mutex will be set as release point",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-NearestCount": {
+      "advanced": true,
+      "defaultValue": 0,
+      "desc": "Auto mutex area will be created based on number of nearest AGVs",
+      "group": "Navigation",
+      "maxValue": 1000,
+      "minValue": 0,
+      "type": "int32",
+      "value": 0
+    },
+    "G-MAPF-ObservationTime": {
+      "advanced": true,
+      "defaultValue": 10,
+      "desc": "Observation Time (min)",
+      "group": "Navigation",
+      "maxValue": 999,
+      "minValue": 0,
+      "type": "int32",
+      "value": 10
+    },
+    "G-MAPF-OneStepConlict": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "G-MAPF will control onestep task which has conflict",
+      "group": "Navigation",
+      "type": "bool",
+      "value": true
+    },
+    "G-MAPF-OnlyLocalArea": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Activate MAPF Locally",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-OperationDiff": {
+      "advanced": true,
+      "defaultValue": 0,
+      "desc": "To modify size of AGV in bin",
+      "group": "Navigation",
+      "maxValue": 5,
+      "minValue": 0,
+      "type": "double",
+      "value": 0
+    },
+    "G-MAPF-OptSmooth": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "Smooth Opt Objective",
+      "group": "Navigation",
+      "type": "bool",
+      "value": true
+    },
+    "G-MAPF-PPCPConlict": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "G-MAPF will always consider pp cp conflict",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-PathSizeLimit": {
+      "advanced": true,
+      "defaultValue": 1024,
+      "desc": "Limit of Size of Topological Path",
+      "group": "Navigation",
+      "maxValue": 4096,
+      "minValue": 128,
+      "type": "int32",
+      "value": 1024
+    },
+    "G-MAPF-Physical": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Activate Physical Detection",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-PlanB": {
+      "advanced": true,
+      "defaultValue": 0,
+      "desc": "Apply Other Strategy when Blocked",
+      "group": "Navigation",
+      "maxValue": 2,
+      "minValue": 0,
+      "type": "int32",
+      "value": 0
+    },
+    "G-MAPF-Population": {
+      "advanced": true,
+      "defaultValue": 0,
+      "desc": "Extra population of solver",
+      "group": "Navigation",
+      "maxValue": 200,
+      "minValue": 0,
+      "type": "int32",
+      "value": 0
+    },
+    "G-MAPF-PreDestination": {
+      "advanced": true,
+      "defaultValue": 5,
+      "desc": "Number of Prepared Target for Unavailable Destination",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "int32",
+      "value": 5
+    },
+    "G-MAPF-PreDistance": {
+      "advanced": true,
+      "defaultValue": 15,
+      "desc": "The Prepared Distance of AGV (m)",
+      "group": "Navigation",
+      "maxValue": 500,
+      "minValue": 1,
+      "type": "double",
+      "value": 15
+    },
+    "G-MAPF-PseudoCircle": {
+      "advanced": true,
+      "defaultValue": 0,
+      "desc": "Scale of Pseudo Circle Conflicts",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "int32",
+      "value": 0
+    },
+    "G-MAPF-RandomTest": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "Test Scene Randomly",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-RecParams": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "Apply Recommended Parameters of G-MAPF",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-Recover": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Recovering when AGVs Are Blocked",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-RecoverDelay": {
+      "advanced": true,
+      "defaultValue": 50,
+      "desc": "Delay for recovering blocked state",
+      "group": "Navigation",
+      "maxValue": 1000,
+      "minValue": 1,
+      "type": "int32",
+      "value": 50
+    },
+    "G-MAPF-RecoveringRandomly": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Recovering Based on Random Strategy",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-Relaxation": {
+      "advanced": true,
+      "defaultValue": 20,
+      "desc": "Relaxation of Solving Conflicts",
+      "group": "Navigation",
+      "maxValue": 500,
+      "minValue": 0,
+      "type": "double",
+      "value": 20
+    },
+    "G-MAPF-RepeatedPathDelay": {
+      "advanced": true,
+      "defaultValue": 0,
+      "desc": "Delay for Repeated Path",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "double",
+      "value": 0
+    },
+    "G-MAPF-RotateDetection": {
+      "advanced": true,
+      "defaultValue": 0,
+      "desc": "Rotate Detection for Auto Highway",
+      "group": "Navigation",
+      "maxValue": 1,
+      "minValue": 0,
+      "type": "double",
+      "value": 0
+    },
+    "G-MAPF-RotateEstimation": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Rotate Estimation for Single Point",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-SafeSpacing": {
+      "advanced": true,
+      "defaultValue": 0,
+      "desc": "Safe Spacing Between Robots",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "double",
+      "value": 0
+    },
+    "G-MAPF-Snap": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "Snap GA detail Param one time",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-SolverCapacity": {
+      "advanced": true,
+      "defaultValue": 100,
+      "desc": "The Capacity of G-MAPF Solver",
+      "group": "Navigation",
+      "maxValue": 10000,
+      "minValue": 0,
+      "type": "int32",
+      "value": 100
+    },
+    "G-MAPF-TransferLimit": {
+      "advanced": true,
+      "defaultValue": 20,
+      "desc": "Limit of Searching Station (m)",
+      "group": "Navigation",
+      "maxValue": 500,
+      "minValue": 1,
+      "type": "double",
+      "value": 20
+    },
+    "G-MAPF-Unlimited": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "Do not Modify This Parameter",
+      "group": "Navigation",
+      "maxValue": 20,
+      "minValue": 1,
+      "type": "int32",
+      "value": 1
+    },
+    "G-MAPF-V3": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Version 3 Strategy of G-MAPF",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-V4": {
+      "advanced": true,
+      "defaultValue": 0,
+      "desc": "AGV will follow others until the distance from the endpoint is less than this parameter",
+      "group": "Navigation",
+      "maxValue": 500,
+      "minValue": 0,
+      "type": "double",
+      "value": 0
+    },
+    "G-MAPF-V5": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "G-MAPF will not generate defect point in GA-Solver",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "G-MAPF-Vision": {
+      "advanced": true,
+      "defaultValue": 15,
+      "desc": "The Distance AGV Can See (m)",
+      "group": "Navigation",
+      "maxValue": 500,
+      "minValue": 0,
+      "type": "double",
+      "value": 15
+    },
+    "GoodsCharge": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Forbid charge if agv has goods",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "HideCollisionShapeError": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Hide Error of Collision Shape",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "HitchStrategy": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "Dispatch Order By Hitch Strategy",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "IgnoreBatteryChange": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "\u5ffd\u7565\u673a\u5668\u4eba\u7535\u91cf\u6ce2\u52a8, \u907f\u514d\u7ec8\u6b62\u5145\u7535\u8ba2\u5355",
+      "group": "Simulation",
+      "type": "bool",
+      "value": false
+    },
+    "IgnoreLoopCollision": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "\u9488\u5bf9\u73af\u7ebf\u8ba2\u5355, \u4e0d\u505a\u78b0\u649e\u68c0\u6d4b",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "IncompleteLoadInsertMiddle": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Insert incomplete load order into middle of future order",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "IncompleteUnloadInsertMiddle": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Insert incomplete unload order into middle of future order",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "InvalidCollisionReInit": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "If core has invalid collision, init robot's state",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "JoinableDist": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "Joinable Dist (m)",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "double",
+      "value": 1
+    },
+    "JoinableSumDist": {
+      "advanced": true,
+      "defaultValue": -1,
+      "desc": "\u62fc\u5355\u63d2\u5165\u70b9\u4e4b\u524d\u7684\u6700\u5927\u603b\u91cc\u7a0b",
+      "group": "Navigation",
+      "maxValue": 10000,
+      "minValue": -1,
+      "type": "double",
+      "value": -1
+    },
+    "KeepDoorClosed": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "Keep door closed",
+      "group": "Navigation",
+      "type": "bool",
+      "value": true
+    },
+    "KeepLiftDoorClosed": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Keep lift door closed",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "LogBlockStateChange": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "log block state change to db",
+      "group": "Other",
+      "type": "bool",
+      "value": false
+    },
+    "LogInterval": {
+      "advanced": true,
+      "defaultValue": 10,
+      "desc": "Interval between two identical logs (s)",
+      "group": "Other",
+      "maxValue": 10000,
+      "minValue": -1,
+      "type": "int32",
+      "value": 10
+    },
+    "LogRepetition": {
+      "advanced": true,
+      "defaultValue": 10,
+      "desc": "Repetition count between two identical logs",
+      "group": "Other",
+      "maxValue": 10000,
+      "minValue": -1,
+      "type": "int32",
+      "value": 10
+    },
+    "LoopStopSafeDist": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "\u73af\u7ebf\u8ba2\u5355\u7279\u6b8a\u8ddf\u8f66\u8ddd\u79bb\u5f00\u5173",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "MatchChargers": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "\u5339\u914d\u7b97\u6cd5\u5206\u914d\u5145\u7535\u6869",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "MaxAutoOrderNum": {
+      "advanced": true,
+      "defaultValue": 10,
+      "desc": "max auto order num",
+      "group": "Navigation",
+      "maxValue": 1000,
+      "minValue": 1,
+      "type": "int32",
+      "value": 10
+    },
+    "MaxDispatchOrder": {
+      "advanced": true,
+      "defaultValue": 100,
+      "desc": "max Dispatch order",
+      "group": "Navigation",
+      "maxValue": 100000,
+      "minValue": 1,
+      "type": "int32",
+      "value": 100
+    },
+    "MinPathStep": {
+      "advanced": true,
+      "defaultValue": 0.1,
+      "desc": "MinPlanStep is used to collision check. This value should be smaller than PathStep. (m)",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.1
+    },
+    "MovableParkInPath": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "\u6709\u5176\u4ed6\u673a\u5668\u4eba\u8def\u7ebf\u7ecf\u8fc7\u5f53\u524d\u673a\u5668\u4eba\u811a\u4e0b\u505c\u9760\u70b9\uff0c\u9700\u91cd\u65b0\u505c\u9760",
+      "group": "Navigation",
+      "type": "bool",
+      "value": true
+    },
+    "MutexFluent": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "\u5c06\u4e92\u65a5\u533a\u8d4b\u4e88 fluent \u5c5e\u6027",
+      "group": "Navigation",
+      "type": "bool",
+      "value": true
+    },
+    "MutexSuspend": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "Allow mutex to suspend AGVs when it will lead to conflict",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "NewGetRoute": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "\u65b0\u7684\u641c\u8def\u7b97\u6cd5",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "OnlyJackJoinOrder": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "\u9488\u5bf9\u9876\u5347\u8f66\u7684\u9884\u63a5\u5355",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "OpenDoorDist": {
+      "advanced": true,
+      "defaultValue": 0,
+      "desc": "open Door Dist (m)",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "double",
+      "value": 0
+    },
+    "OpenLiftDist": {
+      "advanced": true,
+      "defaultValue": 0,
+      "desc": "open Lift Dist (m)",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "double",
+      "value": 0
+    },
+    "PathAvoid": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "Enable avoid based on path while blocked",
+      "group": "Navigation",
+      "type": "bool",
+      "value": true
+    },
+    "PathAvoidDelay": {
+      "advanced": true,
+      "defaultValue": 10,
+      "desc": "\u673a\u5668\u4eba\u6301\u7eed\u963b\u6321\u591a\u5c11\u79d2\u540e\u5f00\u59cb\u6cbf\u7ebf\u8def\u7ed5\u884c",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "double",
+      "value": 10
+    },
+    "PathAvoidIdler": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "\u5141\u8bb8\u673a\u5668\u4eba\u8f7d\u8d27\u72b6\u6001\u4e0b\u6cbf\u7ebf\u8def\u7ed5\u884c",
+      "group": "Navigation",
+      "type": "bool",
+      "value": true
+    },
+    "PathAvoidWithCleanRobot": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "\u6e05\u6d01\u673a\u5668\u4eba\u5f00\u542f\u91cd\u89c4\u5212\u7b56\u7565",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "PersistExecutor": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Persist executor data",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "PlanDist": {
+      "advanced": false,
+      "defaultValue": 5,
+      "desc": "Plan Dist (m)",
+      "group": "Navigation",
+      "maxValue": 10000,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 20
+    },
+    "PlanStep": {
+      "advanced": false,
+      "defaultValue": 1,
+      "desc": "Plan Step (m)",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 1
+    },
+    "PrePark": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "Preparing Park for the Next Order",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "RDSStatistic": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "open rds statistic",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "Reassign": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "\u91cd\u65b0\u5206\u914d\u8ba2\u5355",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "RemoveFirstPointDist": {
+      "advanced": true,
+      "defaultValue": 0.1,
+      "desc": "\u504f\u79bb\u7ebf\u8def\u540e\u76f4\u63a5\u5c31\u8fd1\u4e0b\u53d1\u8def\u7ebf\u7684\u9608\u503c",
+      "group": "Navigation",
+      "maxValue": 0.3,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.1
+    },
+    "RobotRuntimeShape": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Update robot shape in real time",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "ScheduleImproveLoadRatio": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "\u5206\u914d\u8fd0\u5355\u65f6\u4f18\u5316\u8f7d\u8d27\u7387",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "ScheduleInterval": {
+      "advanced": true,
+      "defaultValue": 2,
+      "desc": "Schedule interval (s)",
+      "group": "Navigation",
+      "maxValue": 10000,
+      "minValue": 1,
+      "type": "int32",
+      "value": 2
+    },
+    "ScheduleMaxDelayTime": {
+      "advanced": false,
+      "defaultValue": 10,
+      "desc": "\u8ddd\u79bb\u5f88\u8fdc\u65f6\uff0c\u6700\u591a\u5ef6\u8fdf\u591a\u4e45\u540e\uff0c\u5206\u914d\u8fd0\u5355",
+      "group": "Navigation",
+      "maxValue": 10000,
+      "minValue": 1,
+      "type": "int32",
+      "value": 10
+    },
+    "ScheduleMinDelayDistance": {
+      "advanced": false,
+      "defaultValue": 50,
+      "desc": "\u673a\u5668\u4eba\u5230\u8ba2\u5355\u8d77\u70b9\u8d85\u8fc7\u8be5\u8ddd\u79bb\u65f6\uff0c\u53ef\u80fd\u4f1a\u5ef6\u8fdf\u5206\u914d\u8ba2\u5355",
+      "group": "Navigation",
+      "maxValue": 10000,
+      "minValue": 1,
+      "type": "double",
+      "value": 50
+    },
+    "ScheduleMode": {
+      "advanced": true,
+      "defaultValue": 0,
+      "desc": "Schedule Mode",
+      "group": "Navigation",
+      "maxValue": 1,
+      "minValue": 0,
+      "type": "int32",
+      "value": 0
+    },
+    "ShowPathName": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "point in finished_path and unfinished_path will show name instead of number",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "SimpleOrderStatePosterId": {
+      "advanced": true,
+      "defaultValue": "",
+      "desc": "SimpleOrder state change poster id",
+      "group": "Other",
+      "type": "string",
+      "value": ""
+    },
+    "SleepTime": {
+      "advanced": true,
+      "defaultValue": 100,
+      "desc": "Sleep Time (ms)",
+      "group": "Navigation",
+      "maxValue": 10000,
+      "minValue": 1,
+      "type": "int32",
+      "value": 100
+    },
+    "SmartWait": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "auto wait to avoid dead lock",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "SplitLastPath": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "\u6d4b\u8bd5\u5f00\u5173 2",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "StartChargeTime": {
+      "advanced": true,
+      "defaultValue": 10,
+      "desc": "start to charge time (s)",
+      "group": "Navigation",
+      "maxValue": 1000000,
+      "minValue": 0,
+      "type": "double",
+      "value": 10
+    },
+    "StartParkTime": {
+      "advanced": true,
+      "defaultValue": 10,
+      "desc": "start to park time (s)",
+      "group": "Navigation",
+      "maxValue": 1000000,
+      "minValue": 0,
+      "type": "double",
+      "value": 10
+    },
+    "StationaryThreshold": {
+      "advanced": true,
+      "defaultValue": 0.2,
+      "desc": "The stationary task distance threshold for two blocks with the same name (m)",
+      "group": "Navigation",
+      "maxValue": 100,
+      "minValue": 0,
+      "type": "double",
+      "value": 0.2
+    },
+    "StopAtTheTurn": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Stop at the turn",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "StopSafeDist": {
+      "advanced": false,
+      "defaultValue": 0.2,
+      "desc": "Stop Safe Dist. This value should be larger than MinPathStep. (m)",
+      "group": "Navigation",
+      "maxValue": 10,
+      "minValue": 0.01,
+      "type": "double",
+      "value": 0.2
+    },
+    "ToBinTask": {
+      "advanced": true,
+      "defaultValue": "Unload",
+      "desc": "toLoc related binTask",
+      "group": "Navigation",
+      "type": "string",
+      "value": "Unload"
+    },
+    "TurnAngle": {
+      "advanced": false,
+      "defaultValue": 10,
+      "desc": "Turn Angle (deg)",
+      "group": "Navigation",
+      "maxValue": 180,
+      "minValue": 0.001,
+      "type": "double",
+      "value": 10
+    },
+    "UnassignErrorRobot": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Unassign orders pre-assigned to vehicle if vehicle has error",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "UnassignTime": {
+      "advanced": true,
+      "defaultValue": -1,
+      "desc": "Time limit at created state. (s)",
+      "group": "Navigation",
+      "maxValue": 10000,
+      "minValue": -1,
+      "type": "int32",
+      "value": -1
+    },
+    "UnassignUserSpecifiedRobot": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Unassign even if user specified robot",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "UnfinishedPathTimeThreshold": {
+      "advanced": false,
+      "defaultValue": 10,
+      "desc": "\u672a\u5b8c\u6210\u8def\u5f84\u65f6\u95f4\u9608\u503c",
+      "group": "Navigation",
+      "maxValue": 10000,
+      "minValue": 0,
+      "type": "double",
+      "value": 10
+    },
+    "UseEuclideanDistEstimation": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Use euclidean distance estimation instead of A* result",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    },
+    "UseOtherSysBlockGroup": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "Use block group managed by other sys",
+      "group": "Navigation",
+      "type": "bool",
+      "value": true
+    },
+    "m_share_big_lift_with_people": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "\u548c\u4eba\u5171\u7528\u5927\u7535\u68af",
+      "group": "Navigation",
+      "type": "bool",
+      "value": false
+    }
+  },
+  "RDSModbusSlave": {
+    "ModbusSlavePort": {
+      "advanced": false,
+      "defaultValue": 502,
+      "desc": "RDSModbusSlave\u7aef\u53e3\uff0c\u91cd\u542f\u751f\u6548",
+      "group": "Other",
+      "maxValue": 40000,
+      "minValue": 500,
+      "type": "int32",
+      "value": 502
+    }
+  },
+  "RDSOB": {
+    "ActInterval": {
+      "advanced": true,
+      "defaultValue": 1000,
+      "desc": "RDSOB will be activated per (this param) milliseconds",
+      "group": "Other",
+      "maxValue": 1000000,
+      "minValue": 100,
+      "type": "int32",
+      "value": 1000
+    },
+    "BaselineDataScale": {
+      "advanced": true,
+      "defaultValue": 100,
+      "desc": "Scale of data for baseline model",
+      "group": "Other",
+      "maxValue": 10000,
+      "minValue": 100,
+      "type": "int32",
+      "value": 100
+    },
+    "TrainingDataScale": {
+      "advanced": true,
+      "defaultValue": 1000,
+      "desc": "Limitation of capacity of training data",
+      "group": "Other",
+      "maxValue": 1000000,
+      "minValue": 100,
+      "type": "int32",
+      "value": 1000
+    }
+  },
+  "RDSOrderAdapter": {
+    "CreateNewOrderWhileAddBlocks": {
+      "advanced": false,
+      "defaultValue": true,
+      "desc": "to control if addblocks can create a new order when orderid doesn't exist",
+      "group": "Other",
+      "type": "bool",
+      "value": true
+    },
+    "DatabaseUseUnixTimestamp": {
+      "advanced": false,
+      "defaultValue": true,
+      "desc": "use unix timestamp as database timestamp",
+      "group": "Other",
+      "type": "bool",
+      "value": true
+    },
+    "RDSCoreNote": {
+      "advanced": true,
+      "defaultValue": "RDSCore",
+      "desc": "rds core note",
+      "group": "Network",
+      "type": "string",
+      "value": "RDSCore"
+    },
+    "RDSHTTPProcessingDataFreq": {
+      "advanced": true,
+      "defaultValue": 200,
+      "desc": "RDS core HTTP \u540e\u53f0\u6570\u636e\u66f4\u65b0\u9891\u7387\uff08ms\uff09",
+      "group": "Network",
+      "maxValue": 15000,
+      "minValue": 50,
+      "type": "uint32",
+      "value": 200
+    },
+    "RDSHTTPServerPort": {
+      "advanced": true,
+      "defaultValue": 8088,
+      "desc": "RDS core HTTP \u670d\u52a1\u5668\u7aef\u53e3\uff08\u91cd\u542f\u6709\u6548\uff09",
+      "group": "Network",
+      "maxValue": 65535,
+      "minValue": 1025,
+      "type": "uint32",
+      "value": 8088
+    },
+    "RDSOrderReqMinInterval": {
+      "advanced": true,
+      "defaultValue": 50,
+      "desc": "RDS core \u67e5\u8be2\u4efb\u52a1\u4fe1\u606f\u63a5\u53e3\u54cd\u5e94\u6700\u77ed\u65f6\u95f4\u95f4\u9694\uff08ms\uff09",
+      "group": "Network",
+      "maxValue": 10000,
+      "minValue": 10,
+      "type": "uint32",
+      "value": 50
+    },
+    "RDSSetOrderReturnMoreInfo": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "return more info when invoke api setOrder",
+      "group": "Other",
+      "type": "bool",
+      "value": false
+    },
+    "RDSUseUnixTimestamp": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "use unix timestamp as api respond timestamp",
+      "group": "Other",
+      "type": "bool",
+      "value": false
+    },
+    "RDSWSProcessingDataFreq": {
+      "advanced": true,
+      "defaultValue": 100,
+      "desc": "RDS core WebSocket \u540e\u53f0\u6570\u636e\u66f4\u65b0\u9891\u7387\uff08ms\uff09",
+      "group": "Network",
+      "maxValue": 15000,
+      "minValue": 50,
+      "type": "uint32",
+      "value": 100
+    },
+    "RegardEmergencyAsError": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "\u662f\u5426\u5c06\u6025\u505c\u89c6\u4f5c\u9519\u8bef",
+      "group": "Safety",
+      "type": "bool",
+      "value": true
+    }
+  },
+  "RDSProxy": {
+    "AsyncLoop": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "\u5f02\u6b65\u64cd\u4f5c\u8bbe\u5907",
+      "group": "Other",
+      "type": "bool",
+      "value": false
+    },
+    "BinMonitorReadInterval1": {
+      "advanced": false,
+      "defaultValue": 100,
+      "desc": "\u4e24\u8f6e\u5e93\u4f4d\u76d1\u6d4b\u8bfb\u53d6\u4e4b\u95f4\u7684\u95f4\u9694(ms)",
+      "group": "Other",
+      "maxValue": 10000,
+      "minValue": 0,
+      "type": "int32",
+      "value": 100
+    },
+    "BinMonitorReadInterval2": {
+      "advanced": false,
+      "defaultValue": 100,
+      "desc": "\u4e24\u4e2a\u5e93\u4f4d\u76d1\u6d4b\u4e4b\u95f4\u7684\u8bfb\u53d6\u95f4\u9694(ms)",
+      "group": "Other",
+      "maxValue": 10000,
+      "minValue": 0,
+      "type": "int32",
+      "value": 100
+    },
+    "BinMonitorUpdateInterval": {
+      "advanced": false,
+      "defaultValue": 0,
+      "desc": "\u66f4\u65b0\u5e93\u4f4d\u72b6\u6001\u7684\u95f4\u9694(ms)",
+      "group": "Other",
+      "maxValue": 10000,
+      "minValue": 0,
+      "type": "int32",
+      "value": 0
+    },
+    "DisableProxyErrors": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "\u7981\u7528\u6240\u6709\u8bbe\u5907\u76f8\u5173\u62a5\u9519",
+      "group": "Other",
+      "type": "bool",
+      "value": false
+    },
+    "DisableRDSBinMonitor": {
+      "advanced": false,
+      "defaultValue": true,
+      "desc": "\u5173\u95edRDS\u5e93\u4f4d\u76d1\u6d4b",
+      "group": "Other",
+      "type": "bool",
+      "value": true
+    },
+    "DisableRoboViewBinMonitor": {
+      "advanced": false,
+      "defaultValue": true,
+      "desc": "\u5173\u95edRoboView\u5e93\u4f4d\u76d1\u6d4b",
+      "group": "Other",
+      "type": "bool",
+      "value": true
+    },
+    "LiftOpenDoorTimeout": {
+      "advanced": false,
+      "defaultValue": 0,
+      "desc": "\u7535\u68af\u5230\u697c\u5c42\u540e\uff0c\u81ea\u52a8\u5f00\u95e8\u7684\u8d85\u65f6\uff0c\u4e3a0\u65f6\u4e0d\u62a5\u9519",
+      "group": "Other",
+      "maxValue": 1000,
+      "minValue": 0,
+      "type": "int32",
+      "value": 0
+    },
+    "LiftPeopleStatusClearSeconds": {
+      "advanced": false,
+      "defaultValue": 10,
+      "desc": "\u7535\u68af\u5185\u6709\u4eba\u72b6\u6001\u6e05\u9664\u7684\u6700\u77ed\u7684\u65f6\u95f4",
+      "group": "Other",
+      "maxValue": 1000,
+      "minValue": 0,
+      "type": "int32",
+      "value": 10
+    },
+    "LoopCycleInterval": {
+      "advanced": false,
+      "defaultValue": 750,
+      "desc": "Proxy loop \u7684\u95f4\u9694\u65f6\u95f4 ms",
+      "group": "Other",
+      "maxValue": 2000,
+      "minValue": 0,
+      "type": "int32",
+      "value": 750
+    },
+    "MergeReadDoor": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "\u5408\u5e76\u8bfb\u53d6\u95e8\u4fe1\u606f",
+      "group": "Other",
+      "type": "bool",
+      "value": false
+    },
+    "NoRepeatAtTargetFloor": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "\u5230\u76ee\u6807\u697c\u5c42\u540e\uff0c\u4e0d\u91cd\u590d\u53d1\u697c\u5c42",
+      "group": "Other",
+      "type": "bool",
+      "value": false
+    },
+    "NoRepeatFloor": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "\u4e0d\u53d1\u9001\u91cd\u590d\u7684\u697c\u5c42\u7ed9\u7535\u68af",
+      "group": "Other",
+      "type": "bool",
+      "value": false
+    },
+    "OldWangLongAPI": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "\u9002\u914d\u65e7\u7684\u65fa\u9f99\u534f\u8bae",
+      "group": "Other",
+      "type": "bool",
+      "value": false
+    },
+    "RDS URL": {
+      "advanced": false,
+      "defaultValue": "http://localhost:8080",
+      "desc": "RDS url",
+      "group": "Other",
+      "type": "string",
+      "value": "http://localhost:8080"
+    },
+    "ReadRbkBinStatus": {
+      "advanced": false,
+      "defaultValue": false,
+      "desc": "\u8bfb\u53d6rbk\u4e0a\u62a5\u7684\u5e93\u4f4d\u72b6\u6001",
+      "group": "Other",
+      "type": "bool",
+      "value": false
+    },
+    "ReadZero": {
+      "advanced": false,
+      "defaultValue": true,
+      "desc": "\u66f4\u65b0\u5e93\u4f4d\u72b6\u6001\u65f6\u662f\u5426\u8bfb\u53d60",
+      "group": "Other",
+      "type": "bool",
+      "value": true
+    },
+    "RepeatFloorInterval": {
+      "advanced": false,
+      "defaultValue": 30,
+      "desc": "\u53d1\u9001\u91cd\u590d\u697c\u5c42\u7ed9\u7535\u68af\u7684\u95f4\u9694",
+      "group": "Other",
+      "maxValue": 1000,
+      "minValue": 1,
+      "type": "int32",
+      "value": 30
+    },
+    "ReportInvalidFloor": {
+      "advanced": false,
+      "defaultValue": true,
+      "desc": "\u4e0a\u62a5\u65e0\u6548\u697c\u5c42",
+      "group": "Other",
+      "type": "bool",
+      "value": true
+    },
+    "SyncBinArea": {
+      "advanced": false,
+      "defaultValue": true,
+      "desc": "\u5c06\u573a\u666f\u4e2d\u7684\u5e93\u533a\u914d\u7f6e\u540c\u6b65\u5230\u6570\u636e\u5e93\u4e2d",
+      "group": "Other",
+      "type": "bool",
+      "value": true
+    },
+    "TcpReconnectThreshold": {
+      "advanced": false,
+      "defaultValue": 3,
+      "desc": "Tcp\u6700\u5c0f\u91cd\u8fde\u65f6\u95f4(s)",
+      "group": "Other",
+      "maxValue": 100,
+      "minValue": 1,
+      "type": "int32",
+      "value": 3
+    },
+    "WindShowerSendOnce": {
+      "advanced": false,
+      "defaultValue": true,
+      "desc": "\u98ce\u6dcb\u6307\u4ee4\u53ea\u53d1\u9001\u4e00\u6b21",
+      "group": "Other",
+      "type": "bool",
+      "value": true
+    }
+  },
+  "RDSRobotAdapter": {
+    "AutoUpdateScene": {
+      "advanced": true,
+      "defaultValue": true,
+      "desc": "\u662f\u5426\u81ea\u52a8\u540c\u6b65\u573a\u666f",
+      "group": "Safety",
+      "type": "bool",
+      "value": true
+    },
+    "RobotPushDataInterval": {
+      "advanced": true,
+      "defaultValue": 500,
+      "desc": "\u673a\u5668\u4eba\u63a8\u9001\u6570\u636e\u9891\u7387\uff08\u91cd\u542f\u751f\u6548\uff09\uff08ms\uff09",
+      "group": "Network",
+      "maxValue": 15000,
+      "minValue": 100,
+      "type": "uint32",
+      "value": 500
+    },
+    "SaveRobotDataToDB": {
+      "advanced": true,
+      "defaultValue": false,
+      "desc": "\u4fdd\u5b58\u673a\u5668\u4eba\u5b9e\u65f6\u6570\u636e\u5230\u6570\u636e\u5e93",
+      "group": "Other",
+      "type": "bool",
+      "value": false
+    }
+  },
+  "RDSSimRobot": {
+    "PreferLeaf": {
+      "advanced": false,
+      "defaultValue": true,
+      "desc": "\u521d\u59cb\u4f4d\u7f6e\u4e0d\u6321\u8def",
+      "group": "Simulation",
+      "type": "bool",
+      "value": true
+    },
+    "RotateSpeed": {
+      "advanced": true,
+      "defaultValue": 0.5235987755982988,
+      "desc": "\u4eff\u771f\u673a\u5668\u4eba\u65cb\u8f6c\u901f\u5ea6\uff0crad/s",
+      "group": "Simulation",
+      "maxValue": 100,
+      "minValue": 0.01,
+      "type": "double",
+      "value": 0.523598775598299
+    },
+    "SimCollision": {
+      "advanced": false,
+      "defaultValue": true,
+      "desc": "\u5f00\u542f\u4eff\u771f\u78b0\u649e\u68c0\u6d4b",
+      "group": "Simulation",
+      "type": "bool",
+      "value": true
+    },
+    "SimulationTimeFactor": {
+      "advanced": false,
+      "defaultValue": 1,
+      "desc": "\u4eff\u771f\u500d\u901f",
+      "group": "Simulation",
+      "maxValue": 100,
+      "minValue": 0.1,
+      "type": "double",
+      "value": 1
+    },
+    "Speed": {
+      "advanced": true,
+      "defaultValue": 1,
+      "desc": "\u4eff\u771f\u673a\u5668\u4eba\u901f\u5ea6",
+      "group": "Simulation",
+      "maxValue": 100,
+      "minValue": 0.01,
+      "type": "double",
+      "value": 1
+    },
+    "UpdateIntervalMs": {
+      "advanced": false,
+      "defaultValue": 100,
+      "desc": "\u4eff\u771f\u673a\u5668\u4eba\u66f4\u65b0\u95f4\u9694",
+      "group": "Simulation",
+      "maxValue": 1000,
+      "minValue": 10,
+      "type": "int32",
+      "value": 100
+    },
+    "WaitTimeMS": {
+      "advanced": false,
+      "defaultValue": 10,
+      "desc": "\u4eff\u771f\u673a\u5668\u4eba\u7b49\u5f85\u65f6\u95f4",
+      "group": "Simulation",
+      "maxValue": 100000,
+      "minValue": 10,
+      "type": "int32",
+      "value": 10
+    }
+  },
+  "RDSTrigger": null,
+  "create_on": "2026-01-08T21:01:35.384Z",
+  "ret_code": 0
+}
