@@ -272,6 +272,7 @@
   let nodeMarkers = new Map();
   let mapClickBound = false;
   let mapState = null;
+  let mapLayerNeedsRebuild = false;
   let panState = null;
   let panZoomBound = false;
   let miniMapViewport = null;
@@ -3575,11 +3576,19 @@
   };
 
   if (mapLayers) {
+    const baseLayer = {
+      render() {
+        if (!mapLayerNeedsRebuild) return;
+        mapLayerNeedsRebuild = false;
+        renderMapBaseLayer();
+      }
+    };
     const robotLayer = {
       render() {
         renderRobotLayer();
       }
     };
+    mapLayers.register(baseLayer);
     mapLayers.register(robotLayer);
     if (mapStore) {
       mapStore.subscribe((state) => {
@@ -4296,49 +4305,8 @@
     return addObstacle(pos, { mode });
   };
 
-  const renderMap = () => {
-    if (!graphData || !workflowData) return;
-    mapSvg.innerHTML = "";
-    worksiteElements = new Map();
-    worksiteLabels = new Map();
-    worksiteRings = new Map();
-    robotMarkers = new Map();
-    robotLayerGroup = null;
-    actionPointMarkers = new Map();
-    nodeMarkers = new Map();
-    nodeLabels = new Map();
-
-    const actionPoints = (graphData.nodes || []).filter(
-      (node) => node.className === "ActionPoint" && node.pos
-    );
-    const actionPointIndex = new Map(actionPoints.map((node) => [node.id, node.pos]));
-    const nodeYs = (graphData.nodes || [])
-      .map((node) => node?.pos?.y)
-      .filter((value) => Number.isFinite(value));
-    const mapMidY = nodeYs.length ? (Math.min(...nodeYs) + Math.max(...nodeYs)) / 2 : 0;
-    worksites.forEach((site) => {
-      site.displayPos = getWorksiteDisplayPos(site, actionPointIndex, mapMidY) || site.pos;
-    });
-
-    const { minX, maxX, minY, maxY } = getBounds(graphData);
-    const width = maxX - minX;
-    const height = maxY - minY;
-    mapState = {
-      x: -MAP_OUTER_MARGIN,
-      y: -MAP_OUTER_MARGIN,
-      width: width + MAP_OUTER_MARGIN * 2,
-      height: height + MAP_OUTER_MARGIN * 2,
-      baseWidth: width,
-      baseHeight: height,
-      minWidth: Math.max(width * 0.03, 5),
-      maxWidth: width + MAP_OUTER_MARGIN * 2,
-      maxHeight: height + MAP_OUTER_MARGIN * 2,
-      offsetX: minX,
-      offsetY: maxY
-    };
-    mapStore?.setMapState?.(mapState, "init");
-    updateViewBox();
-    mapSvg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+  const renderMapBaseLayer = () => {
+    if (!graphData || !mapState || !mapSvg) return;
 
     const edgesGroup = document.createElementNS(svgNS, "g");
     edgesGroup.setAttribute("class", "map-edges");
@@ -4388,6 +4356,8 @@
     const nodeLabelsGroup = document.createElementNS(svgNS, "g");
     nodeLabelsGroup.setAttribute("class", "map-node-labels");
     const nodesWithPos = (graphData.nodes || []).filter((node) => node && node.pos);
+    const actionPoints = nodesWithPos.filter((node) => node.className === "ActionPoint");
+    const actionPointIndex = new Map(actionPoints.map((node) => [node.id, node.pos]));
 
     worksites.forEach((site) => {
       const sitePos = site.displayPos || site.pos;
@@ -4509,7 +4479,59 @@
     fragment.appendChild(ringsGroup);
     fragment.appendChild(labelsGroup);
     mapSvg.appendChild(fragment);
-    mapLayers?.render?.(mapStore?.getState?.() || {});
+  };
+
+  const renderMap = () => {
+    if (!graphData || !workflowData) return;
+    mapSvg.innerHTML = "";
+    worksiteElements = new Map();
+    worksiteLabels = new Map();
+    worksiteRings = new Map();
+    robotMarkers = new Map();
+    robotLayerGroup = null;
+    actionPointMarkers = new Map();
+    nodeMarkers = new Map();
+    nodeLabels = new Map();
+
+    const actionPoints = (graphData.nodes || []).filter(
+      (node) => node.className === "ActionPoint" && node.pos
+    );
+    const actionPointIndex = new Map(actionPoints.map((node) => [node.id, node.pos]));
+    const nodeYs = (graphData.nodes || [])
+      .map((node) => node?.pos?.y)
+      .filter((value) => Number.isFinite(value));
+    const mapMidY = nodeYs.length ? (Math.min(...nodeYs) + Math.max(...nodeYs)) / 2 : 0;
+    worksites.forEach((site) => {
+      site.displayPos = getWorksiteDisplayPos(site, actionPointIndex, mapMidY) || site.pos;
+    });
+
+    const { minX, maxX, minY, maxY } = getBounds(graphData);
+    const width = maxX - minX;
+    const height = maxY - minY;
+    mapState = {
+      x: -MAP_OUTER_MARGIN,
+      y: -MAP_OUTER_MARGIN,
+      width: width + MAP_OUTER_MARGIN * 2,
+      height: height + MAP_OUTER_MARGIN * 2,
+      baseWidth: width,
+      baseHeight: height,
+      minWidth: Math.max(width * 0.03, 5),
+      maxWidth: width + MAP_OUTER_MARGIN * 2,
+      maxHeight: height + MAP_OUTER_MARGIN * 2,
+      offsetX: minX,
+      offsetY: maxY
+    };
+    mapStore?.setMapState?.(mapState, "init");
+    updateViewBox();
+    mapSvg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+    mapLayerNeedsRebuild = true;
+    if (mapLayers?.render) {
+      mapLayers.render(mapStore?.getState?.() || {});
+    } else {
+      renderMapBaseLayer();
+      renderRobotLayer();
+      mapLayerNeedsRebuild = false;
+    }
     renderObstacles();
     renderMiniMap();
 
