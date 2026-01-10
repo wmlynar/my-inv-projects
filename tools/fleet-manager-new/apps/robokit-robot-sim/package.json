@@ -5,6 +5,7 @@
   "type": "commonjs",
   "main": "server.js",
   "scripts": {
-    "start": "node start.js"
+    "start": "node start.js",
+    "test": "node tests/control_arbiter.test.js && node tests/client_registry.test.js && node tests/command_cache.test.js"
   }
 }

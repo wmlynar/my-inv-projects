@@ -152,6 +152,7 @@ Config via env:
 - `SIM_TIME_MODE`
 - `SIM_TIME_START_MS`
 - `SIM_TIME_STEP_MS`
+- `SIM_SEED`
 - `EVENT_LOG_PATH`
 - `EVENT_LOG_STDOUT`
 - `ADMIN_HTTP_PORT`
@@ -160,6 +161,8 @@ Config via env:
 - `CLIENT_ID_STRATEGY`
 - `CLIENT_TTL_MS`
 - `CLIENT_IDLE_MS`
+- `COMMAND_CACHE_TTL_MS`
+- `COMMAND_CACHE_MAX_ENTRIES`
 - `LOCK_RELEASE_ON_DISCONNECT`
 - `LOCK_TTL_MS`
 - `STRICT_UNLOCK`
@@ -172,6 +175,7 @@ Config via env:
 - `MAX_CLIENT_SESSIONS`
 - `PUSH_MAX_INTERVAL_MS`
 - `PUSH_MAX_QUEUE_BYTES`
+- `PUSH_MAX_FIELDS`
 - `MAX_PUSH_CONNECTIONS`
 - `MAX_TASK_NODES`
 - `BIND_HOST`
@@ -182,7 +186,7 @@ Notes:
 - The simulator uses the Robokit TCP frame header (16 bytes, JSON body).
 - Responses use `apiNo + 10000`.
 - `robot_status_file_req` serves files from `ROBOT_FILE_ROOTS` plus the map directory.
-- Optional admin endpoints (`/_health`, `/_metrics`) are served on `ADMIN_HTTP_PORT` and are separate from Robokit/Roboshop traffic.
+- Optional admin endpoints (`/_health`, `/_metrics`, `/_time`) are served on `ADMIN_HTTP_PORT` and are separate from Robokit/Roboshop traffic.
 - Paths respect edge direction when the map provides a `direction` property.
 - Feature lines can impose one-way travel; `direction < 0` marks backward driving.
 - Motion uses a tricycle-style kinematic model (steered front wheel) and rotates

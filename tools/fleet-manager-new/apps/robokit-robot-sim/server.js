@@ -1,13 +1,10 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const net = require('net');
-
 const {
   API,
   encodeFrame,
   responseApi,
-  RbkParser,
   START_MARK,
   VERSION,
   HEADER_LEN
@@ -19,9 +16,16 @@ const { SimModule } = require('./syspy-js');
 const MotionKernel = require('../../packages/robokit-lib/motion_kernel');
 const config = require('./lib/config');
 const { ControlArbiter } = require('./core/control_arbiter');
+const { createForkController } = require('./core/fork_controller');
+const { createApiRouter } = require('./protocol/api_router');
+const { CommandCache } = require('./protocol/command_cache');
 const { createControlPolicy } = require('./protocol/control_policy');
+const { createStatusBuilder } = require('./views/status_builder');
+const { createPushBuilder } = require('./views/push_builder');
 const { ClientRegistry } = require('./transport/client_registry');
+const { createTcpServer, createPushServer } = require('./transport/tcp_servers');
 const { createSimClock } = require('./lib/sim_clock');
+const { createRng } = require('./lib/rng');
 const { EventLogger } = require('./lib/event_logger');
 
 const {
@@ -139,6 +143,7 @@ const {
   SIM_TIME_MODE,
   SIM_TIME_START_MS,
   SIM_TIME_STEP_MS,
+  SIM_SEED,
   EVENT_LOG_PATH,
   EVENT_LOG_STDOUT,
   ADMIN_HTTP_PORT,
@@ -147,6 +152,8 @@ const {
   CLIENT_ID_STRATEGY,
   CLIENT_TTL_MS,
   CLIENT_IDLE_MS,
+  COMMAND_CACHE_TTL_MS,
+  COMMAND_CACHE_MAX_ENTRIES,
   LOCK_RELEASE_ON_DISCONNECT,
   LOCK_TTL_MS,
   STRICT_UNLOCK,
@@ -159,9 +166,17 @@ const {
   MAX_CLIENT_SESSIONS,
   PUSH_MAX_INTERVAL_MS,
   PUSH_MAX_QUEUE_BYTES,
+  PUSH_MAX_FIELDS,
   MAX_PUSH_CONNECTIONS,
   MAX_TASK_NODES
 } = config;
+
+const configErrors = config.validateConfig();
+if (configErrors.length) {
+  console.error('robokit-robot-sim invalid config:');
+  configErrors.forEach((entry) => console.error(`- ${entry}`));
+  process.exit(1);
+}
 
 const DEFAULT_ROBOT_MODEL = { head: 0.5, tail: 2, width: 1 };
 const ROBOT_MODEL_DIMS = {
@@ -196,6 +211,7 @@ const simClock = createSimClock({
   startMs: Number.isFinite(SIM_TIME_START_MS) ? SIM_TIME_START_MS : undefined,
   stepMs: Number.isFinite(SIM_TIME_STEP_MS) ? SIM_TIME_STEP_MS : undefined
 });
+const rng = createRng(SIM_SEED);
 const eventLogger =
   EVENT_LOG_PATH || EVENT_LOG_STDOUT
     ? new EventLogger({ path: EVENT_LOG_PATH, stdout: EVENT_LOG_STDOUT, now: () => simClock.now() })
@@ -209,27 +225,14 @@ function lockTimeSeconds() {
   return Math.floor(simClock.now() / 1000);
 }
 
+let lastTickAt = nowMs();
+
 function normalizeRemoteAddress(value) {
   if (!value) return '';
   const text = String(value);
   if (text === '::1') return '127.0.0.1';
   if (text.startsWith('::ffff:')) return text.slice(7);
   return text;
-}
-
-function buildCurrentLockPayload(lockInfo) {
-  if (!lockInfo || !lockInfo.locked) {
-    return { locked: false };
-  }
-  return {
-    desc: lockInfo.desc || '',
-    ip: lockInfo.ip || '',
-    locked: true,
-    nick_name: lockInfo.nick_name || '',
-    port: Number.isFinite(lockInfo.port) ? lockInfo.port : 0,
-    time_t: Number.isFinite(lockInfo.time_t) ? lockInfo.time_t : 0,
-    type: Number.isFinite(lockInfo.type) ? lockInfo.type : DEFAULT_LOCK_TYPE
-  };
 }
 
 function createOn() {
@@ -446,47 +449,6 @@ const chargeStationIds = new Set(
 const fileRoots = Array.from(
   new Set([...ROBOT_FILE_ROOTS, path.dirname(GRAPH_PATH)].filter(Boolean))
 );
-
-function resolveRequestedFile(payload) {
-  if (!payload || typeof payload !== 'object') return null;
-  const filePath =
-    payload.file_path || payload.filePath || payload.path || payload.file || payload.fileName;
-  if (!filePath) return null;
-  const normalized = String(filePath).trim();
-  if (!normalized) return null;
-  if (path.isAbsolute(normalized)) {
-    try {
-      return fs.statSync(normalized).isFile() ? normalized : null;
-    } catch (_err) {
-      return null;
-    }
-  }
-  for (const root of fileRoots) {
-    const resolvedRoot = path.resolve(root);
-    const candidate = path.resolve(resolvedRoot, normalized);
-    if (!candidate.startsWith(`${resolvedRoot}${path.sep}`)) {
-      continue;
-    }
-    try {
-      if (fs.statSync(candidate).isFile()) {
-        return candidate;
-      }
-    } catch (_err) {
-      continue;
-    }
-  }
-  return null;
-}
-
-function buildFileResponse(payload) {
-  const resolved = resolveRequestedFile(payload);
-  if (!resolved) return null;
-  try {
-    return fs.readFileSync(resolved);
-  } catch (_err) {
-    return null;
-  }
-}
 
 function createMotorStates(names) {
   const list = Array.isArray(names) && names.length > 0 ? names : ['drive'];
@@ -1929,6 +1891,8 @@ const simModule = new SimModule({
   log: (...args) => console.log(...args)
 });
 robot.scriptApi = simModule;
+robot.rng = rng;
+simModule.rng = rng;
 let taskCounter = 1;
 
 let controlArbiter = null;
@@ -1936,7 +1900,8 @@ const clientRegistry = new ClientRegistry({
   strategy: CLIENT_ID_STRATEGY,
   ttlMs: CLIENT_TTL_MS,
   idleMs: CLIENT_IDLE_MS,
-  onSessionEmpty: (session) => {
+  now: () => simClock.now(),
+  onSessionExpired: (session) => {
     if (!LOCK_RELEASE_ON_DISCONNECT || !controlArbiter) {
       return;
     }
@@ -1951,6 +1916,12 @@ const controlPolicy = createControlPolicy({
   requireControl: REQUIRE_LOCK_FOR_CONTROL,
   requireNav: REQUIRE_LOCK_FOR_NAV,
   requireFork: REQUIRE_LOCK_FOR_FORK
+});
+
+const commandCache = new CommandCache({
+  ttlMs: COMMAND_CACHE_TTL_MS,
+  maxEntries: COMMAND_CACHE_MAX_ENTRIES,
+  now: () => simClock.now()
 });
 
 function clearManualControl() {
@@ -1981,6 +1952,136 @@ controlArbiter = new ControlArbiter({
       }
     : null
 });
+
+const statusBuilder = createStatusBuilder({
+  robot,
+  graph,
+  mapInfo,
+  mapEntries,
+  statusAllTemplate,
+  robotParamsPayload,
+  deviceTypesPayloadFull,
+  deviceTypesPayloadExt,
+  deviceTypesPayloadModule,
+  fileListAssetsPayload,
+  fileListModulesPayload,
+  mapPropertiesPayload,
+  configMapDataPayload,
+  fileRoots,
+  listSimObstacles,
+  createOn,
+  nowMs,
+  batteryRatio,
+  getTaskPaths,
+  getReportedCurrentStation,
+  getReportedLastStation,
+  isStopped,
+  cloneJson,
+  cloneGoodsRegion,
+  config,
+  ROBOT_FEATURES,
+  DEFAULT_LOCK_TYPE
+});
+
+const {
+  buildBaseResponse,
+  buildErrorResponse,
+  buildCurrentLockResponse,
+  buildInfoResponse,
+  buildLocResponse,
+  buildSpeedResponse,
+  buildMotorResponse,
+  buildRunResponse,
+  buildModeResponse,
+  buildBatteryResponse,
+  buildPathResponse,
+  buildAreaResponse,
+  buildDiList,
+  buildDoList,
+  buildIoResponse,
+  buildBlockResponse,
+  buildBrakeResponse,
+  buildLaserResponse,
+  buildUltrasonicResponse,
+  buildPolygonResponse,
+  buildObstacleResponse,
+  buildEmergencyResponse,
+  buildImuResponse,
+  buildRelocStatusResponse,
+  buildLoadmapStatusResponse,
+  buildCalibrationStatusResponse,
+  buildTrackingStatusResponse,
+  buildSlamStatusResponse,
+  buildForkResponse,
+  buildTaskStatusResponse,
+  buildTasklistStatusResponse,
+  buildAlarmResponse,
+  buildInitResponse,
+  buildMapResponse,
+  buildStationResponse,
+  buildParamsResponse,
+  buildDeviceTypesResponse,
+  buildFileListResponse,
+  buildFileListModulesResponse,
+  buildDeviceTypesLiteResponse,
+  buildModuleDeviceTypesResponse,
+  buildMapPropertiesResponse,
+  buildConfigMapResponse,
+  buildAllResponse,
+  buildTaskPathResponse,
+  buildTaskListStatus,
+  buildTaskListNames,
+  buildAudioList,
+  buildFileResponse
+} = statusBuilder;
+
+const forkController = createForkController({
+  robot,
+  nowMs,
+  lockTimeSeconds,
+  createOn,
+  buildErrorResponse,
+  buildBaseResponse,
+  resetVelocity,
+  startMoveToNode,
+  nodesById,
+  cloneGoodsRegion,
+  clampForkHeight,
+  approachValue,
+  FORK_EPS,
+  FORK_SPEED_M_S,
+  FORK_ACCEL_M_S2,
+  FORK_TASK_DELAY_MS,
+  FORK_MIN_HEIGHT,
+  FORK_TASK_TYPE,
+  EMPTY_GOODS_REGION,
+  LOADED_GOODS_REGION
+});
+
+const {
+  handleSetForkHeight,
+  handleForkStop,
+  handleForkOperation,
+  getForkOperation,
+  beginAttachedForkForTask,
+  maybeStartPendingFork,
+  tickFork
+} = forkController;
+
+const pushBuilder = createPushBuilder({
+  robot,
+  graph,
+  buildBaseResponse,
+  batteryRatio,
+  getTaskPaths,
+  buildDiList,
+  buildDoList,
+  getReportedCurrentStation,
+  isStopped,
+  pushMaxFields: PUSH_MAX_FIELDS
+});
+
+const { buildPushPayload } = pushBuilder;
 
 function updateVelocity(vx, vy, w, steer, spin) {
   robot.velocity = {
@@ -2081,176 +2182,6 @@ function updateCharging(now, dt) {
   if (Number.isFinite(targetVoltage)) {
     robot.voltage = approachValue(robot.voltage, targetVoltage, CHARGE_VOLTAGE_RAMP_V_S, CHARGE_VOLTAGE_RAMP_V_S, dt);
   }
-}
-
-function finalizeForkTask() {
-  if (!robot.forkTaskMode) {
-    return;
-  }
-  if (robot.forkTaskMode === 'load') {
-    robot.goodsRegion = cloneGoodsRegion(LOADED_GOODS_REGION);
-    if (robot.goods) {
-      robot.goods.hasGoods = true;
-    }
-  } else if (robot.forkTaskMode === 'unload') {
-    robot.goodsRegion = cloneGoodsRegion(EMPTY_GOODS_REGION);
-    if (robot.goods) {
-      robot.goods.hasGoods = false;
-      robot.goods.shape = null;
-    }
-  }
-  robot.forkTaskMode = null;
-}
-
-function completeHeldTask() {
-  if (!robot.forkHoldTask) {
-    return;
-  }
-  robot.forkHoldTask = false;
-  const task = robot.currentTask;
-  if (!task) {
-    return;
-  }
-  task.completedAt = nowMs();
-  task.waitingFork = false;
-  robot.taskStatus = 4;
-  robot.lastTask = task;
-  robot.currentTask = null;
-  resetVelocity();
-}
-
-function syncForkTaskStatus() {
-  if (!robot.forkTaskActive) {
-    return;
-  }
-  const inPlace = robot.fork.heightInPlace;
-  if (inPlace) {
-    robot.forkTaskActive = false;
-    finalizeForkTask();
-    if (robot.forkHoldTask) {
-      completeHeldTask();
-    }
-  }
-  if (!robot.forkTaskReport) {
-    if (inPlace) {
-      robot.forkTaskReport = false;
-    }
-    return;
-  }
-  if (!robot.currentTask) {
-    robot.taskType = FORK_TASK_TYPE;
-    robot.taskStatus = inPlace ? 4 : 2;
-  }
-  if (inPlace) {
-    robot.forkTaskReport = false;
-  }
-}
-
-function shouldReportForkTask() {
-  return !robot.currentTask && !(robot.scriptPath && robot.scriptPath.active);
-}
-
-function startForkTask(target, operation, reportStatus, requestedHeight) {
-  maybeReportForkHeightNotice(requestedHeight);
-  robot.fork.targetHeight = target;
-  robot.fork.heightInPlace = Math.abs(robot.fork.height - target) <= FORK_EPS;
-  robot.fork.autoFlag = true;
-  robot.fork.forwardVal = target;
-  robot.fork.forwardInPlace = false;
-  robot.forkTaskMode = operation === 'height' ? null : operation;
-  robot.forkTaskActive = !robot.fork.heightInPlace;
-  robot.forkTaskReport = reportStatus;
-  if (reportStatus && !robot.currentTask) {
-    robot.taskType = FORK_TASK_TYPE;
-    robot.taskStatus = robot.fork.heightInPlace ? 4 : 2;
-  }
-  if (robot.fork.heightInPlace) {
-    finalizeForkTask();
-    robot.forkTaskActive = false;
-    robot.forkTaskReport = false;
-  }
-}
-
-function queueForkTask(targetId, target, operation, requestedHeight) {
-  robot.forkPending = {
-    targetId,
-    targetHeight: target,
-    requestedHeight: Number.isFinite(requestedHeight) ? requestedHeight : target,
-    mode: operation,
-    queuedAt: nowMs(),
-    startAt: null,
-    attached: false
-  };
-}
-
-function beginAttachedForkForTask(task) {
-  if (!task || !robot.forkPending || robot.forkTaskActive) {
-    return false;
-  }
-  if (robot.forkPending.targetId && task.targetId && robot.forkPending.targetId !== task.targetId) {
-    return false;
-  }
-  task.waitingFork = true;
-  robot.forkHoldTask = true;
-  robot.taskStatus = 2;
-  resetVelocity();
-  robot.forkPending.attached = true;
-  if (!Number.isFinite(robot.forkPending.startAt)) {
-    robot.forkPending.startAt = nowMs() + FORK_TASK_DELAY_MS;
-  }
-  return true;
-}
-
-function maybeStartPendingFork(now) {
-  if (!robot.forkPending || robot.forkTaskActive) {
-    return false;
-  }
-  if (Number.isFinite(robot.forkPending.startAt) && now < robot.forkPending.startAt) {
-    return false;
-  }
-  if (robot.forkPending.targetId && robot.forkPending.targetId !== robot.currentStation) {
-    return false;
-  }
-  startForkTask(
-    robot.forkPending.targetHeight,
-    robot.forkPending.mode,
-    false,
-    robot.forkPending.requestedHeight
-  );
-  robot.forkPending = null;
-  if (robot.forkHoldTask && !robot.forkTaskActive) {
-    completeHeldTask();
-  }
-  return true;
-}
-
-function tickFork(dt) {
-  if (!robot.fork) {
-    return;
-  }
-  if (robot.softEmc) {
-    robot.fork.speed = 0;
-    return;
-  }
-  const target = clampForkHeight(robot.fork.targetHeight);
-  const diff = target - robot.fork.height;
-  if (Math.abs(diff) <= FORK_EPS) {
-    robot.fork.height = target;
-    robot.fork.speed = 0;
-    robot.fork.heightInPlace = true;
-    syncForkTaskStatus();
-    return;
-  }
-  const direction = diff > 0 ? 1 : -1;
-  const maxStepSpeed = Math.min(FORK_SPEED_M_S, Math.abs(diff) / dt);
-  robot.fork.speed = approachValue(robot.fork.speed || 0, maxStepSpeed, FORK_ACCEL_M_S2, FORK_ACCEL_M_S2, dt);
-  const step = direction * robot.fork.speed * dt;
-  robot.fork.height += step;
-  if ((direction > 0 && robot.fork.height > target) || (direction < 0 && robot.fork.height < target)) {
-    robot.fork.height = target;
-  }
-  robot.fork.heightInPlace = Math.abs(robot.fork.height - target) <= FORK_EPS;
-  syncForkTaskStatus();
 }
 
 function applyOdo(distance) {
@@ -2950,10 +2881,11 @@ function tickScriptPath(now, dt) {
 function tickSimulation() {
   simClock.tick(TICK_MS);
   const now = nowMs();
-  if (controlArbiter) {
-    controlArbiter.releaseIfExpired();
+  const dt = Math.max(0, (now - lastTickAt) / 1000);
+  lastTickAt = now;
+  if (controlArbiter && controlArbiter.releaseIfExpired()) {
+    clearManualControl();
   }
-  const dt = TICK_MS / 1000;
   robot.updatedAt = now;
   tickFork(dt);
   updateCharging(now, dt);
@@ -3122,27 +3054,6 @@ function tickSimulation() {
   }
 }
 
-function buildBaseResponse(extra) {
-  return {
-    ret_code: 0,
-    create_on: createOn(),
-    ...extra
-  };
-}
-
-function buildErrorResponse(message, code = 1) {
-  return {
-    ret_code: code,
-    err_msg: message,
-    message,
-    create_on: createOn()
-  };
-}
-
-function buildCurrentLockResponse() {
-  return buildBaseResponse(buildCurrentLockPayload(robot.lockInfo));
-}
-
 function handleReloc(payload) {
   const targetId =
     payload && (payload.id || payload.station_id || payload.target_id || payload.point_id);
@@ -3198,89 +3109,6 @@ function handleCancelReloc() {
   return buildBaseResponse({});
 }
 
-function normalizeForkHeight(payload) {
-  if (!payload || typeof payload !== 'object') {
-    return null;
-  }
-  const candidates = [payload.end_height, payload.height, payload.fork_height, payload.value];
-  for (const raw of candidates) {
-    if (Number.isFinite(raw)) {
-      return raw;
-    }
-    const parsed = Number.parseFloat(raw);
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
-  return null;
-}
-
-function maybeReportForkHeightNotice(requestedHeight) {
-  if (!Number.isFinite(requestedHeight) || requestedHeight >= FORK_MIN_HEIGHT) {
-    return;
-  }
-  const timestamp = lockTimeSeconds();
-  const desc = JSON.stringify([
-    'fork target too low. min_fork_height = {1} send_height = {2}',
-    FORK_MIN_HEIGHT,
-    requestedHeight
-  ]);
-  let notice = robot.alarms.notices.find((entry) => entry && entry.code === 57016);
-  if (!notice) {
-    notice = {
-      code: 57016,
-      desc: '',
-      describe: '',
-      method: '',
-      reason: '',
-      times: 0,
-      timestamp
-    };
-    robot.alarms.notices.push(notice);
-  }
-  notice.times = (notice.times || 0) + 1;
-  notice.timestamp = timestamp;
-  notice[57016] = timestamp;
-  notice.dateTime = createOn();
-  notice.desc = desc;
-}
-
-function getForkOperation(payload) {
-  if (!payload || typeof payload !== 'object') {
-    return null;
-  }
-  const operation = payload.operation ? String(payload.operation).trim().toLowerCase() : '';
-  if (operation === 'forkheight') return 'height';
-  if (operation === 'forkload') return 'load';
-  if (operation === 'forkunload') return 'unload';
-  return null;
-}
-
-function handleForkOperation(payload, operation) {
-  const height = normalizeForkHeight(payload);
-  if (!Number.isFinite(height)) {
-    return buildErrorResponse('invalid_height');
-  }
-  const target = clampForkHeight(height);
-  const targetId = payload && (payload.id || payload.target_id || payload.target);
-  if (targetId && targetId !== robot.currentStation) {
-    if (!nodesById.has(targetId)) {
-      return buildErrorResponse('unknown_target');
-    }
-    queueForkTask(targetId, target, operation, height);
-    if (!robot.currentTask) {
-      const result = startMoveToNode(targetId, 3);
-      if (!result.ok) {
-        robot.forkPending = null;
-        return buildErrorResponse(result.error);
-      }
-    }
-    return buildBaseResponse({});
-  }
-  startForkTask(target, operation, shouldReportForkTask(), height);
-  return buildBaseResponse({});
-}
-
 function handleGoTarget(payload) {
   const forkOperation = getForkOperation(payload);
   if (forkOperation) {
@@ -3288,10 +3116,10 @@ function handleGoTarget(payload) {
   }
   const targetId = (payload && (payload.id || payload.target_id || payload.target)) || null;
   if (!targetId) {
-    return buildErrorResponse('missing_target');
+    return buildErrorResponse('invalid_target');
   }
   if (!nodesById.has(targetId)) {
-    return buildErrorResponse('unknown_target');
+    return buildErrorResponse('invalid_target');
   }
 
   const result = startMoveToNode(targetId, 3);
@@ -3311,7 +3139,7 @@ function handleGoPoint(payload) {
   const y = payload && Number.isFinite(payload.y) ? payload.y : null;
   const angle = payload && Number.isFinite(payload.angle) ? payload.angle : 0;
   if (x === null || y === null) {
-    return buildErrorResponse('missing_target');
+    return buildErrorResponse('invalid_target');
   }
 
   const result = startMoveToPoint(x, y, angle);
@@ -3501,36 +3329,17 @@ function handleConfigUnlock(clientId) {
     return buildErrorResponse('control_locked', 60001);
   }
   const result = controlArbiter.release(clientId || '', 'unlock');
+  if (!result.ok && eventLogger) {
+    eventLogger.log('unlock_rejected', {
+      by: clientId || null,
+      owner: controlArbiter ? controlArbiter.getOwner() : null
+    });
+  }
+  if (result.ok && result.released) {
+    clearManualControl();
+  }
   if (!result.ok && STRICT_UNLOCK) {
     return buildErrorResponse('control_locked', 60001);
-  }
-  return buildBaseResponse({});
-}
-
-function handleSetForkHeight(payload) {
-  const height = normalizeForkHeight(payload);
-  if (Number.isFinite(height)) {
-    maybeReportForkHeightNotice(height);
-  }
-  const target = clampForkHeight(Number.isFinite(height) ? height : 0);
-  robot.fork.targetHeight = target;
-  robot.fork.heightInPlace = Math.abs(robot.fork.height - target) <= FORK_EPS;
-  robot.fork.forwardVal = target;
-  robot.fork.forwardInPlace = false;
-  robot.fork.autoFlag = true;
-  return buildBaseResponse({ fork_height: robot.fork.height });
-}
-
-function handleForkStop() {
-  robot.fork.targetHeight = robot.fork.height;
-  robot.fork.speed = 0;
-  robot.fork.heightInPlace = true;
-  robot.fork.forwardVal = clampForkHeight(robot.fork.height);
-  robot.fork.forwardInPlace = false;
-  if (robot.forkTaskActive || robot.taskType === FORK_TASK_TYPE) {
-    robot.taskType = FORK_TASK_TYPE;
-    robot.taskStatus = 4;
-    robot.forkTaskActive = false;
   }
   return buildBaseResponse({});
 }
@@ -3588,852 +3397,6 @@ function handleSetDi(payload) {
     setIoValue('di', id, status, 'normal');
   }
   return buildBaseResponse({});
-}
-
-function buildInfoResponse() {
-  const product = String(ROBOT_PRODUCT || '').trim();
-  const currentMapEntries = robot.currentMap
-    ? [
-        {
-          '3dFeatureTrans': [0, 0, 0],
-          md5: robot.currentMapMd5 || '',
-          name: robot.currentMap
-        }
-      ]
-    : [];
-  const response = {
-    MAC: robot.mac || '',
-    VERSION_LIST: robot.versionList || {},
-    WLANMAC: robot.wlanMac || '',
-    ap_addr: robot.apAddr || '',
-    architecture: ROBOT_ARCH,
-    calibrated: Boolean(robot.calibrated),
-    create_on: createOn(),
-    current_map: robot.currentMap || '',
-    current_map_entries: currentMapEntries,
-    current_map_md5: robot.currentMapMd5 || '',
-    current_ip: robot.currentIp || '',
-    dsp_version: ROBOT_DSP_VERSION,
-    echoid: ROBOT_ECHOID,
-    echoid_type: ROBOT_ECHOID_TYPE,
-    features: ROBOT_FEATURES,
-    gyro_version: ROBOT_GYRO_VERSION,
-    hardware: robot.hardware || {},
-    id: robot.id,
-    map_version: robot.mapVersion || '',
-    model_version: robot.modelVersion || '',
-    model: ROBOT_MODEL,
-    model_md5: ROBOT_MODEL_MD5,
-    modbus_version: robot.modbusVersion || '',
-    netprotocol_version: robot.netProtocolVersion || '',
-    network_controllers: robot.networkControllers || [],
-    ret_code: 0,
-    roboshop_min_version_required: ROBOSHOP_MIN_VERSION_REQUIRED,
-    robot_note: ROBOT_NOTE,
-    rssi: robot.rssi || 0,
-    safe_model_md5: robot.safeModelMd5 || '',
-    ssid: robot.ssid || '',
-    vehicle_id: ROBOT_VEHICLE_ID,
-    version: ROBOT_VERSION
-  };
-  if (product && product.toLowerCase() !== 'null') {
-    response.product = product;
-  }
-  return response;
-}
-
-function buildLocResponse() {
-  const pose = STATUS_HIDE_POSE
-    ? { x: null, y: null, angle: null }
-    : { x: robot.pose.x, y: robot.pose.y, angle: robot.pose.angle };
-  const currentStation = getReportedCurrentStation();
-  const lastStation = getReportedLastStation(currentStation);
-  return buildBaseResponse({
-    x: pose.x,
-    y: pose.y,
-    angle: pose.angle,
-    confidence: robot.confidence,
-    current_station: currentStation,
-    last_station: lastStation
-  });
-}
-
-function buildSpeedResponse() {
-  return buildBaseResponse({
-    vx: robot.velocity.vx,
-    vy: robot.velocity.vy,
-    w: robot.velocity.w,
-    steer: robot.velocity.steer,
-    spin: robot.velocity.spin,
-    r_vx: robot.velocity.r_vx,
-    r_vy: robot.velocity.r_vy,
-    r_w: robot.velocity.r_w,
-    r_steer: robot.velocity.r_steer,
-    r_spin: robot.velocity.r_spin,
-    motor_cmd: robot.motors.map((motor) => ({
-      motor_name: motor.motor_name,
-      value: motor.speed
-    })),
-    steer_angles: [robot.velocity.steer],
-    is_stop: isStopped()
-  });
-}
-
-function buildMotorResponse(payload) {
-  const requested = payload && Array.isArray(payload.motor_names) ? payload.motor_names : null;
-  const motors = requested && requested.length > 0
-    ? robot.motors.filter((motor) => requested.includes(motor.motor_name))
-    : robot.motors;
-  const entries = motors.map((motor) => ({
-    motor_name: motor.motor_name,
-    position: motor.position,
-    speed: motor.speed
-  }));
-  return buildBaseResponse({
-    motor_info: entries,
-    motors: entries
-  });
-}
-
-function buildRunResponse() {
-  const time = nowMs() - robot.bootAt;
-  return buildBaseResponse({
-    odo: robot.odo,
-    today_odo: robot.todayOdo,
-    time,
-    total_time: time,
-    controller_temp: robot.controllerTemp,
-    motor_info: robot.motors.map((motor) => ({
-      motor_name: motor.motor_name,
-      position: motor.position
-    })),
-    running_status: robot.taskStatus,
-    procBusiness: robot.taskStatus === 2
-  });
-}
-
-function buildModeResponse() {
-  return buildBaseResponse({
-    mode: 1,
-    manual: false,
-    auto: true
-  });
-}
-
-function buildBatteryResponse() {
-  return buildBaseResponse({
-    battery_level: batteryRatio(robot.battery),
-    battery_temp: robot.batteryTemp,
-    charging: robot.charging,
-    voltage: robot.voltage,
-    current: robot.current,
-    max_charge_voltage: MAX_CHARGE_VOLTAGE_V,
-    max_charge_current: MAX_CHARGE_CURRENT_A,
-    manual_charge: false,
-    auto_charge: false,
-    battery_cycle: robot.batteryCycle
-  });
-}
-
-function buildPathResponse() {
-  const task = robot.currentTask || robot.lastTask;
-  const path = task && Array.isArray(task.pathNodes) ? task.pathNodes : [];
-  return buildBaseResponse({ path });
-}
-
-function buildAreaResponse() {
-  return buildBaseResponse({
-    area_id: 0,
-    area_name: ''
-  });
-}
-
-function buildDiList() {
-  const meta = robot.io.diMeta || {};
-  return Object.entries(robot.io.di || {}).map(([id, value]) => {
-    const info = meta[id] || {};
-    return {
-      id: Number(id),
-      source: info.source || 'normal',
-      status: Boolean(value),
-      valid: info.valid !== undefined ? Boolean(info.valid) : true
-    };
-  });
-}
-
-function buildDoList() {
-  const meta = robot.io.doMeta || {};
-  return Object.entries(robot.io.do || {}).map(([id, value]) => {
-    const info = meta[id] || {};
-    return {
-      id: Number(id),
-      source: info.source || 'normal',
-      status: Boolean(value)
-    };
-  });
-}
-
-function buildIoResponse() {
-  const diEntries = Object.entries(robot.io.di || {});
-  const doEntries = Object.entries(robot.io.do || {});
-  const diList = buildDiList();
-  const doList = buildDoList();
-  return buildBaseResponse({
-    di: robot.io.di,
-    do: robot.io.do,
-    di_list: diEntries.map(([id, value]) => ({ id: Number(id), value: Boolean(value) })),
-    do_list: doEntries.map(([id, value]) => ({ id: Number(id), value: Boolean(value) })),
-    DI: diList,
-    DO: doList
-  });
-}
-
-function buildBlockResponse() {
-  return buildBaseResponse({
-    blocked: robot.blocked,
-    block_reason: robot.blockReason,
-    block_x: robot.blockPos.x,
-    block_y: robot.blockPos.y,
-    block_id: robot.blockId || 0,
-    slow_down: robot.slowDown,
-    slow_reason: robot.slowReason,
-    slow_x: robot.slowPos.x,
-    slow_y: robot.slowPos.y,
-    slow_id: robot.slowId || 0
-  });
-}
-
-function buildBrakeResponse() {
-  return buildBaseResponse({
-    brake: robot.brake
-  });
-}
-
-function buildLaserResponse() {
-  return buildBaseResponse({
-    lasers: []
-  });
-}
-
-function buildUltrasonicResponse() {
-  return buildBaseResponse({
-    ultrasonic: []
-  });
-}
-
-function buildPolygonResponse() {
-  return buildBaseResponse({
-    polygons: []
-  });
-}
-
-function buildObstacleResponse() {
-  return buildBaseResponse({
-    obstacles: listSimObstacles()
-  });
-}
-
-function buildEmergencyResponse() {
-  return buildBaseResponse({
-    emergency: robot.emergency,
-    driver_emc: robot.driverEmc,
-    electric: robot.electric,
-    soft_emc: robot.softEmc
-  });
-}
-
-function buildImuResponse() {
-  return buildBaseResponse({
-    yaw: 0,
-    roll: 0,
-    pitch: 0
-  });
-}
-
-function buildRelocStatusResponse() {
-  return buildBaseResponse({
-    reloc_status: robot.relocStatus,
-    current_station: getReportedCurrentStation()
-  });
-}
-
-function buildLoadmapStatusResponse() {
-  return buildBaseResponse({
-    map: graph.meta && graph.meta.mapName ? graph.meta.mapName : '',
-    map_status: 0
-  });
-}
-
-function buildCalibrationStatusResponse() {
-  return buildBaseResponse({
-    calibration_status: 0
-  });
-}
-
-function buildTrackingStatusResponse() {
-  return buildBaseResponse({
-    tracking_status: 0
-  });
-}
-
-function buildSlamStatusResponse() {
-  return buildBaseResponse({
-    slam_status: 0
-  });
-}
-
-function buildForkResponse() {
-  return buildBaseResponse({
-    fork_height: robot.fork.height,
-    fork_height_in_place: robot.fork.heightInPlace,
-    fork_auto_flag: robot.fork.autoFlag,
-    forward_val: robot.fork.forwardVal,
-    forward_in_place: false,
-    fork_pressure_actual: robot.fork.pressureActual
-  });
-}
-
-function buildTaskStatusResponse(payload) {
-  const task = robot.currentTask || robot.lastTask;
-  const paths = getTaskPaths(task);
-  const simple = Boolean(payload && payload.simple === true);
-  const response = {
-    task_status: robot.taskStatus,
-    task_type: robot.taskType,
-    task_id: task ? task.id : null,
-    target_id: task ? task.targetId : null,
-    target_point: task ? task.targetPoint : null,
-    move_status: 0
-  };
-  if (!simple) {
-    response.finished_path = paths.finished;
-    response.unfinished_path = paths.unfinished;
-  }
-  return buildBaseResponse(response);
-}
-
-function buildTasklistStatusResponse() {
-  return buildBaseResponse({
-    tasklist_status: robot.taskStatus,
-    tasklist: []
-  });
-}
-
-function buildAlarmResponse() {
-  const alarms = robot.alarms;
-  return buildBaseResponse({
-    fatals: alarms.fatals,
-    errors: alarms.errors,
-    warnings: alarms.warnings,
-    notices: alarms.notices,
-    alarms
-  });
-}
-
-function buildInitResponse() {
-  return {
-    create_on: createOn(),
-    init_status: 1,
-    ret_code: 0
-  };
-}
-
-function buildMapResponse() {
-  return {
-    create_on: createOn(),
-    current_map: mapInfo.name || '',
-    current_map_md5: mapInfo.md5 || '',
-    map_files_info: mapInfo.files,
-    maps: mapInfo.names,
-    ret_code: 0
-  };
-}
-
-function buildStationResponse() {
-  const stations = (graph.nodes || [])
-    .filter((node) => node.className === 'LocationMark' || node.className === 'ActionPoint')
-    .map((node) => node.id);
-  return buildBaseResponse({
-    stations
-  });
-}
-
-function buildParamsResponse() {
-  if (robotParamsPayload && typeof robotParamsPayload === 'object') {
-    const payload = cloneJson(robotParamsPayload);
-    payload.create_on = createOn();
-    payload.ret_code = 0;
-    return payload;
-  }
-  return {
-    create_on: createOn(),
-    ret_code: 0,
-    params: {}
-  };
-}
-
-function buildDeviceTypesResponse() {
-  if (deviceTypesPayloadFull && typeof deviceTypesPayloadFull === 'object') {
-    const payload = cloneJson(deviceTypesPayloadFull);
-    if (ROBOT_MODEL) {
-      payload.model = ROBOT_MODEL;
-    }
-    return payload;
-  }
-  return { model: ROBOT_MODEL, deviceTypes: [] };
-}
-
-function buildFileListResponse() {
-  if (fileListAssetsPayload && typeof fileListAssetsPayload === 'object') {
-    const payload = cloneJson(fileListAssetsPayload);
-    payload.create_on = createOn();
-    payload.ret_code = 0;
-    return payload;
-  }
-  return { create_on: createOn(), list: [], ret_code: 0 };
-}
-
-function buildFileListModulesResponse() {
-  if (fileListModulesPayload && typeof fileListModulesPayload === 'object') {
-    const payload = cloneJson(fileListModulesPayload);
-    payload.create_on = createOn();
-    payload.ret_code = 0;
-    return payload;
-  }
-  return { create_on: createOn(), list: [], ret_code: 0 };
-}
-
-function buildDeviceTypesLiteResponse() {
-  if (deviceTypesPayloadExt && typeof deviceTypesPayloadExt === 'object') {
-    const payload = cloneJson(deviceTypesPayloadExt);
-    if (payload.deviceTypes) {
-      return payload;
-    }
-    return { deviceTypes: payload };
-  }
-  return { deviceTypes: [] };
-}
-
-function buildModuleDeviceTypesResponse() {
-  if (deviceTypesPayloadModule && typeof deviceTypesPayloadModule === 'object') {
-    return cloneJson(deviceTypesPayloadModule);
-  }
-  return { model: 'module', deviceTypes: [] };
-}
-
-function buildMapPropertiesResponse() {
-  if (mapPropertiesPayload && typeof mapPropertiesPayload === 'object') {
-    const payload = cloneJson(mapPropertiesPayload);
-    payload.create_on = createOn();
-    payload.ret_code = 0;
-    return payload;
-  }
-  return { create_on: createOn(), maproperties: {}, ret_code: 0 };
-}
-
-function buildConfigMapResponse() {
-  if (configMapDataPayload && typeof configMapDataPayload === 'object') {
-    const payload = cloneJson(configMapDataPayload);
-    if (payload.header && mapInfo.name) {
-      payload.header.mapName = mapInfo.name;
-    }
-    return payload;
-  }
-  return {
-    header: {
-      mapType: '2D-Map',
-      mapName: mapInfo.name || '',
-      minPos: { x: 0, y: 0 },
-      maxPos: { x: 0, y: 0 },
-      resolution: 0,
-      version: '1.0.0'
-    },
-    normalPosList: [],
-    advancedPointList: [],
-    advancedCurveList: []
-  };
-}
-function buildAllResponse() {
-  const payload = statusAllTemplate ? cloneJson(statusAllTemplate) : {};
-  const task = robot.currentTask || robot.lastTask;
-  const paths = getTaskPaths(task);
-  const now = createOn();
-  const uptime = nowMs() - robot.bootAt;
-  const diList = buildDiList();
-  const doList = buildDoList();
-  const currentStation = getReportedCurrentStation();
-
-  payload.create_on = now;
-  payload.ret_code = 0;
-  payload.current_map = robot.currentMap || '';
-  payload.current_map_md5 = robot.currentMapMd5 || '';
-  payload.current_map_entries = robot.currentMapEntries || mapEntries;
-  payload.vehicle_id = ROBOT_VEHICLE_ID;
-  payload.robot_note = ROBOT_NOTE;
-  payload.model_md5 = ROBOT_MODEL_MD5;
-  payload.MAC = robot.mac || '';
-  payload.WLANMAC = robot.wlanMac || '';
-  payload.current_ip = robot.currentIp || '';
-  payload.confidence = robot.confidence;
-  payload.x = robot.pose.x;
-  payload.y = robot.pose.y;
-  payload.angle = robot.pose.angle;
-  payload.yaw = robot.pose.angle;
-  payload.vx = robot.velocity.vx;
-  payload.vy = robot.velocity.vy;
-  payload.w = robot.velocity.w;
-  payload.r_vx = robot.velocity.r_vx;
-  payload.r_vy = robot.velocity.r_vy;
-  payload.r_w = robot.velocity.r_w;
-  payload.steer = robot.velocity.steer;
-  payload.steer_angles = [robot.velocity.steer];
-  payload.r_steer = robot.velocity.r_steer;
-  payload.r_steer_angles = [robot.velocity.r_steer];
-  payload.spin = robot.velocity.spin;
-  payload.r_spin = robot.velocity.r_spin;
-  payload.blocked = robot.blocked;
-  payload.block_x = robot.blockPos.x;
-  payload.block_y = robot.blockPos.y;
-  if (robot.blocked) {
-    payload.block_id = robot.blockId || 0;
-    payload.block_reason = robot.blockReason;
-    payload.block_di = robot.blockDi || 0;
-    payload.block_ultrasonic_id = robot.blockUltrasonicId || 0;
-  }
-  payload.slowed = robot.slowDown;
-  if (robot.slowDown) {
-    payload.slow_reason = robot.slowReason;
-    payload.slow_x = robot.slowPos.x;
-    payload.slow_y = robot.slowPos.y;
-    payload.slow_id = robot.slowId || 0;
-    payload.slow_di = robot.slowDi || 0;
-    payload.slow_ultrasonic_id = robot.slowUltrasonicId || 0;
-  }
-  payload.brake = robot.brake;
-  payload.battery_level = batteryRatio(robot.battery);
-  payload.battery_temp = robot.batteryTemp;
-  payload.battery_cycle = robot.batteryCycle;
-  payload.voltage = robot.voltage;
-  payload.current = robot.current;
-  payload.max_charge_voltage = MAX_CHARGE_VOLTAGE_V;
-  payload.max_charge_current = MAX_CHARGE_CURRENT_A;
-  payload.controller_temp = robot.controllerTemp;
-  payload.controller_humi = robot.controllerHumi;
-  payload.controller_voltage = robot.controllerVoltage;
-  payload.odo = robot.odo;
-  payload.today_odo = robot.todayOdo;
-  payload.time = uptime;
-  payload.total_time = uptime;
-  payload.current_station = currentStation;
-  payload.last_station = getReportedLastStation(currentStation);
-  payload.reloc_status = robot.relocStatus;
-  payload.task_status = robot.taskStatus;
-  payload.task_type = robot.taskType;
-  payload.task_id = task ? task.id : '';
-  payload.target_id = task ? task.targetId : '';
-  payload.target_point = task ? task.targetPoint : null;
-  payload.target_label = '';
-  payload.target_x = task && task.targetPoint ? task.targetPoint.x : 0;
-  payload.target_y = task && task.targetPoint ? task.targetPoint.y : 0;
-  payload.target_dist = 0;
-  payload.finished_path = paths.finished;
-  payload.unfinished_path = paths.unfinished;
-  payload.running_status = robot.taskStatus;
-  payload.is_stop = isStopped();
-  payload.DI = diList;
-  payload.DO = doList;
-  payload.fork_height = robot.fork.height;
-  payload.fork_height_in_place = robot.fork.heightInPlace;
-  payload.fork_auto_flag = robot.fork.autoFlag;
-  payload.forward_val = robot.fork.forwardVal;
-  payload.forward_in_place = false;
-  payload.fork_pressure_actual = robot.fork.pressureActual;
-  payload.goods_region = cloneGoodsRegion(robot.goodsRegion);
-  payload.errors = robot.alarms.errors;
-  payload.warnings = robot.alarms.warnings;
-  payload.notices = robot.alarms.notices;
-  payload.fatals = robot.alarms.fatals;
-  payload.charging = robot.charging;
-  payload.emergency = robot.emergency;
-  payload.driver_emc = robot.driverEmc;
-  payload.electric = robot.electric;
-  payload.soft_emc = robot.softEmc;
-  payload.manual_charge = false;
-  payload.auto_charge = false;
-  payload.manualBlock = robot.manualBlock !== undefined ? robot.manualBlock : true;
-  payload.current_lock = buildCurrentLockPayload(robot.lockInfo);
-  payload.move_status_info = payload.move_status_info || '{"currentBlockId":"","info":"","objectFile":"","require":null}';
-  if (!payload.tasklist_status) {
-    payload.tasklist_status = {
-      actionGroupId: 0,
-      actionIds: [],
-      loop: false,
-      taskId: 0,
-      taskListName: '',
-      taskListStatus: 0
-    };
-  }
-  return payload;
-}
-
-function buildTaskPathResponse() {
-  const task = robot.currentTask || robot.lastTask;
-  const path = task && Array.isArray(task.pathNodes) ? task.pathNodes : [];
-  return buildBaseResponse({ path });
-}
-
-function buildTaskListStatus() {
-  const status = robot.taskStatus;
-  return buildBaseResponse({
-    tasklist_status: status,
-    robot_status: {
-      battery_level: batteryRatio(robot.battery)
-    }
-  });
-}
-
-function buildTaskListNames() {
-  return buildBaseResponse({ tasklists: [] });
-}
-
-function buildAudioList() {
-  return buildBaseResponse({ audios: [] });
-}
-
-function handleRequest(apiNo, payload, allowedApis, context = {}) {
-  if (allowedApis && !allowedApis.has(apiNo)) {
-    return buildErrorResponse('wrong_port', 60000);
-  }
-  if (controlArbiter) {
-    controlArbiter.releaseIfExpired();
-    if (controlPolicy.requiresLock(apiNo)) {
-      const clientId = context.clientId || null;
-      if (!controlArbiter.canControl(clientId)) {
-        if (eventLogger) {
-          eventLogger.log('control_denied', {
-            apiNo,
-            clientId: clientId || null,
-            ip: context.remoteAddress || null,
-            port: context.remotePort || null
-          });
-        }
-        return buildErrorResponse('control_locked', 60001);
-      }
-      controlArbiter.touch(clientId);
-    }
-  }
-
-  switch (apiNo) {
-    case API.robot_status_info_req:
-      return buildInfoResponse();
-    case API.robot_status_run_req:
-      return buildRunResponse();
-    case API.robot_status_mode_req:
-      return buildModeResponse();
-    case API.robot_status_loc_req:
-      return buildLocResponse();
-    case API.robot_status_speed_req:
-      return buildSpeedResponse();
-    case API.robot_status_motor_req:
-      return buildMotorResponse(payload || {});
-    case API.robot_status_path_req:
-      return buildPathResponse();
-    case API.robot_status_area_req:
-      return buildAreaResponse();
-    case API.robot_status_block_req:
-      return buildBlockResponse();
-    case API.robot_status_current_lock_req:
-      return buildCurrentLockResponse();
-    case API.robot_status_battery_req:
-      return buildBatteryResponse();
-    case API.robot_status_brake_req:
-      return buildBrakeResponse();
-    case API.robot_status_laser_req:
-      return buildLaserResponse();
-    case API.robot_status_ultrasonic_req:
-      return buildUltrasonicResponse();
-    case API.robot_status_polygon_req:
-      return buildPolygonResponse();
-    case API.robot_status_obstacle_req:
-      return buildObstacleResponse();
-    case API.robot_status_emergency_req:
-      return buildEmergencyResponse();
-    case API.robot_status_io_res:
-    case API.robot_status_io_req:
-      return buildIoResponse();
-    case API.robot_status_imu_req:
-      return buildImuResponse();
-    case API.robot_status_reloc_req:
-      return buildRelocStatusResponse();
-    case API.robot_status_loadmap_req:
-      return buildLoadmapStatusResponse();
-    case API.robot_status_calibration_req:
-      return buildCalibrationStatusResponse();
-    case API.robot_status_tracking_req:
-      return buildTrackingStatusResponse();
-    case API.robot_status_slam_req:
-      return buildSlamStatusResponse();
-    case API.robot_status_tasklist_req:
-      return buildTasklistStatusResponse();
-    case API.robot_status_task_req:
-      return buildTaskStatusResponse(payload || {});
-    case API.robot_status_fork_req:
-      return buildForkResponse();
-    case API.robot_status_alarm_req:
-    case API.robot_status_alarm_res:
-      return buildAlarmResponse();
-    case API.robot_status_all1_req:
-      return buildAllResponse();
-    case API.robot_status_all2_req:
-      return buildAllResponse();
-    case API.robot_status_all3_req:
-      return buildAllResponse();
-    case API.robot_status_all4_req:
-      return buildAllResponse();
-    case API.robot_status_init_req:
-      return buildInitResponse();
-    case API.robot_status_map_req:
-      return buildMapResponse();
-    case API.robot_status_station_req:
-      return buildStationResponse();
-    case API.robot_status_params_req:
-      return buildParamsResponse();
-    case API.robot_status_device_types_req:
-      return buildDeviceTypesResponse();
-    case API.robot_status_file_list_req:
-      return buildFileListResponse();
-    case API.robot_status_file_list_modules_req:
-      return buildFileListModulesResponse();
-    case API.robot_status_device_types_ext_req:
-      return buildDeviceTypesLiteResponse();
-    case API.robot_status_device_types_module_req:
-      return buildModuleDeviceTypesResponse();
-    case API.robot_status_map_properties_req:
-      return buildMapPropertiesResponse();
-    case API.robot_status_file_req:
-      return buildFileResponse(payload) || buildErrorResponse('missing_file', 404);
-    case API.robot_config_req_4005:
-      return handleConfigLock(payload || {}, context);
-    case API.robot_config_req_4006:
-      return handleConfigUnlock(context && context.clientId ? context.clientId : null);
-    case API.robot_config_req_4009:
-    case API.robot_config_req_4010:
-      return buildBaseResponse({});
-    case API.robot_config_req_4011:
-      return buildConfigMapResponse();
-    case API.robot_control_reloc_req:
-      return handleReloc(payload || {});
-    case API.robot_control_stop_req:
-      return handleStopControl();
-    case API.robot_control_gyrocal_req:
-      return buildBaseResponse({});
-    case API.robot_control_comfirmloc_req:
-      return handleConfirmLoc();
-    case API.robot_control_cancelreloc_req:
-      return handleCancelReloc();
-    case API.robot_control_clearencoder_req:
-      return buildBaseResponse({});
-    case API.robot_control_motion_req:
-      return handleMotionControl(payload || {});
-    case API.robot_control_loadmap_req:
-      return buildBaseResponse({});
-    case API.robot_task_gotarget_req:
-      return handleGoTarget(payload || {});
-    case API.robot_task_gopoint_req:
-      return handleGoPoint(payload || {});
-    case API.robot_task_multistation_req:
-      return handleMultiStation(payload || {});
-    case API.robot_task_pause_req:
-      return handlePauseTask();
-    case API.robot_task_resume_req:
-      return handleResumeTask();
-    case API.robot_task_cancel_req:
-      return handleCancelTask();
-    case API.robot_task_target_path_req:
-      return buildTaskPathResponse();
-    case API.robot_task_translate_req:
-      return buildBaseResponse({});
-    case API.robot_task_turn_req:
-      return buildBaseResponse({});
-    case API.robot_task_gostart_req:
-      return buildBaseResponse({});
-    case API.robot_task_goend_req:
-      return buildBaseResponse({});
-    case API.robot_task_gowait_req:
-      return buildBaseResponse({});
-    case API.robot_task_charge_req:
-      return buildBaseResponse({});
-    case API.robot_task_test_req:
-      return buildBaseResponse({});
-    case API.robot_task_goshelf_req:
-      return buildBaseResponse({});
-    case API.robot_task_uwb_follow_req:
-      return buildBaseResponse({});
-    case API.robot_task_calibwheel_req:
-      return buildBaseResponse({});
-    case API.robot_task_caliblaser_req:
-      return buildBaseResponse({});
-    case API.robot_task_calibminspeed_req:
-      return buildBaseResponse({});
-    case API.robot_task_calibcancel_req:
-      return buildBaseResponse({});
-    case API.robot_task_calibclear_req:
-      return buildBaseResponse({});
-    case API.robot_tasklist_req:
-      return buildBaseResponse({});
-    case API.robot_task_clear_multistation_req:
-      return handleClearMultiStation();
-    case API.robot_task_clear_task_req:
-      return handleClearTask();
-    case API.robot_tasklist_status_req:
-      return buildTaskListStatus();
-    case API.robot_tasklist_pause_req:
-      return buildBaseResponse({});
-    case API.robot_tasklist_resume_req:
-      return buildBaseResponse({});
-    case API.robot_tasklist_cancel_req:
-      return buildBaseResponse({});
-    case API.robot_tasklist_next_req:
-      return buildBaseResponse({});
-    case API.robot_tasklist_result_req:
-      return buildBaseResponse({});
-    case API.robot_tasklist_result_list_req:
-      return buildBaseResponse({});
-    case API.robot_tasklist_upload_req:
-      return buildBaseResponse({});
-    case API.robot_tasklist_download_req:
-      return buildBaseResponse({});
-    case API.robot_tasklist_delete_req:
-      return buildBaseResponse({});
-    case API.robot_tasklist_list_req:
-      return buildTaskListNames();
-    case API.robot_tasklist_name_req:
-      return buildBaseResponse({});
-    case API.robot_other_audio_play_req:
-      return buildBaseResponse({});
-    case API.robot_other_setdo_req:
-      return handleSetDo(payload || {});
-    case API.robot_other_setdobatch_req:
-      return handleSetDoBatch(payload || []);
-    case API.robot_other_softemc_req:
-      return handleSoftEmc(payload || {});
-    case API.robot_other_audiopause_req:
-      return buildBaseResponse({});
-    case API.robot_other_audiocont_req:
-      return buildBaseResponse({});
-    case API.robot_other_setdi_req:
-      return handleSetDi(payload || {});
-    case API.robot_other_audiolist_req:
-      return buildAudioList();
-    case API.robot_other_forkheight_req:
-      return handleSetForkHeight(payload || {});
-    case API.robot_other_forkstop_req:
-      return handleForkStop();
-    case API.robot_config_push_req:
-      return handlePushConfig(payload || {});
-    default:
-      return buildErrorResponse(`unsupported_api_${apiNo}`);
-  }
 }
 
 const allowedStateApis = new Set([
@@ -4548,13 +3511,117 @@ const allowedOtherApis = new Set([
 const allowedRobodApis = null;
 const allowedKernelApis = null;
 const allowedConfigApis = new Set([
-  API.robot_config_push_req,
   API.robot_config_req_4005,
   API.robot_config_req_4006,
   API.robot_config_req_4009,
   API.robot_config_req_4010,
   API.robot_config_req_4011
 ]);
+const idempotentApis = new Set([
+  API.robot_control_stop_req,
+  API.robot_control_motion_req,
+  API.robot_control_reloc_req,
+  API.robot_control_comfirmloc_req,
+  API.robot_control_cancelreloc_req,
+  API.robot_task_gotarget_req,
+  API.robot_task_gopoint_req,
+  API.robot_task_multistation_req,
+  API.robot_task_pause_req,
+  API.robot_task_resume_req,
+  API.robot_task_cancel_req,
+  API.robot_task_clear_multistation_req,
+  API.robot_task_clear_task_req,
+  API.robot_other_forkheight_req,
+  API.robot_other_forkstop_req,
+  API.robot_config_req_4005,
+  API.robot_config_req_4006
+]);
+
+const apiRouter = createApiRouter({
+  controlArbiter,
+  controlPolicy,
+  eventLogger,
+  commandCache,
+  idempotentApis,
+  handlers: {
+    buildErrorResponse,
+    buildBaseResponse,
+    buildInfoResponse,
+    buildRunResponse,
+    buildModeResponse,
+    buildLocResponse,
+    buildSpeedResponse,
+    buildMotorResponse,
+    buildPathResponse,
+    buildAreaResponse,
+    buildBlockResponse,
+    buildCurrentLockResponse,
+    buildBatteryResponse,
+    buildBrakeResponse,
+    buildLaserResponse,
+    buildUltrasonicResponse,
+    buildPolygonResponse,
+    buildObstacleResponse,
+    buildEmergencyResponse,
+    buildIoResponse,
+    buildImuResponse,
+    buildRelocStatusResponse,
+    buildLoadmapStatusResponse,
+    buildCalibrationStatusResponse,
+    buildTrackingStatusResponse,
+    buildSlamStatusResponse,
+    buildTasklistStatusResponse,
+    buildTaskStatusResponse,
+    buildForkResponse,
+    buildAlarmResponse,
+    buildAllResponse,
+    buildInitResponse,
+    buildMapResponse,
+    buildStationResponse,
+    buildParamsResponse,
+    buildDeviceTypesResponse,
+    buildFileListResponse,
+    buildFileListModulesResponse,
+    buildDeviceTypesLiteResponse,
+    buildModuleDeviceTypesResponse,
+    buildMapPropertiesResponse,
+    buildFileResponse,
+    buildConfigMapResponse,
+    handleConfigLock,
+    handleConfigUnlock,
+    handleReloc,
+    handleStopControl,
+    handleConfirmLoc,
+    handleCancelReloc,
+    handleMotionControl,
+    handleGoTarget,
+    handleGoPoint,
+    handleMultiStation,
+    handlePauseTask,
+    handleResumeTask,
+    handleCancelTask,
+    buildTaskPathResponse,
+    handleSetDo,
+    handleSetDoBatch,
+    handleSoftEmc,
+    handleSetDi,
+    buildAudioList,
+    handleSetForkHeight,
+    handleForkStop,
+    handleClearMultiStation,
+    handleClearTask,
+    buildTaskListStatus,
+    buildTaskListNames
+  }
+});
+
+function handleApiMessage(msg, context, allowedApis) {
+  return apiRouter.handle(msg.apiNo, msg.payload, allowedApis, context);
+}
+
+function handleParseError() {
+  return buildErrorResponse('json_parse_error');
+}
 
 function encodeFrameRaw(seq, apiNo, bodyBuffer, options = {}) {
   const body = Buffer.isBuffer(bodyBuffer) ? bodyBuffer : Buffer.from(bodyBuffer || '');
@@ -4581,115 +3648,15 @@ function encodeFrameRaw(seq, apiNo, bodyBuffer, options = {}) {
   return buffer;
 }
 
-function createServer(port, allowedApis, label) {
-  const server = net.createServer((socket) => {
-    const parser = new RbkParser({ maxBodyLength: MAX_BODY_LENGTH });
-    const context = {
-      socket,
-      remoteAddress: normalizeRemoteAddress(socket.remoteAddress),
-      remotePort: socket.remotePort,
-      localPort: socket.localPort,
-      label
-    };
-
-    if (MAX_CONNECTIONS && totalConnections >= MAX_CONNECTIONS) {
-      socket.destroy();
-      return;
-    }
-
-    const session = clientRegistry.attach(context);
-    if (MAX_CLIENT_SESSIONS && clientRegistry.sessions.size > MAX_CLIENT_SESSIONS) {
-      clientRegistry.detach(context);
-      socket.destroy();
-      return;
-    }
-    if (MAX_CONNECTIONS_PER_CLIENT && session.connections.size > MAX_CONNECTIONS_PER_CLIENT) {
-      clientRegistry.detach(context);
-      socket.destroy();
-      return;
-    }
-
-    totalConnections += 1;
-    socket.setNoDelay(true);
-    if (SOCKET_IDLE_TIMEOUT_MS) {
-      socket.setTimeout(SOCKET_IDLE_TIMEOUT_MS);
-    }
-    if (eventLogger) {
-      eventLogger.log('client_connected', {
-        clientId: context.clientId,
-        ip: context.remoteAddress,
-        port: context.remotePort,
-        label: 'push'
-      });
-    }
-    if (eventLogger) {
-      eventLogger.log('client_connected', {
-        clientId: context.clientId,
-        ip: context.remoteAddress,
-        port: context.remotePort,
-        label
-      });
-    }
-
-    socket.on('error', (err) => {
-      if (err && err.code && (err.code === 'ECONNRESET' || err.code === 'EPIPE')) {
-        return;
-      }
-      console.warn(`robokit-robot-sim ${label} socket error`, err);
-    });
-
-    socket.on('timeout', () => {
-      socket.destroy();
-    });
-
-    socket.on('close', () => {
-      totalConnections = Math.max(0, totalConnections - 1);
-      clientRegistry.detach(context);
-      if (eventLogger) {
-        eventLogger.log('client_disconnected', {
-          clientId: context.clientId,
-          ip: context.remoteAddress,
-          port: context.remotePort,
-          label
-        });
-      }
-    });
-
-    socket.on('data', (chunk) => {
-      let messages = [];
-      try {
-        messages = parser.push(chunk);
-      } catch (err) {
-        socket.destroy();
-        return;
-      }
-
-      for (const msg of messages) {
-        clientRegistry.touch(context);
-        const responsePayload = handleRequest(msg.apiNo, msg.payload, allowedApis, context);
-        const frame = Buffer.isBuffer(responsePayload)
-          ? encodeFrameRaw(msg.seq, responseApi(msg.apiNo), responsePayload, {
-              reserved: msg.reserved
-            })
-          : encodeFrame(msg.seq, responseApi(msg.apiNo), responsePayload, {
-              reserved: msg.reserved
-            });
-        socket.write(frame);
-      }
-    });
-  });
-
-  server.listen(port, BIND_HOST || undefined, () => {
-    const hostLabel = BIND_HOST || '0.0.0.0';
-    console.log(`robokit-robot-sim ${label} listening on tcp://${hostLabel}:${port}`);
-  });
-
-  return server;
-}
-
 const pushConnections = new Map();
 let pushSeq = 1;
 let totalConnections = 0;
+function getTotalConnections() {
+  return totalConnections;
+}
+function onConnectionChange(delta) {
+  totalConnections = Math.max(0, totalConnections + delta);
+}
 const pushDefaults = {
   intervalMs: 1000,
   includedFields: null,
@@ -4734,96 +3701,12 @@ function applyPushConfig(target, payload) {
   return { ok: true };
 }
 
-function handlePushConfig(payload) {
-  const result = applyPushConfig(pushDefaults, payload);
-  if (!result.ok) {
-    return buildErrorResponse(result.error);
-  }
-  return buildBaseResponse({});
-}
-
-function getCurrentStationForPush() {
-  return getReportedCurrentStation();
-}
-
-function buildPushFields() {
-  const task = robot.currentTask || robot.lastTask;
-  const paths = getTaskPaths(task);
-  const mapName = graph.meta && graph.meta.mapName ? graph.meta.mapName : '';
-  const diList = buildDiList();
-  const doList = buildDoList();
-  return {
-    controller_temp: robot.controllerTemp,
-    x: robot.pose.x,
-    y: robot.pose.y,
-    angle: robot.pose.angle,
-    current_station: getCurrentStationForPush(),
-    vx: robot.velocity.vx,
-    vy: robot.velocity.vy,
-    w: robot.velocity.w,
-    steer: robot.velocity.steer,
-    blocked: robot.blocked,
-    battery_level: batteryRatio(robot.battery),
-    charging: robot.charging,
-    emergency: robot.emergency,
-    DI: diList,
-    DO: doList,
-    fatals: robot.alarms.fatals,
-    errors: robot.alarms.errors,
-    warnings: robot.alarms.warnings,
-    notices: robot.alarms.notices,
-    current_map: mapName,
-    vehicle_id: robot.id,
-    requestVoltage: robot.requestVoltage,
-    requestCurrent: robot.requestCurrent,
-    brake: robot.brake,
-    confidence: robot.confidence,
-    is_stop: isStopped(),
-    fork: { fork_height: robot.fork.height },
-    target_point: task ? task.targetPoint : null,
-    target_label: '',
-    target_id: task ? task.targetId : '',
-    target_dist: 0,
-    task_status: robot.taskStatus,
-    task_staus: robot.taskStatus,
-    running_status: robot.taskStatus,
-    task_type: robot.taskType,
-    map: mapName,
-    battery_temp: robot.batteryTemp,
-    voltage: robot.voltage,
-    current: robot.current,
-    finished_path: paths.finished,
-    unfinished_path: paths.unfinished
-  };
-}
-
-function buildPushPayload(conn) {
-  const values = buildPushFields();
-  const payload = buildBaseResponse({});
-  const included = conn && Array.isArray(conn.includedFields) ? conn.includedFields : null;
-  const excluded = conn && Array.isArray(conn.excludedFields) ? conn.excludedFields : null;
-  if (included) {
-    for (const field of included) {
-      if (Object.prototype.hasOwnProperty.call(values, field)) {
-        payload[field] = values[field];
-      }
-    }
-    return payload;
-  }
-  const excludedSet = new Set(excluded || []);
-  for (const [key, value] of Object.entries(values)) {
-    if (!excludedSet.has(key)) {
-      payload[key] = value;
-    }
-  }
-  return payload;
-}
-
 function startPushTimer(conn) {
   if (conn.timer) {
     clearInterval(conn.timer);
   }
-  const interval = Math.max(PUSH_MIN_INTERVAL_MS, Number.parseInt(conn.intervalMs || 1000, 10));
+  const minInterval = Number.isFinite(PUSH_MIN_INTERVAL_MS) ? PUSH_MIN_INTERVAL_MS : 0;
+  const interval = Math.max(minInterval, Number.parseInt(conn.intervalMs || 1000, 10));
   conn.timer = setInterval(() => {
     if (conn.socket.destroyed) {
       clearInterval(conn.timer);
@@ -4834,123 +3717,15 @@ function startPushTimer(conn) {
       clearInterval(conn.timer);
       return;
     }
+    conn.trimmed = false;
     const payload = buildPushPayload(conn);
+    if (conn.trimmed && !conn.trimNoticeLogged) {
+      console.warn('robokit-robot-sim push payload trimmed to PUSH_MAX_FIELDS');
+      conn.trimNoticeLogged = true;
+    }
     const frame = encodeFrame(pushSeq++, API.robot_push, payload);
     conn.socket.write(frame);
   }, interval);
-}
-
-function createPushServer(port) {
-  const server = net.createServer((socket) => {
-    const parser = new RbkParser({ maxBodyLength: MAX_BODY_LENGTH });
-    const context = {
-      socket,
-      remoteAddress: normalizeRemoteAddress(socket.remoteAddress),
-      remotePort: socket.remotePort,
-      localPort: socket.localPort,
-      label: 'push'
-    };
-
-    if (MAX_PUSH_CONNECTIONS && pushConnections.size >= MAX_PUSH_CONNECTIONS) {
-      socket.destroy();
-      return;
-    }
-
-    if (MAX_CONNECTIONS && totalConnections >= MAX_CONNECTIONS) {
-      socket.destroy();
-      return;
-    }
-
-    const session = clientRegistry.attach(context);
-    if (MAX_CLIENT_SESSIONS && clientRegistry.sessions.size > MAX_CLIENT_SESSIONS) {
-      clientRegistry.detach(context);
-      socket.destroy();
-      return;
-    }
-    if (MAX_CONNECTIONS_PER_CLIENT && session.connections.size > MAX_CONNECTIONS_PER_CLIENT) {
-      clientRegistry.detach(context);
-      socket.destroy();
-      return;
-    }
-
-    totalConnections += 1;
-    socket.setNoDelay(true);
-    if (SOCKET_IDLE_TIMEOUT_MS) {
-      socket.setTimeout(SOCKET_IDLE_TIMEOUT_MS);
-    }
-    const conn = {
-      socket,
-      intervalMs: pushDefaults.intervalMs,
-      includedFields: cloneFieldList(pushDefaults.includedFields),
-      excludedFields: cloneFieldList(pushDefaults.excludedFields),
-      timer: null
-    };
-    pushConnections.set(socket, conn);
-
-    socket.on('error', (err) => {
-      if (err && err.code && (err.code === 'ECONNRESET' || err.code === 'EPIPE')) {
-        return;
-      }
-      console.warn('robokit-robot-sim push socket error', err);
-    });
-
-    socket.on('timeout', () => {
-      socket.destroy();
-    });
-
-    socket.on('data', (chunk) => {
-      let messages = [];
-      try {
-        messages = parser.push(chunk);
-      } catch (err) {
-        socket.destroy();
-        return;
-      }
-
-      for (const msg of messages) {
-        clientRegistry.touch(context);
-        if (msg.apiNo !== API.robot_push_config_req) {
-          const frame = encodeFrame(msg.seq, responseApi(msg.apiNo), buildErrorResponse('unsupported_api'), {
-            reserved: msg.reserved
-          });
-          socket.write(frame);
-          continue;
-        }
-        const payload = msg.payload || {};
-        const result = applyPushConfig(conn, payload);
-        const responsePayload = result.ok ? buildBaseResponse({}) : buildErrorResponse(result.error);
-        const frame = encodeFrame(msg.seq, responseApi(msg.apiNo), responsePayload, { reserved: msg.reserved });
-        socket.write(frame);
-        if (result.ok) {
-          startPushTimer(conn);
-        }
-      }
-    });
-
-    socket.on('close', () => {
-      totalConnections = Math.max(0, totalConnections - 1);
-      clientRegistry.detach(context);
-      if (eventLogger) {
-        eventLogger.log('client_disconnected', {
-          clientId: context.clientId,
-          ip: context.remoteAddress,
-          port: context.remotePort,
-          label: 'push'
-        });
-      }
-      if (conn.timer) {
-        clearInterval(conn.timer);
-      }
-      pushConnections.delete(socket);
-    });
-  });
-
-  server.listen(port, BIND_HOST || undefined, () => {
-    const hostLabel = BIND_HOST || '0.0.0.0';
-  console.log(`robokit-robot-sim push listening on tcp://${hostLabel}:${port}`);
-  });
-
-  return server;
 }
 
 function handleHttpSetOrder(order) {
@@ -5108,6 +3883,8 @@ function logEffectiveConfig() {
           strategy: CLIENT_ID_STRATEGY,
           ttlMs: CLIENT_TTL_MS,
           idleMs: CLIENT_IDLE_MS,
+          commandCacheTtlMs: COMMAND_CACHE_TTL_MS,
+          commandCacheMaxEntries: COMMAND_CACHE_MAX_ENTRIES,
           maxConnections: MAX_CONNECTIONS,
           maxConnectionsPerClient: MAX_CONNECTIONS_PER_CLIENT,
           maxClientSessions: MAX_CLIENT_SESSIONS
@@ -5116,6 +3893,7 @@ function logEffectiveConfig() {
           minIntervalMs: PUSH_MIN_INTERVAL_MS,
           maxIntervalMs: PUSH_MAX_INTERVAL_MS,
           maxQueueBytes: PUSH_MAX_QUEUE_BYTES,
+          maxFields: PUSH_MAX_FIELDS,
           maxConnections: MAX_PUSH_CONNECTIONS
         }
       },
@@ -5163,6 +3941,7 @@ process.on('unhandledRejection', (err) => {
 });
 
 logEffectiveConfig();
+console.log(`robokit-robot-sim time mode: ${SIM_TIME_MODE}`);
 
 intervals.push(setInterval(tickSimulation, TICK_MS));
 intervals.push(
@@ -5171,14 +3950,201 @@ intervals.push(
   }, 5000)
 );
 
-servers.push(createServer(ENV_PORTS.ROBOD, allowedRobodApis, 'robod'));
-servers.push(createServer(ENV_PORTS.STATE, allowedStateApis, 'state'));
-servers.push(createServer(ENV_PORTS.CTRL, allowedCtrlApis, 'ctrl'));
-servers.push(createServer(ENV_PORTS.TASK, allowedTaskApis, 'task'));
-servers.push(createServer(ENV_PORTS.KERNEL, allowedKernelApis, 'kernel'));
-servers.push(createServer(ENV_PORTS.OTHER, allowedOtherApis, 'other'));
-servers.push(createServer(ENV_PORTS.CONFIG, allowedConfigApis, 'config'));
-servers.push(createPushServer(ENV_PORTS.PUSH));
+servers.push(
+  createTcpServer({
+    port: ENV_PORTS.ROBOD,
+    bindHost: BIND_HOST,
+    label: 'robod',
+    allowedApis: allowedRobodApis,
+    maxBodyLength: MAX_BODY_LENGTH,
+    strictStartMark: true,
+    maxConnections: MAX_CONNECTIONS,
+    maxConnectionsPerClient: MAX_CONNECTIONS_PER_CLIENT,
+    maxClientSessions: MAX_CLIENT_SESSIONS,
+    socketIdleTimeoutMs: SOCKET_IDLE_TIMEOUT_MS,
+    clientRegistry,
+    eventLogger,
+    onMessage: handleApiMessage,
+    onParseError: handleParseError,
+    onConnectionChange,
+    getTotalConnections,
+    encodeFrame,
+    encodeFrameRaw,
+    normalizeRemoteAddress
+  })
+);
+servers.push(
+  createTcpServer({
+    port: ENV_PORTS.STATE,
+    bindHost: BIND_HOST,
+    label: 'state',
+    allowedApis: allowedStateApis,
+    maxBodyLength: MAX_BODY_LENGTH,
+    strictStartMark: true,
+    maxConnections: MAX_CONNECTIONS,
+    maxConnectionsPerClient: MAX_CONNECTIONS_PER_CLIENT,
+    maxClientSessions: MAX_CLIENT_SESSIONS,
+    socketIdleTimeoutMs: SOCKET_IDLE_TIMEOUT_MS,
+    clientRegistry,
+    eventLogger,
+    onMessage: handleApiMessage,
+    onParseError: handleParseError,
+    onConnectionChange,
+    getTotalConnections,
+    encodeFrame,
+    encodeFrameRaw,
+    normalizeRemoteAddress
+  })
+);
+servers.push(
+  createTcpServer({
+    port: ENV_PORTS.CTRL,
+    bindHost: BIND_HOST,
+    label: 'ctrl',
+    allowedApis: allowedCtrlApis,
+    maxBodyLength: MAX_BODY_LENGTH,
+    strictStartMark: true,
+    maxConnections: MAX_CONNECTIONS,
+    maxConnectionsPerClient: MAX_CONNECTIONS_PER_CLIENT,
+    maxClientSessions: MAX_CLIENT_SESSIONS,
+    socketIdleTimeoutMs: SOCKET_IDLE_TIMEOUT_MS,
+    clientRegistry,
+    eventLogger,
+    onMessage: handleApiMessage,
+    onParseError: handleParseError,
+    onConnectionChange,
+    getTotalConnections,
+    encodeFrame,
+    encodeFrameRaw,
+    normalizeRemoteAddress
+  })
+);
+servers.push(
+  createTcpServer({
+    port: ENV_PORTS.TASK,
+    bindHost: BIND_HOST,
+    label: 'task',
+    allowedApis: allowedTaskApis,
+    maxBodyLength: MAX_BODY_LENGTH,
+    strictStartMark: true,
+    maxConnections: MAX_CONNECTIONS,
+    maxConnectionsPerClient: MAX_CONNECTIONS_PER_CLIENT,
+    maxClientSessions: MAX_CLIENT_SESSIONS,
+    socketIdleTimeoutMs: SOCKET_IDLE_TIMEOUT_MS,
+    clientRegistry,
+    eventLogger,
+    onMessage: handleApiMessage,
+    onParseError: handleParseError,
+    onConnectionChange,
+    getTotalConnections,
+    encodeFrame,
+    encodeFrameRaw,
+    normalizeRemoteAddress
+  })
+);
+servers.push(
+  createTcpServer({
+    port: ENV_PORTS.KERNEL,
+    bindHost: BIND_HOST,
+    label: 'kernel',
+    allowedApis: allowedKernelApis,
+    maxBodyLength: MAX_BODY_LENGTH,
+    strictStartMark: true,
+    maxConnections: MAX_CONNECTIONS,
+    maxConnectionsPerClient: MAX_CONNECTIONS_PER_CLIENT,
+    maxClientSessions: MAX_CLIENT_SESSIONS,
+    socketIdleTimeoutMs: SOCKET_IDLE_TIMEOUT_MS,
+    clientRegistry,
+    eventLogger,
+    onMessage: handleApiMessage,
+    onParseError: handleParseError,
+    onConnectionChange,
+    getTotalConnections,
+    encodeFrame,
+    encodeFrameRaw,
+    normalizeRemoteAddress
+  })
+);
+servers.push(
+  createTcpServer({
+    port: ENV_PORTS.OTHER,
+    bindHost: BIND_HOST,
+    label: 'other',
+    allowedApis: allowedOtherApis,
+    maxBodyLength: MAX_BODY_LENGTH,
+    strictStartMark: true,
+    maxConnections: MAX_CONNECTIONS,
+    maxConnectionsPerClient: MAX_CONNECTIONS_PER_CLIENT,
+    maxClientSessions: MAX_CLIENT_SESSIONS,
+    socketIdleTimeoutMs: SOCKET_IDLE_TIMEOUT_MS,
+    clientRegistry,
+    eventLogger,
+    onMessage: handleApiMessage,
+    onParseError: handleParseError,
+    onConnectionChange,
+    getTotalConnections,
+    encodeFrame,
+    encodeFrameRaw,
+    normalizeRemoteAddress
+  })
+);
+servers.push(
+  createTcpServer({
+    port: ENV_PORTS.CONFIG,
+    bindHost: BIND_HOST,
+    label: 'config',
+    allowedApis: allowedConfigApis,
+    maxBodyLength: MAX_BODY_LENGTH,
+    strictStartMark: true,
+    maxConnections: MAX_CONNECTIONS,
+    maxConnectionsPerClient: MAX_CONNECTIONS_PER_CLIENT,
+    maxClientSessions: MAX_CLIENT_SESSIONS,
+    socketIdleTimeoutMs: SOCKET_IDLE_TIMEOUT_MS,
+    clientRegistry,
+    eventLogger,
+    onMessage: handleApiMessage,
+    onParseError: handleParseError,
+    onConnectionChange,
+    getTotalConnections,
+    encodeFrame,
+    encodeFrameRaw,
+    normalizeRemoteAddress
+  })
+);
+servers.push(
+  createPushServer({
+    port: ENV_PORTS.PUSH,
+    bindHost: BIND_HOST,
+    maxBodyLength: MAX_BODY_LENGTH,
+    strictStartMark: true,
+    maxConnections: MAX_CONNECTIONS,
+    maxPushConnections: MAX_PUSH_CONNECTIONS,
+    maxConnectionsPerClient: MAX_CONNECTIONS_PER_CLIENT,
+    maxClientSessions: MAX_CLIENT_SESSIONS,
+    socketIdleTimeoutMs: SOCKET_IDLE_TIMEOUT_MS,
+    clientRegistry,
+    eventLogger,
+    pushConnections,
+    onConnectionChange,
+    normalizeRemoteAddress,
+    getTotalConnections,
+    encodeFrame,
+    apiNo: API.robot_push_config_req,
+    buildErrorResponse,
+    buildBaseResponse,
+    applyPushConfig,
+    startPushTimer,
+    createConnection: () => ({
+      socket: null,
+      intervalMs: pushDefaults.intervalMs,
+      includedFields: cloneFieldList(pushDefaults.includedFields),
+      excludedFields: cloneFieldList(pushDefaults.excludedFields),
+      timer: null,
+      trimmed: false,
+      trimNoticeLogged: false
+    })
+  })
+);
 httpStub = startHttpStub({
   onSetOrder: handleHttpSetOrder,
   onAddObstacle: handleHttpAddObstacle,
@@ -5196,7 +4162,9 @@ adminServer = startAdminServer({
     connections: totalConnections,
     pushConnections: pushConnections.size,
     lockOwner: controlArbiter ? controlArbiter.getOwner() : null
-  })
+  }),
+  getTime: () => simClock.now(),
+  setTime: (value) => simClock.setNow(value)
 });
 
 console.log(`robokit-robot-sim using graph: ${GRAPH_PATH}`);

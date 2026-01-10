@@ -170,6 +170,7 @@ class RbkParser {
   constructor(options = {}) {
     this.buffer = Buffer.alloc(0);
     this.maxBodyLength = options.maxBodyLength || 1024 * 1024;
+    this.strictStartMark = Boolean(options.strictStartMark);
   }
 
   push(chunk) {
@@ -184,6 +185,9 @@ class RbkParser {
         const nextSync = this.buffer.indexOf(START_MARK);
         if (nextSync === -1) {
           this.buffer = Buffer.alloc(0);
+          if (this.strictStartMark) {
+            throw new Error('rbk bad start mark');
+          }
           return messages;
         }
         this.buffer = this.buffer.slice(nextSync);

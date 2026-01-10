@@ -4,15 +4,20 @@ class ClientRegistry {
     this.ttlMs = Number.isFinite(options.ttlMs) ? options.ttlMs : 10000;
     this.idleMs = Number.isFinite(options.idleMs) ? options.idleMs : 60000;
     this.onSessionEmpty = typeof options.onSessionEmpty === 'function' ? options.onSessionEmpty : null;
+    this.onSessionExpired = typeof options.onSessionExpired === 'function' ? options.onSessionExpired : null;
+    this.now = typeof options.now === 'function' ? options.now : () => Date.now();
     this.sessions = new Map();
   }
 
   getClientId({ ip, nickName, port }) {
+    if (this.strategy === 'ip+nick+port') {
+      if (nickName) {
+        return `${ip}:${nickName}:${port}`;
+      }
+      return `${ip}:${port}`;
+    }
     if (this.strategy === 'ip+nick' && nickName) {
       return `${ip}:${nickName}`;
-    }
-    if (this.strategy === 'ip+nick+port' && nickName) {
-      return `${ip}:${nickName}:${port}`;
     }
     return ip || '';
   }
@@ -30,7 +35,7 @@ class ClientRegistry {
       session.expiresAt = null;
     }
     session.connections.add(context);
-    session.lastSeenAt = Date.now();
+    session.lastSeenAt = this.now();
     context.clientId = clientId;
     context.clientSession = session;
     return session;
@@ -42,13 +47,16 @@ class ClientRegistry {
       return;
     }
     session.connections.delete(context);
-    session.lastSeenAt = Date.now();
+    session.lastSeenAt = this.now();
     if (session.connections.size === 0) {
-      session.expiresAt = Date.now() + this.ttlMs;
+      session.expiresAt = this.now() + this.ttlMs;
       if (this.onSessionEmpty) {
         this.onSessionEmpty(session);
       }
       if (this.ttlMs === 0) {
+        if (this.onSessionExpired) {
+          this.onSessionExpired(session);
+        }
         this.sessions.delete(session.id);
       }
     }
@@ -57,7 +65,7 @@ class ClientRegistry {
   touch(context) {
     const session = context.clientSession;
     if (session) {
-      session.lastSeenAt = Date.now();
+      session.lastSeenAt = this.now();
     }
   }
 
@@ -84,11 +92,11 @@ class ClientRegistry {
       this.sessions.delete(session.id);
     }
     target.nickName = nickName;
-    target.lastSeenAt = Date.now();
+    target.lastSeenAt = this.now();
     return target;
   }
 
-  sweep(now = Date.now()) {
+  sweep(now = this.now()) {
     for (const session of this.sessions.values()) {
       const ttlExpired = session.expiresAt && now >= session.expiresAt;
       const idleExpired = this.idleMs && now - session.lastSeenAt >= this.idleMs;
@@ -101,6 +109,9 @@ class ClientRegistry {
         session.connections.clear();
       }
       if ((session.connections.size === 0 && ttlExpired) || idleExpired) {
+        if (this.onSessionExpired) {
+          this.onSessionExpired(session);
+        }
         this.sessions.delete(session.id);
       }
     }
@@ -112,7 +123,7 @@ class ClientRegistry {
       ip,
       nickName,
       connections: new Set(),
-      lastSeenAt: Date.now(),
+      lastSeenAt: this.now(),
       expiresAt: null
     };
   }

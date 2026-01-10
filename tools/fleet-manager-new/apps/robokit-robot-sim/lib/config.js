@@ -1,3 +1,4 @@
+const fs = require('fs');
 const path = require('path');
 
 function parseEnvNumber(key, fallback, fn = Number.parseFloat) {
@@ -225,6 +226,7 @@ const config = {
   SIM_TIME_MODE: parseEnvString('SIM_TIME_MODE', 'real'),
   SIM_TIME_START_MS: parseEnvNumber('SIM_TIME_START_MS', Number.NaN, Number.parseInt),
   SIM_TIME_STEP_MS: parseEnvNumber('SIM_TIME_STEP_MS', Number.NaN, Number.parseInt),
+  SIM_SEED: parseEnvString('SIM_SEED', ''),
   EVENT_LOG_PATH: parseEnvString('EVENT_LOG_PATH', ''),
   EVENT_LOG_STDOUT: parseEnvBool('EVENT_LOG_STDOUT', false),
   ADMIN_HTTP_PORT: parseEnvNumber('ADMIN_HTTP_PORT', 0, Number.parseInt),
@@ -233,6 +235,8 @@ const config = {
   CLIENT_ID_STRATEGY: parseEnvString('CLIENT_ID_STRATEGY', 'ip'),
   CLIENT_TTL_MS: parseEnvNumber('CLIENT_TTL_MS', 10000, Number.parseInt),
   CLIENT_IDLE_MS: parseEnvNumber('CLIENT_IDLE_MS', 60000, Number.parseInt),
+  COMMAND_CACHE_TTL_MS: parseEnvNumber('COMMAND_CACHE_TTL_MS', 10000, Number.parseInt),
+  COMMAND_CACHE_MAX_ENTRIES: parseEnvNumber('COMMAND_CACHE_MAX_ENTRIES', 1000, Number.parseInt),
   LOCK_RELEASE_ON_DISCONNECT: parseEnvBool('LOCK_RELEASE_ON_DISCONNECT', true),
   LOCK_TTL_MS: parseEnvNumber('LOCK_TTL_MS', 0, Number.parseInt),
   STRICT_UNLOCK: parseEnvBool('STRICT_UNLOCK', false),
@@ -245,9 +249,76 @@ const config = {
   MAX_CLIENT_SESSIONS: parseEnvNumber('MAX_CLIENT_SESSIONS', 0, Number.parseInt),
   PUSH_MAX_INTERVAL_MS: parseEnvNumber('PUSH_MAX_INTERVAL_MS', 10000, Number.parseInt),
   PUSH_MAX_QUEUE_BYTES: parseEnvNumber('PUSH_MAX_QUEUE_BYTES', 1048576, Number.parseInt),
+  PUSH_MAX_FIELDS: parseEnvNumber('PUSH_MAX_FIELDS', 0, Number.parseInt),
   MAX_PUSH_CONNECTIONS: parseEnvNumber('MAX_PUSH_CONNECTIONS', 0, Number.parseInt),
   MAX_TASK_NODES: parseEnvNumber('MAX_TASK_NODES', 0, Number.parseInt),
   USE_CORE_SIM: false
 };
 
-module.exports = config;
+function validateConfig(values = config) {
+  const errors = [];
+  const ports = values.PORTS || {};
+  for (const [name, value] of Object.entries(ports)) {
+    if (!Number.isInteger(value) || value <= 0 || value > 65535) {
+      errors.push(`invalid port ${name}: ${value}`);
+    }
+  }
+  if (!Number.isFinite(values.TICK_MS) || values.TICK_MS <= 0) {
+    errors.push(`invalid TICK_MS: ${values.TICK_MS}`);
+  }
+  if (!Number.isFinite(values.MAX_BODY_LENGTH) || values.MAX_BODY_LENGTH <= 0) {
+    errors.push(`invalid MAX_BODY_LENGTH: ${values.MAX_BODY_LENGTH}`);
+  }
+  if (!Number.isFinite(values.PUSH_MIN_INTERVAL_MS) || values.PUSH_MIN_INTERVAL_MS < 0) {
+    errors.push(`invalid PUSH_MIN_INTERVAL_MS: ${values.PUSH_MIN_INTERVAL_MS}`);
+  }
+  if (!Number.isFinite(values.PUSH_MAX_INTERVAL_MS) || values.PUSH_MAX_INTERVAL_MS < 0) {
+    errors.push(`invalid PUSH_MAX_INTERVAL_MS: ${values.PUSH_MAX_INTERVAL_MS}`);
+  }
+  if (
+    Number.isFinite(values.PUSH_MIN_INTERVAL_MS) &&
+    Number.isFinite(values.PUSH_MAX_INTERVAL_MS) &&
+    values.PUSH_MAX_INTERVAL_MS > 0 &&
+    values.PUSH_MIN_INTERVAL_MS > values.PUSH_MAX_INTERVAL_MS
+  ) {
+    errors.push(
+      `PUSH_MIN_INTERVAL_MS (${values.PUSH_MIN_INTERVAL_MS}) > PUSH_MAX_INTERVAL_MS (${values.PUSH_MAX_INTERVAL_MS})`
+    );
+  }
+  if (!Number.isFinite(values.CLIENT_TTL_MS) || values.CLIENT_TTL_MS < 0) {
+    errors.push(`invalid CLIENT_TTL_MS: ${values.CLIENT_TTL_MS}`);
+  }
+  if (!Number.isFinite(values.CLIENT_IDLE_MS) || values.CLIENT_IDLE_MS < 0) {
+    errors.push(`invalid CLIENT_IDLE_MS: ${values.CLIENT_IDLE_MS}`);
+  }
+  if (!Number.isFinite(values.COMMAND_CACHE_TTL_MS) || values.COMMAND_CACHE_TTL_MS < 0) {
+    errors.push(`invalid COMMAND_CACHE_TTL_MS: ${values.COMMAND_CACHE_TTL_MS}`);
+  }
+  if (!Number.isFinite(values.COMMAND_CACHE_MAX_ENTRIES) || values.COMMAND_CACHE_MAX_ENTRIES < 0) {
+    errors.push(`invalid COMMAND_CACHE_MAX_ENTRIES: ${values.COMMAND_CACHE_MAX_ENTRIES}`);
+  }
+  if (Number.isFinite(values.PUSH_MAX_FIELDS) && values.PUSH_MAX_FIELDS < 0) {
+    errors.push(`invalid PUSH_MAX_FIELDS: ${values.PUSH_MAX_FIELDS}`);
+  }
+  if (values.GRAPH_PATH) {
+    const graphPath = path.resolve(values.GRAPH_PATH);
+    if (!fs.existsSync(graphPath)) {
+      errors.push(`missing GRAPH_PATH: ${graphPath}`);
+    } else {
+      try {
+        const stat = fs.statSync(graphPath);
+        if (!stat.isFile()) {
+          errors.push(`GRAPH_PATH is not a file: ${graphPath}`);
+        }
+      } catch (err) {
+        errors.push(`GRAPH_PATH not readable: ${graphPath}`);
+      }
+    }
+  }
+  return errors;
+}
+
+module.exports = {
+  ...config,
+  validateConfig
+};

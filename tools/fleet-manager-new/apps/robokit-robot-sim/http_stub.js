@@ -18,6 +18,14 @@ const DEFAULT_CORE_PARAMS_PATH = path.resolve(__dirname, 'data', 'robot_params.j
 const sessions = new Map();
 let lastUpload = null;
 const RDS_JSON_TYPE = 'application/json;charset=UTF-8';
+const IGNORED_SOCKET_ERRORS = new Set(['ECONNRESET', 'EPIPE']);
+
+function handleSocketError(label, err) {
+  if (err && err.code && IGNORED_SOCKET_ERRORS.has(err.code)) {
+    return;
+  }
+  console.warn(`robokit-http ${label} socket error`, err);
+}
 
 function loadCoreParams(filePath) {
   try {
@@ -424,6 +432,18 @@ function startHttpStub(options = {}) {
   const servers = [];
   for (const port of ports) {
     const server = http.createServer((req, res) => handleRequest(req, res, serverOptions));
+    server.on('connection', (socket) => {
+      socket.setNoDelay(true);
+      socket.on('error', (err) => handleSocketError('stub', err));
+    });
+    server.on('clientError', (_err, socket) => {
+      if (socket && !socket.destroyed) {
+        socket.destroy();
+      }
+    });
+    server.on('error', (err) => {
+      console.warn('robokit-http stub server error', err);
+    });
     server.listen(port, host, () => {
       console.log(`robokit-http stub listening on http://${host}:${port}`);
       if (sceneZipPath && fs.existsSync(sceneZipPath)) {

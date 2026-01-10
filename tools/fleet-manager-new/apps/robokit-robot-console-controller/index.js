@@ -204,8 +204,6 @@ const command = {
   angularDir: 0,
   linearAt: 0,
   angularAt: 0,
-  lastArrowAt: 0,
-  comboActive: false,
   linearCmd: 0,
   angularCmd: 0
 };
@@ -221,6 +219,7 @@ let keyLog = null;
 let inputMode = false;
 let inputBuffer = '';
 let inputMessage = '';
+let inputMessageAt = 0;
 let lastGoTarget = null;
 
 function openKeyLog() {
@@ -426,8 +425,11 @@ function sendForkHeight(height) {
 function sendGoTarget(id) {
   if (!id) {
     inputMessage = 'Empty target id.';
+    inputMessageAt = Date.now();
     return;
   }
+  inputMessage = '';
+  inputMessageAt = 0;
   const ok = clients.task.send(API.robot_task_gotarget_req, { id });
   lastGoTarget = {
     id,
@@ -449,21 +451,12 @@ function applyLinear(direction) {
   const now = Date.now();
   command.linearDir = direction;
   command.linearAt = now;
-  command.lastArrowAt = now;
-  if (command.angularDir && now - command.angularAt <= options.comboHoldMs) {
-    command.comboActive = true;
-  }
 }
 
 function applyAngular(direction) {
   const now = Date.now();
-  const omegaRad = targetOmegaDeg * RAD_PER_DEG;
   command.angularDir = direction;
   command.angularAt = now;
-  command.lastArrowAt = now;
-  if (command.linearDir && now - command.linearAt <= options.comboHoldMs) {
-    command.comboActive = true;
-  }
 }
 
 function refreshCommandSpeeds() {
@@ -494,6 +487,7 @@ function enterTargetPrompt() {
   inputMode = true;
   inputBuffer = '';
   inputMessage = '';
+  inputMessageAt = 0;
   command.linearDir = 0;
   command.angularDir = 0;
   command.linearAt = 0;
@@ -508,14 +502,11 @@ function exitTargetPrompt() {
   inputBuffer = '';
 }
 
-function computeAxisDirection(dir, lastAt, otherDir, otherAt, now) {
+function axisActive(dir, lastAt, windowMs, now) {
   if (!dir) {
     return 0;
   }
-  if (now - lastAt <= options.holdMs) {
-    return dir;
-  }
-  if (otherDir && now - otherAt <= options.holdMs && now - lastAt <= options.comboHoldMs) {
+  if (now - lastAt <= windowMs) {
     return dir;
   }
   return 0;
@@ -643,6 +634,10 @@ function render() {
     : lastGoTarget
       ? `Last goTarget: ${lastGoTarget.id || '-'} (${lastGoTarget.message || 'ack'})`
       : 'Last goTarget: -';
+  if (inputMessage && inputMessageAt && now - inputMessageAt > 3000) {
+    inputMessage = '';
+    inputMessageAt = 0;
+  }
   const hintText = inputMode
     ? 'Enter to send, Esc to cancel'
     : inputMessage || '';
@@ -668,33 +663,22 @@ function render() {
 
 function tickCommand() {
   const now = Date.now();
-  if (command.comboActive) {
-    if (now - command.lastArrowAt > options.comboHoldMs) {
-      command.comboActive = false;
-    }
-  }
-
-  const comboLatch = command.comboActive && now - command.lastArrowAt <= options.comboHoldMs;
-  const linearDir = comboLatch
-    ? command.linearDir
-    : computeAxisDirection(
-      command.linearDir,
-      command.linearAt,
-      command.angularDir,
-      command.angularAt,
-      now
-    );
-  const angularDir = comboLatch
-    ? command.angularDir
-    : computeAxisDirection(
-      command.angularDir,
-      command.angularAt,
-      command.linearDir,
-      command.linearAt,
-      now
-    );
+  const comboActive = Boolean(command.linearDir)
+    && Boolean(command.angularDir)
+    && now - command.linearAt <= options.comboHoldMs
+    && now - command.angularAt <= options.comboHoldMs;
+  const linearWindow = comboActive ? options.comboHoldMs : options.holdMs;
+  const angularWindow = comboActive ? options.comboHoldMs : options.holdMs;
+  const linearDir = axisActive(command.linearDir, command.linearAt, linearWindow, now);
+  const angularDir = axisActive(command.angularDir, command.angularAt, angularWindow, now);
   command.linearCmd = linearDir * targetSpeed;
   command.angularCmd = angularDir * targetOmegaDeg * RAD_PER_DEG;
+  if (!comboActive && now - command.linearAt > options.holdMs) {
+    command.linearDir = 0;
+  }
+  if (!comboActive && now - command.angularAt > options.holdMs) {
+    command.angularDir = 0;
+  }
   if (!linearDir && now - command.linearAt > options.comboHoldMs) {
     command.linearDir = 0;
   }
