@@ -68,7 +68,7 @@ type DecodedFrame = {
 ### 2.1.3 Utilities (MUST)
 - `responseApiNo(apiNo) = apiNo + 10000`
 - `apiName(apiNo) -> string` (jeśli znany)
-- `defaultPorts()` (robod/state/ctrl/task/other/push)
+- `defaultPorts()` (robod/state/ctrl/task/config/kernel/other/push)
 
 ### 2.1.4 Error handling (MUST)
 Parser MUST zwracać błędy jako struktury danych (nie tylko throw), np.:
@@ -98,9 +98,10 @@ Rekomendowany kształt zdekodowanej ramki:
   - RoboCore `goTarget` (3051): `{"id":"<LM/AP>"}`
 - Akcje wideł to **ActionPoint** z parametrami:
   - RoboCore `forkHeight` (6040): `{"height": <meters>}`
+  - lub `goTarget` (3051) z `operation: "ForkHeight"` i `end_height`
   - `forkStop` (6041) bez payload.
 
-## 5. Odzyskane z istniejącego repo: aktualny `packages/adapters-robokit/src/rbk.js` (INFORMATIVE)
+## 5. Odzyskane z istniejącego repo: aktualny `packages/robokit-lib/rbk.js` (INFORMATIVE)
 Poniższy fragment pokazuje bieżącą definicję framingu i listę API w istniejącym kodzie (dla zgodności implementacyjnej):
 
 ```js
@@ -160,6 +161,7 @@ const API = Object.freeze({
   robot_status_file_req: 1800,
   robot_status_alarm_req: 1050,
   robot_status_alarm_res: 1050,
+  robot_status_current_lock_req: 1060,
   robot_control_stop_req: 2000,
   robot_control_gyrocal_req: 2001,
   robot_control_reloc_req: 2002,
@@ -204,6 +206,11 @@ const API = Object.freeze({
   robot_tasklist_download_req: 3113,
   robot_tasklist_delete_req: 3114,
   robot_tasklist_list_req: 3115,
+  robot_config_req_4005: 4005,
+  robot_config_req_4006: 4006,
+  robot_config_req_4009: 4009,
+  robot_config_req_4010: 4010,
+  robot_config_req_4011: 4011,
   robot_config_push_req: 4091,
   robot_daemon_ls_req: 5100,
   robot_daemon_scp_req: 5101,
@@ -292,7 +299,7 @@ class RbkParser {
 # Fleet Manager 2.0 — Protokół RoboCore/Robokit (TCP framing) (v0.7)
 
 Źródło prawdy w tej specyfikacji:
-- reverse engineered + potwierdzone w kodzie `packages/adapters-robokit/src/rbk.js`
+- reverse engineered + potwierdzone w kodzie `packages/robokit-lib/rbk.js`
 - robokit-robot-sim (`apps/robokit-robot-sim`) jako środowisko testowe
 - docs `docs/rds/docs/ROBOKIT_API.md` (częściowo)
 
@@ -315,9 +322,12 @@ W praktyce: parser MUST być odporny na warianty, a każde odchylenie SHOULD gen
 ## 1. Porty (OBSERVED)
 (z kodu / symulatora; realny robot może mieć to samo)
 
+- `ROBOD`: 19200 (info/run)
 - `STATE`: 19204 (status: 1000+, 1100)
 - `CTRL`:  19205 (control: 2000+)
 - `TASK`:  19206 (tasks: 3000+)
+- `CONFIG`: 19207 (lock/config: 4000+)
+- `KERNEL`: 19208 (kernel/info)
 - `OTHER`: 19210 (other: 6000+)
 - `PUSH`:  19301 (push stream: 9300 config, 19301 data)
 
@@ -353,6 +363,7 @@ Parser Gateway MUST:
 - `1006 robot_status_block_req` — blokady
 - `1020 robot_status_task_req` — stan nawigacji
 - `1028 robot_status_fork_req` — stan wideł (jeśli dostępne)
+- `1060 robot_status_current_lock_req` — seize control / current_lock
 - `1100 robot_status_all1_req` — paczka zbiorcza (opcjonalnie)
 
 Gateway SHOULD używać push (PUSH port) jeśli dostępne; polling jako fallback.
@@ -371,11 +382,15 @@ Gateway SHOULD używać push (PUSH port) jeśli dostępne; polling jako fallback
 - `3066 robot_task_multistation_req` — lista targetów (opcjonalne, future)
 - `3068 robot_task_clear_task_req` — clear task (opcjonalne)
 
-### 3.4 Other (OTHER port)
+### 3.4 Config (CONFIG port)
+- `4005 robot_config_req_4005` — seize control / lock (payload z `nick_name`)
+- `4006 robot_config_req_4006` — release / unlock (payload pusty)
+
+### 3.5 Other (OTHER port)
 - `6040 robot_other_forkheight_req` — ustaw wysokość wideł `{height: <number>}`
 - `6041 robot_other_forkstop_req` — zatrzymaj widły (bez payload)
 
-### 3.5 Push (PUSH port)
+### 3.6 Push (PUSH port)
 - `9300 robot_push_config_req` — konfiguracja push (interval + include/exclude fields)
 - `19301 robot_push` — push payload (status fields)
 
@@ -392,6 +407,12 @@ Payload (observed w robokit-robot-sim i wrapperze):
 - `id` to identyfikator stacji w mapie robota (LocationMark/ActionPoint).
 - Gateway MUST zapewnić, że `id` odpowiada nodeId w `SceneGraph` i że scena/mapa jest spójna z mapą robota (operacyjnie).
 
+Wariant (OBSERVED): jeśli `payload.operation` jest ustawione (`ForkHeight`, `ForkLoad`, `ForkUnload`),
+to `3051` jest używane do operacji wideł, np.:
+```json
+{ "operation": "ForkHeight", "end_height": 1.20, "id": "LM2" }
+```
+
 **Mapping (Core→Gateway→Robot):**
 - Core `CommandRecord.type = "goTarget"`
 - Core SHOULD wypełniać `payload.targetExternalId` (z `Node.externalRefs`).
@@ -406,17 +427,22 @@ Payload:
 ```
 (angle opcjonalne)
 
-### 4.3 forkHeight — API 6040 (OTHER port)
-Payload (robokit-robot-sim):
+### 4.3 forkHeight — API 6040 (OTHER port) lub 3051 (TASK port)
+Payload (6040, robokit-robot-sim):
 ```json
 { "height": 1.20 }
+```
+
+Wariant (3051, OBSERVED):
+```json
+{ "operation": "ForkHeight", "end_height": 1.20, "id": "LM2" }
 ```
 
 **Jak mapujemy ActionPoint z parametrami „from→to” na RoboCore:**
 - Core przy kroku `forkHeight`:
   1) Odczytuje bieżącą wysokość z `robot_status_fork_req` albo z push `fork.fork_height`.
   2) Jeśli `fromHeightM` jest podane: waliduje |current-from| <= tolerance (MAY; w MVP SHOULD logować warning, ale nie blokować).
-  3) Wysyła `forkHeight(height=toHeightM)` (6040).
+  3) Wysyła `forkHeight(height=toHeightM)` (6040) lub wariant `3051` z `operation: "ForkHeight"` i `end_height`.
   4) Czeka aż status wideł potwierdzi osiągnięcie (w tolerancji) albo timeout.
 
 ### 4.4 forkStop — API 6041 (OTHER port)

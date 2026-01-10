@@ -20,7 +20,7 @@ Related: `10_adapters-robokit.md` (protokoły) + ten plik (proxy).
 Proxy MUST być „promptable”:
 - da się go uruchomić jedną komendą z jasnym opisem sesji,
 - zapisuje sesje poza repo (`~/robokit_logs/...`),
-- loguje raw bytes w obie strony, bez throttlingu w MVP,
+- domyślnie jest AI-friendly: zapisuje zdekodowane ramki + HTTP (body), a kopie raw TCP są opcjonalne (`limits.captureRawBytes`),
 - ostrzega o rozmiarze, wspiera rotację i archiwizację.
 
 Pełna specyfikacja: **Załącznik A**.
@@ -187,10 +187,14 @@ Proxy/Recorder MUST zapisywać każdą sesję w osobnym katalogu na dysku.
 ### 2.2 Domyślna lokalizacja logów (MUST)
 Logi NIE mogą iść do repo (ryzyko rozmiaru). Domyślny katalog sesji MUST być poza repo:
 
-- `~/robokit_logs/<YYYY-MM-DD>_<targetKind>_<sessionName>/`
+- `~/robokit_logs/<YYYY-MM-DD_HH_MM>_<targetKind>_<sessionName>/`
 
 Przykład:
-- `~/robokit_logs/2026-01-07_robot_RB-01_gotarget_smoke/`
+- `~/robokit_logs/2026-01-07_14_22_robot_RB-01_gotarget_smoke/`
+
+Jeśli `--session` nie jest podane, nazwa sesji jest generowana z `--description`
+lub `session.name` z configu. Prefiks daty/czasu jest dodawany automatycznie,
+jeśli nazwa go nie zawiera.
 
 `targetKind` to jeden z:
 - `robot`,
@@ -215,26 +219,31 @@ Proxy/Recorder MUST obsługiwać co najmniej:
 - `proxy-recorder list-sessions [--dir <rootDir>]` — lista sesji,
 - `proxy-recorder status --session <name|id>` — status (aktywny/stopnięty, liczba conn, rozmiar),
 - `proxy-recorder archive --session <name|id> [--delete-raw]` — spakuj sesję (patrz §9).
+- `proxy-recorder replay --session <name|id> ...` — replay raw TCP (opcjonalne, wymaga `limits.captureRawBytes=true`).
 
 ### 3.2 Minimalne parametry uruchomienia (MUST)
 `start` MUST przyjmować:
-- `--session <sessionName>` (MUST),
-- `--description <text>` (SHOULD; trafia do metadanych sesji),
+- `--session <sessionName>` (MAY; jeśli brak, nazwa jest generowana z `--description` lub configu),
+- `--description <text>` (SHOULD; trafia do metadanych sesji i może tworzyć nazwę),
 - `--root-dir <path>` (MAY; domyślnie `~/robokit_logs`),
 - `--config <path.json5>` (MAY; jeżeli używany config, to CLI może nadpisywać),
 - `--preset <name>` (MAY; patrz §7),
+- `--suppress-lasers` (MAY; usuwa `lasers` z logowanego JSON),
+- `--suppress-point-cloud` (MAY; usuwa `pointCloud` z logowanego JSON),
+- `--raw-frame-apis <list>` (MAY; zapisuje `rawFrameBase64` tylko dla wybranych API),
+- `--capture-comment <text>` (MAY; dopisuje notatkę do `session.meta.json5`),
 - `--print-effective-config` (SHOULD; bardzo pomocne dla AI i debug).
 
 ### 3.3 Przykłady uruchomienia (MUST: w specyfikacji)
 #### A) „Postaw proxy na localhost, robot jest pod tym adresem”
 ```bash
 proxy-recorder start \
-  --session 2026-01-07_robot_RB-01_gotarget_smoke \
   --description "Smoke: goTarget + stop + forkHeight (roboshop-like)" \
   --preset robokit-all \
   --robot-id RB-01 \
   --upstream-host 10.0.0.11
 ```
+Session name zostanie wygenerowana automatycznie jako `YYYY-MM-DD_HH_MM_robot_smoke-gotarget-stop-forkheight-roboshop-like`.
 
 #### B) „Podsłuchuj Roboshop↔Robot + Roboshop↔RDS na HTTP”
 ```bash
@@ -283,6 +292,19 @@ CLI MUST logować:
     warnSessionSizeGb: 5,      // MUST emit warning
     rotateFileMb: 512,         // SHOULD (żeby pliki były przenośne)
     noThrottling: true,        // MUST w MVP
+    captureRawBytes: false,    // domyślnie OFF (kopie raw TCP)
+    captureFrames: true,       // domyślnie ON (decode robocore)
+    includeRawFrameBase64: false,   // globalnie zapisuj rawFrameBase64
+    includeBinaryTailBase64: false, // zapisuj binary tail przy JSON + bin
+    httpCaptureBodies: true,        // zachowaj HTTP body (mapy, sceny)
+    hexPreviewBytes: 0,
+    maxBodyLength: 1048576,
+  },
+  capture: {
+    omitLasers: false,         // usuwa lasers z logowanego JSON
+    omitPointCloud: false,     // usuwa pointCloud z logowanego JSON
+    rawFrameBase64Apis: [],    // lista API z rawFrameBase64 (whitelist)
+    comment: "optional note"
   },
 
   // listeners: każdy to jedno proxy listen→upstream
@@ -310,7 +332,14 @@ CLI MUST logować:
 - `listeners[].name` MUST być unikalne w sesji.
 - `listen.port` MUST nie kolidować między listenerami.
 - Dla `decode.kind="robocore"` proxy MUST próbować dekodować framing zgodnie z `10_protokol_robocore_robokit.md`,
-  ale nawet przy decode error MUST zachować raw bytes.
+  ale nawet przy decode error MUST zachować raw bytes, jeśli `limits.captureRawBytes=true`
+  (a gdy raw bytes są wyłączone, zachować co najmniej `binaryTailBase64` dla ramek bez JSON).
+
+### 4.3 Opcje capture (MUST)
+- `capture.omitLasers` i `capture.omitPointCloud` działają wyłącznie na logowanym JSON (decoded frames),
+  nie zmieniają bajtów przesyłanych do upstreamu.
+- `capture.rawFrameBase64Apis` wymusza zapis `rawFrameBase64` tylko dla wybranych API (gdy globalny zapis jest wyłączony).
+- `capture.comment` trafia do `session.meta.json5` jako notatka.
 
 ---
 
@@ -321,11 +350,13 @@ CLI MUST logować:
 <sessionDir>/
   session.meta.json5                # MUST: metadane sesji (opis, kto, co, gdzie)
   listeners.json5                   # MUST: effective config listenerów (po merge CLI+config)
+  config.effective.json5            # MUST: pełny effective config (session+limits+listeners)
+  session.pid                       # PID procesu (usuwany po stop)
   manifest.json                     # MUST: lista plików + checksums (po archiwizacji; patrz §9)
   tcp/
     <listenerName>/
       connections.jsonl             # lista połączeń (conn open/close)
-      conn_<connId>_raw_000001.jsonl
+      conn_<connId>_raw_000001.jsonl # tylko gdy limits.captureRawBytes=true
       conn_<connId>_raw_000002.jsonl
       conn_<connId>_frames_000001.jsonl   # opcjonalnie, jeśli decode=robocore
       conn_<connId>.pcap                 # MAY (jeśli włączone)
@@ -355,6 +386,12 @@ CLI MUST logować:
   notes: [
     "W tej sesji wykonano: goTarget(LM2), forkHeight(1.20), stop",
   ],
+  captureOptions: {
+    omitLasers: false,
+    omitPointCloud: false,
+    captureComment: null,
+    rawFrameBase64Apis: []
+  }
 }
 ```
 
@@ -372,7 +409,7 @@ To jest element celowo „AI-friendly”: można indeksować sesje po opisie, bu
 ```
 
 ### 6.2 Raw stream (MUST)
-`conn_<connId>_raw_*.jsonl` MUST zawierać **wszystkie bajty** w obie strony.
+`conn_<connId>_raw_*.jsonl` MUST zawierać **wszystkie bajty** w obie strony (jeśli `limits.captureRawBytes=true`).
 Każdy wpis reprezentuje chunk (niekoniecznie pełną ramkę):
 
 ```json5
@@ -414,14 +451,21 @@ Jeśli `decode.kind="robocore"`, proxy SHOULD generować równoległy plik:
     jsonSizeHeader: 12,
   },
   json: { id: "LM2" },      // jeśli parsowalne
-  binaryTailBase64: null,   // jeśli występuje
+  binaryTailBase64: null,   // jeśli występuje (patrz niżej)
   rawFrameBase64: "WgE...", // SHOULD: pełna ramka (łatwe do replay)
   parseError: null,
 }
 ```
 
 Jeżeli dekoder nie potrafi:
-- wpis MUST zawierać `parseError` i `rawFrameBase64`, a `json` = null.
+- wpis MUST zawierać `parseError`, a `json` = null,
+- `rawFrameBase64` pojawia się tylko gdy jest włączone globalnie lub przez whitelistę API.
+
+Zasady:
+- `rawFrameBase64` pojawia się globalnie przy `limits.includeRawFrameBase64=true`
+  lub selektywnie dla API z `capture.rawFrameBase64Apis`.
+- `binaryTailBase64` jest zapisywany zawsze, gdy ramka nie ma poprawnego JSON,
+  oraz opcjonalnie dla ramek z JSON+bin (`limits.includeBinaryTailBase64=true`).
 
 ### 6.4 HTTP capture (MUST)
 Dla `protocol="http"` proxy MUST logować:
@@ -443,6 +487,7 @@ Przykład wpisu:
   responseBodyBase64: "eyJvayI6dHJ1ZX0=",
 }
 ```
+`requestBodyBase64` i `responseBodyBase64` są ustawiane tylko gdy `limits.httpCaptureBodies=true`.
 
 ---
 
@@ -451,18 +496,27 @@ Przykład wpisu:
 Proxy/Recorder SHOULD dostarczyć presety, bo w praktyce chcesz jednym poleceniem przechwycić wszystkie porty RoboCore.
 
 ### 7.1 Preset `robokit-all` (SHOULD)
-MUST uruchomić listenery TCP dla portów (domyślne, observed):
+MUST uruchomić listenery RoboKit dla portów (domyślne, observed):
+- 19200 ROBOD
 - 19204 STATE
 - 19205 CTRL
 - 19206 TASK
+- 19207 CONFIG
+- 19208 KERNEL
 - 19210 OTHER
 - 19301 PUSH
+- 5045 API legacy
+- HTTP: 8088, 9301
 
 Z możliwością nadpisania portów w config (nie każdy robot ma identyczne).
 
-### 7.2 Preset `http-all` (SHOULD)
-- Startuje listenery HTTP dla listy portów podanej przez użytkownika (np. `--http-ports 80,8080,3000`).
-- W MVP zakładamy listę jawnie podaną (wildcard na „wszystkie porty systemu” nie jest realistyczny na każdym OS).
+### 7.2 Preset `robokit-all-no-lasers` (SHOULD)
+- Jak `robokit-all`, ale z `capture.omitLasers=true` i `capture.omitPointCloud=true`.
+- Włącza `limits.includeBinaryTailBase64=true` dla zachowania binarek przy JSON.
+
+### 7.3 Preset `simulator-proxy` (SHOULD)
+- Mapuje standardowe porty RoboKit na porty symulatora (np. 19200 -> 29200),
+  żeby łatwo nagrywać i porównywać ruch robota z symulatorem.
 
 ---
 

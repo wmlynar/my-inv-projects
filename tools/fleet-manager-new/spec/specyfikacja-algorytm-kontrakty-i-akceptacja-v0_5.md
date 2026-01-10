@@ -571,7 +571,7 @@ Komenda niesie też twardy limit postępu (`stopLineRouteS`), czyli hold‑point
 
 #### 15.6.1 Mapowanie na RoboCore/Robokit (ramki)
 
-Poniższe numery ramek pochodzą z adaptera Robokit używanego w repo (`packages/adapters-robokit/src/rbk.js`).
+Poniższe numery ramek pochodzą z adaptera Robokit używanego w repo (`packages/robokit-lib/rbk.js`).
 
 **Ruch do targetu (mark / action point):**
 

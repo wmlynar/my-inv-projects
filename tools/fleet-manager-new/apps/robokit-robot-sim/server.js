@@ -74,6 +74,11 @@ const {
   START_POSE_Y,
   START_POSE_ANGLE,
   START_FORK_HEIGHT,
+  APPROACH_MERGE_DIST,
+  APPROACH_CONTROL_SCALE,
+  APPROACH_TURN_PENALTY,
+  APPROACH_REVERSE_PENALTY,
+  APPROACH_SAMPLE_STEP,
   IDLE_CURRENT_A,
   IDLE_VOLTAGE_V,
   AUTO_CHARGE_DELAY_MS,
@@ -771,6 +776,15 @@ function buildGraph(data) {
 }
 
 const { nodes: nodesById, adjacency, edgesByKey } = buildGraph(graph);
+const incomingAdjacency = new Map();
+for (const [fromId, neighbors] of adjacency.entries()) {
+  for (const neighbor of neighbors) {
+    if (!incomingAdjacency.has(neighbor.to)) {
+      incomingAdjacency.set(neighbor.to, []);
+    }
+    incomingAdjacency.get(neighbor.to).push({ from: fromId, cost: neighbor.cost });
+  }
+}
 
 const robotConfigInfo = loadRobotConfig(GRAPH_PATH);
 const robotConfigs = robotConfigInfo ? robotConfigInfo.data : null;
@@ -878,16 +892,75 @@ function findNearestNode(x, y) {
   return best;
 }
 
-function getCurrentStationFromPose() {
-  const nearest = findNearestNode(robot.pose.x, robot.pose.y);
-  if (!nearest) {
-    return '';
+function findNearestNodeFromIds(x, y, nodeIds) {
+  let best = null;
+  let bestDistSq = Infinity;
+  if (nodeIds) {
+    for (const id of nodeIds) {
+      const node = nodesById.get(id);
+      if (!node || !node.pos) {
+        continue;
+      }
+      const dx = node.pos.x - x;
+      const dy = node.pos.y - y;
+      const distSq = dx * dx + dy * dy;
+      if (distSq < bestDistSq) {
+        bestDistSq = distSq;
+        best = node;
+      }
+    }
+  } else {
+    for (const node of nodesById.values()) {
+      const dx = node.pos.x - x;
+      const dy = node.pos.y - y;
+      const distSq = dx * dx + dy * dy;
+      if (distSq < bestDistSq) {
+        bestDistSq = distSq;
+        best = node;
+      }
+    }
   }
-  const dist = Math.hypot(nearest.pos.x - robot.pose.x, nearest.pos.y - robot.pose.y);
-  if (dist > CURRENT_POINT_DIST) {
-    return '';
+  return { node: best, dist: Number.isFinite(bestDistSq) ? Math.sqrt(bestDistSq) : Infinity };
+}
+
+function distancePointToPolylinePoints(x, y, points) {
+  if (!points || points.length < 2) {
+    return Number.POSITIVE_INFINITY;
   }
-  return nearest.id;
+  let best = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const a = points[i];
+    const b = points[i + 1];
+    const dist = distancePointToSegmentCoords(x, y, a.x, a.y, b.x, b.y);
+    if (dist < best) {
+      best = dist;
+    }
+  }
+  return best;
+}
+
+function distanceToTaskPath(task, x, y) {
+  if (!task || !Array.isArray(task.segments) || task.segments.length === 0) {
+    return Number.POSITIVE_INFINITY;
+  }
+  let best = Number.POSITIVE_INFINITY;
+  for (const segment of task.segments) {
+    if (!segment || !segment.polyline || !Array.isArray(segment.polyline.points)) {
+      continue;
+    }
+    const dist = distancePointToPolylinePoints(x, y, segment.polyline.points);
+    if (dist < best) {
+      best = dist;
+    }
+  }
+  return best;
+}
+
+function getRouteNodeIds(task) {
+  if (!task || !Array.isArray(task.pathNodes) || task.pathNodes.length === 0) {
+    return null;
+  }
+  return new Set(task.pathNodes);
 }
 
 function getReportedCurrentStation() {
@@ -895,9 +968,255 @@ function getReportedCurrentStation() {
     return STATUS_FORCE_CURRENT_STATION;
   }
   if (STATUS_HIDE_CURRENT_STATION) {
+    robot.reportedStationId = '';
     return '';
   }
-  return getCurrentStationFromPose();
+  const manualMode = robot.manual.active;
+  if (manualMode && !isStopped()) {
+    robot.reportedStationId = '';
+    return '';
+  }
+
+  const enterDist = CURRENT_POINT_DIST;
+  const exitDist = Math.max(CURRENT_POINT_DIST * 1.5, enterDist);
+  const offRouteDist = Math.max(CURRENT_POINT_DIST * 3, ROBOT_RADIUS_M);
+
+  const task = robot.currentTask;
+  const routeNodeIds = !manualMode ? getRouteNodeIds(task) : null;
+  const hasRoute = routeNodeIds && routeNodeIds.size > 0;
+  const hasSegments = Boolean(task && Array.isArray(task.segments) && task.segments.length > 0);
+  const offRoute = hasRoute && hasSegments
+    ? distanceToTaskPath(task, robot.pose.x, robot.pose.y) > offRouteDist
+    : false;
+  const candidateSet = hasRoute && !offRoute ? routeNodeIds : null;
+
+  const candidate = findNearestNodeFromIds(robot.pose.x, robot.pose.y, candidateSet);
+  const candidateId = candidate.node ? candidate.node.id : '';
+  const candidateDist = candidate.dist;
+
+  let reported = '';
+  const lastId = robot.reportedStationId;
+  if (lastId) {
+    const lastNode = nodesById.get(lastId);
+    const lastAllowed = !candidateSet || candidateSet.has(lastId);
+    if (lastNode && lastAllowed) {
+      const distToLast = Math.hypot(lastNode.pos.x - robot.pose.x, lastNode.pos.y - robot.pose.y);
+      if (distToLast <= exitDist) {
+        reported = lastId;
+      }
+    }
+  }
+  if (!reported && candidateId && candidateDist <= enterDist) {
+    reported = candidateId;
+  }
+
+  robot.reportedStationId = reported || '';
+  return reported;
+}
+
+function getReportedLastStation(currentStation) {
+  if (STATUS_HIDE_LAST_STATION) {
+    return '';
+  }
+  if (STATUS_LAST_STATION_IS_CURRENT && currentStation) {
+    return currentStation;
+  }
+  return robot.lastStation || '';
+}
+
+function computeDistancesToTarget(targetId) {
+  const distances = new Map();
+  for (const nodeId of nodesById.keys()) {
+    distances.set(nodeId, Infinity);
+  }
+  if (!nodesById.has(targetId)) {
+    return distances;
+  }
+  distances.set(targetId, 0);
+  const visited = new Set();
+
+  while (true) {
+    let current = null;
+    let bestDist = Infinity;
+    for (const [nodeId, dist] of distances.entries()) {
+      if (visited.has(nodeId)) {
+        continue;
+      }
+      if (dist < bestDist) {
+        bestDist = dist;
+        current = nodeId;
+      }
+    }
+    if (!current) {
+      break;
+    }
+    visited.add(current);
+    const incoming = incomingAdjacency.get(current) || [];
+    for (const edge of incoming) {
+      if (visited.has(edge.from)) {
+        continue;
+      }
+      const nextDist = bestDist + edge.cost;
+      if (nextDist < distances.get(edge.from)) {
+        distances.set(edge.from, nextDist);
+      }
+    }
+  }
+  return distances;
+}
+
+function buildApproachCurvePoints(entryPose, entryHeading) {
+  const start = { x: robot.pose.x, y: robot.pose.y };
+  const end = { x: entryPose.x, y: entryPose.y };
+  const distance = Math.hypot(end.x - start.x, end.y - start.y);
+  if (!Number.isFinite(distance)) {
+    return null;
+  }
+  if (distance <= 1e-4) {
+    return [start, end];
+  }
+  const controlScale = Number.isFinite(APPROACH_CONTROL_SCALE) ? APPROACH_CONTROL_SCALE : 0.5;
+  const baseMin = Math.max(0.2, Math.max(0, APPROACH_MERGE_DIST) * 0.5);
+  const baseMax = Math.max(baseMin, Math.max(0, APPROACH_MERGE_DIST) * 2.5);
+  const controlDist = clamp(distance * controlScale, baseMin, baseMax);
+  const startDir = { x: Math.cos(robot.pose.angle), y: Math.sin(robot.pose.angle) };
+  const endDir = { x: Math.cos(entryHeading), y: Math.sin(entryHeading) };
+  const p1 = { x: start.x + startDir.x * controlDist, y: start.y + startDir.y * controlDist };
+  const p2 = { x: end.x - endDir.x * controlDist, y: end.y - endDir.y * controlDist };
+  const step = Math.max(0.05, Number.isFinite(APPROACH_SAMPLE_STEP) ? APPROACH_SAMPLE_STEP : 0.2);
+  const samples = clamp(Math.ceil(distance / step), 8, 40);
+  return sampleBezierPoints(start, p1, p2, end, samples);
+}
+
+function scoreApproach(entryPose, entryDist, remaining, distToTarget, headingToEntry) {
+  const approachAngle = Math.abs(normalizeAngle(headingToEntry - robot.pose.angle));
+  const edgeAngle = Math.abs(normalizeAngle(entryPose.heading - robot.pose.angle));
+  let penalty = approachAngle * (Number.isFinite(APPROACH_TURN_PENALTY) ? APPROACH_TURN_PENALTY : 0);
+  penalty += edgeAngle * (Number.isFinite(APPROACH_TURN_PENALTY) ? APPROACH_TURN_PENALTY * 0.35 : 0);
+  if (approachAngle > Math.PI / 2) {
+    penalty += Number.isFinite(APPROACH_REVERSE_PENALTY) ? APPROACH_REVERSE_PENALTY : 0;
+  }
+  return entryDist + remaining + distToTarget + penalty;
+}
+
+function findBestApproach(targetId) {
+  const distToTarget = computeDistancesToTarget(targetId);
+  const mergeDist = Math.max(0, Number.isFinite(APPROACH_MERGE_DIST) ? APPROACH_MERGE_DIST : 0);
+  let best = null;
+
+  for (const edge of edgesByKey.values()) {
+    const distFromEnd = distToTarget.get(edge.endId);
+    if (!Number.isFinite(distFromEnd)) {
+      continue;
+    }
+    const snap = findPolylineProgress(edge.polyline, robot.pose.x, robot.pose.y);
+    const entryProgress = clamp(snap.progress + mergeDist, 0, edge.polyline.totalLength);
+    const entryPose = polylineAtDistance(edge.polyline, entryProgress);
+    const entryDist = Math.hypot(entryPose.x - robot.pose.x, entryPose.y - robot.pose.y);
+    const remaining = edge.polyline.totalLength - entryProgress;
+    const headingToEntry = Math.atan2(entryPose.y - robot.pose.y, entryPose.x - robot.pose.x);
+    const cost = scoreApproach(entryPose, entryDist, remaining, distFromEnd, headingToEntry);
+    if (!best || cost < best.cost) {
+      best = {
+        cost,
+        entryPose,
+        entryHeading: entryPose.heading,
+        entryProgress,
+        entryDist,
+        edgeStartId: edge.startId,
+        edgeEndId: edge.endId
+      };
+    }
+  }
+
+  if (best) {
+    return best;
+  }
+
+  for (const [nodeId, distFromNode] of distToTarget.entries()) {
+    if (!Number.isFinite(distFromNode)) {
+      continue;
+    }
+    const node = nodesById.get(nodeId);
+    if (!node || !node.pos) {
+      continue;
+    }
+    const entryPose = { x: node.pos.x, y: node.pos.y, heading: 0 };
+    const entryDist = Math.hypot(entryPose.x - robot.pose.x, entryPose.y - robot.pose.y);
+    const headingToEntry = Math.atan2(entryPose.y - robot.pose.y, entryPose.x - robot.pose.x);
+    entryPose.heading = headingToEntry;
+    const cost = scoreApproach(entryPose, entryDist, 0, distFromNode, headingToEntry);
+    if (!best || cost < best.cost) {
+      best = {
+        cost,
+        entryPose,
+        entryHeading: entryPose.heading,
+        entryProgress: 0,
+        entryDist,
+        edgeStartId: nodeId,
+        edgeEndId: nodeId
+      };
+    }
+  }
+
+  return best;
+}
+
+function startScriptPath(points, targetAngle, maxSpeed) {
+  if (!Array.isArray(points) || points.length < 2) {
+    return false;
+  }
+  const polyline = buildPolyline(points);
+  let sp = robot.scriptPath;
+  if (!sp) {
+    sp = createScriptPathState();
+    robot.scriptPath = sp;
+  }
+  sp.plan = { polyline, targetAngle };
+  sp.active = true;
+  sp.done = false;
+  sp.progress = 0;
+  sp.mode = 'move';
+  sp.reachDist = ARRIVAL_EPS;
+  sp.reachAngle = ROTATE_EPS_RAD;
+  sp.maxSpeed = Number.isFinite(maxSpeed) ? maxSpeed : SPEED_M_S;
+  sp.maxRot = ROTATE_SPEED_RAD_S;
+  sp.backMode = false;
+  sp.useOdo = false;
+  sp.holdDir = 999;
+  sp.targetAngle = Number.isFinite(targetAngle) ? targetAngle : null;
+  sp.startHeading = Number.isFinite(targetAngle) ? targetAngle : robot.pose.angle;
+  return true;
+}
+
+function startApproachToTarget(targetId, taskType, targetPoint) {
+  const approach = findBestApproach(targetId);
+  if (!approach) {
+    return { ok: false, error: 'path_not_found' };
+  }
+  const pathNodes = findPath(approach.edgeStartId, targetId);
+  if (!pathNodes) {
+    return { ok: false, error: 'path_not_found' };
+  }
+  const task = createTaskWithPath(pathNodes, targetId, taskType, targetPoint);
+  if (task && Array.isArray(task.segments) && task.segments.length > 0) {
+    const segment = task.segments[0];
+    if (
+      segment &&
+      segment.startId === approach.edgeStartId &&
+      segment.endId === approach.edgeEndId &&
+      Number.isFinite(approach.entryProgress)
+    ) {
+      task.segmentProgress = clamp(approach.entryProgress, 0, segment.totalLength);
+      task.segmentMode = 'move';
+    }
+  }
+  const curvePoints = buildApproachCurvePoints(approach.entryPose, approach.entryHeading);
+  if (!curvePoints || curvePoints.length < 2) {
+    return { ok: false, error: 'path_not_found' };
+  }
+  startScriptPath(curvePoints, approach.entryHeading, SPEED_M_S * 0.8);
+  return { ok: true, task };
 }
 
 function findPath(startId, endId) {
@@ -1527,6 +1846,7 @@ function createRobot(startNodeId, poseOverride) {
     },
     lockRequest: null,
     currentStation: startNodeId,
+    reportedStationId: startNodeId,
     lastStation: startNodeId,
     homeStation: startNodeId || null,
     relocStatus: 1,
@@ -1881,13 +2201,14 @@ function getTaskPaths(task) {
 
 function buildRbkReport() {
   const task = currentTaskSnapshot();
+  const currentStation = getReportedCurrentStation();
   return {
     x: robot.pose.x,
     y: robot.pose.y,
     angle: robot.pose.angle,
     confidence: robot.confidence,
-    current_station: getReportedCurrentStation(),
-    last_station: robot.lastStation,
+    current_station: currentStation,
+    last_station: getReportedLastStation(currentStation),
     battery_level: batteryRatio(robot.battery),
     blocked: robot.blocked,
     task_status: robot.taskStatus,
@@ -2101,13 +2422,18 @@ function createTaskWithPath(pathNodes, targetId, taskType, targetPoint) {
   return task;
 }
 
-function startMoveToNode(targetId, taskType) {
+function startMoveToNode(targetId, taskType, targetPointOverride) {
+  const targetNode = nodesById.get(targetId);
+  const targetPoint =
+    targetPointOverride || (targetNode ? { x: targetNode.pos.x, y: targetNode.pos.y, angle: 0 } : null);
   const pathNodes = findPath(robot.currentStation, targetId);
   if (!pathNodes) {
+    const fallback = startApproachToTarget(targetId, taskType, targetPoint);
+    if (fallback.ok) {
+      return fallback;
+    }
     return { ok: false, error: 'path_not_found' };
   }
-  const targetNode = nodesById.get(targetId);
-  const targetPoint = targetNode ? { x: targetNode.pos.x, y: targetNode.pos.y, angle: 0 } : null;
   const task = createTaskWithPath(pathNodes, targetId, taskType, targetPoint);
   return { ok: true, task };
 }
@@ -2117,12 +2443,8 @@ function startMoveToPoint(x, y, angle) {
   if (!node) {
     return { ok: false, error: 'target_not_found' };
   }
-  const pathNodes = findPath(robot.currentStation, node.id);
-  if (!pathNodes) {
-    return { ok: false, error: 'path_not_found' };
-  }
-  const task = createTaskWithPath(pathNodes, node.id, 1, { x, y, angle: angle || 0 });
-  return { ok: true, task };
+  const targetPoint = { x, y, angle: angle || 0 };
+  return startMoveToNode(node.id, 1, targetPoint);
 }
 
 function normalizeStationId(value) {
@@ -3170,10 +3492,7 @@ function buildLocResponse() {
     ? { x: null, y: null, angle: null }
     : { x: robot.pose.x, y: robot.pose.y, angle: robot.pose.angle };
   const currentStation = getReportedCurrentStation();
-  let lastStation = STATUS_HIDE_LAST_STATION ? '' : robot.lastStation;
-  if (!STATUS_HIDE_LAST_STATION && STATUS_LAST_STATION_IS_CURRENT) {
-    lastStation = currentStation;
-  }
+  const lastStation = getReportedLastStation(currentStation);
   return buildBaseResponse({
     x: pose.x,
     y: pose.y,
@@ -3587,6 +3906,7 @@ function buildAllResponse() {
   const uptime = nowMs() - robot.bootAt;
   const diList = buildDiList();
   const doList = buildDoList();
+  const currentStation = getReportedCurrentStation();
 
   payload.create_on = now;
   payload.ret_code = 0;
@@ -3649,8 +3969,8 @@ function buildAllResponse() {
   payload.today_odo = robot.todayOdo;
   payload.time = uptime;
   payload.total_time = uptime;
-  payload.current_station = getReportedCurrentStation();
-  payload.last_station = robot.lastStation || '';
+  payload.current_station = currentStation;
+  payload.last_station = getReportedLastStation(currentStation);
   payload.reloc_status = robot.relocStatus;
   payload.task_status = robot.taskStatus;
   payload.task_type = robot.taskType;
@@ -4187,7 +4507,7 @@ function handlePushConfig(payload) {
 }
 
 function getCurrentStationForPush() {
-  return getCurrentStationFromPose();
+  return getReportedCurrentStation();
 }
 
 function buildPushFields() {

@@ -98,6 +98,11 @@ Config via env:
 - `START_POSE_Y`
 - `START_POSE_ANGLE`
 - `START_FORK_HEIGHT`
+- `APPROACH_MERGE_DIST`
+- `APPROACH_CONTROL_SCALE`
+- `APPROACH_TURN_PENALTY`
+- `APPROACH_REVERSE_PENALTY`
+- `APPROACH_SAMPLE_STEP`
 - `IDLE_CURRENT_A`
 - `IDLE_VOLTAGE_V`
 - `AUTO_CHARGE_DELAY_MS`
@@ -156,6 +161,8 @@ Notes:
 - Feature lines can impose one-way travel; `direction < 0` marks backward driving.
 - Motion uses a tricycle-style kinematic model (steered front wheel) and rotates
   in place before each segment to align with the path.
+- If no path exists from the current station to a target, the simulator blends onto
+  the nearest reachable graph edge and continues along the planned route.
 
 Map loading:
 - `GRAPH_PATH` can point to a `graph.json` (generated) or a raw `.smap` file.

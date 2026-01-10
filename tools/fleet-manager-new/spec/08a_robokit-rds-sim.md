@@ -9,7 +9,7 @@
 
 ## 3. Uruchomienie (INFORMATIVE)
 ```
-npm --prefix /home/inovatica/seal/fleet-manager-new/apps/robokit-rds-sim start
+npm --prefix /home/inovatica/seal/monorepo/tools/fleet-manager-new/apps/robokit-rds-sim start
 ```
 
 ## 4. Konfiguracja (MUST)

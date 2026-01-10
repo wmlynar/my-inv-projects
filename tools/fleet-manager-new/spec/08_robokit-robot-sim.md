@@ -19,7 +19,10 @@ Related: `11_*`, `18_*`.
 ## 3. Minimalny kontrakt zachowania (MVP)
 - Sim MUST implementować podstawowe API z protokołu RoboCore/Robokit wykorzystywane w MVP:
   - `goTarget` (3051), `stop` (2000), `forkHeight` (6040), `forkStop` (6041),
-  - statusy: co najmniej `robot_status_loc_req` (1004) i `robot_status_block_req` (1006) (poll i/lub push).
+  - `forkHeight` także jako `goTarget` z `operation: "ForkHeight"` (observed),
+  - `robot_config_req_4005` / `robot_config_req_4006` (seize control),
+  - statusy: co najmniej `robot_status_loc_req` (1004), `robot_status_block_req` (1006),
+    `robot_status_fork_req` (1028) oraz `robot_status_current_lock_req` (1060).
 - Sim MUST zachowywać się stabilnie przy reconnectach i powtarzanych `commandId` (idempotencja po stronie gateway nadal obowiązuje).
 
 
@@ -51,7 +54,19 @@ Response body (ACK):
 }
 ```
 
-### 5.3 `forkHeight` (6040) — przykład (INFORMATIVE)
+### 5.3 `forkHeight` (3051 lub 6040) — przykład (INFORMATIVE)
+
+`forkHeight` jest obserwowane w dwóch formach:
+
+```json5
+{
+  "operation": "ForkHeight",
+  "end_height": 1.20,
+  "id": "LM2"
+}
+```
+
+oraz klasycznie na porcie OTHER:
 
 ```json5
 {
@@ -64,9 +79,22 @@ Response body (ACK):
 Sim MUST odpowiadać na:
 - `robot_status_loc_req` (1004) → pozycja robota,
 - `robot_status_block_req` (1006) → blocked/obstacle,
+- `robot_status_fork_req` (1028) → wysokość wideł,
+- `robot_status_current_lock_req` (1060) → stan seize control,
 - (opcjonalnie) push na porcie `push` (19301).
 
-### 5.5 Minimalny model zachowania (MUST)
+### 5.5 Seize control (CONFIG port) — przykład (INFORMATIVE)
+Lock:
+```json5
+{ "nick_name": "roboshop" }
+```
+
+Unlock:
+```json5
+{}
+```
+
+### 5.6 Minimalny model zachowania (MUST)
 - Po `goTarget(id)` sim MUST przejść w stan „moving” i w telemetrii zbliżać się do celu.
 - Po osiągnięciu celu sim MUST raportować „arrived” (heurystyka po dist/eps).
 - Po `stop` sim MUST przejść w stan „stopped”.
@@ -97,13 +125,13 @@ in-place rotations between segments.
 ## Run
 
 ```bash
-npm --prefix /home/inovatica/seal/monorepo/tools/fleet-manager/apps/robokit-robot-sim start
+npm --prefix /home/inovatica/seal/monorepo/tools/fleet-manager-new/apps/robokit-robot-sim start
 ```
 
 Profile example (local simulator behind proxy):
 
 ```bash
-SIM_PROFILE=local npm --prefix /home/inovatica/seal/monorepo/tools/fleet-manager/apps/robokit-robot-sim start
+SIM_PROFILE=local npm --prefix /home/inovatica/seal/monorepo/tools/fleet-manager-new/apps/robokit-robot-sim start
 ```
 
 Defaults:
@@ -165,6 +193,11 @@ Config via env:
 - `START_POSE_Y`
 - `START_POSE_ANGLE`
 - `START_FORK_HEIGHT`
+- `APPROACH_MERGE_DIST`
+- `APPROACH_CONTROL_SCALE`
+- `APPROACH_TURN_PENALTY`
+- `APPROACH_REVERSE_PENALTY`
+- `APPROACH_SAMPLE_STEP`
 - `IDLE_CURRENT_A`
 - `IDLE_VOLTAGE_V`
 - `AUTO_CHARGE_DELAY_MS`
@@ -223,6 +256,8 @@ Notes:
 - Feature lines can impose one-way travel; `direction < 0` marks backward driving.
 - Motion uses a tricycle-style kinematic model (steered front wheel) and rotates
   in place before each segment to align with the path.
+- If no path exists from the current station to a target, the simulator blends onto
+  the nearest reachable graph edge and continues along the planned route.
 
 Map loading:
 - `GRAPH_PATH` can point to a `graph.json` (generated) or a raw `.smap` file.
