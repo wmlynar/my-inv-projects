@@ -267,6 +267,7 @@
   let worksiteElements = new Map();
   let worksiteRings = new Map();
   let robotMarkers = new Map();
+  let robotLayerGroup = null;
   let actionPointMarkers = new Map();
   let nodeMarkers = new Map();
   let mapClickBound = false;
@@ -2923,7 +2924,11 @@
     persistRobotState();
     refreshRobotDiagnosticsCache();
     renderRobots();
-    updateRobotMarkers();
+    if (mapLayers) {
+      mapLayers.render(mapStore?.getState?.() || {});
+    } else {
+      updateRobotMarkers();
+    }
     renderNavControls();
     renderManualDrivePanel();
   };
@@ -3569,25 +3574,18 @@
     return { label, className };
   };
 
-  const updateAllRobotMarkerStates = () => {
-    if (!robotMarkers.size) return;
-    robotMarkers.forEach((marker, id) => {
-      const robot = getRobotById(id);
-      if (!robot) return;
-      marker.setAttribute("class", buildRobotMarkerClass(robot));
-    });
-  };
-
-  if (mapLayers && mapStore) {
-    const robotSelectionLayer = {
+  if (mapLayers) {
+    const robotLayer = {
       render() {
-        updateAllRobotMarkerStates();
+        renderRobotLayer();
       }
     };
-    mapLayers.register(robotSelectionLayer);
-    mapStore.subscribe((state) => {
-      mapLayers.render(state);
-    });
+    mapLayers.register(robotLayer);
+    if (mapStore) {
+      mapStore.subscribe((state) => {
+        mapLayers.render(state);
+      });
+    }
   }
 
   const getNavControlTarget = () => {
@@ -3635,7 +3633,6 @@
     if (manualDrive.enabled) {
       setManualDriveTarget(robotId);
     }
-    updateAllRobotMarkerStates();
     renderNavControls();
     renderManualDrivePanel();
   };
@@ -3858,6 +3855,71 @@
     manualMenu.dataset.robotId = robot.id;
     manualMenuRobot.textContent = robot.name;
     manualMenu.classList.remove("hidden");
+  };
+
+  const renderRobotLayer = () => {
+    if (!mapSvg) return;
+    const robotIds = robots.map((robot) => robot?.id).filter(Boolean);
+    if (!robotIds.length) {
+      if (robotLayerGroup) {
+        robotLayerGroup.remove();
+        robotLayerGroup = null;
+      }
+      robotMarkers.clear();
+      return;
+    }
+    const needsRebuild =
+      !robotLayerGroup ||
+      robotMarkers.size !== robotIds.length ||
+      robotIds.some((id) => !robotMarkers.has(id));
+    if (needsRebuild) {
+      if (robotLayerGroup) {
+        robotLayerGroup.remove();
+      }
+      robotLayerGroup = document.createElementNS(svgNS, "g");
+      robotLayerGroup.setAttribute("class", "map-robots");
+      robotMarkers = new Map();
+      robots.forEach((robot) => {
+        if (!robot?.pos) return;
+        ensureRobotMotion(robot);
+        const point = projectPoint(robot.pos);
+        const group = document.createElementNS(svgNS, "g");
+        group.setAttribute("class", buildRobotMarkerClass(robot));
+        group.dataset.id = robot.id;
+        const model = resolveRobotModel(robot, robotsConfig);
+        const length = model.head + model.tail;
+        const halfWidth = model.width / 2;
+        const body = document.createElementNS(svgNS, "rect");
+        body.setAttribute("x", String(-model.tail));
+        body.setAttribute("y", String(-halfWidth));
+        body.setAttribute("width", String(length));
+        body.setAttribute("height", String(model.width));
+        body.setAttribute("rx", String(Math.min(0.2, model.width * 0.2)));
+        body.setAttribute("class", "robot-body");
+        const heading = document.createElementNS(svgNS, "path");
+        heading.setAttribute("class", "robot-heading");
+        const arrowLength = Math.max(model.width * 0.6, 0.4);
+        const arrowHalfWidth = Math.max(model.width * 0.35, 0.25);
+        const tipX = model.head + arrowLength;
+        const baseX = model.head;
+        heading.setAttribute(
+          "d",
+          `M ${tipX} 0 L ${baseX} ${arrowHalfWidth} L ${baseX} ${-arrowHalfWidth} Z`
+        );
+        group.appendChild(body);
+        group.appendChild(heading);
+        const headingDeg = (-robot.heading * 180) / Math.PI;
+        group.setAttribute("transform", `translate(${point.x} ${point.y}) rotate(${headingDeg})`);
+        group.addEventListener("click", (event) => {
+          event.stopPropagation();
+          handleRobotMarkerClick(robot.id);
+        });
+        robotLayerGroup.appendChild(group);
+        robotMarkers.set(robot.id, group);
+      });
+      mapSvg.appendChild(robotLayerGroup);
+    }
+    updateRobotMarkers();
   };
 
   const updateRobotMarkers = () => {
@@ -4241,6 +4303,7 @@
     worksiteLabels = new Map();
     worksiteRings = new Map();
     robotMarkers = new Map();
+    robotLayerGroup = null;
     actionPointMarkers = new Map();
     nodeMarkers = new Map();
     nodeLabels = new Map();
@@ -4435,48 +4498,6 @@
       actionPointMarkers.set(point.id, marker);
     });
 
-    const robotsGroup = document.createElementNS(svgNS, "g");
-    robotsGroup.setAttribute("class", "map-robots");
-
-    robots.forEach((robot) => {
-      if (!robot.pos) return;
-      ensureRobotMotion(robot);
-      const point = projectPoint(robot.pos);
-      const group = document.createElementNS(svgNS, "g");
-      group.setAttribute("class", buildRobotMarkerClass(robot));
-      group.dataset.id = robot.id;
-      const model = resolveRobotModel(robot, robotsConfig);
-      const length = model.head + model.tail;
-      const halfWidth = model.width / 2;
-      const body = document.createElementNS(svgNS, "rect");
-      body.setAttribute("x", String(-model.tail));
-      body.setAttribute("y", String(-halfWidth));
-      body.setAttribute("width", String(length));
-      body.setAttribute("height", String(model.width));
-      body.setAttribute("rx", String(Math.min(0.2, model.width * 0.2)));
-      body.setAttribute("class", "robot-body");
-      const heading = document.createElementNS(svgNS, "path");
-      heading.setAttribute("class", "robot-heading");
-      const arrowLength = Math.max(model.width * 0.6, 0.4);
-      const arrowHalfWidth = Math.max(model.width * 0.35, 0.25);
-      const tipX = model.head + arrowLength;
-      const baseX = model.head;
-      heading.setAttribute(
-        "d",
-        `M ${tipX} 0 L ${baseX} ${arrowHalfWidth} L ${baseX} ${-arrowHalfWidth} Z`
-      );
-      group.appendChild(body);
-      group.appendChild(heading);
-      const headingDeg = (-robot.heading * 180) / Math.PI;
-      group.setAttribute("transform", `translate(${point.x} ${point.y}) rotate(${headingDeg})`);
-      group.addEventListener("click", (event) => {
-        event.stopPropagation();
-        handleRobotMarkerClick(robot.id);
-      });
-      robotsGroup.appendChild(group);
-      robotMarkers.set(robot.id, group);
-    });
-
     const fragment = document.createDocumentFragment();
     fragment.appendChild(edgesGroup);
     fragment.appendChild(linksGroup);
@@ -4487,8 +4508,8 @@
     fragment.appendChild(worksitesGroup);
     fragment.appendChild(ringsGroup);
     fragment.appendChild(labelsGroup);
-    fragment.appendChild(robotsGroup);
     mapSvg.appendChild(fragment);
+    mapLayers?.render?.(mapStore?.getState?.() || {});
     renderObstacles();
     renderMiniMap();
 
