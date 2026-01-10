@@ -492,6 +492,39 @@ Preferowany zapis JSONL (jeden event na linie):
 { "ts": 1736350031000, "event": "lock_preempted", "from": "ip:a", "to": "ip:b" }
 ```
 
+## 10.2 Odpornosc i production-hardening (MUST/SHOULD)
+Minimalne zasady, aby aplikacja byla stabilna i "production-like":
+
+**Sockety i IO (MUST)**
+- Kazdy socket MUSI obslugiwac `error` (ignoruj `ECONNRESET`, `EPIPE`, loguj inne).
+- Uzywaj `setNoDelay(true)` dla TCP.
+- Na `close` sprzataj timery i referencje (Push).
+- Wprowadz `SOCKET_IDLE_TIMEOUT_MS` i zamykaj bezczynne sockety.
+
+**Parser i payload (MUST)**
+- Zawsze waliduj `bodyLength` i limituj rozmiar (`MAX_BODY_LENGTH`).
+- Dla bledow parse: nie crashuj procesu, tylko zwroc `ret_code`.
+
+**Stabilnosc procesu (SHOULD)**
+- Obsluz `uncaughtException` i `unhandledRejection`:
+  - log, ustaw flagi "degraded", rozpocznij graceful shutdown.
+- Graceful shutdown:
+  - `SIGINT`/`SIGTERM`: zatrzymaj tick, zamknij serwery, zapisz stan.
+
+**Backpressure i limity (MUST)**
+- Limituj bufor dla push i zamykaj polaczenie gdy bufor rosnie bez odczytu.
+- `MAX_CONNECTIONS`, `MAX_CLIENT_SESSIONS` chronia przed leakami.
+
+**Konfiguracja (MUST)**
+- Waliduj config przy starcie i loguj effective config.
+- Blad config -> exit z kodem != 0.
+
+**Health i diagnostyka (SHOULD)**
+- (Opcjonalnie) endpoint HTTP `/_health` i `/_metrics` do sprawdzenia stanu.
+- Te endpointy sa **dodatkowe** (administracyjne) i **nie** sa czescia protokolu Robokit
+  ani komunikacji z Roboshopem. Musza byc wydzielone i jednoznacznie opisane jako osobny kanal.
+- W logach zawsze wypisz porty i tryb pracy (SIM_TIME_MODE).
+
 ## 11. Flow request -> response
 1) `TcpPortServer` odbiera dane z socketu.
 2) `RbkCodec.decode` zwraca ramki.
