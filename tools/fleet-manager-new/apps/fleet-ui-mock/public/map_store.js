@@ -3,6 +3,7 @@
     let state = {
       mapState: null,
       selection: { type: null, ids: [], primaryId: null },
+      layers: {},
       ...initial
     };
     const listeners = new Set();
@@ -25,6 +26,11 @@
       },
       setSelection(selection, reason = 'selection') {
         state = { ...state, selection };
+        notify(reason);
+      },
+      setLayers(layers, reason = 'layers') {
+        if (!layers || typeof layers !== 'object') return;
+        state = { ...state, layers: { ...state.layers, ...layers } };
         notify(reason);
       },
       notify(reason = 'update') {

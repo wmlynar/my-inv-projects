@@ -39,6 +39,19 @@
     { value: LOCAL_SIM_MODE, label: "Lokalny (fleet manager)" },
     { value: ROBOKIT_SIM_MODE, label: "Robokit (proxy)" }
   ];
+  const MAP_LAYER_CONFIG = [
+    { id: "edges", label: "Krawedzie", defaultVisible: true },
+    { id: "links", label: "Polaczenia", defaultVisible: true },
+    { id: "nodes", label: "Wezly", defaultVisible: true },
+    { id: "actionPoints", label: "Action points", defaultVisible: true },
+    { id: "worksites", label: "Worksite", defaultVisible: true },
+    { id: "obstacles", label: "Przeszkody", defaultVisible: true },
+    { id: "robots", label: "Roboty", defaultVisible: true }
+  ];
+  const mapLayerVisibility = MAP_LAYER_CONFIG.reduce((acc, layer) => {
+    acc[layer.id] = layer.defaultVisible !== false;
+    return acc;
+  }, {});
   const DEFAULT_DISPATCH_LABELS = {
     nearest: "Najblizszy robot",
     first: "Pierwszy dostepny"
@@ -181,6 +194,7 @@
   const mapShell = document.getElementById("map-shell");
   const mapSvg = document.getElementById("map-svg");
   const mapWrap = document.querySelector(".map-wrap");
+  const mapLayerPanel = document.getElementById("map-layer-panel");
   const worksiteMenu = document.getElementById("worksite-menu");
   const worksiteMenuButtons = Array.from(worksiteMenu.querySelectorAll("button"));
   const manualMenu = document.getElementById("manual-menu");
@@ -205,6 +219,9 @@
   const mapLayers = window.MapLayers?.init?.({ svg: mapSvg });
   const mapStore = window.MapStore?.create?.();
   const mapAdapters = window.MapAdapters?.init?.({ store: mapStore });
+  if (mapStore?.setLayers) {
+    mapStore.setLayers({ ...mapLayerVisibility }, "init");
+  }
 
   const robotsList = document.getElementById("robots-list");
   const streamsList = document.getElementById("streams-list");
@@ -268,11 +285,20 @@
   let worksiteRings = new Map();
   let robotMarkers = new Map();
   let robotLayerGroup = null;
+  let edgesLayerGroup = null;
+  let worksiteLinksLayerGroup = null;
+  let nodesLayerGroup = null;
+  let actionPointsLayerGroup = null;
+  let worksitesLayerGroup = null;
   let actionPointMarkers = new Map();
   let nodeMarkers = new Map();
   let mapClickBound = false;
   let mapState = null;
   let mapLayerNeedsRebuild = false;
+  let mapLayerPanelBound = false;
+  let mapNodesWithPos = [];
+  let mapActionPoints = [];
+  let mapActionPointIndex = new Map();
   let panState = null;
   let panZoomBound = false;
   let miniMapViewport = null;
@@ -998,6 +1024,56 @@
     updateMiniMapViewport();
     updateWorksiteScale();
     mapStore?.notify?.("viewport");
+  };
+
+  const getLayerVisibility = (layerId, state) => {
+    const layers = state?.layers || mapLayerVisibility;
+    if (!layers || typeof layers[layerId] === "undefined") return true;
+    return layers[layerId] !== false;
+  };
+
+  const applyLayerVisibility = (group, visible) => {
+    if (!group) return;
+    group.classList.toggle("map-layer-hidden", !visible);
+  };
+
+  const renderLayerPanel = () => {
+    if (!mapLayerPanel) return;
+    const buttons = MAP_LAYER_CONFIG.map((layer) => {
+      const visible = mapLayerVisibility[layer.id] !== false;
+      return `
+        <button class="layer-toggle${visible ? " active" : ""}" data-layer="${layer.id}" type="button" aria-pressed="${visible ? "true" : "false"}">
+          ${layer.label}
+        </button>
+      `;
+    }).join("");
+    mapLayerPanel.innerHTML = `
+      <div class="layer-panel-title">Warstwy</div>
+      <div class="layer-panel-actions">
+        ${buttons}
+      </div>
+    `;
+  };
+
+  const bindLayerPanel = () => {
+    if (!mapLayerPanel || mapLayerPanelBound) return;
+    mapLayerPanel.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-layer]");
+      if (!button) return;
+      const layerId = button.dataset.layer;
+      if (!layerId) return;
+      const current = mapLayerVisibility[layerId] !== false;
+      const next = !current;
+      mapLayerVisibility[layerId] = next;
+      button.classList.toggle("active", next);
+      button.setAttribute("aria-pressed", next ? "true" : "false");
+      if (mapStore?.setLayers) {
+        mapStore.setLayers({ [layerId]: next }, "layers");
+      } else if (mapLayers?.render) {
+        mapLayers.render(mapStore?.getState?.() || {});
+      }
+    });
+    mapLayerPanelBound = true;
   };
 
   const resetViewBox = () => {
@@ -2118,6 +2194,14 @@
     obstacles = [];
     obstacleIdSeq = 1;
     obstacleLayer = null;
+    edgesLayerGroup = null;
+    worksiteLinksLayerGroup = null;
+    nodesLayerGroup = null;
+    actionPointsLayerGroup = null;
+    worksitesLayerGroup = null;
+    mapNodesWithPos = [];
+    mapActionPoints = [];
+    mapActionPointIndex = new Map();
     manualTargetRobotId = null;
     manualDrive.enabled = false;
     manualDrive.robotId = null;
@@ -3576,22 +3660,51 @@
   };
 
   if (mapLayers) {
-    const baseLayer = {
-      render() {
-        if (!mapLayerNeedsRebuild) return;
-        mapLayerNeedsRebuild = false;
-        renderMapBaseLayer();
+    const edgesLayer = {
+      render({ state }) {
+        renderEdgesLayer({ state });
+      }
+    };
+    const linksLayer = {
+      render({ state }) {
+        renderWorksiteLinksLayer({ state });
+      }
+    };
+    const obstaclesLayer = {
+      render({ state }) {
+        renderObstaclesLayer({ state });
+      }
+    };
+    const nodesLayer = {
+      render({ state }) {
+        renderNodesLayer({ state });
+      }
+    };
+    const actionPointsLayer = {
+      render({ state }) {
+        renderActionPointsLayer({ state });
+      }
+    };
+    const worksitesLayer = {
+      render({ state }) {
+        renderWorksitesLayer({ state });
       }
     };
     const robotLayer = {
-      render() {
-        renderRobotLayer();
+      render({ state }) {
+        renderRobotLayer({ state });
       }
     };
-    mapLayers.register(baseLayer);
+    mapLayers.register(edgesLayer);
+    mapLayers.register(linksLayer);
+    mapLayers.register(obstaclesLayer);
+    mapLayers.register(nodesLayer);
+    mapLayers.register(actionPointsLayer);
+    mapLayers.register(worksitesLayer);
     mapLayers.register(robotLayer);
     if (mapStore) {
-      mapStore.subscribe((state) => {
+      mapStore.subscribe((state, reason) => {
+        if (reason === "map_state" || reason === "viewport") return;
         mapLayers.render(state);
       });
     }
@@ -3866,8 +3979,256 @@
     manualMenu.classList.remove("hidden");
   };
 
-  const renderRobotLayer = () => {
+  const renderEdgesLayer = ({ state } = {}) => {
+    if (!mapSvg || !graphData || !mapState) return;
+    const visible = getLayerVisibility("edges", state);
+    const needsRebuild = mapLayerNeedsRebuild || !edgesLayerGroup;
+    if (needsRebuild) {
+      if (edgesLayerGroup) {
+        edgesLayerGroup.remove();
+      }
+      edgesLayerGroup = document.createElementNS(svgNS, "g");
+      edgesLayerGroup.setAttribute("class", "map-edges map-layer");
+      const nodesIndex = new Map((graphData.nodes || []).map((node) => [node.id, node.pos]));
+      (graphData.edges || []).forEach((edge) => {
+        const start = edge.startPos || nodesIndex.get(edge.start);
+        const end = edge.endPos || nodesIndex.get(edge.end);
+        if (!start || !end) return;
+        const startPos = projectPoint(start);
+        const endPos = projectPoint(end);
+        const path = document.createElementNS(svgNS, "path");
+        if (edge.controlPos1 && edge.controlPos2) {
+          const c1 = projectPoint(edge.controlPos1);
+          const c2 = projectPoint(edge.controlPos2);
+          path.setAttribute(
+            "d",
+            `M ${startPos.x} ${startPos.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${endPos.x} ${endPos.y}`
+          );
+        } else {
+          path.setAttribute("d", `M ${startPos.x} ${startPos.y} L ${endPos.x} ${endPos.y}`);
+        }
+        const width = Number(edge?.props?.width || 0);
+        path.setAttribute("class", `map-edge${Number.isFinite(width) && width > 0 ? " corridor" : ""}`);
+        if (Number.isFinite(width) && width > 0) {
+          path.dataset.corridorWidth = String(width);
+        }
+        edgesLayerGroup.appendChild(path);
+      });
+      mapSvg.appendChild(edgesLayerGroup);
+    }
+    applyLayerVisibility(edgesLayerGroup, visible);
+  };
+
+  const renderWorksiteLinksLayer = ({ state } = {}) => {
+    if (!mapSvg || !mapState) return;
+    const visible = getLayerVisibility("links", state);
+    const needsRebuild = mapLayerNeedsRebuild || !worksiteLinksLayerGroup;
+    if (needsRebuild) {
+      if (worksiteLinksLayerGroup) {
+        worksiteLinksLayerGroup.remove();
+      }
+      worksiteLinksLayerGroup = document.createElementNS(svgNS, "g");
+      worksiteLinksLayerGroup.setAttribute("class", "map-links map-layer");
+      worksites.forEach((site) => {
+        const sitePos = site.displayPos || site.pos;
+        if (!sitePos) return;
+        const actionPos = site.point ? mapActionPointIndex.get(site.point) : null;
+        if (!actionPos) return;
+        const point = projectPoint(sitePos);
+        const actionPoint = projectPoint(actionPos);
+        const link = document.createElementNS(svgNS, "line");
+        link.setAttribute("x1", point.x);
+        link.setAttribute("y1", point.y);
+        link.setAttribute("x2", actionPoint.x);
+        link.setAttribute("y2", actionPoint.y);
+        link.setAttribute("class", "worksite-link");
+        worksiteLinksLayerGroup.appendChild(link);
+      });
+      mapSvg.appendChild(worksiteLinksLayerGroup);
+    }
+    applyLayerVisibility(worksiteLinksLayerGroup, visible);
+  };
+
+  const renderNodesLayer = ({ state } = {}) => {
+    if (!mapSvg || !mapState) return;
+    const visible = getLayerVisibility("nodes", state);
+    const needsRebuild = mapLayerNeedsRebuild || !nodesLayerGroup;
+    if (needsRebuild) {
+      if (nodesLayerGroup) {
+        nodesLayerGroup.remove();
+      }
+      nodesLayerGroup = document.createElementNS(svgNS, "g");
+      nodesLayerGroup.setAttribute("class", "map-layer map-layer-nodes");
+      const nodeMarkersGroup = document.createElementNS(svgNS, "g");
+      nodeMarkersGroup.setAttribute("class", "map-nodes");
+      const nodeLabelsGroup = document.createElementNS(svgNS, "g");
+      nodeLabelsGroup.setAttribute("class", "map-node-labels");
+      nodeMarkers = new Map();
+      nodeLabels = new Map();
+      mapNodesWithPos.forEach((node) => {
+        const pos = projectPoint(node.pos);
+        const typeClass = String(node.className || "node")
+          .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
+          .toLowerCase();
+        if (node.className !== "ActionPoint") {
+          const marker = document.createElementNS(svgNS, "circle");
+          marker.setAttribute("cx", pos.x);
+          marker.setAttribute("cy", pos.y);
+          marker.setAttribute("r", "1");
+          marker.setAttribute("class", `map-node ${typeClass}`);
+          marker.dataset.sizePx = node.className === "LocationMark" ? "7.2" : "2.8";
+          nodeMarkersGroup.appendChild(marker);
+          nodeMarkers.set(node.id, marker);
+        }
+        const label = document.createElementNS(svgNS, "text");
+        label.textContent = node.id;
+        label.setAttribute("class", `node-label ${typeClass}`);
+        label.dataset.baseX = pos.x;
+        label.dataset.baseY = pos.y;
+        label.setAttribute("x", pos.x);
+        label.setAttribute("y", pos.y);
+        label.setAttribute("text-anchor", "middle");
+        label.setAttribute("dominant-baseline", "central");
+        nodeLabelsGroup.appendChild(label);
+        nodeLabels.set(node.id, label);
+      });
+      nodesLayerGroup.appendChild(nodeMarkersGroup);
+      nodesLayerGroup.appendChild(nodeLabelsGroup);
+      mapSvg.appendChild(nodesLayerGroup);
+    }
+    applyLayerVisibility(nodesLayerGroup, visible);
+  };
+
+  const renderActionPointsLayer = ({ state } = {}) => {
+    if (!mapSvg || !mapState) return;
+    const visible = getLayerVisibility("actionPoints", state);
+    const needsRebuild = mapLayerNeedsRebuild || !actionPointsLayerGroup;
+    if (needsRebuild) {
+      if (actionPointsLayerGroup) {
+        actionPointsLayerGroup.remove();
+      }
+      actionPointsLayerGroup = document.createElementNS(svgNS, "g");
+      actionPointsLayerGroup.setAttribute("class", "map-action-points map-layer");
+      actionPointMarkers = new Map();
+      mapActionPoints.forEach((point) => {
+        const pos = projectPoint(point.pos);
+        const marker = document.createElementNS(svgNS, "circle");
+        marker.setAttribute("cx", pos.x);
+        marker.setAttribute("cy", pos.y);
+        marker.setAttribute("r", "1");
+        marker.setAttribute("class", "action-point");
+        marker.dataset.sizePx = "3";
+        marker.dataset.id = point.id;
+        marker.addEventListener("click", (event) => {
+          event.stopPropagation();
+          showManualMenu(event, point.id);
+        });
+        actionPointsLayerGroup.appendChild(marker);
+        actionPointMarkers.set(point.id, marker);
+      });
+      mapSvg.appendChild(actionPointsLayerGroup);
+    }
+    applyLayerVisibility(actionPointsLayerGroup, visible);
+  };
+
+  const renderWorksitesLayer = ({ state } = {}) => {
+    if (!mapSvg || !mapState) return;
+    const visible = getLayerVisibility("worksites", state);
+    const needsRebuild = mapLayerNeedsRebuild || !worksitesLayerGroup;
+    if (needsRebuild) {
+      if (worksitesLayerGroup) {
+        worksitesLayerGroup.remove();
+      }
+      worksitesLayerGroup = document.createElementNS(svgNS, "g");
+      worksitesLayerGroup.setAttribute("class", "map-layer map-layer-worksites");
+      const worksitesGroup = document.createElementNS(svgNS, "g");
+      worksitesGroup.setAttribute("class", "map-worksites");
+      const ringsGroup = document.createElementNS(svgNS, "g");
+      ringsGroup.setAttribute("class", "map-worksite-rings");
+      const labelsGroup = document.createElementNS(svgNS, "g");
+      labelsGroup.setAttribute("class", "map-labels");
+      worksiteElements = new Map();
+      worksiteRings = new Map();
+      worksiteLabels = new Map();
+      worksites.forEach((site) => {
+        const sitePos = site.displayPos || site.pos;
+        if (!sitePos) return;
+        const point = projectPoint(sitePos);
+        const state = worksiteState[site.id] || { occupancy: "empty", blocked: false };
+        const occupancy = state.occupancy || "empty";
+        const circle = document.createElementNS(svgNS, "circle");
+        circle.setAttribute("cx", point.x);
+        circle.setAttribute("cy", point.y);
+        circle.setAttribute("r", "1");
+        circle.setAttribute(
+          "class",
+          `worksite-marker ${site.kind} ${occupancy}${state.blocked ? " blocked" : ""}`
+        );
+        circle.dataset.sizePx = site.kind === "drop" ? "18" : "15";
+        circle.dataset.id = site.id;
+        circle.addEventListener("click", (event) => {
+          event.stopPropagation();
+          showWorksiteMenu(event, site.id);
+        });
+        circle.addEventListener("contextmenu", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          showWorksiteMenu(event, site.id);
+        });
+        worksitesGroup.appendChild(circle);
+        worksiteElements.set(site.id, circle);
+
+        const ring = document.createElementNS(svgNS, "circle");
+        ring.setAttribute("cx", point.x);
+        ring.setAttribute("cy", point.y);
+        ring.setAttribute("r", "1");
+        ring.setAttribute("class", `worksite-ring${state.blocked ? " blocked" : ""}`);
+        ring.dataset.sizePx = site.kind === "drop" ? "27" : "24";
+        ringsGroup.appendChild(ring);
+        worksiteRings.set(site.id, ring);
+
+        const label = document.createElementNS(svgNS, "text");
+        label.textContent = site.id;
+        label.setAttribute(
+          "class",
+          `worksite-label ${occupancy}${state.blocked ? " blocked" : ""}`
+        );
+        label.dataset.baseX = point.x;
+        label.dataset.baseY = point.y;
+        label.setAttribute("x", point.x);
+        label.setAttribute("y", point.y);
+        label.setAttribute("text-anchor", "middle");
+        label.setAttribute("dominant-baseline", "hanging");
+        labelsGroup.appendChild(label);
+        worksiteLabels.set(site.id, label);
+      });
+      worksitesLayerGroup.appendChild(worksitesGroup);
+      worksitesLayerGroup.appendChild(ringsGroup);
+      worksitesLayerGroup.appendChild(labelsGroup);
+      mapSvg.appendChild(worksitesLayerGroup);
+    }
+    applyLayerVisibility(worksitesLayerGroup, visible);
+  };
+
+  const renderObstaclesLayer = ({ state } = {}) => {
+    if (!mapSvg || !mapState) return;
+    const visible = getLayerVisibility("obstacles", state);
+    const needsRebuild = mapLayerNeedsRebuild || !obstacleLayer;
+    if (needsRebuild) {
+      if (obstacleLayer) {
+        obstacleLayer.remove();
+      }
+      obstacleLayer = document.createElementNS(svgNS, "g");
+      obstacleLayer.setAttribute("class", "map-obstacles map-layer");
+      mapSvg.appendChild(obstacleLayer);
+      renderObstacles();
+    }
+    applyLayerVisibility(obstacleLayer, visible);
+  };
+
+  const renderRobotLayer = ({ state } = {}) => {
     if (!mapSvg) return;
+    const visible = getLayerVisibility("robots", state);
     const robotIds = robots.map((robot) => robot?.id).filter(Boolean);
     if (!robotIds.length) {
       if (robotLayerGroup) {
@@ -3878,6 +4239,7 @@
       return;
     }
     const needsRebuild =
+      mapLayerNeedsRebuild ||
       !robotLayerGroup ||
       robotMarkers.size !== robotIds.length ||
       robotIds.some((id) => !robotMarkers.has(id));
@@ -3886,7 +4248,7 @@
         robotLayerGroup.remove();
       }
       robotLayerGroup = document.createElementNS(svgNS, "g");
-      robotLayerGroup.setAttribute("class", "map-robots");
+      robotLayerGroup.setAttribute("class", "map-robots map-layer");
       robotMarkers = new Map();
       robots.forEach((robot) => {
         if (!robot?.pos) return;
@@ -3929,6 +4291,7 @@
       mapSvg.appendChild(robotLayerGroup);
     }
     updateRobotMarkers();
+    applyLayerVisibility(robotLayerGroup, visible);
   };
 
   const updateRobotMarkers = () => {
@@ -4305,182 +4668,6 @@
     return addObstacle(pos, { mode });
   };
 
-  const renderMapBaseLayer = () => {
-    if (!graphData || !mapState || !mapSvg) return;
-
-    const edgesGroup = document.createElementNS(svgNS, "g");
-    edgesGroup.setAttribute("class", "map-edges");
-
-    const nodesIndex = new Map((graphData.nodes || []).map((node) => [node.id, node.pos]));
-
-    (graphData.edges || []).forEach((edge) => {
-      const start = edge.startPos || nodesIndex.get(edge.start);
-      const end = edge.endPos || nodesIndex.get(edge.end);
-      if (!start || !end) return;
-      const startPos = projectPoint(start);
-      const endPos = projectPoint(end);
-      const path = document.createElementNS(svgNS, "path");
-      if (edge.controlPos1 && edge.controlPos2) {
-        const c1 = projectPoint(edge.controlPos1);
-        const c2 = projectPoint(edge.controlPos2);
-        path.setAttribute(
-          "d",
-          `M ${startPos.x} ${startPos.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${endPos.x} ${endPos.y}`
-        );
-      } else {
-        path.setAttribute("d", `M ${startPos.x} ${startPos.y} L ${endPos.x} ${endPos.y}`);
-      }
-      const width = Number(edge?.props?.width || 0);
-      path.setAttribute("class", `map-edge${Number.isFinite(width) && width > 0 ? " corridor" : ""}`);
-      if (Number.isFinite(width) && width > 0) {
-        path.dataset.corridorWidth = String(width);
-      }
-      edgesGroup.appendChild(path);
-    });
-
-    const worksitesGroup = document.createElementNS(svgNS, "g");
-    worksitesGroup.setAttribute("class", "map-worksites");
-    const ringsGroup = document.createElementNS(svgNS, "g");
-    ringsGroup.setAttribute("class", "map-worksite-rings");
-    const labelsGroup = document.createElementNS(svgNS, "g");
-    labelsGroup.setAttribute("class", "map-labels");
-    const linksGroup = document.createElementNS(svgNS, "g");
-    linksGroup.setAttribute("class", "map-links");
-    const obstaclesGroup = document.createElementNS(svgNS, "g");
-    obstaclesGroup.setAttribute("class", "map-obstacles");
-    const actionPointsGroup = document.createElementNS(svgNS, "g");
-    actionPointsGroup.setAttribute("class", "map-action-points");
-    obstacleLayer = obstaclesGroup;
-    const nodeMarkersGroup = document.createElementNS(svgNS, "g");
-    nodeMarkersGroup.setAttribute("class", "map-nodes");
-    const nodeLabelsGroup = document.createElementNS(svgNS, "g");
-    nodeLabelsGroup.setAttribute("class", "map-node-labels");
-    const nodesWithPos = (graphData.nodes || []).filter((node) => node && node.pos);
-    const actionPoints = nodesWithPos.filter((node) => node.className === "ActionPoint");
-    const actionPointIndex = new Map(actionPoints.map((node) => [node.id, node.pos]));
-
-    worksites.forEach((site) => {
-      const sitePos = site.displayPos || site.pos;
-      if (!sitePos) return;
-      const point = projectPoint(sitePos);
-      const actionPos = site.point ? actionPointIndex.get(site.point) : null;
-      if (actionPos) {
-        const actionPoint = projectPoint(actionPos);
-        const link = document.createElementNS(svgNS, "line");
-        link.setAttribute("x1", point.x);
-        link.setAttribute("y1", point.y);
-        link.setAttribute("x2", actionPoint.x);
-        link.setAttribute("y2", actionPoint.y);
-        link.setAttribute("class", "worksite-link");
-        linksGroup.appendChild(link);
-      }
-      const state = worksiteState[site.id] || { occupancy: "empty", blocked: false };
-      const occupancy = state.occupancy || "empty";
-      const circle = document.createElementNS(svgNS, "circle");
-      circle.setAttribute("cx", point.x);
-      circle.setAttribute("cy", point.y);
-      circle.setAttribute("r", "1");
-      circle.setAttribute(
-        "class",
-        `worksite-marker ${site.kind} ${occupancy}${state.blocked ? " blocked" : ""}`
-      );
-      circle.dataset.sizePx = site.kind === "drop" ? "18" : "15";
-      circle.dataset.id = site.id;
-      circle.addEventListener("click", (event) => {
-        event.stopPropagation();
-        showWorksiteMenu(event, site.id);
-      });
-      circle.addEventListener("contextmenu", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        showWorksiteMenu(event, site.id);
-      });
-      worksitesGroup.appendChild(circle);
-      worksiteElements.set(site.id, circle);
-
-      const ring = document.createElementNS(svgNS, "circle");
-      ring.setAttribute("cx", point.x);
-      ring.setAttribute("cy", point.y);
-      ring.setAttribute("r", "1");
-      ring.setAttribute("class", `worksite-ring${state.blocked ? " blocked" : ""}`);
-      ring.dataset.sizePx = site.kind === "drop" ? "27" : "24";
-      ringsGroup.appendChild(ring);
-      worksiteRings.set(site.id, ring);
-
-      const label = document.createElementNS(svgNS, "text");
-      label.textContent = site.id;
-      label.setAttribute(
-        "class",
-        `worksite-label ${occupancy}${state.blocked ? " blocked" : ""}`
-      );
-      label.dataset.baseX = point.x;
-      label.dataset.baseY = point.y;
-      label.setAttribute("x", point.x);
-      label.setAttribute("y", point.y);
-      label.setAttribute("text-anchor", "middle");
-      label.setAttribute("dominant-baseline", "hanging");
-      labelsGroup.appendChild(label);
-      worksiteLabels.set(site.id, label);
-    });
-
-    nodesWithPos.forEach((node) => {
-      const pos = projectPoint(node.pos);
-      const typeClass = String(node.className || "node")
-        .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
-        .toLowerCase();
-      if (node.className !== "ActionPoint") {
-        const marker = document.createElementNS(svgNS, "circle");
-        marker.setAttribute("cx", pos.x);
-        marker.setAttribute("cy", pos.y);
-        marker.setAttribute("r", "1");
-        marker.setAttribute("class", `map-node ${typeClass}`);
-        marker.dataset.sizePx = node.className === "LocationMark" ? "7.2" : "2.8";
-        nodeMarkersGroup.appendChild(marker);
-        nodeMarkers.set(node.id, marker);
-      }
-      const label = document.createElementNS(svgNS, "text");
-      label.textContent = node.id;
-      label.setAttribute("class", `node-label ${typeClass}`);
-      label.dataset.baseX = pos.x;
-      label.dataset.baseY = pos.y;
-      label.setAttribute("x", pos.x);
-      label.setAttribute("y", pos.y);
-      label.setAttribute("text-anchor", "middle");
-      label.setAttribute("dominant-baseline", "central");
-      nodeLabelsGroup.appendChild(label);
-      nodeLabels.set(node.id, label);
-    });
-
-    actionPoints.forEach((point) => {
-      const pos = projectPoint(point.pos);
-      const marker = document.createElementNS(svgNS, "circle");
-      marker.setAttribute("cx", pos.x);
-      marker.setAttribute("cy", pos.y);
-      marker.setAttribute("r", "1");
-      marker.setAttribute("class", "action-point");
-      marker.dataset.sizePx = "3";
-      marker.dataset.id = point.id;
-      marker.addEventListener("click", (event) => {
-        event.stopPropagation();
-        showManualMenu(event, point.id);
-      });
-      actionPointsGroup.appendChild(marker);
-      actionPointMarkers.set(point.id, marker);
-    });
-
-    const fragment = document.createDocumentFragment();
-    fragment.appendChild(edgesGroup);
-    fragment.appendChild(linksGroup);
-    fragment.appendChild(obstaclesGroup);
-    fragment.appendChild(nodeMarkersGroup);
-    fragment.appendChild(nodeLabelsGroup);
-    fragment.appendChild(actionPointsGroup);
-    fragment.appendChild(worksitesGroup);
-    fragment.appendChild(ringsGroup);
-    fragment.appendChild(labelsGroup);
-    mapSvg.appendChild(fragment);
-  };
-
   const renderMap = () => {
     if (!graphData || !workflowData) return;
     mapSvg.innerHTML = "";
@@ -4489,20 +4676,25 @@
     worksiteRings = new Map();
     robotMarkers = new Map();
     robotLayerGroup = null;
+    edgesLayerGroup = null;
+    worksiteLinksLayerGroup = null;
+    nodesLayerGroup = null;
+    actionPointsLayerGroup = null;
+    worksitesLayerGroup = null;
+    obstacleLayer = null;
     actionPointMarkers = new Map();
     nodeMarkers = new Map();
     nodeLabels = new Map();
 
-    const actionPoints = (graphData.nodes || []).filter(
-      (node) => node.className === "ActionPoint" && node.pos
-    );
-    const actionPointIndex = new Map(actionPoints.map((node) => [node.id, node.pos]));
-    const nodeYs = (graphData.nodes || [])
+    mapNodesWithPos = (graphData.nodes || []).filter((node) => node && node.pos);
+    mapActionPoints = mapNodesWithPos.filter((node) => node.className === "ActionPoint");
+    mapActionPointIndex = new Map(mapActionPoints.map((node) => [node.id, node.pos]));
+    const nodeYs = mapNodesWithPos
       .map((node) => node?.pos?.y)
       .filter((value) => Number.isFinite(value));
     const mapMidY = nodeYs.length ? (Math.min(...nodeYs) + Math.max(...nodeYs)) / 2 : 0;
     worksites.forEach((site) => {
-      site.displayPos = getWorksiteDisplayPos(site, actionPointIndex, mapMidY) || site.pos;
+      site.displayPos = getWorksiteDisplayPos(site, mapActionPointIndex, mapMidY) || site.pos;
     });
 
     const { minX, maxX, minY, maxY } = getBounds(graphData);
@@ -4528,10 +4720,16 @@
     if (mapLayers?.render) {
       mapLayers.render(mapStore?.getState?.() || {});
     } else {
-      renderMapBaseLayer();
-      renderRobotLayer();
-      mapLayerNeedsRebuild = false;
+      const state = mapStore?.getState?.() || {};
+      renderEdgesLayer({ state });
+      renderWorksiteLinksLayer({ state });
+      renderObstaclesLayer({ state });
+      renderNodesLayer({ state });
+      renderActionPointsLayer({ state });
+      renderWorksitesLayer({ state });
+      renderRobotLayer({ state });
     }
+    mapLayerNeedsRebuild = false;
     renderObstacles();
     renderMiniMap();
 
@@ -5075,6 +5273,8 @@
     initLogin();
     bindPanZoom();
     bindKeyboardShortcuts();
+    renderLayerPanel();
+    bindLayerPanel();
     if (navControlsPause && navControlsStop) {
       navControlsPause.addEventListener("click", () => {
         const robotId = navControlsPause.dataset.id;
