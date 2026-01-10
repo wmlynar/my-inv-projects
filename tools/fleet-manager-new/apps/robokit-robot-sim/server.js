@@ -1753,6 +1753,7 @@ function createRobot(startNodeId, poseOverride) {
     driverEmc: false,
     electric: false,
     softEmc: false,
+    softEmcPaused: false,
     brake: false,
     confidence: 0.93,
     battery: 82,
@@ -2134,6 +2135,10 @@ function maybeStartPendingFork(now) {
 
 function tickFork(dt) {
   if (!robot.fork) {
+    return;
+  }
+  if (robot.softEmc) {
+    robot.fork.speed = 0;
     return;
   }
   const target = clampForkHeight(robot.fork.targetHeight);
@@ -2864,7 +2869,7 @@ function tickSimulation() {
     robot.relocCompleteAt = null;
   }
 
-  if (robot.paused) {
+  if (robot.paused || robot.softEmc) {
     resetVelocity();
     return;
   }
@@ -3298,6 +3303,16 @@ function handleStopControl() {
 }
 
 function handleMotionControl(payload) {
+  if (robot.softEmc) {
+    robot.manual.active = false;
+    robot.manual.vx = 0;
+    robot.manual.vy = 0;
+    robot.manual.w = 0;
+    robot.manual.steer = 0;
+    robot.manual.realSteer = 0;
+    resetVelocity();
+    return buildBaseResponse({});
+  }
   const vx = payload && Number.isFinite(payload.vx) ? payload.vx : 0;
   const vy = payload && Number.isFinite(payload.vy) ? payload.vy : 0;
   const w = payload && Number.isFinite(payload.w) ? payload.w : 0;
@@ -3316,6 +3331,39 @@ function handleMotionControl(payload) {
     robot.scriptPath.done = false;
   }
   updateVelocity(vx, vy, w, steer, 0);
+  return buildBaseResponse({});
+}
+
+function handleSoftEmc(payload) {
+  const enabled = Boolean(payload && payload.status);
+  if (enabled) {
+    if (!robot.softEmc) {
+      robot.softEmcPaused = !robot.paused;
+    }
+    robot.softEmc = true;
+    robot.manual.active = false;
+    robot.manual.vx = 0;
+    robot.manual.vy = 0;
+    robot.manual.w = 0;
+    robot.manual.steer = 0;
+    robot.manual.realSteer = 0;
+    if (!robot.paused) {
+      robot.paused = true;
+      if (robot.currentTask && robot.taskStatus !== 4) {
+        robot.taskStatus = 3;
+      }
+    }
+    resetVelocity();
+    return buildBaseResponse({});
+  }
+  robot.softEmc = false;
+  if (robot.softEmcPaused) {
+    robot.paused = false;
+    if (robot.currentTask && robot.taskStatus === 3) {
+      robot.taskStatus = 2;
+    }
+  }
+  robot.softEmcPaused = false;
   return buildBaseResponse({});
 }
 
@@ -4243,8 +4291,7 @@ function handleRequest(apiNo, payload, allowedApis, context = {}) {
     case API.robot_other_setdobatch_req:
       return handleSetDoBatch(payload || []);
     case API.robot_other_softemc_req:
-      robot.softEmc = Boolean(payload && payload.status);
-      return buildBaseResponse({});
+      return handleSoftEmc(payload || {});
     case API.robot_other_audiopause_req:
       return buildBaseResponse({});
     case API.robot_other_audiocont_req:

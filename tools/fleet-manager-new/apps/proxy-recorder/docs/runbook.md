@@ -33,6 +33,10 @@ node apps/proxy-recorder/cli/cli.js start \
   --preset simulator-proxy \
   --robot-id counterbalast
 ```
+Notes:
+- The `simulator-proxy` profile runs the simulator on 29xxx/18xxx ports so it does not collide with RoboKit defaults.
+- In Roboshop, point the robot IP/host to `127.0.0.1` and keep the standard RoboKit ports (`19200/19204/19205/19206/19207/19208/19210/19301`).
+- If Roboshop runs on a different machine, set the proxy listeners to `0.0.0.0` and use the proxy host IP in Roboshop.
 
 ## Output layout
 ```
