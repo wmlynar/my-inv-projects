@@ -171,6 +171,7 @@ class RbkParser {
     this.buffer = Buffer.alloc(0);
     this.maxBodyLength = options.maxBodyLength || 1024 * 1024;
     this.strictStartMark = Boolean(options.strictStartMark);
+    this.reportErrors = Boolean(options.reportErrors);
   }
 
   push(chunk) {
@@ -185,7 +186,10 @@ class RbkParser {
         const nextSync = this.buffer.indexOf(START_MARK);
         if (nextSync === -1) {
           this.buffer = Buffer.alloc(0);
-          if (this.strictStartMark) {
+          if (this.reportErrors) {
+            messages.push({ error: 'BAD_START_MARK' });
+          }
+          if (this.strictStartMark && !this.reportErrors) {
             throw new Error('rbk bad start mark');
           }
           return messages;
@@ -204,6 +208,11 @@ class RbkParser {
       const jsonSizeHeader = (reserved[2] << 8) | reserved[3];
 
       if (bodyLength > this.maxBodyLength) {
+        if (this.reportErrors) {
+          messages.push({ error: 'FRAME_TOO_LARGE', bodyLength });
+          this.buffer = Buffer.alloc(0);
+          return messages;
+        }
         throw new Error(`rbk body too large: ${bodyLength}`);
       }
 

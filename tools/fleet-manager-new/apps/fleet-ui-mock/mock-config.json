@@ -1,0 +1,14 @@
+{
+  "data": {
+    "graph": "data/graph.json",
+    "workflow": "data/workflow.json5",
+    "packaging": "data/packaging.json",
+    "robots": "data/robots.json"
+  },
+  "sim": {
+    "speed": 0.6,
+    "pollMs": 200,
+    "simMode": "robokit",
+    "simModeMutable": false
+  }
+}

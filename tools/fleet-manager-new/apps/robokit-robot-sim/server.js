@@ -3508,8 +3508,14 @@ const allowedOtherApis = new Set([
   API.robot_other_forkheight_req,
   API.robot_other_forkstop_req
 ]);
-const allowedRobodApis = null;
-const allowedKernelApis = null;
+const allowedRobodApis = new Set([
+  ...allowedStateApis,
+  ...allowedCtrlApis,
+  ...allowedTaskApis,
+  ...allowedOtherApis,
+  ...allowedConfigApis
+]);
+const allowedKernelApis = allowedRobodApis;
 const allowedConfigApis = new Set([
   API.robot_config_req_4005,
   API.robot_config_req_4006,

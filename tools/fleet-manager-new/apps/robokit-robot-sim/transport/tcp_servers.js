@@ -23,7 +23,7 @@ function createTcpServer(options) {
   } = options;
 
   const server = net.createServer((socket) => {
-    const parser = new RbkParser({ maxBodyLength, strictStartMark });
+    const parser = new RbkParser({ maxBodyLength, strictStartMark, reportErrors: true });
     const context = {
       socket,
       remoteAddress: options.normalizeRemoteAddress
@@ -103,6 +103,10 @@ function createTcpServer(options) {
       }
 
       for (const msg of messages) {
+        if (msg.error) {
+          socket.destroy();
+          break;
+        }
         clientRegistry.touch(context);
         const responsePayload = msg.jsonError && onParseError
           ? onParseError(msg, context, allowedApis)
@@ -156,7 +160,7 @@ function createPushServer(options) {
   } = options;
 
   const server = net.createServer((socket) => {
-    const parser = new RbkParser({ maxBodyLength, strictStartMark });
+    const parser = new RbkParser({ maxBodyLength, strictStartMark, reportErrors: true });
     const context = {
       socket,
       remoteAddress: normalizeRemoteAddress
@@ -230,6 +234,10 @@ function createPushServer(options) {
       }
 
       for (const msg of messages) {
+        if (msg.error) {
+          socket.destroy();
+          break;
+        }
         clientRegistry.touch(context);
         if (msg.jsonError) {
           const frame = encodeFrame(msg.seq, responseApi(msg.apiNo), buildErrorResponse('json_parse_error'), {
