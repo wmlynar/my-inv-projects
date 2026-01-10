@@ -15,6 +15,7 @@ Zasady:
 - Scenariusze E2E SHOULD pokrywać: internalSim (czysto), robokit-robot-sim (protokół), real robot (docelowo).
 
 Related: `11_*`, `18_*`.
+Architektura i refactoring: `08b_robokit-robot-sim-architecture.md`.
 
 ## 3. Minimalny kontrakt zachowania (MVP)
 - Sim MUST implementować podstawowe API z protokołu RoboCore/Robokit wykorzystywane w MVP:
