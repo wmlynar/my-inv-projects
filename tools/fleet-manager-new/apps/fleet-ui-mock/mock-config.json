@@ -31,6 +31,24 @@
             }
           }
         ]
+      },
+      {
+        "id": "scene-warehouse",
+        "name": "Scena magazyn",
+        "kind": "mock",
+        "createdAt": "2025-01-02T00:00:00Z",
+        "activeMapId": "map-2",
+        "maps": [
+          {
+            "id": "map-2",
+            "name": "Mapa magazynu",
+            "fileName": "graph.json",
+            "meta": {
+              "mapType": "2D-Map",
+              "version": "1.0.0"
+            }
+          }
+        ]
       }
     ]
   }
