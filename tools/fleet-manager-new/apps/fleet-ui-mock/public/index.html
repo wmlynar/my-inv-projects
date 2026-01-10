@@ -118,50 +118,52 @@
                   </div>
                 </div>
               </div>
-              <div id="nav-controls" class="nav-controls hidden">
-                <div class="nav-controls-info">
-                  Nawigacja:
-                  <span id="nav-controls-name">--</span>
-                </div>
-                <div class="nav-controls-actions">
-                  <button id="nav-controls-pause" class="ghost-btn small">Pauzuj</button>
-                  <button id="nav-controls-stop" class="ghost-btn small danger">Zakoncz</button>
-                </div>
-              </div>
-              <div id="manual-drive" class="manual-drive hidden">
-                <div>
-                  <div class="manual-drive-title">Sterowanie reczne</div>
-                  <div class="manual-drive-meta">
-                    Robot: <span id="manual-drive-robot">--</span>
+              <div id="map-shell" class="map-shell">
+                <div id="nav-controls" class="nav-controls hidden">
+                  <div class="nav-controls-info">
+                    Nawigacja:
+                    <span id="nav-controls-name">--</span>
                   </div>
-                  <div class="manual-drive-hint">WASD / strzalki</div>
-                </div>
-                <button id="manual-drive-toggle" class="ghost-btn small">Wlacz sterowanie</button>
-              </div>
-              <div class="map-wrap">
-                <svg id="map-svg" aria-label="Mapa"></svg>
-                <div id="worksite-menu" class="worksite-menu hidden">
-                  <button data-group="occupancy" data-value="filled">Filled</button>
-                  <button data-group="occupancy" data-value="empty">Unfilled</button>
-                  <div class="worksite-menu-divider"></div>
-                  <button data-group="blocked" data-value="true">Blocked</button>
-                  <button data-group="blocked" data-value="false">Unblocked</button>
-                </div>
-                <div id="manual-menu" class="worksite-menu manual-menu hidden">
-                  <div class="manual-menu-title">
-                    Manual: <span id="manual-menu-robot">--</span>
+                  <div class="nav-controls-actions">
+                    <button id="nav-controls-pause" class="ghost-btn small">Pauzuj</button>
+                    <button id="nav-controls-stop" class="ghost-btn small danger">Zakoncz</button>
                   </div>
-                  <button data-action="goto">Jedz tutaj</button>
-                  <button data-action="load">Jedz + Load</button>
-                  <button data-action="unload">Jedz + Unload</button>
                 </div>
-                <div id="map-menu" class="worksite-menu hidden">
-                  <button data-action="go-point">Jedz tutaj (punkt)</button>
-                  <button data-action="add-obstacle" data-mode="block">Dodaj przeszkode (block)</button>
-                  <button data-action="add-obstacle" data-mode="avoid">Dodaj przeszkode (avoid)</button>
+                <div id="manual-drive" class="manual-drive hidden">
+                  <div>
+                    <div class="manual-drive-title">Sterowanie reczne</div>
+                    <div class="manual-drive-meta">
+                      Robot: <span id="manual-drive-robot">--</span>
+                    </div>
+                    <div class="manual-drive-hint">WASD / strzalki</div>
+                  </div>
+                  <button id="manual-drive-toggle" class="ghost-btn small">Wlacz sterowanie</button>
                 </div>
-                <div class="mini-map">
-                  <svg id="mini-map-svg" aria-label="Mini mapa"></svg>
+                <div class="map-wrap">
+                  <svg id="map-svg" aria-label="Mapa"></svg>
+                  <div id="worksite-menu" class="worksite-menu hidden">
+                    <button data-group="occupancy" data-value="filled">Filled</button>
+                    <button data-group="occupancy" data-value="empty">Unfilled</button>
+                    <div class="worksite-menu-divider"></div>
+                    <button data-group="blocked" data-value="true">Blocked</button>
+                    <button data-group="blocked" data-value="false">Unblocked</button>
+                  </div>
+                  <div id="manual-menu" class="worksite-menu manual-menu hidden">
+                    <div class="manual-menu-title">
+                      Manual: <span id="manual-menu-robot">--</span>
+                    </div>
+                    <button data-action="goto">Jedz tutaj</button>
+                    <button data-action="load">Jedz + Load</button>
+                    <button data-action="unload">Jedz + Unload</button>
+                  </div>
+                  <div id="map-menu" class="worksite-menu hidden">
+                    <button data-action="go-point">Jedz tutaj (punkt)</button>
+                    <button data-action="add-obstacle" data-mode="block">Dodaj przeszkode (block)</button>
+                    <button data-action="add-obstacle" data-mode="avoid">Dodaj przeszkode (avoid)</button>
+                  </div>
+                  <div class="mini-map">
+                    <svg id="mini-map-svg" aria-label="Mini mapa"></svg>
+                  </div>
                 </div>
               </div>
             </section>

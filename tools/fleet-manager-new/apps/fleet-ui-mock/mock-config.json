@@ -10,5 +10,28 @@
     "pollMs": 200,
     "simMode": "robokit",
     "simModeMutable": false
+  },
+  "scenes": {
+    "activeSceneId": "scene-default",
+    "scenes": [
+      {
+        "id": "scene-default",
+        "name": "Mock scena",
+        "kind": "mock",
+        "createdAt": "2025-01-01T00:00:00Z",
+        "activeMapId": "map-1",
+        "maps": [
+          {
+            "id": "map-1",
+            "name": "Mapa podstawowa",
+            "fileName": "graph.json",
+            "meta": {
+              "mapType": "2D-Map",
+              "version": "1.0.0"
+            }
+          }
+        ]
+      }
+    ]
   }
 }

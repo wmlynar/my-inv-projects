@@ -345,6 +345,11 @@ body {
   gap: 10px;
 }
 
+.map-shell {
+  display: flex;
+  flex-direction: column;
+}
+
 .legend-dot {
   display: inline-block;
   width: 10px;

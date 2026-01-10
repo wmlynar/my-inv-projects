@@ -30,5 +30,6 @@ Plik `mock-config.json` pozwala wskazac inne pliki danych i parametry symulacji.
 
 - `data.graph`, `data.workflow`, `data.packaging`, `data.robots`
 - `sim.speed`, `sim.pollMs`, `sim.simMode`
+- `scenes.activeSceneId`, `scenes.scenes[]`
 
 Mozesz tez wskazac inny plik przez `FLEET_UI_MOCK_CONFIG=/path/to/config.json`.
