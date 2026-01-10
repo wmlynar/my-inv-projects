@@ -1,0 +1,46 @@
+{
+  "strategy": "nearest",
+  "traffic": {
+    "yieldRecovery": false,
+    "forwardStopDistanceM": 0
+  },
+  "models": {
+    "forklift": { "head": 0.5, "tail": 2, "width": 1 }
+  },
+  "defaultModel": "forklift",
+  "robots": [
+    {
+      "id": "RB-11",
+      "name": "Robot 11",
+      "ref": "LM1",
+      "model": "forklift",
+      "battery": 91,
+      "dispatchable": true,
+      "online": true,
+      "controlled": true,
+      "manualMode": false
+    },
+    {
+      "id": "RB-12",
+      "name": "Robot 12",
+      "ref": "LM12",
+      "model": "forklift",
+      "battery": 67,
+      "dispatchable": true,
+      "online": true,
+      "controlled": true,
+      "manualMode": false
+    },
+    {
+      "id": "RB-13",
+      "name": "Robot 13",
+      "ref": "AP20",
+      "model": "forklift",
+      "battery": 58,
+      "dispatchable": true,
+      "online": true,
+      "controlled": true,
+      "manualMode": false
+    }
+  ]
+}

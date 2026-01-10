@@ -49,13 +49,16 @@ const scenesConfig = mockConfig && typeof mockConfig === 'object' ? mockConfig.s
 function resolveDataPath(value, fallback) {
   if (!value) return fallback;
   if (path.isAbsolute(value)) return value;
-  return path.join(ROOT_DIR, value);
+  if (value.includes('/') || value.includes('\\')) return path.join(ROOT_DIR, value);
+  return path.join(DATA_DIR, value);
 }
 
-const GRAPH_PATH = resolveDataPath(dataConfig.graph, path.join(DATA_DIR, 'graph.json'));
-const WORKFLOW_PATH = resolveDataPath(dataConfig.workflow, path.join(DATA_DIR, 'workflow.json5'));
-const PACKAGING_PATH = resolveDataPath(dataConfig.packaging, path.join(DATA_DIR, 'packaging.json'));
-const ROBOTS_PATH = resolveDataPath(dataConfig.robots, path.join(DATA_DIR, 'robots.json'));
+const DATA_PATH_DEFAULTS = {
+  graph: resolveDataPath(dataConfig.graph, path.join(DATA_DIR, 'graph.json')),
+  workflow: resolveDataPath(dataConfig.workflow, path.join(DATA_DIR, 'workflow.json5')),
+  packaging: resolveDataPath(dataConfig.packaging, path.join(DATA_DIR, 'packaging.json')),
+  robots: resolveDataPath(dataConfig.robots, path.join(DATA_DIR, 'robots.json'))
+};
 
 const streamIntervalMs = Number.isFinite(simConfig.pollMs) ? simConfig.pollMs : DEFAULT_STREAM_MS;
 const defaultSpeed = Number.isFinite(simConfig.speed) ? simConfig.speed : DEFAULT_SPEED_MPS;
@@ -63,39 +66,18 @@ const simModeValue = typeof simConfig.simMode === 'string' ? simConfig.simMode.t
 const simMode = ['local', 'robokit'].includes(simModeValue) ? simModeValue : 'robokit';
 const simModeMutable = Boolean(simConfig.simModeMutable);
 
-const graphData = loadJson(GRAPH_PATH, { nodes: [], edges: [] });
-const workflowData = loadJson(WORKFLOW_PATH, null);
-const robotsConfig = loadJson(ROBOTS_PATH, { robots: [] });
+let activeDataPaths = { ...DATA_PATH_DEFAULTS };
+let graphData = loadJson(activeDataPaths.graph, { nodes: [], edges: [] });
+let workflowData = loadJson(activeDataPaths.workflow, null);
+let packagingConfig = loadJson(activeDataPaths.packaging, null);
+let robotsConfig = loadJson(activeDataPaths.robots, { robots: [] });
 const scenesState = {
   activeSceneId: scenesConfig.activeSceneId || null,
   scenes: Array.isArray(scenesConfig.scenes) ? scenesConfig.scenes : []
 };
 
-const nodesById = new Map(
-  (graphData.nodes || [])
-    .filter((node) => node && node.id && node.pos)
-    .map((node) => [node.id, node.pos])
-);
-
-const edges = (graphData.edges || [])
-  .map((edge, index) => {
-    if (!edge) return null;
-    const startPos = edge.startPos || nodesById.get(edge.start);
-    const endPos = edge.endPos || nodesById.get(edge.end);
-    if (!startPos || !endPos) return null;
-    const dx = endPos.x - startPos.x;
-    const dy = endPos.y - startPos.y;
-    const length = Math.hypot(dx, dy);
-    return {
-      id: edge.id || `edge-${index}`,
-      start: edge.start || null,
-      end: edge.end || null,
-      startPos,
-      endPos,
-      length: Math.max(length, 0.001)
-    };
-  })
-  .filter(Boolean);
+let nodesById = new Map();
+let edges = [];
 
 function resolveStartNodeId(robot) {
   const candidate = robot.ref || robot.point || robot.start;
@@ -172,11 +154,103 @@ function buildWorksites(data) {
   }));
 }
 
+const rebuildGraphCaches = (graph) => {
+  nodesById = new Map(
+    (graph?.nodes || [])
+      .filter((node) => node && node.id && node.pos)
+      .map((node) => [node.id, node.pos])
+  );
+
+  edges = (graph?.edges || [])
+    .map((edge, index) => {
+      if (!edge) return null;
+      const startPos = edge.startPos || nodesById.get(edge.start);
+      const endPos = edge.endPos || nodesById.get(edge.end);
+      if (!startPos || !endPos) return null;
+      const dx = endPos.x - startPos.x;
+      const dy = endPos.y - startPos.y;
+      const length = Math.hypot(dx, dy);
+      return {
+        id: edge.id || `edge-${index}`,
+        start: edge.start || null,
+        end: edge.end || null,
+        startPos,
+        endPos,
+        length: Math.max(length, 0.001)
+      };
+    })
+    .filter(Boolean);
+};
+
+const resolveSceneMap = (scene, mapId) => {
+  if (!scene) return null;
+  const maps = Array.isArray(scene.maps) ? scene.maps : [];
+  if (!maps.length) return null;
+  if (mapId) {
+    const direct = maps.find((map) => map.id === mapId);
+    if (direct) return direct;
+  }
+  if (scene.activeMapId) {
+    const active = maps.find((map) => map.id === scene.activeMapId);
+    if (active) return active;
+  }
+  return maps[0];
+};
+
+const resolveSceneDataPaths = (scene, map) => {
+  const sceneData = scene?.data || {};
+  const mapData = map?.data || {};
+  const graphFile = mapData.graph || map?.graph || map?.fileName || sceneData.graph || dataConfig.graph;
+  const workflowFile = mapData.workflow || map?.workflow || sceneData.workflow || dataConfig.workflow;
+  const robotsFile = mapData.robots || map?.robots || sceneData.robots || dataConfig.robots;
+  const packagingFile = mapData.packaging || map?.packaging || sceneData.packaging || dataConfig.packaging;
+  return {
+    graph: resolveDataPath(graphFile, DATA_PATH_DEFAULTS.graph),
+    workflow: resolveDataPath(workflowFile, DATA_PATH_DEFAULTS.workflow),
+    robots: resolveDataPath(robotsFile, DATA_PATH_DEFAULTS.robots),
+    packaging: resolveDataPath(packagingFile, DATA_PATH_DEFAULTS.packaging)
+  };
+};
+
 const simState = {
   lastTick: Date.now(),
-  robots: buildSimRobots(robotsConfig),
-  worksites: buildWorksites(workflowData)
+  robots: [],
+  worksites: []
 };
+
+const applyActiveDataPaths = (paths) => {
+  activeDataPaths = { ...activeDataPaths, ...paths };
+  graphData = loadJson(activeDataPaths.graph, { nodes: [], edges: [] });
+  workflowData = loadJson(activeDataPaths.workflow, null);
+  packagingConfig = loadJson(activeDataPaths.packaging, null);
+  robotsConfig = loadJson(activeDataPaths.robots, { robots: [] });
+  rebuildGraphCaches(graphData);
+  simState.lastTick = Date.now();
+  simState.robots = buildSimRobots(robotsConfig);
+  simState.worksites = buildWorksites(workflowData);
+};
+
+const applySceneSelection = (sceneId, mapId) => {
+  let scene = scenesState.scenes.find((item) => item.id === sceneId) || null;
+  if (!scene && scenesState.scenes.length) {
+    scene = scenesState.scenes[0];
+  }
+  if (scene) {
+    scenesState.activeSceneId = scene.id;
+    const map = resolveSceneMap(scene, mapId);
+    if (map?.id) {
+      scene.activeMapId = map.id;
+    }
+    const paths = resolveSceneDataPaths(scene, map);
+    applyActiveDataPaths(paths);
+    return { activeSceneId: scene.id, activeMapId: scene.activeMapId || null };
+  }
+  scenesState.activeSceneId = null;
+  applyActiveDataPaths(DATA_PATH_DEFAULTS);
+  return { activeSceneId: null, activeMapId: null };
+};
+
+applySceneSelection(scenesState.activeSceneId, null);
 
 function clampDeltaSec(delta) {
   if (!Number.isFinite(delta) || delta < 0) return 0;
@@ -582,12 +656,18 @@ async function handleWorksiteUpdate(req, res, siteId) {
   sendOk(res);
 }
 
-const DATA_ROUTE_MAP = new Map([
-  ['/data/graph.json', GRAPH_PATH],
-  ['/data/workflow.json5', WORKFLOW_PATH],
-  ['/data/packaging.json', PACKAGING_PATH],
-  ['/data/robots.json', ROBOTS_PATH]
+const DATA_ROUTE_KEYS = new Map([
+  ['/data/graph.json', 'graph'],
+  ['/data/workflow.json5', 'workflow'],
+  ['/data/packaging.json', 'packaging'],
+  ['/data/robots.json', 'robots']
 ]);
+
+const resolveActiveDataPath = (pathname) => {
+  const key = DATA_ROUTE_KEYS.get(pathname);
+  if (!key) return null;
+  return activeDataPaths[key] || DATA_PATH_DEFAULTS[key] || null;
+};
 
 async function handleApi(req, res, pathname) {
   if (pathname === '/api/scenes' && req.method === 'GET') {
@@ -599,14 +679,8 @@ async function handleApi(req, res, pathname) {
     const payload = await readJsonBody(req);
     const sceneId = payload?.sceneId || null;
     const mapId = payload?.mapId || null;
-    if (sceneId) {
-      scenesState.activeSceneId = sceneId;
-      const scene = scenesState.scenes.find((item) => item.id === sceneId);
-      if (scene && mapId) {
-        scene.activeMapId = mapId;
-      }
-    }
-    sendJson(res, 200, { activeSceneId: scenesState.activeSceneId, activeMapId: mapId || null });
+    const result = applySceneSelection(sceneId, mapId);
+    sendJson(res, 200, result);
     return;
   }
 
@@ -666,8 +740,9 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (DATA_ROUTE_MAP.has(pathname)) {
-    sendFile(res, DATA_ROUTE_MAP.get(pathname));
+  const dataPath = resolveActiveDataPath(pathname);
+  if (dataPath) {
+    sendFile(res, dataPath);
     return;
   }
 
