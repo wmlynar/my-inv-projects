@@ -222,6 +222,14 @@ const config = {
   STATUS_HIDE_LAST_STATION: parseEnvBool('STATUS_HIDE_LAST_STATION', false),
   STATUS_HIDE_POSE: parseEnvBool('STATUS_HIDE_POSE', false),
   STATUS_LAST_STATION_IS_CURRENT: parseEnvBool('STATUS_LAST_STATION_IS_CURRENT', false),
+  SIM_TIME_MODE: parseEnvString('SIM_TIME_MODE', 'real'),
+  SIM_TIME_START_MS: parseEnvNumber('SIM_TIME_START_MS', Number.NaN, Number.parseInt),
+  SIM_TIME_STEP_MS: parseEnvNumber('SIM_TIME_STEP_MS', Number.NaN, Number.parseInt),
+  EVENT_LOG_PATH: parseEnvString('EVENT_LOG_PATH', ''),
+  EVENT_LOG_STDOUT: parseEnvBool('EVENT_LOG_STDOUT', false),
+  ADMIN_HTTP_PORT: parseEnvNumber('ADMIN_HTTP_PORT', 0, Number.parseInt),
+  ADMIN_HTTP_HOST: parseEnvString('ADMIN_HTTP_HOST', '127.0.0.1'),
+  PRINT_EFFECTIVE_CONFIG: parseEnvBool('PRINT_EFFECTIVE_CONFIG', false),
   CLIENT_ID_STRATEGY: parseEnvString('CLIENT_ID_STRATEGY', 'ip'),
   CLIENT_TTL_MS: parseEnvNumber('CLIENT_TTL_MS', 10000, Number.parseInt),
   CLIENT_IDLE_MS: parseEnvNumber('CLIENT_IDLE_MS', 60000, Number.parseInt),
@@ -237,6 +245,8 @@ const config = {
   MAX_CLIENT_SESSIONS: parseEnvNumber('MAX_CLIENT_SESSIONS', 0, Number.parseInt),
   PUSH_MAX_INTERVAL_MS: parseEnvNumber('PUSH_MAX_INTERVAL_MS', 10000, Number.parseInt),
   PUSH_MAX_QUEUE_BYTES: parseEnvNumber('PUSH_MAX_QUEUE_BYTES', 1048576, Number.parseInt),
+  MAX_PUSH_CONNECTIONS: parseEnvNumber('MAX_PUSH_CONNECTIONS', 0, Number.parseInt),
+  MAX_TASK_NODES: parseEnvNumber('MAX_TASK_NODES', 0, Number.parseInt),
   USE_CORE_SIM: false
 };
 

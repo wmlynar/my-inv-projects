@@ -4,6 +4,7 @@ class ControlArbiter {
     this.defaultLockType = Number.isFinite(options.defaultLockType) ? options.defaultLockType : 2;
     this.strictUnlock = Boolean(options.strictUnlock);
     this.lockTtlMs = Number.isFinite(options.lockTtlMs) ? options.lockTtlMs : 0;
+    this.now = typeof options.now === 'function' ? options.now : () => Date.now();
     this.onPreempt = typeof options.onPreempt === 'function' ? options.onPreempt : null;
     this.onEvent = typeof options.onEvent === 'function' ? options.onEvent : null;
     this.ownerId = null;
@@ -30,7 +31,7 @@ class ControlArbiter {
       return;
     }
     if (this.ownerId === clientId) {
-      this.expiresAt = Date.now() + this.lockTtlMs;
+      this.expiresAt = this.now() + this.lockTtlMs;
     }
   }
 
@@ -41,7 +42,7 @@ class ControlArbiter {
     const prevOwner = this.ownerId;
     const preempted = prevOwner && prevOwner !== clientId;
     this.ownerId = clientId;
-    this.expiresAt = this.lockTtlMs ? Date.now() + this.lockTtlMs : null;
+    this.expiresAt = this.lockTtlMs ? this.now() + this.lockTtlMs : null;
     this.applyLockMeta(meta);
     if (preempted && this.onPreempt) {
       this.onPreempt(prevOwner, clientId, meta);
@@ -93,7 +94,7 @@ class ControlArbiter {
     if (!this.lockTtlMs || !this.expiresAt) {
       return false;
     }
-    if (Date.now() <= this.expiresAt) {
+    if (this.now() <= this.expiresAt) {
       return false;
     }
     this.releaseIfExpired();
@@ -109,7 +110,7 @@ class ControlArbiter {
     info.nick_name = meta.nick_name || meta.nickName || info.nick_name || '';
     info.ip = meta.ip || info.ip || '';
     info.port = Number.isFinite(meta.port) ? meta.port : info.port || 0;
-    info.time_t = Number.isFinite(meta.time_t) ? meta.time_t : Math.floor(Date.now() / 1000);
+    info.time_t = Number.isFinite(meta.time_t) ? meta.time_t : Math.floor(this.now() / 1000);
     info.type = Number.isFinite(meta.type) ? meta.type : this.defaultLockType;
     info.desc = meta.desc || '';
     this.robot.lockInfo = info;

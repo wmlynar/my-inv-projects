@@ -90,12 +90,17 @@ class ClientRegistry {
 
   sweep(now = Date.now()) {
     for (const session of this.sessions.values()) {
-      if (session.connections.size > 0) {
-        continue;
-      }
       const ttlExpired = session.expiresAt && now >= session.expiresAt;
       const idleExpired = this.idleMs && now - session.lastSeenAt >= this.idleMs;
-      if (ttlExpired || idleExpired) {
+      if (session.connections.size > 0 && idleExpired) {
+        for (const conn of session.connections) {
+          if (conn && conn.socket && !conn.socket.destroyed) {
+            conn.socket.destroy();
+          }
+        }
+        session.connections.clear();
+      }
+      if ((session.connections.size === 0 && ttlExpired) || idleExpired) {
         this.sessions.delete(session.id);
       }
     }
