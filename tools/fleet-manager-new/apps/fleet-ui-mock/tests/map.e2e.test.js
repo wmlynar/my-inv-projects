@@ -179,8 +179,8 @@ const main = async () => {
           const viewBox = document.querySelector('#map-svg')?.getAttribute('viewBox');
           return viewBox && viewBox !== initial;
         },
-        { timeout: ACTION_TIMEOUT_MS },
-        initialViewBox.join(' ')
+        initialViewBox.join(' '),
+        { timeout: ACTION_TIMEOUT_MS }
       );
       const zoomedViewBox = parseViewBox(await page.getAttribute('#map-svg', 'viewBox'));
       assert(viewBoxChanged(initialViewBox, zoomedViewBox), 'viewBox should change after zoom');
@@ -226,9 +226,90 @@ const main = async () => {
       });
     });
 
+    await runTest('keyboard shortcuts zoom and reset', async () => {
+      await page.click('#reset-view-btn');
+      await page.click('.map-wrap', { position: { x: 20, y: 20 } });
+      const initialViewBox = parseViewBox(await page.getAttribute('#map-svg', 'viewBox'));
+      assert(initialViewBox, 'initial viewBox missing');
+      await page.keyboard.press('=');
+      const zoomInViewBox = parseViewBox(await page.getAttribute('#map-svg', 'viewBox'));
+      assert(zoomInViewBox && zoomInViewBox[2] < initialViewBox[2], 'zoom in should reduce width');
+      await page.keyboard.press('-');
+      const zoomOutViewBox = parseViewBox(await page.getAttribute('#map-svg', 'viewBox'));
+      assert(
+        zoomOutViewBox && zoomOutViewBox[2] > zoomInViewBox[2],
+        'zoom out should increase width'
+      );
+      await page.keyboard.press('0');
+      await page.waitForTimeout(200);
+      const resetViewBox = parseViewBox(await page.getAttribute('#map-svg', 'viewBox'));
+      assert(!viewBoxChanged(initialViewBox, resetViewBox, 0.01), 'reset should restore viewBox');
+    });
+
+    await runTest('map menu adds and removes obstacle', async () => {
+      await page.keyboard.press('Escape');
+      await waitForLayerHidden(page, '#map-svg .map-obstacles', false);
+      const beforeCount = await page.locator('#map-svg .obstacle-marker').count();
+      const mapBox = await page.locator('.map-wrap').boundingBox();
+      assert(mapBox, 'map wrap bounding box missing');
+      const clickX = mapBox.x + Math.min(40, mapBox.width * 0.2);
+      const clickY = mapBox.y + Math.min(40, mapBox.height * 0.2);
+      await page.evaluate(({ clickX, clickY }) => {
+        const target = document.querySelector('.map-wrap');
+        if (!target) return;
+        const event = new MouseEvent('contextmenu', {
+          bubbles: true,
+          cancelable: true,
+          clientX: clickX,
+          clientY: clickY,
+          button: 2
+        });
+        target.dispatchEvent(event);
+      }, { clickX, clickY });
+      await page.waitForFunction(() => {
+        const menu = document.getElementById('map-menu');
+        return menu && !menu.classList.contains('hidden');
+      });
+      await page.waitForFunction(() => {
+        const menu = document.getElementById('map-menu');
+        if (!menu || menu.classList.contains('hidden')) return false;
+        const x = Number.parseFloat(menu.dataset.x);
+        const y = Number.parseFloat(menu.dataset.y);
+        return Number.isFinite(x) && Number.isFinite(y);
+      }, { timeout: ACTION_TIMEOUT_MS });
+      await page.click('#map-menu [data-action="add-obstacle"][data-mode="block"]');
+      await page.waitForFunction(
+        (count) => document.querySelectorAll('#map-svg .obstacle-marker').length > count,
+        beforeCount,
+        { timeout: ACTION_TIMEOUT_MS }
+      );
+      const afterAdd = await page.locator('#map-svg .obstacle-marker').count();
+      assert(afterAdd > beforeCount, 'obstacle marker should be added');
+      await page.locator('#map-svg .obstacle-marker').first().click({ force: true });
+      await page.waitForFunction(
+        (expected) => document.querySelectorAll('#map-svg .obstacle-marker').length === expected,
+        afterAdd - 1,
+        { timeout: ACTION_TIMEOUT_MS }
+      );
+    });
+
     await runTest('mini map viewport is present', async () => {
       const miniCount = await page.locator('#mini-map-svg .mini-map-viewport').count();
       assert(miniCount === 1, 'mini map viewport not rendered');
+    });
+
+    await runTest('mini map drag updates viewBox', async () => {
+      await page.click('#reset-view-btn');
+      const initialViewBox = parseViewBox(await page.getAttribute('#map-svg', 'viewBox'));
+      assert(initialViewBox, 'initial viewBox missing');
+      const miniBox = await page.locator('#mini-map-svg').boundingBox();
+      assert(miniBox, 'mini map bounding box missing');
+      await page.mouse.move(miniBox.x + miniBox.width * 0.2, miniBox.y + miniBox.height * 0.2);
+      await page.mouse.down();
+      await page.mouse.move(miniBox.x + miniBox.width * 0.8, miniBox.y + miniBox.height * 0.8);
+      await page.mouse.up();
+      const movedViewBox = parseViewBox(await page.getAttribute('#map-svg', 'viewBox'));
+      assert(viewBoxChanged(initialViewBox, movedViewBox), 'mini map drag should update viewBox');
     });
   } finally {
     await browser.close();
