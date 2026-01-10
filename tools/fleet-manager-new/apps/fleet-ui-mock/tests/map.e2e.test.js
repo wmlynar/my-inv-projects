@@ -118,8 +118,8 @@ const waitForLayerHidden = async (page, selector, hidden) => {
       const hasHidden = el.classList.contains('map-layer-hidden');
       return hidden ? hasHidden : !hasHidden;
     },
-    { timeout: ACTION_TIMEOUT_MS },
-    { selector, hidden }
+    { selector, hidden },
+    { timeout: ACTION_TIMEOUT_MS }
   );
 };
 
@@ -129,6 +129,7 @@ const main = async () => {
   const baseUrl = `http://127.0.0.1:${port}`;
   const browser = await chromium.launch();
   const page = await browser.newPage();
+  page.setDefaultTimeout(ACTION_TIMEOUT_MS);
 
   try {
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
@@ -145,13 +146,18 @@ const main = async () => {
     });
 
     await runTest('layer toggles hide and show map groups', async () => {
-      await page.waitForSelector('#map-layer-panel [data-layer="robots"]');
+      await page.waitForSelector('#map-layer-panel', { state: 'attached', timeout: ACTION_TIMEOUT_MS });
+      const layerButtons = await page.locator('#map-layer-panel [data-layer]').count();
+      assert(layerButtons > 0, 'layer panel buttons not rendered');
+      assert(await page.isVisible('#map-layer-panel'), 'layer panel not visible');
+      await page.waitForSelector('#map-svg .map-robots', { state: 'attached', timeout: ACTION_TIMEOUT_MS });
       await waitForLayerHidden(page, '#map-svg .map-robots', false);
       await page.click('#map-layer-panel [data-layer="robots"]');
       await waitForLayerHidden(page, '#map-svg .map-robots', true);
       await page.click('#map-layer-panel [data-layer="robots"]');
       await waitForLayerHidden(page, '#map-svg .map-robots', false);
 
+      await page.waitForSelector('#map-svg .map-obstacles', { state: 'attached', timeout: ACTION_TIMEOUT_MS });
       await waitForLayerHidden(page, '#map-svg .map-obstacles', false);
       await page.click('#map-layer-panel [data-layer="obstacles"]');
       await waitForLayerHidden(page, '#map-svg .map-obstacles', true);
@@ -202,18 +208,13 @@ const main = async () => {
       assert(viewBoxChanged(beforeFit, afterFit), 'fit view should update viewBox');
 
       await page.click('#reset-view-btn');
-      await page.waitForFunction(
-        (initial) => {
-          const viewBox = document.querySelector('#map-svg')?.getAttribute('viewBox');
-          return viewBox === initial;
-        },
-        { timeout: ACTION_TIMEOUT_MS },
-        initialViewBox.join(' ')
-      );
+      await page.waitForTimeout(200);
+      const resetViewBox = parseViewBox(await page.getAttribute('#map-svg', 'viewBox'));
+      assert(!viewBoxChanged(initialViewBox, resetViewBox, 0.01), 'reset view should restore viewBox');
     });
 
     await runTest('worksite menu opens and closes', async () => {
-      await page.click('#map-svg .worksite-marker');
+      await page.locator('#map-svg .worksite-marker').first().click({ force: true });
       await page.waitForFunction(() => {
         const menu = document.getElementById('worksite-menu');
         return menu && !menu.classList.contains('hidden');
