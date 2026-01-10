@@ -2,13 +2,16 @@
 
 'use strict';
 
+const fs = require('fs');
 const net = require('net');
+const path = require('path');
 const readline = require('readline');
 const { API, PORTS, encodeFrame, responseApi, RbkParser } = require('../../packages/robokit-lib/rbk');
 
 const DEFAULTS = {
   host: '127.0.0.1',
   statePort: PORTS.STATE,
+  taskPort: PORTS.TASK,
   ctrlPort: PORTS.CTRL,
   otherPort: PORTS.OTHER,
   configPort: PORTS.CONFIG,
@@ -18,6 +21,8 @@ const DEFAULTS = {
   pollMs: 200,
   sendMs: 100,
   holdMs: 300,
+  comboHoldMs: 700,
+  keyLogPath: '',
   forkStep: 0.1
 };
 
@@ -43,6 +48,10 @@ function parseArgs(argv) {
         break;
       case '--state-port':
         args.statePort = Number.parseInt(next, 10);
+        i += 1;
+        break;
+      case '--task-port':
+        args.taskPort = Number.parseInt(next, 10);
         i += 1;
         break;
       case '--ctrl-port':
@@ -77,6 +86,22 @@ function parseArgs(argv) {
         args.sendMs = Number.parseInt(next, 10);
         i += 1;
         break;
+      case '--hold-ms':
+        args.holdMs = Number.parseInt(next, 10);
+        i += 1;
+        break;
+      case '--combo-hold-ms':
+        args.comboHoldMs = Number.parseInt(next, 10);
+        i += 1;
+        break;
+      case '--key-log':
+        if (next && !next.startsWith('-')) {
+          args.keyLogPath = next;
+          i += 1;
+        } else {
+          args.keyLogPath = path.resolve(process.cwd(), 'key-events.jsonl');
+        }
+        break;
       default:
         break;
     }
@@ -87,13 +112,15 @@ function parseArgs(argv) {
 function printHelp() {
   const text = [
     'Usage:',
-    '  node index.js [--host 127.0.0.1] [--state-port 19204] [--ctrl-port 19205] [--other-port 19210] [--config-port 19207]',
+    '  node index.js [--host 127.0.0.1] [--state-port 19204] [--task-port 19206] [--ctrl-port 19205] [--other-port 19210] [--config-port 19207]',
     '  --nick-name console-controller --speed 0.6 --omega-deg 15 --poll-ms 200 --send-ms 100',
+    '  --hold-ms 300 --combo-hold-ms 700 --key-log ./key-events.jsonl',
     '',
     'Keys:',
     '  Enter: soft EMC on',
     '  Backspace: soft EMC off',
     '  Arrow Up/Down/Left/Right: move/rotate',
+    '  S: go target (prompt)',
     '  Space: stop robot and forks',
     '  +/-: adjust target speed',
     '  Q/W: adjust target angular speed',
@@ -153,6 +180,9 @@ options.omegaDeg = clampNonNegative(options.omegaDeg);
 options.pollMs = Number.isFinite(options.pollMs) ? options.pollMs : DEFAULTS.pollMs;
 options.sendMs = Number.isFinite(options.sendMs) ? options.sendMs : DEFAULTS.sendMs;
 options.holdMs = Number.isFinite(options.holdMs) ? options.holdMs : DEFAULTS.holdMs;
+options.comboHoldMs = Number.isFinite(options.comboHoldMs) ? options.comboHoldMs : DEFAULTS.comboHoldMs;
+options.keyLogPath = options.keyLogPath || '';
+options.taskPort = Number.isFinite(options.taskPort) ? options.taskPort : DEFAULTS.taskPort;
 
 const state = {
   statusUpdatedAt: 0,
@@ -170,10 +200,14 @@ const state = {
 };
 
 const command = {
-  linear: 0,
-  angular: 0,
-  linearUntil: 0,
-  angularUntil: 0
+  linearDir: 0,
+  angularDir: 0,
+  linearAt: 0,
+  angularAt: 0,
+  lastArrowAt: 0,
+  comboActive: false,
+  linearCmd: 0,
+  angularCmd: 0
 };
 
 let targetSpeed = options.speed;
@@ -183,6 +217,45 @@ let closing = false;
 let renderTimer = null;
 let pollTimer = null;
 let sendTimer = null;
+let keyLog = null;
+let inputMode = false;
+let inputBuffer = '';
+let inputMessage = '';
+let lastGoTarget = null;
+
+function openKeyLog() {
+  if (!options.keyLogPath) {
+    return;
+  }
+  try {
+    keyLog = fs.createWriteStream(options.keyLogPath, { flags: 'a' });
+    keyLog.write(`${JSON.stringify({ tsMs: Date.now(), event: 'start', pid: process.pid })}\n`);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error(`key-log error: ${err.message}`);
+    keyLog = null;
+  }
+}
+
+function logKeyEvent(str, key) {
+  if (!keyLog) {
+    return;
+  }
+  const entry = {
+    tsMs: Date.now(),
+    str: typeof str === 'string' ? str : '',
+    key: key
+      ? {
+        name: key.name || '',
+        sequence: key.sequence || '',
+        ctrl: Boolean(key.ctrl),
+        meta: Boolean(key.meta),
+        shift: Boolean(key.shift)
+      }
+      : null
+  };
+  keyLog.write(`${JSON.stringify(entry)}\n`);
+}
 
 function createClient(name, port) {
   const client = {
@@ -258,6 +331,7 @@ function createClient(name, port) {
 
 const clients = {
   state: createClient('state', options.statePort),
+  task: createClient('task', options.taskPort),
   ctrl: createClient('ctrl', options.ctrlPort),
   other: createClient('other', options.otherPort),
   config: createClient('config', options.configPort)
@@ -295,6 +369,18 @@ function handleFrame(client, msg) {
     if (msg.apiNo === responseApi(API.robot_status_all1_req)) {
       updateStatus(msg.payload || {});
     }
+    return;
+  }
+  if (client.name === 'task') {
+    if (msg.apiNo === responseApi(API.robot_task_gotarget_req)) {
+      const payload = msg.payload || {};
+      lastGoTarget = {
+        id: lastGoTarget && lastGoTarget.id ? lastGoTarget.id : '',
+        tsMs: Date.now(),
+        retCode: Number.isFinite(payload.ret_code) ? payload.ret_code : 0,
+        message: payload.err_msg || payload.message || ''
+      };
+    }
   }
 }
 
@@ -311,19 +397,23 @@ function sendMotion(vx, w) {
 function sendSoftEmc(status) {
   clients.other.send(API.robot_other_softemc_req, { status: Boolean(status) });
   if (status) {
-    command.linear = 0;
-    command.angular = 0;
-    command.linearUntil = 0;
-    command.angularUntil = 0;
+    command.linearDir = 0;
+    command.angularDir = 0;
+    command.linearAt = 0;
+    command.angularAt = 0;
+    command.linearCmd = 0;
+    command.angularCmd = 0;
     sendMotion(0, 0);
   }
 }
 
 function sendStop() {
-  command.linear = 0;
-  command.angular = 0;
-  command.linearUntil = 0;
-  command.angularUntil = 0;
+  command.linearDir = 0;
+  command.angularDir = 0;
+  command.linearAt = 0;
+  command.angularAt = 0;
+  command.linearCmd = 0;
+  command.angularCmd = 0;
   clients.ctrl.send(API.robot_control_stop_req, null);
   clients.other.send(API.robot_other_forkstop_req, null);
   sendMotion(0, 0);
@@ -331,6 +421,20 @@ function sendStop() {
 
 function sendForkHeight(height) {
   clients.other.send(API.robot_other_forkheight_req, { height });
+}
+
+function sendGoTarget(id) {
+  if (!id) {
+    inputMessage = 'Empty target id.';
+    return;
+  }
+  const ok = clients.task.send(API.robot_task_gotarget_req, { id });
+  lastGoTarget = {
+    id,
+    tsMs: Date.now(),
+    retCode: ok ? null : 1,
+    message: ok ? 'sent' : 'task port not connected'
+  };
 }
 
 function seizeControl() {
@@ -343,25 +447,28 @@ function releaseControl() {
 
 function applyLinear(direction) {
   const now = Date.now();
-  command.linear = direction * targetSpeed;
-  command.linearUntil = now + options.holdMs;
+  command.linearDir = direction;
+  command.linearAt = now;
+  command.lastArrowAt = now;
+  if (command.angularDir && now - command.angularAt <= options.comboHoldMs) {
+    command.comboActive = true;
+  }
 }
 
 function applyAngular(direction) {
   const now = Date.now();
   const omegaRad = targetOmegaDeg * RAD_PER_DEG;
-  command.angular = direction * omegaRad;
-  command.angularUntil = now + options.holdMs;
+  command.angularDir = direction;
+  command.angularAt = now;
+  command.lastArrowAt = now;
+  if (command.linearDir && now - command.linearAt <= options.comboHoldMs) {
+    command.comboActive = true;
+  }
 }
 
 function refreshCommandSpeeds() {
-  if (command.linear !== 0) {
-    command.linear = Math.sign(command.linear) * targetSpeed;
-  }
-  if (command.angular !== 0) {
-    const omegaRad = targetOmegaDeg * RAD_PER_DEG;
-    command.angular = Math.sign(command.angular) * omegaRad;
-  }
+  command.linearCmd = command.linearDir * targetSpeed;
+  command.angularCmd = command.angularDir * targetOmegaDeg * RAD_PER_DEG;
 }
 
 function adjustSpeed(delta) {
@@ -383,12 +490,71 @@ function adjustFork(delta) {
   sendForkHeight(next);
 }
 
+function enterTargetPrompt() {
+  inputMode = true;
+  inputBuffer = '';
+  inputMessage = '';
+  command.linearDir = 0;
+  command.angularDir = 0;
+  command.linearAt = 0;
+  command.angularAt = 0;
+  command.linearCmd = 0;
+  command.angularCmd = 0;
+  sendMotion(0, 0);
+}
+
+function exitTargetPrompt() {
+  inputMode = false;
+  inputBuffer = '';
+}
+
+function computeAxisDirection(dir, lastAt, otherDir, otherAt, now) {
+  if (!dir) {
+    return 0;
+  }
+  if (now - lastAt <= options.holdMs) {
+    return dir;
+  }
+  if (otherDir && now - otherAt <= options.holdMs && now - lastAt <= options.comboHoldMs) {
+    return dir;
+  }
+  return 0;
+}
+
 function installKeyHandler() {
   readline.emitKeypressEvents(process.stdin);
   if (process.stdin.isTTY) {
     process.stdin.setRawMode(true);
   }
   process.stdin.on('keypress', (str, key) => {
+    logKeyEvent(str, key);
+    if (inputMode) {
+      if (key && key.ctrl && key.name === 'c') {
+        shutdown();
+        return;
+      }
+      if (key && (key.name === 'escape' || key.name === 'esc')) {
+        exitTargetPrompt();
+        return;
+      }
+      if (key && (key.name === 'return' || key.name === 'enter')) {
+        const target = inputBuffer.trim();
+        exitTargetPrompt();
+        sendGoTarget(target);
+        return;
+      }
+      if (key && key.name === 'backspace') {
+        inputBuffer = inputBuffer.slice(0, -1);
+        return;
+      }
+      if (typeof str === 'string' && str.length === 1) {
+        const code = str.charCodeAt(0);
+        if (code >= 32 && code <= 126) {
+          inputBuffer += str;
+        }
+      }
+      return;
+    }
     if (key && key.ctrl && key.name === 'c') {
       shutdown();
       return;
@@ -403,6 +569,10 @@ function installKeyHandler() {
     }
     if (key && key.name === 'space') {
       sendStop();
+      return;
+    }
+    if (str === 's' || str === 'S') {
+      enterTargetPrompt();
       return;
     }
     if (key && key.name === 'up') {
@@ -468,19 +638,29 @@ function render() {
     : 'UNLOCKED';
   const forkTargetText = Number.isFinite(forkTarget) ? formatNumber(forkTarget, 2) : formatNumber(state.forkHeight, 2);
   const statusAgeText = statusAge === null ? 'n/a' : `${statusAge.toFixed(1)}s`;
+  const promptText = inputMode
+    ? `Go target (LM/AP): ${inputBuffer}`
+    : lastGoTarget
+      ? `Last goTarget: ${lastGoTarget.id || '-'} (${lastGoTarget.message || 'ack'})`
+      : 'Last goTarget: -';
+  const hintText = inputMode
+    ? 'Enter to send, Esc to cancel'
+    : inputMessage || '';
 
   const lines = [
     'Robokit Robot Console Controller',
-    `Host: ${options.host} | Ports: state ${options.statePort} ctrl ${options.ctrlPort} other ${options.otherPort} config ${options.configPort}`,
-    `Connections: state ${formatConn(clients.state)} | ctrl ${formatConn(clients.ctrl)} | other ${formatConn(clients.other)} | config ${formatConn(clients.config)}`,
-    `Soft EMC: ${softEmcText} | Control: ${lockText} | Status age: ${statusAgeText}`,
+    `Host: ${options.host} | Ports: state ${options.statePort} task ${options.taskPort} ctrl ${options.ctrlPort} other ${options.otherPort} config ${options.configPort}`,
+    `Connections: state ${formatConn(clients.state)} | task ${formatConn(clients.task)} | ctrl ${formatConn(clients.ctrl)} | other ${formatConn(clients.other)} | config ${formatConn(clients.config)}`,
+    `Soft EMC: ${softEmcText} | Control: ${lockText} | Status age: ${statusAgeText} | Key log: ${options.keyLogPath || 'off'}`,
     `Target speed: ${formatNumber(targetSpeed, 1)} m/s | Target angular: ${formatNumber(targetOmegaDeg, 0)} deg/s | Fork target: ${forkTargetText} m`,
-    `Command: linear ${formatNumber(command.linear, 2)} m/s | angular ${formatNumber(command.angular * DEG_PER_RAD, 1)} deg/s`,
+    `Command: linear ${formatNumber(command.linearCmd, 2)} m/s | angular ${formatNumber(command.angularCmd * DEG_PER_RAD, 1)} deg/s`,
     `Actual: linear ${formatNumber(linearActual, 2)} m/s | angular ${formatNumber(angularActualDeg, 1)} deg/s`,
     `Pose: x ${formatNumber(state.x, 3)} y ${formatNumber(state.y, 3)} yaw ${formatNumber(yawDeg, 1)} deg`,
     `Stations: current ${state.currentStation || '-'} | last ${state.lastStation || '-'}`,
+    promptText,
+    hintText,
     'Keys: Enter soft-EMC ON | Backspace soft-EMC OFF | Space stop | P seize | L release',
-    'Keys: Arrows move | +/- speed | Q/W angular | A/Z fork up/down | Ctrl+C exit'
+    'Keys: Arrows move | +/- speed | Q/W angular | A/Z fork up/down | S go target | Ctrl+C exit'
   ];
 
   process.stdout.write('\x1b[2J\x1b[H' + lines.join('\n') + '\n');
@@ -488,15 +668,40 @@ function render() {
 
 function tickCommand() {
   const now = Date.now();
-  if (command.linearUntil && now > command.linearUntil) {
-    command.linear = 0;
-    command.linearUntil = 0;
+  if (command.comboActive) {
+    if (now - command.lastArrowAt > options.comboHoldMs) {
+      command.comboActive = false;
+    }
   }
-  if (command.angularUntil && now > command.angularUntil) {
-    command.angular = 0;
-    command.angularUntil = 0;
+
+  const comboLatch = command.comboActive && now - command.lastArrowAt <= options.comboHoldMs;
+  const linearDir = comboLatch
+    ? command.linearDir
+    : computeAxisDirection(
+      command.linearDir,
+      command.linearAt,
+      command.angularDir,
+      command.angularAt,
+      now
+    );
+  const angularDir = comboLatch
+    ? command.angularDir
+    : computeAxisDirection(
+      command.angularDir,
+      command.angularAt,
+      command.linearDir,
+      command.linearAt,
+      now
+    );
+  command.linearCmd = linearDir * targetSpeed;
+  command.angularCmd = angularDir * targetOmegaDeg * RAD_PER_DEG;
+  if (!linearDir && now - command.linearAt > options.comboHoldMs) {
+    command.linearDir = 0;
   }
-  sendMotion(command.linear, command.angular);
+  if (!angularDir && now - command.angularAt > options.comboHoldMs) {
+    command.angularDir = 0;
+  }
+  sendMotion(command.linearCmd, command.angularCmd);
 }
 
 function shutdown() {
@@ -519,12 +724,17 @@ function shutdown() {
   if (process.stdin.isTTY) {
     process.stdin.setRawMode(false);
   }
+  if (keyLog) {
+    keyLog.write(`${JSON.stringify({ tsMs: Date.now(), event: 'stop' })}\n`);
+    keyLog.end();
+  }
   process.stdout.write('\x1b[?25h');
   process.exit(0);
 }
 
 function start() {
   process.stdout.write('\x1b[?25l');
+  openKeyLog();
   installKeyHandler();
   pollTimer = setInterval(() => {
     clients.state.send(API.robot_status_all1_req, null);

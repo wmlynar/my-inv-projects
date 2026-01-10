@@ -1,0 +1,15 @@
+{
+  "name": "nowy-styl-ui-backend-noauth",
+  "version": "1.0.0",
+  "description": "Prosty backend proxy do RDS (bez logowania) + statyczny UI",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "node-fetch": "^2.6.9"
+  }
+}

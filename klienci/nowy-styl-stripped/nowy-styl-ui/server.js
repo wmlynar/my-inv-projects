@@ -2,7 +2,6 @@ const express = require("express");
 const path = require("path");
 const bodyParser = require("body-parser");
 const fs = require("fs");
-const md5 = require("md5");
 
 const PROD_CONFIG = {
   rds: {
@@ -38,13 +37,8 @@ function readBuildId() {
 
 const BUILD_ID = readBuildId();
 const USE_MOCK_RDS = CFG.rds.useMock;
-const RDS_API_HOST = CFG.rds.host;
-const RDS_LOGIN = "admin";
-const RDS_PASSWORD = "123456";
-const RDS_LANG = "pl";
-
+const RDS_API_HOST = String(CFG.rds.host || "").replace(/\/+$/, "");
 const API_REQUEST_TIMEOUT_MS = 5000;
-let sessionId = null;
 
 async function fetchWithTimeout(url, options = {}) {
   const controller = new AbortController();
@@ -63,113 +57,26 @@ async function fetchWithTimeout(url, options = {}) {
   }
 }
 
-function encryptPassword(password) {
-  return md5(password);
-}
-
-async function loginToRds() {
-  const url = `${RDS_API_HOST}/admin/login`;
-  const requestData = {
-    username: RDS_LOGIN,
-    password: encryptPassword(RDS_PASSWORD)
-  };
-  const response = await fetchWithTimeout(url, {
+async function rdsPost(pathname, payload) {
+  const resp = await fetchWithTimeout(`${RDS_API_HOST}${pathname}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(requestData)
+    body: JSON.stringify(payload ?? {})
   });
-  if (!response.ok) {
-    throw new Error(`Logowanie nie powiodło się: ${response.status}`);
-  }
-  const setCookieHeader = response.headers.get("set-cookie");
-  const match = setCookieHeader && setCookieHeader.match(/JSESSIONID=([^;]+)/);
-  sessionId = match ? match[1] : null;
-  if (!sessionId) {
-    throw new Error("Nie udało się pobrać JSESSIONID z ciasteczka.");
-  }
-  await response.json();
-}
 
-async function readJsonOrText(response) {
-  const text = await response.text();
+  const text = await resp.text().catch(() => "");
+  let data = null;
   try {
-    const json = JSON.parse(text);
-    return { json, text };
+    data = text ? JSON.parse(text) : null;
   } catch {
-    return { json: null, text };
+    data = { _raw: text };
   }
-}
 
-async function apiCall(path, options = {}, allowRetry = true) {
-  if (!sessionId) {
-    await loginToRds();
+  if (!resp.ok) throw new Error(`RDS HTTP ${resp.status}: ${text}`);
+  if (data && typeof data === "object" && "code" in data && data.code !== 200) {
+    throw new Error(`RDS code=${data.code} msg=${data.msg || ""}`);
   }
-  const doRequest = async () => {
-    const headers = {
-      "Content-Type": "application/json",
-      Language: RDS_LANG,
-      ...(options.headers || {}),
-      Cookie: `JSESSIONID=${sessionId}`
-    };
-    const url = `${RDS_API_HOST}${path}`;
-    return fetchWithTimeout(url, { ...options, headers });
-  };
-  let response = await doRequest();
-  let { json, text } = await readJsonOrText(response);
-  const isInvalidSession = json && json.code === 9005;
-  if (isInvalidSession && allowRetry) {
-    sessionId = null;
-    await loginToRds();
-    response = await doRequest();
-    ({ json, text } = await readJsonOrText(response));
-  }
-  if (!response.ok) {
-    throw new Error(`Błąd wywołania API: ${response.status}, body: ${text || "<empty>"}`);
-  }
-  if (json !== null) {
-    return json;
-  }
-  if (text) {
-    try {
-      return JSON.parse(text);
-    } catch {
-      return text;
-    }
-  }
-  return null;
-}
-
-async function getWorkSiteList() {
-  const responseJson = await apiCall("/api/work-sites/sites", {
-    method: "POST",
-    body: JSON.stringify({})
-  });
-  const sites = Array.isArray(responseJson?.data) ? responseJson.data : [];
-  return sites.map((site) => ({
-    workSiteId: site.id,
-    workSiteName: site.siteId,
-    filled: site.filled === 1,
-    locked: site.locked === 1,
-    lockedBy: site.lockedBy || "",
-    content: site.content || "",
-    groupName: site.groupName || "",
-    tags: site.tags || "",
-    displayName: site.siteName || ""
-  }));
-}
-
-async function setWorkSiteFilled(worksiteName) {
-  return apiCall("/api/work-sites/worksiteFiled", {
-    method: "POST",
-    body: JSON.stringify({ workSiteIds: [worksiteName] })
-  });
-}
-
-async function setWorkSiteEmpty(worksiteName) {
-  return apiCall("/api/work-sites/worksiteUnFiled", {
-    method: "POST",
-    body: JSON.stringify({ workSiteIds: [worksiteName] })
-  });
+  return data;
 }
 
 const rdsEnabled = !USE_MOCK_RDS;
@@ -202,7 +109,7 @@ const slotToSiteId = {
 const currentFilledBySlotId = {};
 app.post("/api/slots/:slotId/set-filled", async (req, res) => {
   const slotId = req.params.slotId;
-  const { filled } = req.body;
+  const filled = !!req.body?.filled;
   const siteId = slotToSiteId[slotId];
   if (!siteId) {
     return res.status(400).json({ error: "Unknown slotId", slotId });
@@ -212,11 +119,10 @@ app.post("/api/slots/:slotId/set-filled", async (req, res) => {
     return res.json({ ok: true, mock: true });
   }
   try {
-    if (filled) {
-      await setWorkSiteFilled(siteId);
-    } else {
-      await setWorkSiteEmpty(siteId);
-    }
+    await rdsPost("/api/work-sites/updateFilledStatus", {
+      siteId,
+      filled: filled ? 1 : 0
+    });
     res.json({ ok: true });
   } catch (err) {
     console.error("RDS error for", slotId, "siteId", siteId, err);
@@ -236,17 +142,16 @@ app.get("/api/state", async (req, res) => {
     });
   }
   try {
-    const workSites = await getWorkSiteList();
-    const slots = [];
-    for (const [slotId, siteId] of Object.entries(slotToSiteId)) {
-      const ws = workSites.find(
-        (w) => w.workSiteName === siteId || w.workSiteId === siteId
-      );
-      slots.push({
-        slotId,
-        filled: ws ? !!ws.filled : false
-      });
+    const raw = await rdsPost("/api/work-sites/sites", {});
+    const list = Array.isArray(raw?.data) ? raw.data : [];
+    const bySiteId = {};
+    for (const ws of list) {
+      if (ws?.siteId != null) bySiteId[String(ws.siteId)] = !!ws.filled;
     }
+    const slots = Object.entries(slotToSiteId).map(([slotId, siteId]) => ({
+      slotId,
+      filled: !!bySiteId[String(siteId)]
+    }));
     res.json({ slots, source: "rds", rdsOk: true });
   } catch (err) {
     console.error("RDS state error", err);
