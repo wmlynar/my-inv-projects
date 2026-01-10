@@ -178,6 +178,7 @@
   const viewSubtitle = document.getElementById("view-subtitle");
   const sessionUser = document.getElementById("session-user");
 
+  const mapShell = document.getElementById("map-shell");
   const mapSvg = document.getElementById("map-svg");
   const mapWrap = document.querySelector(".map-wrap");
   const worksiteMenu = document.getElementById("worksite-menu");
@@ -195,6 +196,13 @@
   const resetViewBtn = document.getElementById("reset-view-btn");
   const fitViewBtn = document.getElementById("fit-view-btn");
   const miniMapSvg = document.getElementById("mini-map-svg");
+  const mapWindow = window.MapWindow?.init?.({
+    shell: mapShell,
+    wrap: mapWrap,
+    svg: mapSvg,
+    miniMapSvg
+  });
+  const mapLayers = window.MapLayers?.init?.({ svg: mapSvg });
 
   const robotsList = document.getElementById("robots-list");
   const streamsList = document.getElementById("streams-list");
