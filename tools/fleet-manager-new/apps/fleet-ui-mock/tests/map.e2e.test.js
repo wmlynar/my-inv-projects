@@ -123,6 +123,62 @@ const waitForLayerHidden = async (page, selector, hidden) => {
   );
 };
 
+const openMapMenu = async (page) => {
+  await page.keyboard.press('Escape');
+  const targetPoint = await page.evaluate(() => {
+    const wrap = document.querySelector('.map-wrap');
+    if (!wrap) return null;
+    const rect = wrap.getBoundingClientRect();
+    const avoidSelectors = ['.worksite-marker', '.action-point', '.robot-marker', '.obstacle-marker'];
+    const isBlocked = (el) => {
+      if (!el) return false;
+      return avoidSelectors.some((selector) => el.closest(selector));
+    };
+    const steps = 6;
+    for (let row = 1; row <= steps; row += 1) {
+      for (let col = 1; col <= steps; col += 1) {
+        const x = rect.left + (rect.width * col) / (steps + 1);
+        const y = rect.top + (rect.height * row) / (steps + 1);
+        const el = document.elementFromPoint(x, y);
+        if (!isBlocked(el)) {
+          return { x, y };
+        }
+      }
+    }
+    return { x: rect.left + rect.width * 0.2, y: rect.top + rect.height * 0.2 };
+  });
+  assert(targetPoint, 'map wrap bounding box missing');
+  await page.evaluate(({ x, y }) => {
+    const target = document.querySelector('.map-wrap');
+    if (!target) return;
+    const event = new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+      clientX: x,
+      clientY: y,
+      button: 2
+    });
+    target.dispatchEvent(event);
+  }, targetPoint);
+  await page.waitForFunction(
+    () => {
+      const menu = document.getElementById('map-menu');
+      return menu && !menu.classList.contains('hidden');
+    },
+    { timeout: ACTION_TIMEOUT_MS }
+  );
+  await page.waitForFunction(
+    () => {
+      const menu = document.getElementById('map-menu');
+      if (!menu || menu.classList.contains('hidden')) return false;
+      const x = Number.parseFloat(menu.dataset.x);
+      const y = Number.parseFloat(menu.dataset.y);
+      return Number.isFinite(x) && Number.isFinite(y);
+    },
+    { timeout: ACTION_TIMEOUT_MS }
+  );
+};
+
 const main = async () => {
   const port = await getFreePort();
   const server = await startServer(port);
@@ -246,37 +302,40 @@ const main = async () => {
       assert(!viewBoxChanged(initialViewBox, resetViewBox, 0.01), 'reset should restore viewBox');
     });
 
+    await runTest('keyboard shortcuts ignore focused inputs', async () => {
+      await page.click('#reset-view-btn');
+      const initialViewBox = parseViewBox(await page.getAttribute('#map-svg', 'viewBox'));
+      assert(initialViewBox, 'initial viewBox missing');
+      await page.evaluate(() => {
+        let input = document.getElementById('e2e-focus-input');
+        if (!input) {
+          input = document.createElement('input');
+          input.id = 'e2e-focus-input';
+          input.style.position = 'fixed';
+          input.style.top = '8px';
+          input.style.left = '8px';
+          input.style.zIndex = '9999';
+          document.body.appendChild(input);
+        }
+        input.focus();
+      });
+      await page.keyboard.press('=');
+      await page.waitForTimeout(100);
+      const afterViewBox = parseViewBox(await page.getAttribute('#map-svg', 'viewBox'));
+      assert(
+        !viewBoxChanged(initialViewBox, afterViewBox, 0.001),
+        'viewBox should not change when input is focused'
+      );
+      await page.evaluate(() => {
+        const input = document.getElementById('e2e-focus-input');
+        if (input) input.remove();
+      });
+    });
+
     await runTest('map menu adds and removes obstacle', async () => {
-      await page.keyboard.press('Escape');
       await waitForLayerHidden(page, '#map-svg .map-obstacles', false);
       const beforeCount = await page.locator('#map-svg .obstacle-marker').count();
-      const mapBox = await page.locator('.map-wrap').boundingBox();
-      assert(mapBox, 'map wrap bounding box missing');
-      const clickX = mapBox.x + Math.min(40, mapBox.width * 0.2);
-      const clickY = mapBox.y + Math.min(40, mapBox.height * 0.2);
-      await page.evaluate(({ clickX, clickY }) => {
-        const target = document.querySelector('.map-wrap');
-        if (!target) return;
-        const event = new MouseEvent('contextmenu', {
-          bubbles: true,
-          cancelable: true,
-          clientX: clickX,
-          clientY: clickY,
-          button: 2
-        });
-        target.dispatchEvent(event);
-      }, { clickX, clickY });
-      await page.waitForFunction(() => {
-        const menu = document.getElementById('map-menu');
-        return menu && !menu.classList.contains('hidden');
-      });
-      await page.waitForFunction(() => {
-        const menu = document.getElementById('map-menu');
-        if (!menu || menu.classList.contains('hidden')) return false;
-        const x = Number.parseFloat(menu.dataset.x);
-        const y = Number.parseFloat(menu.dataset.y);
-        return Number.isFinite(x) && Number.isFinite(y);
-      }, { timeout: ACTION_TIMEOUT_MS });
+      await openMapMenu(page);
       await page.click('#map-menu [data-action="add-obstacle"][data-mode="block"]');
       await page.waitForFunction(
         (count) => document.querySelectorAll('#map-svg .obstacle-marker').length > count,
@@ -289,6 +348,18 @@ const main = async () => {
       await page.waitForFunction(
         (expected) => document.querySelectorAll('#map-svg .obstacle-marker').length === expected,
         afterAdd - 1,
+        { timeout: ACTION_TIMEOUT_MS }
+      );
+    });
+
+    await runTest('escape closes map menu', async () => {
+      await openMapMenu(page);
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(
+        () => {
+          const menu = document.getElementById('map-menu');
+          return menu && menu.classList.contains('hidden');
+        },
         { timeout: ACTION_TIMEOUT_MS }
       );
     });
@@ -310,6 +381,29 @@ const main = async () => {
       await page.mouse.up();
       const movedViewBox = parseViewBox(await page.getAttribute('#map-svg', 'viewBox'));
       assert(viewBoxChanged(initialViewBox, movedViewBox), 'mini map drag should update viewBox');
+    });
+
+    await runTest('resize keeps viewBox valid', async () => {
+      await page.click('#reset-view-btn');
+      const initialViewBox = parseViewBox(await page.getAttribute('#map-svg', 'viewBox'));
+      assert(initialViewBox, 'initial viewBox missing');
+      const originalViewport = page.viewportSize();
+      const nextViewport = {
+        width: Math.max(720, Math.round((originalViewport?.width || 1280) * 0.85)),
+        height: Math.max(540, Math.round((originalViewport?.height || 720) * 0.85))
+      };
+      await page.setViewportSize(nextViewport);
+      await page.waitForTimeout(200);
+      const resizedViewBox = parseViewBox(await page.getAttribute('#map-svg', 'viewBox'));
+      assert(resizedViewBox, 'viewBox missing after resize');
+      assert(
+        resizedViewBox.every((value) => Number.isFinite(value)),
+        'viewBox should contain finite values'
+      );
+      assert(resizedViewBox[2] > 0 && resizedViewBox[3] > 0, 'viewBox dimensions should be positive');
+      if (originalViewport) {
+        await page.setViewportSize(originalViewport);
+      }
     });
   } finally {
     await browser.close();

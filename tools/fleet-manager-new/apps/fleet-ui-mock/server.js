@@ -1,7 +1,6 @@
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
-const url = require('url');
 
 const ROOT_DIR = path.resolve(__dirname, 'public');
 const DATA_DIR = path.join(ROOT_DIR, 'data');
@@ -10,6 +9,7 @@ const CONFIG_PATH = process.env.FLEET_UI_MOCK_CONFIG || DEFAULT_CONFIG_PATH;
 const DEFAULT_PORT = 8091;
 const PORT = Number.parseInt(process.env.PORT || String(DEFAULT_PORT), 10);
 const HOST = process.env.HOST || '0.0.0.0';
+const URL_BASE = 'http://localhost';
 const DEFAULT_STREAM_MS = 200;
 const DEFAULT_SPEED_MPS = 0.6;
 const MAX_STEP_S = 0.5;
@@ -358,7 +358,7 @@ function buildFleetState() {
 }
 
 function resolvePath(requestUrl) {
-  const parsed = url.parse(requestUrl);
+  const parsed = new URL(requestUrl, URL_BASE);
   const decoded = decodeURIComponent(parsed.pathname || '/');
   const safePath = path.normalize(decoded).replace(/^(\.\.(\/|\\|$))+/, '');
   return path.join(ROOT_DIR, safePath);
@@ -658,7 +658,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  const parsedUrl = url.parse(req.url);
+  const parsedUrl = new URL(req.url, URL_BASE);
   const pathname = parsedUrl.pathname || '/';
 
   if (pathname.startsWith('/api/')) {
