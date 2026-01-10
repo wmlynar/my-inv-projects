@@ -203,6 +203,8 @@
     miniMapSvg
   });
   const mapLayers = window.MapLayers?.init?.({ svg: mapSvg });
+  const mapStore = window.MapStore?.create?.();
+  const mapAdapters = window.MapAdapters?.init?.({ store: mapStore });
 
   const robotsList = document.getElementById("robots-list");
   const streamsList = document.getElementById("streams-list");
@@ -993,6 +995,7 @@
     );
     updateMiniMapViewport();
     updateWorksiteScale();
+    mapStore?.notify?.("viewport");
   };
 
   const resetViewBox = () => {
@@ -4251,6 +4254,7 @@
       offsetX: minX,
       offsetY: maxY
     };
+    mapStore?.setMapState?.(mapState, "init");
     updateViewBox();
     mapSvg.setAttribute("preserveAspectRatio", "xMidYMid meet");
 
