@@ -222,6 +222,21 @@ const config = {
   STATUS_HIDE_LAST_STATION: parseEnvBool('STATUS_HIDE_LAST_STATION', false),
   STATUS_HIDE_POSE: parseEnvBool('STATUS_HIDE_POSE', false),
   STATUS_LAST_STATION_IS_CURRENT: parseEnvBool('STATUS_LAST_STATION_IS_CURRENT', false),
+  CLIENT_ID_STRATEGY: parseEnvString('CLIENT_ID_STRATEGY', 'ip'),
+  CLIENT_TTL_MS: parseEnvNumber('CLIENT_TTL_MS', 10000, Number.parseInt),
+  CLIENT_IDLE_MS: parseEnvNumber('CLIENT_IDLE_MS', 60000, Number.parseInt),
+  LOCK_RELEASE_ON_DISCONNECT: parseEnvBool('LOCK_RELEASE_ON_DISCONNECT', true),
+  LOCK_TTL_MS: parseEnvNumber('LOCK_TTL_MS', 0, Number.parseInt),
+  STRICT_UNLOCK: parseEnvBool('STRICT_UNLOCK', false),
+  REQUIRE_LOCK_FOR_CONTROL: parseEnvBool('REQUIRE_LOCK_FOR_CONTROL', true),
+  REQUIRE_LOCK_FOR_NAV: parseEnvBool('REQUIRE_LOCK_FOR_NAV', true),
+  REQUIRE_LOCK_FOR_FORK: parseEnvBool('REQUIRE_LOCK_FOR_FORK', true),
+  SOCKET_IDLE_TIMEOUT_MS: parseEnvNumber('SOCKET_IDLE_TIMEOUT_MS', 0, Number.parseInt),
+  MAX_CONNECTIONS: parseEnvNumber('MAX_CONNECTIONS', 0, Number.parseInt),
+  MAX_CONNECTIONS_PER_CLIENT: parseEnvNumber('MAX_CONNECTIONS_PER_CLIENT', 0, Number.parseInt),
+  MAX_CLIENT_SESSIONS: parseEnvNumber('MAX_CLIENT_SESSIONS', 0, Number.parseInt),
+  PUSH_MAX_INTERVAL_MS: parseEnvNumber('PUSH_MAX_INTERVAL_MS', 10000, Number.parseInt),
+  PUSH_MAX_QUEUE_BYTES: parseEnvNumber('PUSH_MAX_QUEUE_BYTES', 1048576, Number.parseInt),
   USE_CORE_SIM: false
 };
 

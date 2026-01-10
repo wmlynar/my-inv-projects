@@ -17,6 +17,9 @@ const { startHttpStub } = require('./http_stub');
 const { SimModule } = require('./syspy-js');
 const MotionKernel = require('../../packages/robokit-lib/motion_kernel');
 const config = require('./lib/config');
+const { ControlArbiter } = require('./core/control_arbiter');
+const { createControlPolicy } = require('./protocol/control_policy');
+const { ClientRegistry } = require('./transport/client_registry');
 
 const {
   clamp,
@@ -129,7 +132,22 @@ const {
   STATUS_FORCE_CURRENT_STATION,
   STATUS_HIDE_LAST_STATION,
   STATUS_HIDE_POSE,
-  STATUS_LAST_STATION_IS_CURRENT
+  STATUS_LAST_STATION_IS_CURRENT,
+  CLIENT_ID_STRATEGY,
+  CLIENT_TTL_MS,
+  CLIENT_IDLE_MS,
+  LOCK_RELEASE_ON_DISCONNECT,
+  LOCK_TTL_MS,
+  STRICT_UNLOCK,
+  REQUIRE_LOCK_FOR_CONTROL,
+  REQUIRE_LOCK_FOR_NAV,
+  REQUIRE_LOCK_FOR_FORK,
+  SOCKET_IDLE_TIMEOUT_MS,
+  MAX_CONNECTIONS,
+  MAX_CONNECTIONS_PER_CLIENT,
+  MAX_CLIENT_SESSIONS,
+  PUSH_MAX_INTERVAL_MS,
+  PUSH_MAX_QUEUE_BYTES
 } = config;
 
 const DEFAULT_ROBOT_MODEL = { head: 0.5, tail: 2, width: 1 };
@@ -1891,6 +1909,48 @@ const simModule = new SimModule({
 robot.scriptApi = simModule;
 let taskCounter = 1;
 
+let controlArbiter = null;
+const clientRegistry = new ClientRegistry({
+  strategy: CLIENT_ID_STRATEGY,
+  ttlMs: CLIENT_TTL_MS,
+  idleMs: CLIENT_IDLE_MS,
+  onSessionEmpty: (session) => {
+    if (!LOCK_RELEASE_ON_DISCONNECT || !controlArbiter) {
+      return;
+    }
+    if (controlArbiter.getOwner() === session.id) {
+      clearManualControl();
+      controlArbiter.release(session.id, 'disconnect');
+    }
+  }
+});
+
+const controlPolicy = createControlPolicy({
+  requireControl: REQUIRE_LOCK_FOR_CONTROL,
+  requireNav: REQUIRE_LOCK_FOR_NAV,
+  requireFork: REQUIRE_LOCK_FOR_FORK
+});
+
+function clearManualControl() {
+  robot.manual.active = false;
+  robot.manual.vx = 0;
+  robot.manual.vy = 0;
+  robot.manual.w = 0;
+  robot.manual.steer = 0;
+  robot.manual.realSteer = 0;
+  resetVelocity();
+}
+
+controlArbiter = new ControlArbiter({
+  robot,
+  defaultLockType: DEFAULT_LOCK_TYPE,
+  strictUnlock: STRICT_UNLOCK,
+  lockTtlMs: LOCK_TTL_MS,
+  onPreempt: () => {
+    clearManualControl();
+  }
+});
+
 function updateVelocity(vx, vy, w, steer, spin) {
   robot.velocity = {
     vx,
@@ -3372,31 +3432,40 @@ function handleConfigLock(payload, context) {
   const nickName = rawNick || (robot.lockInfo ? robot.lockInfo.nick_name : '');
   const ip = normalizeRemoteAddress(context && context.remoteAddress);
   const port = context && Number.isFinite(context.remotePort) ? context.remotePort : 0;
-  robot.lockRequest = { nick_name: rawNick, ip, port };
-  robot.lockInfo = {
-    locked: true,
-    nick_name: nickName || '',
-    ip: ip || '',
-    port: port || 0,
+  if (rawNick) {
+    const migrated = clientRegistry.migrateByNick(ip, rawNick);
+    if (migrated && context) {
+      context.clientId = migrated.id;
+      context.clientSession = migrated;
+    }
+    if (context && context.clientSession) {
+      context.clientSession.nickName = rawNick;
+    }
+  }
+  const clientId = context && context.clientId ? context.clientId : ip;
+  const requestMeta = { nick_name: rawNick, ip, port };
+  const result = controlArbiter.acquire(clientId, {
+    nick_name: nickName,
+    ip,
+    port,
     time_t: lockTimeSeconds(),
-    type: DEFAULT_LOCK_TYPE,
-    desc: ''
-  };
+    request: requestMeta
+  });
+  if (!result.ok) {
+    return buildErrorResponse(result.error || 'lock_failed');
+  }
   robot.manualBlock = true;
   return buildBaseResponse({});
 }
 
-function handleConfigUnlock() {
-  robot.lockInfo = {
-    locked: false,
-    nick_name: '',
-    ip: '',
-    port: 0,
-    time_t: 0,
-    type: DEFAULT_LOCK_TYPE,
-    desc: ''
-  };
-  robot.lockRequest = null;
+function handleConfigUnlock(clientId) {
+  if (controlArbiter.shouldRejectUnlock(clientId)) {
+    return buildErrorResponse('control_locked', 60001);
+  }
+  const result = controlArbiter.release(clientId || '', 'unlock');
+  if (!result.ok && STRICT_UNLOCK) {
+    return buildErrorResponse('control_locked', 60001);
+  }
   return buildBaseResponse({});
 }
 
@@ -4097,6 +4166,16 @@ function handleRequest(apiNo, payload, allowedApis, context = {}) {
   if (allowedApis && !allowedApis.has(apiNo)) {
     return buildErrorResponse('wrong_port', 60000);
   }
+  if (controlArbiter) {
+    controlArbiter.releaseIfExpired();
+    if (controlPolicy.requiresLock(apiNo)) {
+      const clientId = context.clientId || null;
+      if (!controlArbiter.canControl(clientId)) {
+        return buildErrorResponse('control_locked', 60001);
+      }
+      controlArbiter.touch(clientId);
+    }
+  }
 
   switch (apiNo) {
     case API.robot_status_info_req:
@@ -4190,7 +4269,7 @@ function handleRequest(apiNo, payload, allowedApis, context = {}) {
     case API.robot_config_req_4005:
       return handleConfigLock(payload || {}, context);
     case API.robot_config_req_4006:
-      return handleConfigUnlock();
+      return handleConfigUnlock(context && context.clientId ? context.clientId : null);
     case API.robot_config_req_4009:
     case API.robot_config_req_4010:
       return buildBaseResponse({});
@@ -4459,12 +4538,50 @@ function encodeFrameRaw(seq, apiNo, bodyBuffer, options = {}) {
 function createServer(port, allowedApis, label) {
   const server = net.createServer((socket) => {
     const parser = new RbkParser({ maxBodyLength: MAX_BODY_LENGTH });
+    const context = {
+      remoteAddress: normalizeRemoteAddress(socket.remoteAddress),
+      remotePort: socket.remotePort,
+      localPort: socket.localPort,
+      label
+    };
+
+    if (MAX_CONNECTIONS && totalConnections >= MAX_CONNECTIONS) {
+      socket.destroy();
+      return;
+    }
+
+    const session = clientRegistry.attach(context);
+    if (MAX_CLIENT_SESSIONS && clientRegistry.sessions.size > MAX_CLIENT_SESSIONS) {
+      clientRegistry.detach(context);
+      socket.destroy();
+      return;
+    }
+    if (MAX_CONNECTIONS_PER_CLIENT && session.connections.size > MAX_CONNECTIONS_PER_CLIENT) {
+      clientRegistry.detach(context);
+      socket.destroy();
+      return;
+    }
+
+    totalConnections += 1;
+    socket.setNoDelay(true);
+    if (SOCKET_IDLE_TIMEOUT_MS) {
+      socket.setTimeout(SOCKET_IDLE_TIMEOUT_MS);
+    }
 
     socket.on('error', (err) => {
       if (err && err.code && (err.code === 'ECONNRESET' || err.code === 'EPIPE')) {
         return;
       }
       console.warn(`robokit-robot-sim ${label} socket error`, err);
+    });
+
+    socket.on('timeout', () => {
+      socket.destroy();
+    });
+
+    socket.on('close', () => {
+      totalConnections = Math.max(0, totalConnections - 1);
+      clientRegistry.detach(context);
     });
 
     socket.on('data', (chunk) => {
@@ -4477,12 +4594,7 @@ function createServer(port, allowedApis, label) {
       }
 
       for (const msg of messages) {
-        const context = {
-          remoteAddress: socket.remoteAddress,
-          remotePort: socket.remotePort,
-          localPort: socket.localPort,
-          label
-        };
+        clientRegistry.touch(context);
         const responsePayload = handleRequest(msg.apiNo, msg.payload, allowedApis, context);
         const frame = Buffer.isBuffer(responsePayload)
           ? encodeFrameRaw(msg.seq, responseApi(msg.apiNo), responsePayload, {
@@ -4506,6 +4618,7 @@ function createServer(port, allowedApis, label) {
 
 const pushConnections = new Map();
 let pushSeq = 1;
+let totalConnections = 0;
 const pushDefaults = {
   intervalMs: 1000,
   includedFields: null,
@@ -4535,7 +4648,9 @@ function applyPushConfig(target, payload) {
   }
   const interval = Number.parseInt(payload.interval, 10);
   if (Number.isFinite(interval)) {
-    target.intervalMs = interval;
+    const minInterval = Number.isFinite(PUSH_MIN_INTERVAL_MS) ? PUSH_MIN_INTERVAL_MS : 0;
+    const maxInterval = Number.isFinite(PUSH_MAX_INTERVAL_MS) ? PUSH_MAX_INTERVAL_MS : interval;
+    target.intervalMs = Math.max(minInterval, Math.min(interval, maxInterval));
   }
   if (included) {
     target.includedFields = cloneFieldList(included);
@@ -4552,10 +4667,6 @@ function handlePushConfig(payload) {
   const result = applyPushConfig(pushDefaults, payload);
   if (!result.ok) {
     return buildErrorResponse(result.error);
-  }
-  for (const conn of pushConnections.values()) {
-    applyPushConfig(conn, payload);
-    startPushTimer(conn);
   }
   return buildBaseResponse({});
 }
@@ -4647,6 +4758,11 @@ function startPushTimer(conn) {
       clearInterval(conn.timer);
       return;
     }
+    if (PUSH_MAX_QUEUE_BYTES && conn.socket.writableLength > PUSH_MAX_QUEUE_BYTES) {
+      conn.socket.destroy();
+      clearInterval(conn.timer);
+      return;
+    }
     const payload = buildPushPayload(conn);
     const frame = encodeFrame(pushSeq++, API.robot_push, payload);
     conn.socket.write(frame);
@@ -4656,6 +4772,35 @@ function startPushTimer(conn) {
 function createPushServer(port) {
   const server = net.createServer((socket) => {
     const parser = new RbkParser({ maxBodyLength: MAX_BODY_LENGTH });
+    const context = {
+      remoteAddress: normalizeRemoteAddress(socket.remoteAddress),
+      remotePort: socket.remotePort,
+      localPort: socket.localPort,
+      label: 'push'
+    };
+
+    if (MAX_CONNECTIONS && totalConnections >= MAX_CONNECTIONS) {
+      socket.destroy();
+      return;
+    }
+
+    const session = clientRegistry.attach(context);
+    if (MAX_CLIENT_SESSIONS && clientRegistry.sessions.size > MAX_CLIENT_SESSIONS) {
+      clientRegistry.detach(context);
+      socket.destroy();
+      return;
+    }
+    if (MAX_CONNECTIONS_PER_CLIENT && session.connections.size > MAX_CONNECTIONS_PER_CLIENT) {
+      clientRegistry.detach(context);
+      socket.destroy();
+      return;
+    }
+
+    totalConnections += 1;
+    socket.setNoDelay(true);
+    if (SOCKET_IDLE_TIMEOUT_MS) {
+      socket.setTimeout(SOCKET_IDLE_TIMEOUT_MS);
+    }
     const conn = {
       socket,
       intervalMs: pushDefaults.intervalMs,
@@ -4672,6 +4817,10 @@ function createPushServer(port) {
       console.warn('robokit-robot-sim push socket error', err);
     });
 
+    socket.on('timeout', () => {
+      socket.destroy();
+    });
+
     socket.on('data', (chunk) => {
       let messages = [];
       try {
@@ -4682,6 +4831,7 @@ function createPushServer(port) {
       }
 
       for (const msg of messages) {
+        clientRegistry.touch(context);
         if (msg.apiNo !== API.robot_push_config_req) {
           const frame = encodeFrame(msg.seq, responseApi(msg.apiNo), buildErrorResponse('unsupported_api'), {
             reserved: msg.reserved
@@ -4701,6 +4851,8 @@ function createPushServer(port) {
     });
 
     socket.on('close', () => {
+      totalConnections = Math.max(0, totalConnections - 1);
+      clientRegistry.detach(context);
       if (conn.timer) {
         clearInterval(conn.timer);
       }
@@ -4845,6 +4997,9 @@ function handleHttpSetBlocked(payload) {
 }
 
 setInterval(tickSimulation, TICK_MS);
+setInterval(() => {
+  clientRegistry.sweep();
+}, 5000);
 
 createServer(ENV_PORTS.ROBOD, allowedRobodApis, 'robod');
 createServer(ENV_PORTS.STATE, allowedStateApis, 'state');
