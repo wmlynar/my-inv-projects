@@ -471,6 +471,9 @@
 - Porownac liste plikow mapy/menu przed i po (diff).
 - Sprawdzic, czy wszystkie zaleznosci i importy sa spojne.
 - Sprawdzic, czy struktura DOM i klasy w mapie/menu nie zostaly naruszone.
+- Utrzymac liste w `apps/fleet-ui-mock/VALIDATION.md` (checklisty statyczne + opcjonalne smoke/E2E).
+- Zweryfikowac kolejnosc skryptow w `public/index.html` (bez zmian).
+- Zweryfikowac kontrakty danych `public/data/*` (graph/workflow/robots/packaging).
 
 ## 13) Scenariusze mock danych
 - Przygotowac 1-2 sceny:
@@ -480,9 +483,10 @@
 - Utrzymac nazwy pol dokladnie jak w starym UI.
 
 ## 14) Dokumentacja
-- Opis co jest mockiem, co jest 1:1 ze starego UI.
-- Lista zachowanych komponentow i ich lokalizacja.
-- Instrukcja jak podmienic mock na realny backend.
+- Opis co jest mockiem, co jest 1:1 ze starego UI (README).
+- Lista zachowanych komponentow i ich lokalizacja (README).
+- Instrukcja jak podmienic mock na realny backend (README).
+- Checklista walidacji w `apps/fleet-ui-mock/VALIDATION.md`.
 
 ## 15) Plan migracji krok po kroku (stary prototyp -> UI mock)
 - Krok 1: przygotuj nowy projekt `apps/fleet-ui-mock` (minimalny build + statyczny hosting).

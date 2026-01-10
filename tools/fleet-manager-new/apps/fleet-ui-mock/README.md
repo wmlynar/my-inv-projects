@@ -33,3 +33,29 @@ Plik `mock-config.json` pozwala wskazac inne pliki danych i parametry symulacji.
 - `scenes.activeSceneId`, `scenes.scenes[]`
 
 Mozesz tez wskazac inny plik przez `FLEET_UI_MOCK_CONFIG=/path/to/config.json`.
+
+## Kontrakty danych (skrot)
+
+- `public/data/graph.json`: `meta`, `nodes`, `edges`, `lines`, `areas`
+- `public/data/workflow.json5`: `groups`, `bin_locations`, `occupancy`, `streams`
+- `public/data/robots.json`: `models`, `robots`
+- `public/data/packaging.json`: struktura jak w starym UI
+
+## Konfiguracja API
+
+UI uzywa `GET /api/fleet/config` do nadpisania `apiBase`, `pollMs` i `simMode`.
+
+## Podmiana backendu
+
+- Utrzymaj `/api/fleet/*` za reverse proxy do realnego core,
+- albo zwroc `apiBase` z `GET /api/fleet/config`, wskazujacy na realny backend.
+
+## Walidacja
+
+Checklisty walidacji znajdziesz w `VALIDATION.md`.
+
+## Testy E2E
+
+```bash
+node tests/map.e2e.test.js
+```
