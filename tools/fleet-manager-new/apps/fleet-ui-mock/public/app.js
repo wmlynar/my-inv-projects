@@ -3420,9 +3420,15 @@
     return manualRobots.length === 1 ? manualRobots[0] : null;
   };
 
+  const isRobotSelected = (robotId) => {
+    if (manualTargetRobotId === robotId) return true;
+    const selection = mapStore?.getState?.().selection;
+    return selection?.type === "robot" && Array.isArray(selection.ids) && selection.ids.includes(robotId);
+  };
+
   const buildRobotMarkerClass = (robot) => {
     const classes = ["robot-marker"];
-    if (manualTargetRobotId === robot.id) classes.push("selected");
+    if (isRobotSelected(robot.id)) classes.push("selected");
     const state = robot?.state || null;
     if (state === "blocked") {
       classes.push("blocked");
@@ -3572,6 +3578,18 @@
     });
   };
 
+  if (mapLayers && mapStore) {
+    const robotSelectionLayer = {
+      render() {
+        updateAllRobotMarkerStates();
+      }
+    };
+    mapLayers.register(robotSelectionLayer);
+    mapStore.subscribe((state) => {
+      mapLayers.render(state);
+    });
+  }
+
   const getNavControlTarget = () => {
     if (manualTargetRobotId) {
       const robot = getRobotById(manualTargetRobotId);
@@ -3608,6 +3626,7 @@
   const handleRobotMarkerClick = (robotId) => {
     const robot = getRobotById(robotId);
     if (!robot) return;
+    mapStore?.setSelection?.({ type: "robot", ids: [robotId], primaryId: robotId }, "marker");
     if (!robot.manualMode) {
       setRobotManualMode(robotId, true);
       return;
