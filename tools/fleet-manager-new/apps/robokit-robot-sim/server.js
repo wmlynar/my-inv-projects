@@ -4460,6 +4460,13 @@ function createServer(port, allowedApis, label) {
   const server = net.createServer((socket) => {
     const parser = new RbkParser({ maxBodyLength: MAX_BODY_LENGTH });
 
+    socket.on('error', (err) => {
+      if (err && err.code && (err.code === 'ECONNRESET' || err.code === 'EPIPE')) {
+        return;
+      }
+      console.warn(`robokit-robot-sim ${label} socket error`, err);
+    });
+
     socket.on('data', (chunk) => {
       let messages = [];
       try {
@@ -4657,6 +4664,13 @@ function createPushServer(port) {
       timer: null
     };
     pushConnections.set(socket, conn);
+
+    socket.on('error', (err) => {
+      if (err && err.code && (err.code === 'ECONNRESET' || err.code === 'EPIPE')) {
+        return;
+      }
+      console.warn('robokit-robot-sim push socket error', err);
+    });
 
     socket.on('data', (chunk) => {
       let messages = [];
