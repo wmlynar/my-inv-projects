@@ -21,13 +21,11 @@
           </div>
           <nav class="nav">
             <button class="nav-item active" data-view="map">Map</button>
-            <button class="nav-item" data-view="coverage">Coverage</button>
-            <button class="nav-item" data-view="conflicts">Conflicts</button>
             <button class="nav-item" data-view="swept">Swept shape</button>
-            <button class="nav-item" data-view="connectivity">Connectivity</button>
-            <button class="nav-item" data-view="length">Length sanity</button>
-            <button class="nav-item" data-view="determinism">Determinism</button>
+            <button class="nav-item" data-view="conflicts">Conflicts</button>
+            <button class="nav-item" data-view="diagnostics">Diagnostics</button>
             <button class="nav-item" data-view="report">Report</button>
+            <button class="nav-item hidden" data-view="compare">Compare</button>
           </nav>
           <div class="sidebar-footer">
             <div class="status-pill">
@@ -62,7 +60,7 @@
               </div>
 
               <div class="viewer-toolbar">
-                <div class="viewer-controls">
+                <div class="viewer-controls view-controls" data-view-controls="map">
                   <label class="viewer-toggle">
                     <input type="checkbox" data-layer="edges" checked />
                     <span>Edges</span>
@@ -75,13 +73,57 @@
                     <input type="checkbox" data-layer="corridors" />
                     <span>Corridors</span>
                   </label>
+                </div>
+                <div class="viewer-controls view-controls hidden" data-view-controls="swept">
                   <label class="viewer-toggle">
-                    <input type="checkbox" data-layer="cells" />
+                    <input type="checkbox" data-layer="cells" checked />
                     <span>Cells</span>
                   </label>
                   <label class="viewer-toggle">
+                    <input type="checkbox" data-layer="sweptBbox" checked />
+                    <span>BBox</span>
+                  </label>
+                  <label class="viewer-toggle">
+                    <input type="checkbox" data-layer="sweptPivot" checked />
+                    <span>Pivot</span>
+                  </label>
+                  <label class="viewer-toggle">
+                    <input type="checkbox" data-layer="sweptEdges" />
+                    <span>Edges</span>
+                  </label>
+                  <label class="viewer-toggle">
+                    <input type="checkbox" data-swept-dir="A_TO_B" checked />
+                    <span>A-&gt;B</span>
+                  </label>
+                  <label class="viewer-toggle">
+                    <input type="checkbox" data-swept-dir="B_TO_A" checked />
+                    <span>B-&gt;A</span>
+                  </label>
+                  <div class="swept-legend">
+                    <span class="legend-swatch dir-a"></span>
+                    <span>A-&gt;B</span>
+                    <span class="legend-swatch dir-b"></span>
+                    <span>B-&gt;A</span>
+                  </div>
+                </div>
+                <div class="viewer-controls view-controls hidden" data-view-controls="conflicts">
+                  <label class="viewer-toggle">
                     <input type="checkbox" data-layer="conflicts" checked />
-                    <span>Conflicts</span>
+                    <span>Heatmap</span>
+                  </label>
+                  <label class="viewer-toggle">
+                    <input type="checkbox" data-layer="conflictEdges" />
+                    <span>Edges</span>
+                  </label>
+                </div>
+                <div class="viewer-controls view-controls hidden" data-view-controls="diagnostics">
+                  <label class="viewer-toggle">
+                    <input type="radio" name="diagnostic-mode" data-diagnostic="coverage" checked />
+                    <span>Coverage gaps</span>
+                  </label>
+                  <label class="viewer-toggle">
+                    <input type="radio" name="diagnostic-mode" data-diagnostic="length" />
+                    <span>Length sanity</span>
                   </label>
                 </div>
                 <div class="viewer-search">
@@ -105,27 +147,17 @@
               <div class="panel-header">
                 <div>
                   <h2>Selection</h2>
-                  <p id="selection-hint">Click a node/cell or use search.</p>
+                  <p id="selection-hint">Click a node/edge or use search.</p>
                 </div>
               </div>
               <pre id="selection-details" class="viewer-pre">{}</pre>
-            </section>
-
-            <section id="view-coverage" class="panel view-panel" data-view="coverage">
-              <div class="panel-header">
-                <div>
-                  <h2>Coverage</h2>
-                  <p>Cells coverage gaps and corridor completeness.</p>
-                </div>
-              </div>
-              <div id="coverage-summary" class="viewer-placeholder">Coverage view placeholder.</div>
             </section>
 
             <section id="view-conflicts" class="panel view-panel" data-view="conflicts">
               <div class="panel-header">
                 <div>
                   <h2>Conflicts</h2>
-                  <p>Heatmap and conflict density summary.</p>
+                  <p>Heatmap and conflict-set context.</p>
                 </div>
               </div>
               <div id="conflicts-summary" class="viewer-placeholder">Conflicts view placeholder.</div>
@@ -135,58 +167,20 @@
               <div class="panel-header">
                 <div>
                   <h2>Swept shape</h2>
-                  <p>Rotated rects with bounding boxes for each cell.</p>
-                </div>
-              </div>
-              <div class="viewer-toolbar swept-toolbar">
-                <div class="viewer-controls">
-                  <label class="viewer-toggle">
-                    <input type="checkbox" data-swept-dir="A_TO_B" checked />
-                    <span>A-&gt;B</span>
-                  </label>
-                  <label class="viewer-toggle">
-                    <input type="checkbox" data-swept-dir="B_TO_A" checked />
-                    <span>B-&gt;A</span>
-                  </label>
-                </div>
-                <div class="swept-legend">
-                  <span class="legend-swatch dir-a"></span>
-                  <span>A-&gt;B</span>
-                  <span class="legend-swatch dir-b"></span>
-                  <span>B-&gt;A</span>
+                  <p>Cells, bounding boxes, and pivot orientation.</p>
                 </div>
               </div>
               <div id="swept-summary" class="viewer-placeholder">Swept shape view placeholder.</div>
             </section>
 
-            <section id="view-connectivity" class="panel view-panel" data-view="connectivity">
+            <section id="view-diagnostics" class="panel view-panel" data-view="diagnostics">
               <div class="panel-header">
                 <div>
-                  <h2>Connectivity</h2>
-                  <p>Connected components and isolated subgraphs.</p>
+                  <h2>Diagnostics</h2>
+                  <p>Coverage gaps and length sanity overlays.</p>
                 </div>
               </div>
-              <div class="viewer-placeholder">Connectivity view placeholder.</div>
-            </section>
-
-            <section id="view-length" class="panel view-panel" data-view="length">
-              <div class="panel-header">
-                <div>
-                  <h2>Length sanity</h2>
-                  <p>Edge length vs curve length checks.</p>
-                </div>
-              </div>
-              <div id="length-summary" class="viewer-placeholder">Length sanity view placeholder.</div>
-            </section>
-
-            <section id="view-determinism" class="panel view-panel" data-view="determinism">
-              <div class="panel-header">
-                <div>
-                  <h2>Determinism</h2>
-                  <p>Diff summary between compilation runs.</p>
-                </div>
-              </div>
-              <div id="determinism-placeholder" class="viewer-placeholder">Determinism view placeholder.</div>
+              <div id="diagnostics-summary" class="viewer-placeholder">Diagnostics view placeholder.</div>
             </section>
 
             <section id="view-report" class="panel view-panel" data-view="report">
@@ -198,6 +192,16 @@
               </div>
               <div id="health-metrics" class="viewer-metrics"></div>
               <pre id="validation-details" class="viewer-pre">{}</pre>
+            </section>
+
+            <section id="view-compare" class="panel view-panel" data-view="compare">
+              <div class="panel-header">
+                <div>
+                  <h2>Compare</h2>
+                  <p>Diff summary between compilation runs.</p>
+                </div>
+              </div>
+              <div id="compare-placeholder" class="viewer-placeholder">Provide --compare-dir to enable diff view.</div>
             </section>
           </div>
         </section>

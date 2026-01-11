@@ -1002,7 +1002,8 @@ function getReportedPose() {
   if (dtReport <= 0) {
     return reportedPoseCache;
   }
-  const maxAngleDelta = ROTATE_SPEED_RAD_S * dtReport;
+  const maxStep = maxDt ? Math.min(dtReport, maxDt) : dtReport;
+  const maxAngleDelta = ROTATE_SPEED_RAD_S * maxStep;
   const angleDelta = normalizeAngle(targetPose.angle - reportedPoseCache.angle);
   let nextAngle = targetPose.angle;
   if (Number.isFinite(maxAngleDelta) && maxAngleDelta > 0 && Math.abs(angleDelta) > maxAngleDelta) {

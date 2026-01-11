@@ -20,13 +20,14 @@
   const viewTitle = document.getElementById('view-title');
   const viewSubtitle = document.getElementById('view-subtitle');
   const healthMetrics = document.getElementById('health-metrics');
-  const determinismPlaceholder = document.getElementById('determinism-placeholder');
-  const coverageSummary = document.getElementById('coverage-summary');
   const conflictsSummary = document.getElementById('conflicts-summary');
-  const lengthSummary = document.getElementById('length-summary');
   const sweptSummary = document.getElementById('swept-summary');
+  const diagnosticsSummary = document.getElementById('diagnostics-summary');
+  const comparePlaceholder = document.getElementById('compare-placeholder');
   const navItems = Array.from(document.querySelectorAll('.nav-item[data-view]'));
   const viewPanels = Array.from(document.querySelectorAll('.view-panel[data-view]'));
+  const viewToolbars = Array.from(document.querySelectorAll('[data-view-controls]'));
+  const compareNavItem = document.querySelector('.nav-item[data-view="compare"]');
 
   const mapWindow = window.MapWindow?.init?.({
     shell: mapShell,
@@ -40,12 +41,17 @@
       edges: true,
       nodes: true,
       corridors: false,
-      cells: false,
-      conflicts: true
+      cells: true,
+      conflicts: true,
+      sweptBbox: true,
+      sweptPivot: true,
+      sweptEdges: false,
+      conflictEdges: false
     },
     filters: { search: '', sweptDirs: { A_TO_B: true, B_TO_A: true } },
     viewport: null,
     activeView: 'map',
+    diagnostics: { mode: 'coverage' },
     report: null,
     meta: null,
     compareDir: null
@@ -103,13 +109,11 @@
 
   const VIEW_META = {
     map: { title: 'Map', subtitle: 'SceneGraph + CompiledMap layers' },
-    coverage: { title: 'Coverage', subtitle: 'Cells coverage gaps and corridor completeness' },
     conflicts: { title: 'Conflicts', subtitle: 'Conflict heatmap and density summary' },
-    swept: { title: 'Swept shape', subtitle: 'Rotated rects with bounding boxes for each cell' },
-    connectivity: { title: 'Connectivity', subtitle: 'Connected components and isolated subgraphs' },
-    length: { title: 'Length sanity', subtitle: 'Edge length vs curve length checks' },
-    determinism: { title: 'Determinism', subtitle: 'Diff summary between compilation runs' },
-    report: { title: 'Report', subtitle: 'Validation report and compile health' }
+    swept: { title: 'Swept shape', subtitle: 'Cells, bounding boxes, and pivot orientation' },
+    diagnostics: { title: 'Diagnostics', subtitle: 'Coverage gaps and length sanity overlays' },
+    report: { title: 'Report', subtitle: 'Validation report and compile health' },
+    compare: { title: 'Compare', subtitle: 'Diff summary between compilation runs' }
   };
 
   function createSvgElement(tag, attrs = {}) {
@@ -540,6 +544,11 @@
       const isActive = panel.getAttribute('data-view') === viewId;
       panel.classList.toggle('active', isActive);
     });
+
+    viewToolbars.forEach((toolbar) => {
+      const isActive = toolbar.getAttribute('data-view-controls') === viewId;
+      toolbar.classList.toggle('hidden', !isActive);
+    });
   }
 
   function updateState(mutator, reason) {
@@ -655,23 +664,40 @@
     const activeView = state.activeView || 'map';
     const zoom = viewportToZoom(state.viewport || state.baseViewport || { width: 1 });
     const isSwept = activeView === 'swept';
-    const forceCells = activeView === 'conflicts' || isSwept;
-    const showCells =
-      (state.layers.cells || forceCells) && (isSwept ? true : zoom >= uiConfig.cellsMinZoom);
+    const isConflicts = activeView === 'conflicts';
+    const isDiagnostics = activeView === 'diagnostics';
+    const diagnosticsMode = state.diagnostics?.mode || 'coverage';
+
+    let showCells = false;
+    if (isSwept) {
+      showCells = state.layers.cells !== false;
+    } else if (isConflicts) {
+      showCells = true;
+    }
+
     const showEdges =
-      state.layers.edges || activeView === 'coverage' || activeView === 'length' || isSwept;
+      (activeView === 'map' && state.layers.edges) ||
+      (isSwept && state.layers.sweptEdges) ||
+      (isConflicts && state.layers.conflictEdges) ||
+      isDiagnostics;
+    const showNodes = activeView === 'map' && state.layers.nodes;
+    const showCorridors = activeView === 'map' && state.layers.corridors;
+    const showSwept = isSwept && state.layers.sweptBbox !== false;
+    const showPivot = isSwept && state.layers.sweptPivot !== false;
 
     layerGroups.edges.style.display = showEdges ? 'block' : 'none';
-    layerGroups.nodes.style.display = state.layers.nodes ? 'block' : 'none';
-    layerGroups.labels.style.display = state.layers.nodes ? 'block' : 'none';
-    layerGroups.corridors.style.display = state.layers.corridors ? 'block' : 'none';
+    layerGroups.nodes.style.display = showNodes ? 'block' : 'none';
+    layerGroups.labels.style.display = showNodes ? 'block' : 'none';
+    layerGroups.corridors.style.display = showCorridors ? 'block' : 'none';
     layerGroups.cells.style.display = showCells ? 'block' : 'none';
-    layerGroups.pivot.style.display = isSwept ? 'block' : 'none';
-    layerGroups.coverage.style.display = activeView === 'coverage' ? 'block' : 'none';
-    layerGroups.length.style.display = activeView === 'length' ? 'block' : 'none';
-    layerGroups.swept.style.display = isSwept ? 'block' : 'none';
+    layerGroups.pivot.style.display = showPivot ? 'block' : 'none';
+    layerGroups.coverage.style.display =
+      isDiagnostics && diagnosticsMode === 'coverage' ? 'block' : 'none';
+    layerGroups.length.style.display =
+      isDiagnostics && diagnosticsMode === 'length' ? 'block' : 'none';
+    layerGroups.swept.style.display = showSwept ? 'block' : 'none';
 
-    applyConflictHeatmap(state, activeView === 'conflicts');
+    applyConflictHeatmap(state, isConflicts && state.layers.conflicts !== false);
 
     updateNodeLabelsVisibility(zoom);
   }
@@ -998,7 +1024,7 @@
     }
     const { kind, id } = state.selection;
     applySelectionClass(kind, id, cache);
-    if (state.layers?.conflicts || state.activeView === 'conflicts') {
+    if (state.activeView === 'conflicts') {
       applyConflictHighlight(kind, id, cache);
     } else {
       clearConflictHighlight(cache);
@@ -1190,6 +1216,25 @@
     });
   }
 
+  function bindDiagnosticToggles() {
+    const toggles = Array.from(document.querySelectorAll('[data-diagnostic]'));
+    if (!toggles.length) return;
+    const sync = (toggle) => {
+      const mode = toggle.getAttribute('data-diagnostic');
+      if (!mode || !toggle.checked) return;
+      updateState((state) => {
+        if (!state.diagnostics) state.diagnostics = {};
+        state.diagnostics.mode = mode;
+      }, 'diagnostics');
+    };
+    toggles.forEach((toggle) => {
+      if (toggle.checked) {
+        sync(toggle);
+      }
+      toggle.addEventListener('change', () => sync(toggle));
+    });
+  }
+
   function bindSearch() {
     if (!searchInput) return;
     searchInput.addEventListener('input', (event) => {
@@ -1267,12 +1312,6 @@
 
   function updateViewSummaries(state) {
     const analysis = state.mapState?.analysis;
-    if (coverageSummary) {
-      const gaps = analysis?.coverageGapEdges?.size ?? 0;
-      coverageSummary.textContent = analysis
-        ? `coverage gaps (edges flagged): ${gaps}`
-        : 'Coverage summary unavailable.';
-    }
     if (conflictsSummary) {
       const avg = analysis?.conflictAvg ?? 0;
       const max = analysis?.conflictMax ?? 0;
@@ -1280,11 +1319,13 @@
         ? `conflict density avg=${avg}, max=${max}`
         : 'Conflicts summary unavailable.';
     }
-    if (lengthSummary) {
+    if (diagnosticsSummary) {
+      const gaps = analysis?.coverageGapEdges?.size ?? 0;
       const mismatches = analysis?.lengthMismatchEdges?.size ?? 0;
-      lengthSummary.textContent = analysis
-        ? `length mismatches (edges flagged): ${mismatches}`
-        : 'Length summary unavailable.';
+      const mode = state.diagnostics?.mode === 'length' ? 'length sanity' : 'coverage gaps';
+      diagnosticsSummary.textContent = analysis
+        ? `coverage gaps: ${gaps} · length mismatches: ${mismatches} · overlay: ${mode}`
+        : 'Diagnostics summary unavailable.';
     }
     if (sweptSummary) {
       const cells = state.mapState?.cells || [];
@@ -1329,10 +1370,19 @@
       updateState((state) => {
         state.compareDir = config.compareDir || null;
       }, 'config');
-      if (determinismPlaceholder) {
-        determinismPlaceholder.textContent = config.compareDir
+      if (compareNavItem) {
+        compareNavItem.classList.toggle('hidden', !config.compareDir);
+      }
+      if (comparePlaceholder) {
+        comparePlaceholder.textContent = config.compareDir
           ? `Diff ready: ${config.compareDir}`
           : 'Provide --compare-dir to enable diff view.';
+      }
+      if (!config.compareDir && mapStore.getState().activeView === 'compare') {
+        updateState((state) => {
+          state.activeView = 'map';
+        }, 'view');
+        setView('map');
       }
 
       const mapState = buildMapState(sceneGraph, compiledMap);
@@ -1380,6 +1430,7 @@
 
   bindLayerToggles();
   bindSweptDirToggles();
+  bindDiagnosticToggles();
   bindSearch();
   bindNav();
   bindPanZoom();
