@@ -1,6 +1,10 @@
 (() => {
-  const create = ({ fetchJson, postJson, logger } = {}) => {
+  const create = ({ fetchJson, postJson, logger, events } = {}) => {
     let state = { activeSceneId: null, scenes: [] };
+    const dispatchSceneChanged = (detail) => {
+      if (!events?.SCENE_CHANGED || typeof window === 'undefined') return;
+      window.dispatchEvent(new CustomEvent(events.SCENE_CHANGED, { detail }));
+    };
 
     const load = async () => {
       const payload = await fetchJson('/api/scenes');
@@ -17,6 +21,7 @@
           scene.activeMapId = payload.activeMapId || mapId || scene.activeMapId;
         }
       }
+      dispatchSceneChanged({ sceneId, mapId, state });
       return payload;
     };
 

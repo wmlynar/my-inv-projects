@@ -7,6 +7,7 @@
     layers,
     geometry,
     logger,
+    events,
     constants = {},
     handlers = {}
   } = {}) => {
@@ -126,6 +127,13 @@
       updateMiniMapViewport();
       updateWorksiteScale();
       store?.notify?.('viewport');
+      if (events?.MAP_VIEW_CHANGED && typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent(events.MAP_VIEW_CHANGED, {
+            detail: { viewBox: { ...state.mapState } }
+          })
+        );
+      }
     };
 
     const getSvgPoint = (event) => {

@@ -4,6 +4,7 @@
     store,
     geometry,
     logger,
+    events,
     constants = {},
     layerConfig = [],
     handlers = {}
@@ -46,6 +47,7 @@
       layers: mapLayers,
       geometry,
       logger,
+      events,
       constants,
       handlers: {
         showWorksiteMenu: (event, id) => overlay?.showWorksiteMenu(event, id),

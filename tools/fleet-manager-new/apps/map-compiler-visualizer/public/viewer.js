@@ -23,6 +23,8 @@
   const conflictsSummary = document.getElementById('conflicts-summary');
   const sweptSummary = document.getElementById('swept-summary');
   const diagnosticsSummary = document.getElementById('diagnostics-summary');
+  const compareSummary = document.getElementById('compare-summary');
+  const compareDetails = document.getElementById('compare-details');
   const comparePlaceholder = document.getElementById('compare-placeholder');
   const navItems = Array.from(document.querySelectorAll('.nav-item[data-view]'));
   const viewPanels = Array.from(document.querySelectorAll('.view-panel[data-view]'));
@@ -46,12 +48,20 @@
       sweptBbox: true,
       sweptPivot: true,
       sweptEdges: false,
-      conflictEdges: false
+      conflictEdges: false,
+      compareNodes: true,
+      compareEdges: true,
+      compareCorridors: true,
+      compareCells: true,
+      compareAdded: true,
+      compareRemoved: true,
+      compareChanged: true
     },
     filters: { search: '', sweptDirs: { A_TO_B: true, B_TO_A: true } },
     viewport: null,
     activeView: 'map',
     diagnostics: { mode: 'coverage' },
+    compare: null,
     report: null,
     meta: null,
     compareDir: null
@@ -82,7 +92,11 @@
     pivot: createGroup('layer-pivot'),
     swept: createGroup('layer-swept'),
     nodes: createGroup('layer-nodes'),
-    labels: createGroup('layer-labels')
+    labels: createGroup('layer-labels'),
+    compareEdges: createGroup('layer-compare-edges'),
+    compareCorridors: createGroup('layer-compare-corridors'),
+    compareCells: createGroup('layer-compare-cells'),
+    compareNodes: createGroup('layer-compare-nodes')
   };
 
   Object.values(layerGroups).forEach((group) => mapSvg.appendChild(group));
@@ -99,7 +113,9 @@
     lastSelection: null,
     cellsKey: null,
     sweptKey: null,
-    pivotKey: null
+    pivotKey: null,
+    compareKey: null,
+    comparePanelKey: null
   };
 
   const uiConfig = {
@@ -400,6 +416,228 @@
     return analysis;
   }
 
+  function roundNumber(value, precision = 1e-6) {
+    if (!Number.isFinite(value)) return value;
+    return Math.round(value / precision) * precision;
+  }
+
+  function canonicalizeValue(value) {
+    if (value === null || value === undefined) return value;
+    if (typeof value === 'number') {
+      return roundNumber(value);
+    }
+    if (Array.isArray(value)) {
+      return value.map((entry) => canonicalizeValue(entry));
+    }
+    if (typeof value === 'object') {
+      const keys = Object.keys(value).sort();
+      const result = {};
+      for (const key of keys) {
+        const child = canonicalizeValue(value[key]);
+        if (child !== undefined) {
+          result[key] = child;
+        }
+      }
+      return result;
+    }
+    return value;
+  }
+
+  function stableStringify(value) {
+    return JSON.stringify(canonicalizeValue(value));
+  }
+
+  function diffKeyPaths(base, compare, prefix = '') {
+    const diffs = [];
+    const baseObj = base && typeof base === 'object' && !Array.isArray(base) ? base : {};
+    const compareObj = compare && typeof compare === 'object' && !Array.isArray(compare) ? compare : {};
+    const keys = new Set([...Object.keys(baseObj), ...Object.keys(compareObj)]);
+    for (const key of keys) {
+      const nextPrefix = prefix ? `${prefix}.${key}` : key;
+      const a = baseObj[key];
+      const b = compareObj[key];
+      const bothObjects =
+        a && b && typeof a === 'object' && typeof b === 'object' && !Array.isArray(a) && !Array.isArray(b);
+      if (bothObjects) {
+        diffs.push(...diffKeyPaths(a, b, nextPrefix));
+      } else if (stableStringify(a) !== stableStringify(b)) {
+        diffs.push(nextPrefix);
+      }
+    }
+    return diffs;
+  }
+
+  function getNodeId(node) {
+    return node?.nodeId || node?.id || null;
+  }
+
+  function getEdgeId(edge) {
+    return edge?.edgeId || edge?.id || null;
+  }
+
+  function getCorridorId(corridor) {
+    return corridor?.corridorId || corridor?.id || null;
+  }
+
+  function getCellId(cell) {
+    return cell?.cellId || cell?.id || null;
+  }
+
+  function normalizeNodeForDiff(node) {
+    if (!node || typeof node !== 'object') return node;
+    const copy = { ...node };
+    delete copy._pos;
+    return copy;
+  }
+
+  function normalizeEdgeForDiff(edge) {
+    if (!edge || typeof edge !== 'object') return edge;
+    const copy = { ...edge };
+    return copy;
+  }
+
+  function normalizeCorridorForDiff(corridor) {
+    if (!corridor || typeof corridor !== 'object') return corridor;
+    const copy = { ...corridor };
+    if (Array.isArray(copy.segments)) {
+      copy.segments = copy.segments.map((segment) => ({ ...segment }));
+    }
+    return copy;
+  }
+
+  function normalizeCellForDiff(cell) {
+    if (!cell || typeof cell !== 'object') return cell;
+    const copy = { ...cell };
+    if (Array.isArray(copy.conflictSet)) {
+      copy.conflictSet = [...copy.conflictSet].sort();
+    }
+    if (Array.isArray(copy.spans)) {
+      copy.spans = copy.spans.map((span) => ({ ...span }));
+    }
+    if (copy.sweptShape && typeof copy.sweptShape === 'object') {
+      const rects = Array.isArray(copy.sweptShape.rects) ? copy.sweptShape.rects : [];
+      copy.sweptShape = { ...copy.sweptShape, rects: rects.map((rect) => ({ ...rect })) };
+    }
+    return copy;
+  }
+
+  function diffCollection(baseList, compareList, getId, normalize) {
+    const baseMap = new Map();
+    const compareMap = new Map();
+    (baseList || []).forEach((item) => {
+      const id = getId(item);
+      if (id) baseMap.set(id, item);
+    });
+    (compareList || []).forEach((item) => {
+      const id = getId(item);
+      if (id) compareMap.set(id, item);
+    });
+    const added = [];
+    const removed = [];
+    const changed = [];
+    const allIds = new Set([...baseMap.keys(), ...compareMap.keys()]);
+    for (const id of allIds) {
+      const base = baseMap.get(id);
+      const compare = compareMap.get(id);
+      if (!base && compare) {
+        added.push(id);
+        continue;
+      }
+      if (base && !compare) {
+        removed.push(id);
+        continue;
+      }
+      const baseSig = stableStringify(normalize(base));
+      const compareSig = stableStringify(normalize(compare));
+      if (baseSig !== compareSig) {
+        changed.push(id);
+      }
+    }
+    added.sort();
+    removed.sort();
+    changed.sort();
+    return { added, removed, changed };
+  }
+
+  function computeCompiledMapDiff(baseMap, compareMap) {
+    if (!baseMap || !compareMap) return null;
+    const baseMeta = baseMap.meta || {};
+    const compareMeta = compareMap.meta || {};
+    const compiledMapHash = {
+      base: baseMeta.compiledMapHash || null,
+      compare: compareMeta.compiledMapHash || null
+    };
+    compiledMapHash.match =
+      compiledMapHash.base && compiledMapHash.compare && compiledMapHash.base === compiledMapHash.compare;
+    const paramsHash = {
+      base: baseMeta.paramsHash || null,
+      compare: compareMeta.paramsHash || null
+    };
+    paramsHash.match = paramsHash.base && paramsHash.compare && paramsHash.base === paramsHash.compare;
+
+    const nodes = diffCollection(baseMap.nodes || [], compareMap.nodes || [], getNodeId, normalizeNodeForDiff);
+    const edges = diffCollection(baseMap.edges || [], compareMap.edges || [], getEdgeId, normalizeEdgeForDiff);
+    const corridors = diffCollection(
+      baseMap.corridors || [],
+      compareMap.corridors || [],
+      getCorridorId,
+      normalizeCorridorForDiff
+    );
+    const cells = diffCollection(baseMap.cells || [], compareMap.cells || [], getCellId, normalizeCellForDiff);
+
+    const baseCellMap = new Map();
+    const compareCellMap = new Map();
+    (baseMap.cells || []).forEach((cell) => {
+      const id = getCellId(cell);
+      if (id) baseCellMap.set(id, cell);
+    });
+    (compareMap.cells || []).forEach((cell) => {
+      const id = getCellId(cell);
+      if (id) compareCellMap.set(id, cell);
+    });
+    const conflictChanged = [];
+    for (const id of baseCellMap.keys()) {
+      if (!compareCellMap.has(id)) continue;
+      const baseCell = baseCellMap.get(id);
+      const compareCell = compareCellMap.get(id);
+      const baseConf = Array.isArray(baseCell.conflictSet) ? [...baseCell.conflictSet].sort() : [];
+      const compareConf = Array.isArray(compareCell.conflictSet) ? [...compareCell.conflictSet].sort() : [];
+      if (stableStringify(baseConf) !== stableStringify(compareConf)) {
+        conflictChanged.push(id);
+      }
+    }
+    conflictChanged.sort();
+
+    const parametersMatch = stableStringify(baseMap.parameters || {}) === stableStringify(compareMap.parameters || {});
+    const parametersDiff = diffKeyPaths(baseMap.parameters || {}, compareMap.parameters || {});
+
+    return {
+      hashes: { compiledMapHash, paramsHash },
+      compiledMapVersion: {
+        base: baseMap.compiledMapVersion || null,
+        compare: compareMap.compiledMapVersion || null,
+        match: baseMap.compiledMapVersion === compareMap.compiledMapVersion
+      },
+      parameters: {
+        match: parametersMatch,
+        diffKeys: parametersDiff
+      },
+      counts: {
+        nodes: { added: nodes.added.length, removed: nodes.removed.length, changed: nodes.changed.length },
+        edges: { added: edges.added.length, removed: edges.removed.length, changed: edges.changed.length },
+        corridors: {
+          added: corridors.added.length,
+          removed: corridors.removed.length,
+          changed: corridors.changed.length
+        },
+        cells: { added: cells.added.length, removed: cells.removed.length, changed: cells.changed.length },
+        conflictSet: { changed: conflictChanged.length }
+      },
+      lists: { nodes, edges, corridors, cells },
+      conflictSet: { changedCells: conflictChanged }
+    };
+  }
+
   function buildMapState(sceneGraph, compiledMap) {
     const nodes = [];
     const edges = [];
@@ -666,6 +904,7 @@
     const isSwept = activeView === 'swept';
     const isConflicts = activeView === 'conflicts';
     const isDiagnostics = activeView === 'diagnostics';
+    const isCompare = activeView === 'compare';
     const diagnosticsMode = state.diagnostics?.mode || 'coverage';
 
     let showCells = false;
@@ -679,7 +918,8 @@
       (activeView === 'map' && state.layers.edges) ||
       (isSwept && state.layers.sweptEdges) ||
       (isConflicts && state.layers.conflictEdges) ||
-      isDiagnostics;
+      isDiagnostics ||
+      isCompare;
     const showNodes = activeView === 'map' && state.layers.nodes;
     const showCorridors = activeView === 'map' && state.layers.corridors;
     const showSwept = isSwept && state.layers.sweptBbox !== false;
@@ -698,6 +938,15 @@
     layerGroups.swept.style.display = showSwept ? 'block' : 'none';
 
     applyConflictHeatmap(state, isConflicts && state.layers.conflicts !== false);
+
+    layerGroups.compareEdges.style.display =
+      isCompare && state.layers.compareEdges ? 'block' : 'none';
+    layerGroups.compareCorridors.style.display =
+      isCompare && state.layers.compareCorridors ? 'block' : 'none';
+    layerGroups.compareCells.style.display =
+      isCompare && state.layers.compareCells ? 'block' : 'none';
+    layerGroups.compareNodes.style.display =
+      isCompare && state.layers.compareNodes ? 'block' : 'none';
 
     updateNodeLabelsVisibility(zoom);
   }
@@ -975,6 +1224,156 @@
     }
   }
 
+  function compareStatusEnabled(state, status) {
+    if (status === 'added') return state.layers.compareAdded !== false;
+    if (status === 'removed') return state.layers.compareRemoved !== false;
+    if (status === 'changed') return state.layers.compareChanged !== false;
+    return true;
+  }
+
+  function compareStatusClass(status) {
+    if (status === 'added') return 'diff-added';
+    if (status === 'removed') return 'diff-removed';
+    if (status === 'changed') return 'diff-changed';
+    return '';
+  }
+
+  function renderCompareEdges(ids, mapState, status) {
+    const className = compareStatusClass(status);
+    for (const id of ids) {
+      const d = mapState.cache.edgePaths.get(id);
+      if (!d) continue;
+      const path = createSvgElement('path', {
+        d,
+        class: `compare-edge ${className}`,
+        'data-edge-id': id
+      });
+      path.style.pointerEvents = 'none';
+      layerGroups.compareEdges.appendChild(path);
+    }
+  }
+
+  function renderCompareCorridors(ids, mapState, status) {
+    const className = compareStatusClass(status);
+    for (const id of ids) {
+      const corridor = mapState.cache.corridorsById.get(id);
+      if (!corridor) continue;
+      for (const segment of corridor.segments || []) {
+        const edgeId = segment.edgeId || segment.id;
+        if (!edgeId) continue;
+        const d = mapState.cache.edgePaths.get(edgeId);
+        if (!d) continue;
+        const path = createSvgElement('path', {
+          d,
+          class: `compare-corridor ${className}`,
+          'data-corridor-id': id
+        });
+        path.style.pointerEvents = 'none';
+        layerGroups.compareCorridors.appendChild(path);
+      }
+    }
+  }
+
+  function renderCompareCells(ids, mapState, status) {
+    const className = compareStatusClass(status);
+    for (const id of ids) {
+      const cell = mapState.cache.cellsById.get(id);
+      if (!cell) continue;
+      for (const rect of cell.rects || []) {
+        if (!Number.isFinite(rect.cx) || !Number.isFinite(rect.cy)) continue;
+        const width = rect.hx * 2;
+        const height = rect.hy * 2;
+        const el = createSvgElement('rect', {
+          x: rect.cx - rect.hx,
+          y: rect.cy - rect.hy,
+          width,
+          height,
+          class: `compare-cell ${className}`,
+          'data-cell-id': id
+        });
+        if (Number.isFinite(rect.angleRad) && rect.angleRad !== 0) {
+          const angleDeg = (rect.angleRad * 180) / Math.PI;
+          el.setAttribute('transform', `rotate(${angleDeg} ${rect.cx} ${rect.cy})`);
+        }
+        el.style.pointerEvents = 'none';
+        layerGroups.compareCells.appendChild(el);
+      }
+    }
+  }
+
+  function renderCompareNodes(ids, mapState, status) {
+    const className = compareStatusClass(status);
+    for (const id of ids) {
+      const node = mapState.cache.nodesById.get(id);
+      if (!node || !node.pos) continue;
+      const circle = createSvgElement('circle', {
+        cx: node.pos.x,
+        cy: node.pos.y,
+        r: 0.3,
+        class: `compare-node ${className}`,
+        'data-node-id': id
+      });
+      circle.style.pointerEvents = 'none';
+      layerGroups.compareNodes.appendChild(circle);
+    }
+  }
+
+  function getCompareFilterKey(state) {
+    const layers = state.layers || {};
+    return [
+      layers.compareNodes ? 1 : 0,
+      layers.compareEdges ? 1 : 0,
+      layers.compareCorridors ? 1 : 0,
+      layers.compareCells ? 1 : 0,
+      layers.compareAdded ? 1 : 0,
+      layers.compareRemoved ? 1 : 0,
+      layers.compareChanged ? 1 : 0
+    ].join('');
+  }
+
+  function renderCompare(state) {
+    const compare = state.compare;
+    const mapState = state.mapState;
+    if (!compare || !compare.diff || !compare.mapState || !mapState) {
+      clearElement(layerGroups.compareEdges);
+      clearElement(layerGroups.compareCorridors);
+      clearElement(layerGroups.compareCells);
+      clearElement(layerGroups.compareNodes);
+      layerState.compareKey = null;
+      return;
+    }
+    const key = `${mapState.version}|${compare.mapState.version}|${state.activeView}|${getCompareFilterKey(state)}`;
+    if (layerState.compareKey === key) return;
+    layerState.compareKey = key;
+    clearElement(layerGroups.compareEdges);
+    clearElement(layerGroups.compareCorridors);
+    clearElement(layerGroups.compareCells);
+    clearElement(layerGroups.compareNodes);
+    if (state.activeView !== 'compare') return;
+
+    const diff = compare.diff;
+    const statuses = ['added', 'removed', 'changed'];
+    for (const status of statuses) {
+      if (!compareStatusEnabled(state, status)) continue;
+      if (state.layers.compareEdges) {
+        const ids = diff.lists.edges[status] || [];
+        renderCompareEdges(ids, status === 'added' ? compare.mapState : mapState, status);
+      }
+      if (state.layers.compareCorridors) {
+        const ids = diff.lists.corridors[status] || [];
+        renderCompareCorridors(ids, status === 'added' ? compare.mapState : mapState, status);
+      }
+      if (state.layers.compareCells) {
+        const ids = diff.lists.cells[status] || [];
+        renderCompareCells(ids, status === 'added' ? compare.mapState : mapState, status);
+      }
+      if (state.layers.compareNodes) {
+        const ids = diff.lists.nodes[status] || [];
+        renderCompareNodes(ids, status === 'added' ? compare.mapState : mapState, status);
+      }
+    }
+  }
+
   function renderMiniMap(state) {
     const mapState = state.mapState;
     if (!mapState || layerState.miniVersion === mapState.version) return;
@@ -1002,11 +1401,13 @@
     renderSwept(state);
     renderNodes(state);
     renderMiniMap(state);
+    renderCompare(state);
 
     layerState.version = state.mapState.version;
     applyLayerVisibility();
     updateSelectionHighlight();
     updateViewSummaries(state);
+    updateComparePanel(state);
   }
 
   function updateSelectionHighlight() {
@@ -1341,6 +1742,43 @@
     }
   }
 
+  function updateComparePanel(state) {
+    if (!compareSummary || !compareDetails || !comparePlaceholder) return;
+    const diff = state.compare?.diff;
+    const panelKey = state.compare?.version || 'none';
+    if (layerState.comparePanelKey === panelKey) {
+      return;
+    }
+    layerState.comparePanelKey = panelKey;
+    if (!diff) {
+      compareSummary.textContent = '';
+      compareDetails.textContent = JSON.stringify({}, null, 2);
+      comparePlaceholder.classList.remove('hidden');
+      return;
+    }
+    comparePlaceholder.classList.add('hidden');
+    const lines = [
+      `compiledMapHash: ${diff.hashes.compiledMapHash.match ? 'match' : 'DIFF'}`,
+      `  base: ${diff.hashes.compiledMapHash.base || 'n/a'}`,
+      `  compare: ${diff.hashes.compiledMapHash.compare || 'n/a'}`,
+      `paramsHash: ${diff.hashes.paramsHash.match ? 'match' : 'DIFF'}`,
+      `  base: ${diff.hashes.paramsHash.base || 'n/a'}`,
+      `  compare: ${diff.hashes.paramsHash.compare || 'n/a'}`,
+      `compiledMapVersion: ${diff.compiledMapVersion.match ? 'match' : 'DIFF'}`,
+      `  base: ${diff.compiledMapVersion.base || 'n/a'}`,
+      `  compare: ${diff.compiledMapVersion.compare || 'n/a'}`,
+      `parameters: ${diff.parameters.match ? 'match' : 'DIFF'}`,
+      `  diff keys: ${diff.parameters.diffKeys.length ? diff.parameters.diffKeys.join(', ') : 'none'}`,
+      `nodes: +${diff.counts.nodes.added} -${diff.counts.nodes.removed} ~${diff.counts.nodes.changed}`,
+      `edges: +${diff.counts.edges.added} -${diff.counts.edges.removed} ~${diff.counts.edges.changed}`,
+      `corridors: +${diff.counts.corridors.added} -${diff.counts.corridors.removed} ~${diff.counts.corridors.changed}`,
+      `cells: +${diff.counts.cells.added} -${diff.counts.cells.removed} ~${diff.counts.cells.changed}`,
+      `conflictSet changed cells: ${diff.counts.conflictSet.changed}`
+    ];
+    compareSummary.textContent = lines.join('\n');
+    compareDetails.textContent = JSON.stringify(diff, null, 2);
+  }
+
   function updateMetaPanel(meta) {
     if (!meta || !metaLine) return;
     const source = meta.source || meta.mapName || 'unknown';
@@ -1389,6 +1827,58 @@
       updateState((state) => {
         state.mapState = mapState;
       }, 'map');
+
+      if (config.compareDir) {
+        try {
+          const [compareSceneGraph, compareCompiledMap] = await Promise.all([
+            fetchJson('/api/compare/scene-graph'),
+            fetchJson('/api/compare/compiled-map')
+          ]);
+          const compareMapState = buildMapState(compareSceneGraph, compareCompiledMap);
+          const diffBase = {
+            ...compiledMap,
+            nodes:
+              Array.isArray(compiledMap.nodes) && compiledMap.nodes.length
+                ? compiledMap.nodes
+                : sceneGraph.nodes,
+            edges:
+              Array.isArray(compiledMap.edges) && compiledMap.edges.length
+                ? compiledMap.edges
+                : sceneGraph.edges
+          };
+          const diffCompare = {
+            ...compareCompiledMap,
+            nodes:
+              Array.isArray(compareCompiledMap.nodes) && compareCompiledMap.nodes.length
+                ? compareCompiledMap.nodes
+                : compareSceneGraph.nodes,
+            edges:
+              Array.isArray(compareCompiledMap.edges) && compareCompiledMap.edges.length
+                ? compareCompiledMap.edges
+                : compareSceneGraph.edges
+          };
+          const diff = computeCompiledMapDiff(diffBase, diffCompare);
+          updateState((state) => {
+            state.compare = {
+              diff,
+              mapState: compareMapState,
+              compiledMap: diffCompare,
+              version: Date.now()
+            };
+          }, 'compare');
+        } catch (err) {
+          updateState((state) => {
+            state.compare = null;
+          }, 'compare');
+          if (comparePlaceholder) {
+            comparePlaceholder.textContent = `Compare load failed: ${err.message}`;
+          }
+        }
+      } else {
+        updateState((state) => {
+          state.compare = null;
+        }, 'compare');
+      }
 
       fitBounds();
       render(mapStore.getState());

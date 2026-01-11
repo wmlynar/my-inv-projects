@@ -85,6 +85,21 @@ function resolveArtifacts(config) {
   };
 }
 
+function resolveCompareArtifacts(config) {
+  const compareDir = config.artifacts?.compareDir;
+  if (!compareDir) return null;
+  const baseDir = path.resolve(compareDir);
+  const sceneGraphPath = path.resolve(path.join(baseDir, 'sceneGraph.json'));
+  const compiledMapPath = path.resolve(path.join(baseDir, 'compiledMap.json'));
+  const metaPath = path.resolve(path.join(baseDir, 'meta.json'));
+  return {
+    baseDir,
+    sceneGraphPath,
+    compiledMapPath,
+    metaPath
+  };
+}
+
 function ensureArtifacts(paths) {
   if (!fs.existsSync(paths.sceneGraphPath)) {
     throw new Error(`missing sceneGraph.json: ${paths.sceneGraphPath}`);
@@ -104,6 +119,7 @@ function runValidation(paths) {
 
 function startServer(config) {
   const paths = resolveArtifacts(config);
+  const comparePaths = resolveCompareArtifacts(config);
   ensureArtifacts(paths);
 
   const server = http.createServer((req, res) => {
@@ -140,6 +156,48 @@ function startServer(config) {
         sendJson(res, 200, data);
       } catch (err) {
         sendText(res, 500, `failed to read meta.json: ${err.message}`);
+      }
+      return;
+    }
+
+    if (pathname === '/api/compare/scene-graph') {
+      if (!comparePaths || !fs.existsSync(comparePaths.sceneGraphPath)) {
+        sendText(res, 404, 'compare sceneGraph.json not found');
+        return;
+      }
+      try {
+        const data = readJson(comparePaths.sceneGraphPath);
+        sendJson(res, 200, data);
+      } catch (err) {
+        sendText(res, 500, `failed to read compare sceneGraph.json: ${err.message}`);
+      }
+      return;
+    }
+
+    if (pathname === '/api/compare/compiled-map') {
+      if (!comparePaths || !fs.existsSync(comparePaths.compiledMapPath)) {
+        sendText(res, 404, 'compare compiledMap.json not found');
+        return;
+      }
+      try {
+        const data = readJson(comparePaths.compiledMapPath);
+        sendJson(res, 200, data);
+      } catch (err) {
+        sendText(res, 500, `failed to read compare compiledMap.json: ${err.message}`);
+      }
+      return;
+    }
+
+    if (pathname === '/api/compare/meta') {
+      if (!comparePaths || !fs.existsSync(comparePaths.metaPath)) {
+        sendText(res, 404, 'compare meta.json not found');
+        return;
+      }
+      try {
+        const data = readJson(comparePaths.metaPath);
+        sendJson(res, 200, data);
+      } catch (err) {
+        sendText(res, 500, `failed to read compare meta.json: ${err.message}`);
       }
       return;
     }

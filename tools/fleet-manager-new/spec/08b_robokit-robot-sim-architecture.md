@@ -99,6 +99,50 @@ schemas/
   robokit/                    # JSON schema payloadow
 ```
 
+### 4.0.2 Mapa plikow runtime (kompaktowa, <=30 plikow) (MUST)
+**packages/robokit-sim-core/**
+- `core/state.js` — model stanu robota + defaulty + walidacja.
+- `core/engine.js` — `step(state, input, dt)` i integracja ruchu.
+- `core/task.js` — taski (goTarget, multistation, pause/resume).
+- `core/navigation.js` — graf, pathfinding, segmenty.
+- `core/fork.js` — sterowanie widlami i statusy.
+- `core/obstacles.js` — block/avoid i wykrywanie przeszkod.
+- `core/charge.js` — bateria/charging/odo.
+- `core/clock_rng.js` — deterministyczny zegar + RNG.
+- `core/events.js` — eventy/diag + explainability hooks.
+
+**packages/robokit-protocol/**
+- `protocol/codec.js` — framing decode/encode.
+- `protocol/router.js` — apiNo -> handler.
+- `protocol/policy.js` — gating/lock policy.
+- `protocol/command_cache.js` — idempotencja.
+- `protocol/api_map.js` — mapa API + dozwolone porty.
+- `protocol/errors.js` — kody bledow i helpery.
+
+**packages/robokit-sim-profiles/**
+- `profiles/loader.js` — load + merge + precedence.
+- `profiles/schema.json` — walidacja profilu.
+- `profiles/default.json5` — default identity.
+
+**apps/robokit-robot-sim/**
+- `app/server.js` — bootstrap + wiring modulu.
+- `app/adapter_tcp.js` — TCP adapter (robokit).
+- `app/adapter_http.js` — HTTP stub (RDS, oddzielny kanal).
+- `app/views.js` — status + push (jedna warstwa widoku).
+- `app/client_registry.js` — sesje klientow.
+- `app/control_arbiter.js` — lock + preempcja.
+- `app/push_manager.js` — per-connection push + limity.
+- `app/config.js` — env + walidacja.
+
+### 4.0.3 Rozklad rozmiaru plikow (MUST)
+Celem jest zrownowazony rozklad kodu:
+- runtime file nie powinien przekraczac ~800 linii,
+- runtime file nie powinien byc >2x mediany rozmiaru pliku runtime,
+- wyjatki: pliki danych (profile/schema) oraz generowane listy.
+
+Refactoring NIE jest zakonczony, dopoki istnieja pliki wyraznie wieksze od innych
+wg powyzszych progow.
+
 ### 4.1 Transport
 **Odpowiedzialnosci:**
 - utrzymanie socketow i parserow per polaczenie,
@@ -706,23 +750,25 @@ Minimalne zasady, aby aplikacja byla stabilna i "production-like":
 
 
 ## 12. Plan refactoringu (kolejnosc bez ryzyka)
-1) **Extract View**: przenies `build*Response` do `views/`.
-2) **Extract Core**: przenies `tick`, `TaskEngine`, `ForkController`, `Navigation`.
-3) **Pure core step**: `step(state, inputs, dt)` + deterministyczny clock/RNG.
-4) **Profile packs**: przenies VERSION_LIST / params / deviceTypes do profilu.
-5) **Adaptery**: rozdziel `robokit-tcp`, `roboshop-http`, `replay`.
-6) **Add ClientRegistry**: mapuj socket -> clientId.
-7) **Add ControlArbiter**: implementuj lock/preempcje + gating.
-8) **Fix Push**: per-connection config.
-9) **Explainability**: event bus + explain() + JSONL diag.
-10) **Schema/DTO**: formalne kontrakty payloadow.
-11) **Tests**: multi-client + lock preemption + status regression + replay.
+1) **Docelowa mapa plikow (kompaktowa)**: ustal 3 pakiety (`sim-core`, `protocol`, `profiles`) + adapter `robokit-robot-sim` (<=30 plikow runtime).
+2) **Extract View**: przenies `build*Response` do jednego pliku `app/views.js` (status+push razem).
+3) **Extract Protocol**: `codec/router/policy/command_cache` do `packages/robokit-protocol`.
+4) **Extract Core**: `state/engine/task/nav/fork/obstacles/charge` do `packages/robokit-sim-core`.
+5) **Pure core step**: `step(state, inputs, dt)` + deterministyczny clock/RNG (bez IO).
+6) **Profile packs**: przenies VERSION_LIST / params / deviceTypes / mapy do profilu (single source of truth).
+7) **Adaptery**: TCP/HTTP/replay jako cienkie warstwy w `apps/robokit-robot-sim`.
+8) **ClientRegistry + ControlArbiter**: jeden moduł na logike klientow/locka (bez duplikacji).
+9) **Push**: per-connection config i limity w `app/push_manager.js`.
+10) **Explainability**: event bus + JSONL diag + `explain()` w core.
+11) **Schema/DTO**: formalne kontrakty payloadow + profile schema.
+12) **Tests**: multi-client + lock preemption + status regression + replay.
 
 ## 12.1 Kryteria akceptacji (MUST)
 Kazdy krok powinien miec jasne kryteria "Done":
 - zmiana jest pokryta testem (unit/e2e/replay),
 - brak regresji w istniecych testach,
 - API/protokol bez zmian w wire format (o ile nie zaznaczono inaczej).
+- rozklad rozmiaru plikow spelnia wymagania z 4.0.3.
 
 Przyklady:
 - **Pure core step**: testy deterministyczne (`seed`), brak zaleznosci od czasu systemowego.

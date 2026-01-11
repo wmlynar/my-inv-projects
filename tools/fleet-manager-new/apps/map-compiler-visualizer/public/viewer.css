@@ -213,6 +213,62 @@
   stroke-width: 0.7;
 }
 
+.compare-edge,
+.compare-corridor {
+  fill: none;
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+}
+
+.compare-cell {
+  fill: none;
+  stroke-width: 0.6;
+  vector-effect: non-scaling-stroke;
+}
+
+.compare-node {
+  fill: rgba(255, 255, 255, 0.95);
+  stroke-width: 0.6;
+  vector-effect: non-scaling-stroke;
+}
+
+.diff-added {
+  stroke: rgba(34, 139, 90, 0.95);
+}
+
+.diff-removed {
+  stroke: rgba(191, 64, 43, 0.95);
+  stroke-dasharray: 4 3;
+}
+
+.diff-changed {
+  stroke: rgba(221, 106, 31, 0.95);
+}
+
+.compare-cell.diff-added {
+  fill: rgba(34, 139, 90, 0.18);
+}
+
+.compare-cell.diff-removed {
+  fill: rgba(191, 64, 43, 0.16);
+}
+
+.compare-cell.diff-changed {
+  fill: rgba(221, 106, 31, 0.18);
+}
+
+.compare-node.diff-added {
+  fill: rgba(205, 238, 223, 0.95);
+}
+
+.compare-node.diff-removed {
+  fill: rgba(255, 232, 230, 0.95);
+}
+
+.compare-node.diff-changed {
+  fill: rgba(255, 240, 220, 0.95);
+}
+
 .map-edge.is-match {
   stroke: #111;
   stroke-width: 1.1;

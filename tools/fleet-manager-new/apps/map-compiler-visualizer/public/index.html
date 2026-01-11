@@ -126,6 +126,36 @@
                     <span>Length sanity</span>
                   </label>
                 </div>
+                <div class="viewer-controls view-controls hidden" data-view-controls="compare">
+                  <label class="viewer-toggle">
+                    <input type="checkbox" data-layer="compareNodes" checked />
+                    <span>Nodes</span>
+                  </label>
+                  <label class="viewer-toggle">
+                    <input type="checkbox" data-layer="compareEdges" checked />
+                    <span>Edges</span>
+                  </label>
+                  <label class="viewer-toggle">
+                    <input type="checkbox" data-layer="compareCorridors" checked />
+                    <span>Corridors</span>
+                  </label>
+                  <label class="viewer-toggle">
+                    <input type="checkbox" data-layer="compareCells" checked />
+                    <span>Cells</span>
+                  </label>
+                  <label class="viewer-toggle">
+                    <input type="checkbox" data-layer="compareAdded" checked />
+                    <span>Added</span>
+                  </label>
+                  <label class="viewer-toggle">
+                    <input type="checkbox" data-layer="compareRemoved" checked />
+                    <span>Removed</span>
+                  </label>
+                  <label class="viewer-toggle">
+                    <input type="checkbox" data-layer="compareChanged" checked />
+                    <span>Changed</span>
+                  </label>
+                </div>
                 <div class="viewer-search">
                   <input id="search-input" type="text" placeholder="Search id (node/edge/cell)" />
                   <button id="clear-search" class="ghost-btn small">Clear</button>
@@ -201,6 +231,8 @@
                   <p>Diff summary between compilation runs.</p>
                 </div>
               </div>
+              <div id="compare-summary" class="viewer-metrics"></div>
+              <pre id="compare-details" class="viewer-pre">{}</pre>
               <div id="compare-placeholder" class="viewer-placeholder">Provide --compare-dir to enable diff view.</div>
             </section>
           </div>

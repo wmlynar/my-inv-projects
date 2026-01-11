@@ -911,12 +911,14 @@ function buildCellSpans(segments, corridorS0M, corridorS1M) {
     const overlapS0 = Math.max(corridorS0M, segS0);
     const overlapS1 = Math.min(corridorS1M, segS1);
     if (overlapS1 <= overlapS0 + eps) continue;
-    const segLen = segS1 - segS0;
-    let edgeS0 = overlapS0 - segS0;
-    let edgeS1 = overlapS1 - segS0;
+    const segLenCanonical = segS1 - segS0;
+    const segLenActual = Number.isFinite(segment.lengthM) ? segment.lengthM : segLenCanonical;
+    const scale = segLenCanonical > eps ? segLenActual / segLenCanonical : 1;
+    let edgeS0 = (overlapS0 - segS0) * scale;
+    let edgeS1 = (overlapS1 - segS0) * scale;
     if (!segment.aligned) {
-      edgeS0 = segLen - (overlapS1 - segS0);
-      edgeS1 = segLen - (overlapS0 - segS0);
+      edgeS0 = segLenActual - (overlapS1 - segS0) * scale;
+      edgeS1 = segLenActual - (overlapS0 - segS0) * scale;
     }
     spans.push({
       edgeId: segment.edgeId,
@@ -939,27 +941,90 @@ function movestyleForCorridorS(segments, corridorS, dir) {
   return dir === 'A_TO_B' ? tail.forwardMoveStyle : tail.reverseMoveStyle;
 }
 
-function buildCellsForCorridor(corridor, dir, polyline, params, robotModel) {
+function buildMappingSegments(segments) {
+  const mapped = [];
+  let cursor = 0;
+  for (const segment of segments) {
+    const segLenCanonical = segment.corridorS1M - segment.corridorS0M;
+    const segLenActual = Number.isFinite(segment.lengthM) ? segment.lengthM : segLenCanonical;
+    mapped.push({
+      ...segment,
+      mapS0M: cursor,
+      mapS1M: cursor + segLenActual,
+      lengthM: segLenActual
+    });
+    cursor += segLenActual;
+  }
+  return mapped;
+}
+
+function mapCorridorDistance(mappedSegments, corridorS) {
+  if (!mappedSegments || !mappedSegments.length) return corridorS;
+  const eps = 1e-6;
+  for (const segment of mappedSegments) {
+    if (corridorS >= segment.corridorS0M - eps && corridorS <= segment.corridorS1M + eps) {
+      const segLenCanonical = segment.corridorS1M - segment.corridorS0M;
+      if (segLenCanonical <= eps) return segment.mapS0M;
+      const ratio = segment.lengthM / segLenCanonical;
+      const offset = corridorS - segment.corridorS0M;
+      return segment.mapS0M + offset * ratio;
+    }
+  }
+  const last = mappedSegments[mappedSegments.length - 1];
+  if (corridorS <= mappedSegments[0].corridorS0M) return mappedSegments[0].mapS0M;
+  return last.mapS1M;
+}
+
+function mapPolylineDistance(mappedSegments, polylineS) {
+  if (!mappedSegments || !mappedSegments.length) return polylineS;
+  const eps = 1e-6;
+  for (const segment of mappedSegments) {
+    if (polylineS >= segment.mapS0M - eps && polylineS <= segment.mapS1M + eps) {
+      const segLenActual = segment.mapS1M - segment.mapS0M;
+      if (segLenActual <= eps) return segment.corridorS0M;
+      const ratio = (segment.corridorS1M - segment.corridorS0M) / segLenActual;
+      const offset = polylineS - segment.mapS0M;
+      return segment.corridorS0M + offset * ratio;
+    }
+  }
+  const last = mappedSegments[mappedSegments.length - 1];
+  if (polylineS <= mappedSegments[0].mapS0M) return mappedSegments[0].corridorS0M;
+  return last.corridorS1M;
+}
+
+function buildCellsForCorridor(corridor, dir, polyline, params, robotModel, options = {}) {
   const cells = [];
   if (!polyline) return cells;
-  const lengthM = corridor.lengthM;
+  const lengthM = Number.isFinite(options.lengthM) ? options.lengthM : corridor.lengthM;
   if (!Number.isFinite(lengthM) || lengthM <= 0) return cells;
   const cellLenM = params.cellLenM;
   const cellCount = Math.max(1, Math.ceil(lengthM / cellLenM));
   const eps = 1e-6;
+  const spanSegments = options.spanSegments || corridor.segments || [];
+  const mapSegments = options.mapSegments || null;
+  const polylineToCorridor = mapSegments
+    ? (s) => mapPolylineDistance(mapSegments, s)
+    : (s) => s;
   for (let index = 0; index < cellCount; index += 1) {
     const corridorS0M = index * cellLenM;
     const corridorS1M = Math.min(lengthM, corridorS0M + cellLenM);
     if (corridorS1M <= corridorS0M + eps) continue;
-    const spans = buildCellSpans(corridor.segments, corridorS0M, corridorS1M);
+    const spans = buildCellSpans(spanSegments, corridorS0M, corridorS1M);
     const movestyleAt =
       dir === 'A_TO_B'
-        ? (s) => movestyleForCorridorS(corridor.segments, s, dir)
-        : (s) => movestyleForCorridorS(corridor.segments, lengthM - s, dir);
-    const [s0, s1] =
-      dir === 'A_TO_B'
-        ? [corridorS0M, corridorS1M]
-        : [lengthM - corridorS1M, lengthM - corridorS0M];
+        ? (s) => movestyleForCorridorS(corridor.segments, polylineToCorridor(s), dir)
+        : (s) =>
+            movestyleForCorridorS(corridor.segments, lengthM - polylineToCorridor(s), dir);
+    let s0 = corridorS0M;
+    let s1 = corridorS1M;
+    if (dir === 'B_TO_A') {
+      s0 = lengthM - corridorS1M;
+      s1 = lengthM - corridorS0M;
+    }
+    if (mapSegments) {
+      s0 = mapCorridorDistance(mapSegments, s0);
+      s1 = mapCorridorDistance(mapSegments, s1);
+    }
     const sweptShape = computeSweptShape(polyline, s0, s1, movestyleAt, robotModel, params);
     cells.push({
       cellId: `${corridor.corridorId}#i=${index}#dir=${dir}`,
@@ -1161,16 +1226,71 @@ function buildCompiledMap(sceneGraph, { smapPath, robotModel, compileParams } = 
     const corridorHash = hash32Hex(sequence);
     const corridorId = `C:${aNodeId}\u2192${bNodeId}:${corridorHash}`;
 
-    let cursor = 0;
-    const internalSegments = [];
+    const segmentInfos = [];
     for (const segment of segments) {
       const group = groupsByKey.get(segment.key);
       if (!group) continue;
       const forward = pickEdgeForDirection(group, segment.fromNodeId, segment.toNodeId);
       const reverse = pickEdgeForDirection(group, segment.toNodeId, segment.fromNodeId);
-      const edge = forward?.edge || reverse?.edge || group.primaryEdge;
+      const forwardEdge = forward?.edge || null;
+      const reverseEdge = reverse?.edge || null;
+      const fallbackEdge = forwardEdge || reverseEdge || group.primaryEdge || null;
+      const forwardLengthM = forwardEdge
+        ? Number.isFinite(forwardEdge.lengthM)
+          ? forwardEdge.lengthM
+          : edgeLengthFallback(forwardEdge)
+        : null;
+      const reverseLengthM = reverseEdge
+        ? Number.isFinite(reverseEdge.lengthM)
+          ? reverseEdge.lengthM
+          : edgeLengthFallback(reverseEdge)
+        : null;
+      const fallbackLengthM = fallbackEdge
+        ? Number.isFinite(fallbackEdge.lengthM)
+          ? fallbackEdge.lengthM
+          : edgeLengthFallback(fallbackEdge)
+        : null;
+      segmentInfos.push({
+        segment,
+        forward,
+        reverse,
+        forwardEdge,
+        reverseEdge,
+        forwardLengthM,
+        reverseLengthM,
+        fallbackEdge,
+        fallbackLengthM
+      });
+    }
+
+    const allowAToB = segmentInfos.length > 0 && segmentInfos.every((info) => info.forwardEdge);
+    const allowBToA = segmentInfos.length > 0 && segmentInfos.every((info) => info.reverseEdge);
+    const corridorDirection = allowAToB ? 'A_TO_B' : allowBToA ? 'B_TO_A' : 'MIXED';
+
+    let cursor = 0;
+    const internalSegments = [];
+    for (const info of segmentInfos) {
+      const segment = info.segment;
+      let edge = null;
+      let lengthM = null;
+      if (corridorDirection === 'A_TO_B') {
+        edge = info.forwardEdge;
+        lengthM = info.forwardLengthM;
+      } else if (corridorDirection === 'B_TO_A') {
+        edge = info.reverseEdge;
+        lengthM = info.reverseLengthM;
+      } else {
+        edge = info.forwardEdge || info.reverseEdge || info.fallbackEdge;
+        lengthM =
+          info.forwardLengthM ??
+          info.reverseLengthM ??
+          info.fallbackLengthM ??
+          (edge ? edgeLengthFallback(edge) : null);
+      }
       if (!edge) continue;
-      const lengthM = Number.isFinite(edge.lengthM) ? edge.lengthM : edgeLengthFallback(edge);
+      if (!Number.isFinite(lengthM)) {
+        lengthM = edgeLengthFallback(edge);
+      }
       const aligned = edge.startNodeId === segment.fromNodeId;
       internalSegments.push({
         edgeId: edge.edgeId,
@@ -1178,8 +1298,16 @@ function buildCompiledMap(sceneGraph, { smapPath, robotModel, compileParams } = 
         corridorS0M: cursor,
         corridorS1M: cursor + lengthM,
         aligned,
-        forwardMoveStyle: forward ? forward.movestyle : null,
-        reverseMoveStyle: reverse ? reverse.movestyle : null
+        fromNodeId: segment.fromNodeId,
+        toNodeId: segment.toNodeId,
+        forwardEdge: info.forwardEdge,
+        reverseEdge: info.reverseEdge,
+        forwardAligned: info.forward ? info.forward.aligned : null,
+        reverseAligned: info.reverse ? info.reverse.aligned : null,
+        forwardLengthM: info.forwardLengthM,
+        reverseLengthM: info.reverseLengthM,
+        forwardMoveStyle: info.forward ? info.forward.movestyle : null,
+        reverseMoveStyle: info.reverse ? info.reverse.movestyle : null
       });
       cursor += lengthM;
     }
@@ -1216,16 +1344,29 @@ function buildCompiledMap(sceneGraph, { smapPath, robotModel, compileParams } = 
   for (const entry of corridorEntries) {
     const corridor = entry.corridor;
     const internalSegments = entry.internalSegments;
-    const allowAToB = internalSegments.every((seg) => seg.forwardMoveStyle);
-    const allowBToA = internalSegments.every((seg) => seg.reverseMoveStyle);
-    const forwardPolyline = buildCorridorPolyline(
-      internalSegments.map((segment) => ({ edge: segment.edge, aligned: segment.aligned })),
-      parameters
-    );
-    const reversePolyline =
-      forwardPolyline && MotionKernel.reversePolyline
-        ? MotionKernel.reversePolyline(forwardPolyline)
-        : forwardPolyline;
+    const allowAToB = internalSegments.length > 0 && internalSegments.every((seg) => seg.forwardMoveStyle);
+    const allowBToA = internalSegments.length > 0 && internalSegments.every((seg) => seg.reverseMoveStyle);
+    const forwardPolyline = allowAToB
+      ? buildCorridorPolyline(
+          internalSegments.map((segment) => ({
+            edge: segment.forwardEdge,
+            aligned: segment.forwardAligned
+          })),
+          parameters
+        )
+      : null;
+    const reversePolyline = allowBToA
+      ? buildCorridorPolyline(
+          internalSegments
+            .slice()
+            .reverse()
+            .map((segment) => ({
+              edge: segment.reverseEdge,
+              aligned: segment.reverseAligned
+            })),
+          parameters
+        )
+      : null;
     const cellSegments = internalSegments.map((segment) => ({
       edgeId: segment.edgeId,
       corridorS0M: segment.corridorS0M,
@@ -1236,11 +1377,55 @@ function buildCompiledMap(sceneGraph, { smapPath, robotModel, compileParams } = 
     }));
     const corridorMeta = { ...corridor, segments: cellSegments };
 
+    const forwardSpanSegments = allowAToB
+      ? internalSegments.map((segment) => ({
+          edgeId: segment.forwardEdge?.edgeId,
+          corridorS0M: segment.corridorS0M,
+          corridorS1M: segment.corridorS1M,
+          aligned: segment.forwardAligned,
+          lengthM: segment.forwardLengthM
+        }))
+      : null;
+    const forwardMapSegments = allowAToB ? buildMappingSegments(forwardSpanSegments) : null;
+
+    const reverseSpanSegments = allowBToA
+      ? internalSegments.map((segment) => ({
+          edgeId: segment.reverseEdge?.edgeId,
+          corridorS0M: segment.corridorS0M,
+          corridorS1M: segment.corridorS1M,
+          aligned: segment.reverseEdge ? segment.reverseEdge.startNodeId === segment.fromNodeId : null,
+          lengthM: segment.reverseLengthM
+        }))
+      : null;
+    const reverseMapSegments =
+      allowBToA && reverseSpanSegments
+        ? buildMappingSegments(
+            reverseSpanSegments
+              .slice()
+              .reverse()
+              .map((segment) => ({
+                ...segment,
+                corridorS0M: corridor.lengthM - segment.corridorS1M,
+                corridorS1M: corridor.lengthM - segment.corridorS0M
+              }))
+          )
+        : null;
+
     if (allowAToB) {
-      cells.push(...buildCellsForCorridor(corridorMeta, 'A_TO_B', forwardPolyline, parameters, model));
+      cells.push(
+        ...buildCellsForCorridor(corridorMeta, 'A_TO_B', forwardPolyline, parameters, model, {
+          spanSegments: forwardSpanSegments,
+          mapSegments: forwardMapSegments
+        })
+      );
     }
     if (allowBToA) {
-      cells.push(...buildCellsForCorridor(corridorMeta, 'B_TO_A', reversePolyline, parameters, model));
+      cells.push(
+        ...buildCellsForCorridor(corridorMeta, 'B_TO_A', reversePolyline, parameters, model, {
+          spanSegments: reverseSpanSegments,
+          mapSegments: reverseMapSegments
+        })
+      );
     }
   }
 
