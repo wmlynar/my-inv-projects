@@ -131,13 +131,25 @@ function createRuntime(options = {}) {
       task.steps = buildPickDropSteps(task);
     }
 
+    const hasPendingTasks = (excludeTaskId) => tasks.some((entry) => (
+      entry.taskId !== excludeTaskId
+      && entry.status === 'created'
+      && !entry.assignedRobotId
+    ));
+
     for (const task of tasks) {
       if (!task.assignedRobotId) continue;
       if (task.status === 'completed' || task.status === 'failed' || task.status === 'canceled') continue;
       const robot = robots.get(task.assignedRobotId);
       if (!robot || robot.status !== 'online' || robot.blocked) continue;
 
-      const { activeStep } = updateTaskForRobot(task, robot, { toleranceM: DEFAULT_TOLERANCE_M });
+      let { activeStep } = updateTaskForRobot(task, robot, { toleranceM: DEFAULT_TOLERANCE_M });
+      if (activeStep && activeStep.type === 'moveTo' && activeStep.targetRef?.nodeId === task.parkNodeId) {
+        if (hasPendingTasks(task.taskId)) {
+          activeStep.status = 'completed';
+          ({ activeStep } = updateTaskForRobot(task, robot, { toleranceM: DEFAULT_TOLERANCE_M }));
+        }
+      }
       if (!activeStep) continue;
 
       const cmd = commandForStep(robot.robotId, activeStep);
