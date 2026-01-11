@@ -58,8 +58,8 @@ global.CustomEvent = function CustomEvent(type, options) {
   this.detail = options?.detail;
 };
 
-require(path.resolve(__dirname, '../../public/modules/lib/geometry.js'));
-require(path.resolve(__dirname, '../../public/modules/core/map_core.js'));
+require(path.resolve(__dirname, '../../public/modules/lib/core_utils.js'));
+require(path.resolve(__dirname, '../../../../packages/robokit-map-ui/public/map_bundle.js'));
 
 const { Geometry, MapCore } = global.window.FleetUI;
 assert(Geometry, 'Geometry module missing');

@@ -5,6 +5,7 @@ const { validateArtifacts } = require('./lib/validation');
 
 const PUBLIC_DIR = path.resolve(__dirname, 'public');
 const MOCK_PUBLIC_DIR = path.resolve(__dirname, '..', 'fleet-ui-mock', 'public');
+const SHARED_PUBLIC_DIR = path.resolve(__dirname, '..', '..', 'packages', 'robokit-map-ui', 'public');
 const LIB_DIR = path.resolve(__dirname, '..', '..', 'packages', 'robokit-lib');
 
 const MIME_TYPES = {
@@ -222,6 +223,13 @@ function startServer(config) {
         labelMinZoom: config.viewer?.labelMinZoom ?? 1.0,
         compareDir: config.artifacts?.compareDir || null
       });
+      return;
+    }
+
+    if (pathname.startsWith('/shared/')) {
+      const rel = pathname.replace('/shared/', '');
+      const filePath = path.resolve(SHARED_PUBLIC_DIR, rel);
+      sendFile(res, filePath);
       return;
     }
 

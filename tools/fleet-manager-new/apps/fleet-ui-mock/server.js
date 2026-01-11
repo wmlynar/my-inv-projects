@@ -3,6 +3,7 @@ const http = require('http');
 const path = require('path');
 
 const ROOT_DIR = path.resolve(__dirname, 'public');
+const SHARED_PUBLIC_DIR = path.resolve(__dirname, '..', '..', 'packages', 'robokit-map-ui', 'public');
 const DATA_DIR = path.join(ROOT_DIR, 'data');
 const DEFAULT_CONFIG_PATH = path.resolve(__dirname, 'mock-config.json');
 const CONFIG_PATH = process.env.FLEET_UI_MOCK_CONFIG || DEFAULT_CONFIG_PATH;
@@ -737,6 +738,13 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname.startsWith('/api/')) {
     await handleApi(req, res, pathname);
+    return;
+  }
+
+  if (pathname.startsWith('/shared/')) {
+    const rel = pathname.replace('/shared/', '');
+    const filePath = path.resolve(SHARED_PUBLIC_DIR, rel);
+    sendFile(res, filePath);
     return;
   }
 

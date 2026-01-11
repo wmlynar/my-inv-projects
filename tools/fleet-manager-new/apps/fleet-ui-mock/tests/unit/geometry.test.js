@@ -7,7 +7,7 @@ const assert = (condition, message) => {
 };
 
 global.window = {};
-require(path.resolve(__dirname, '../../public/modules/lib/geometry.js'));
+require(path.resolve(__dirname, '../../public/modules/lib/core_utils.js'));
 
 const geometry = global.window?.FleetUI?.Geometry;
 assert(geometry, 'geometry module missing');
