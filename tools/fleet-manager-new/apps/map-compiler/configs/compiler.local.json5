@@ -9,6 +9,7 @@
     "sweepSampleStepM": 0.25,
     "geomEpsM": 0.000001,
     "maxRectsPerCell": 32,
+    "tangentEpsRad": 0.0873,
     "inflateMarginScale": 0
   }
 }

@@ -8,6 +8,7 @@ function createPushBuilder(deps) {
     buildDiList,
     buildDoList,
     getReportedCurrentStation,
+    getReportedPose,
     isStopped,
     pushMaxFields
   } = deps;
@@ -24,11 +25,15 @@ function createPushBuilder(deps) {
     const mapName = graph.meta && graph.meta.mapName ? graph.meta.mapName : '';
     const diList = buildDiList();
     const doList = buildDoList();
+    const pose =
+      typeof getReportedPose === 'function'
+        ? getReportedPose()
+        : robot.pose || { x: 0, y: 0, angle: 0 };
     return {
       controller_temp: robot.controllerTemp,
-      x: robot.pose.x,
-      y: robot.pose.y,
-      angle: robot.pose.angle,
+      x: pose.x,
+      y: pose.y,
+      angle: pose.angle,
       current_station: getCurrentStationForPush(),
       vx: robot.velocity.vx,
       vy: robot.velocity.vy,

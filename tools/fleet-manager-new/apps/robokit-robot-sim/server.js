@@ -1,4 +1,3 @@
-const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const {
@@ -9,16 +8,20 @@ const {
   VERSION,
   HEADER_LEN
 } = require('../../packages/robokit-lib/rbk');
-const { loadMapGraphLight } = require('../../packages/robokit-lib/map_loader');
 const { startHttpStub } = require('./http_stub');
 const { startAdminServer } = require('./admin_http');
-const { SimModule } = require('./syspy-js');
 const MotionKernel = require('../../packages/robokit-lib/motion_kernel');
 const config = require('./lib/config');
+const { createMapContext } = require('./core/map_context');
 const { ControlArbiter } = require('./core/control_arbiter');
 const { createForkController } = require('./core/fork_controller');
+const { createObstacleManager } = require('./core/obstacle_manager');
+const { createPushManager } = require('./core/push_manager');
+const { createRobotState, createScriptPathState, batteryRatio, clampBattery } = require('./core/robot_state');
 const { createTaskEngine } = require('./core/task_engine');
+const { createStateMachine } = require('./core/state_machine');
 const { createSimulationEngine } = require('./core/simulation_engine');
+const { createTickScheduler } = require('./core/tick_scheduler');
 const { createNavigation } = require('./core/navigation');
 const { createApiRouter } = require('./protocol/api_router');
 const { CommandCache } = require('./protocol/command_cache');
@@ -286,14 +289,6 @@ function cloneGoodsRegion(region) {
   return { name: region.name || '', point: points };
 }
 
-function formatTimestamp(value) {
-  const date = value instanceof Date ? value : new Date(value || Date.now());
-  const pad = (num) => String(num).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(
-    date.getHours()
-  )}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
-}
-
 function parseOffsetSpec(value) {
   if (!value) return null;
   const text = String(value).trim();
@@ -362,117 +357,14 @@ function formatOffsetTimestamp(date, offsetSpec) {
   )}.${pad(adjusted.getUTCMilliseconds(), 3)}${suffix}`;
 }
 
-function computeFileMd5(filePath) {
-  if (!filePath) return '';
-  try {
-    const data = fs.readFileSync(filePath);
-    return crypto.createHash('md5').update(data).digest('hex');
-  } catch (_err) {
-    return '';
-  }
-}
-
-function resolveMapName(graphData, mapPath) {
-  if (graphData && graphData.meta && graphData.meta.mapName) {
-    return graphData.meta.mapName;
-  }
-  if (!mapPath) {
-    return '';
-  }
-  const base = path.basename(mapPath);
-  return base.replace(path.extname(base), '');
-}
-
-function listMapFiles(mapPath) {
-  if (!mapPath) {
-    return [];
-  }
-  let dir = mapPath;
-  try {
-    if (fs.existsSync(mapPath) && fs.statSync(mapPath).isFile()) {
-      dir = path.dirname(mapPath);
-    }
-  } catch (_err) {
-    dir = path.dirname(mapPath);
-  }
-  let entries = [];
-  try {
-    entries = fs.readdirSync(dir);
-  } catch (_err) {
-    entries = [];
-  }
-  const files = entries
-    .filter((name) => name.toLowerCase().endsWith('.smap'))
-    .map((name) => {
-      const fullPath = path.join(dir, name);
-      try {
-        const stat = fs.statSync(fullPath);
-        return { name, size: stat.size, modified: formatTimestamp(stat.mtime) };
-      } catch (_err) {
-        return null;
-      }
-    })
-    .filter(Boolean);
-  if (files.length === 0 && fs.existsSync(mapPath)) {
-    try {
-      const stat = fs.statSync(mapPath);
-      if (stat.isFile()) {
-        files.push({
-          name: path.basename(mapPath),
-          size: stat.size,
-          modified: formatTimestamp(stat.mtime)
-        });
-      }
-    } catch (_err) {
-      return files;
-    }
-  }
-  return files;
-}
-
-function buildMapInfo(mapPath, graphData) {
-  const name = resolveMapName(graphData, mapPath);
-  const files = listMapFiles(mapPath);
-  const names = files.map((entry) => path.basename(entry.name, path.extname(entry.name)));
-  if (name && !names.includes(name)) {
-    names.push(name);
-  }
-  return {
-    name,
-    md5: computeFileMd5(mapPath),
-    files,
-    names
-  };
-}
-
-const graph = loadMapGraphLight(GRAPH_PATH);
-const mapInfo = buildMapInfo(GRAPH_PATH, graph);
+const mapContext = createMapContext({
+  graphPath: GRAPH_PATH,
+  robotConfigPath: ROBOT_CONFIG_PATH,
+  robotFileRoots: ROBOT_FILE_ROOTS,
+  robotId: ROBOT_ID
+});
+const { graph, mapInfo, mapEntries, fileRoots, chargeStationIds, robotConfigInfo, robotConfigEntry } = mapContext;
 const statusAllTemplate = readJsonSafe(path.resolve(__dirname, 'data', 'status_all_template.json'));
-const mapEntries = mapInfo.name
-  ? [{ '3dFeatureTrans': [0, 0, 0], md5: mapInfo.md5 || '', name: mapInfo.name }]
-  : [];
-const chargeStationIds = new Set(
-  (graph.nodes || [])
-    .map((node) => {
-      if (!node) {
-        return null;
-      }
-      const className = String(node.className || node.type || '').toLowerCase();
-      if (className !== 'chargepoint') {
-        return null;
-      }
-      return node.id;
-    })
-    .filter(Boolean)
-);
-const fileRoots = Array.from(
-  new Set([...ROBOT_FILE_ROOTS, path.dirname(GRAPH_PATH)].filter(Boolean))
-);
-
-function createMotorStates(names) {
-  const list = Array.isArray(names) && names.length > 0 ? names : ['drive'];
-  return list.map((name) => ({ motor_name: name, position: 0, speed: 0 }));
-}
 
 function approachValue(current, target, accel, decel, dt) {
   if (!Number.isFinite(current)) current = 0;
@@ -491,67 +383,6 @@ function approachValue(current, target, accel, decel, dt) {
 function clampForkHeight(height) {
   if (!Number.isFinite(height)) return 0;
   return clamp(height, FORK_MIN_HEIGHT, FORK_MAX_HEIGHT);
-}
-
-function addSimObstacle(payload) {
-  const x = payload && Number.isFinite(payload.x) ? payload.x : null;
-  const y = payload && Number.isFinite(payload.y) ? payload.y : null;
-  if (x === null || y === null) {
-    return { ok: false, error: 'invalid_obstacle' };
-  }
-  const radius = payload && Number.isFinite(payload.radius) ? payload.radius : OBSTACLE_RADIUS_M;
-  const modeRaw = payload && payload.mode ? String(payload.mode).toLowerCase() : 'block';
-  const mode = modeRaw === 'avoid' ? 'avoid' : 'block';
-  const obstacle = {
-    id: obstacleSeq++,
-    x,
-    y,
-    radius,
-    mode
-  };
-  simObstacles.push(obstacle);
-  return { ok: true, obstacle };
-}
-
-function clearSimObstacles() {
-  simObstacles.length = 0;
-}
-
-function listSimObstacles() {
-  return simObstacles.map((obs) => ({
-    id: obs.id,
-    x: obs.x,
-    y: obs.y,
-    radius: obs.radius,
-    mode: obs.mode
-  }));
-}
-
-function setRobotBlockedState(blocked, options = {}) {
-  robot.blocked = Boolean(blocked);
-  if (!robot.blocked) {
-    robot.blockReason = 0;
-    robot.blockId = 0;
-    robot.blockDi = 0;
-    robot.blockUltrasonicId = 0;
-    robot.blockPos = { x: 0, y: 0 };
-    if (robot.currentTask && !robot.paused) {
-      robot.taskStatus = 2;
-    }
-    return;
-  }
-  robot.blockReason = Number.isFinite(options.reason) ? options.reason : BLOCK_REASON_MANUAL;
-  robot.blockId = Number.isFinite(options.id) ? options.id : robot.blockId || 0;
-  robot.blockDi = Number.isFinite(options.di) ? options.di : robot.blockId || 0;
-  robot.blockUltrasonicId = Number.isFinite(options.ultrasonicId)
-    ? options.ultrasonicId
-    : robot.blockId || 0;
-  if (Number.isFinite(options.x) && Number.isFinite(options.y)) {
-    robot.blockPos = { x: options.x, y: options.y };
-  }
-  if (robot.currentTask) {
-    robot.taskStatus = 3;
-  }
 }
 
 const motorNames = ROBOT_MOTOR_NAMES;
@@ -629,27 +460,6 @@ const ROBOT_NETWORK_CONTROLLERS = [
 ];
 const ROBOT_HARDWARE = { cpus: [] };
 
-const simObstacles = [];
-let obstacleSeq = 1;
-
-function defaultRobotConfigPath(mapPath) {
-  const dir = path.dirname(mapPath);
-  const base = path.basename(mapPath, path.extname(mapPath));
-  return path.join(dir, `${base}.robots.json`);
-}
-
-function loadRobotConfig(mapPath) {
-  const configPath = ROBOT_CONFIG_PATH || defaultRobotConfigPath(mapPath);
-  if (!configPath || !fs.existsSync(configPath)) {
-    return null;
-  }
-  const data = readJsonSafe(configPath);
-  if (!data || typeof data !== 'object') {
-    return null;
-  }
-  return { path: configPath, data };
-}
-
 
 const navigation = createNavigation({
   graph,
@@ -670,26 +480,6 @@ const {
   findPath,
   computeDistancesToTarget
 } = navigation;
-
-const robotConfigInfo = loadRobotConfig(GRAPH_PATH);
-const robotConfigs = robotConfigInfo ? robotConfigInfo.data : null;
-
-function findRobotConfigEntry(config, robotId) {
-  if (!config || typeof config !== 'object') {
-    return null;
-  }
-  const list = Array.isArray(config.robots) ? config.robots : [];
-  if (list.length === 0) {
-    return null;
-  }
-  return (
-    list.find((entry) => entry && entry.id === robotId) ||
-    list.find((entry) => entry && entry.name === robotId) ||
-    null
-  );
-}
-
-const robotConfigEntry = findRobotConfigEntry(robotConfigs, ROBOT_ID);
 
 function resolveStartPoseOverride() {
   if (Number.isFinite(START_POSE_X) && Number.isFinite(START_POSE_Y)) {
@@ -1139,551 +929,6 @@ function startApproachToTarget(targetId, taskType, targetPoint, options = null) 
   return { ok: true, task };
 }
 
-function distanceObstacleToPolyline(obstacle, polyline) {
-  if (!polyline || !Array.isArray(polyline.points) || polyline.points.length < 2) {
-    return Number.POSITIVE_INFINITY;
-  }
-  let best = Number.POSITIVE_INFINITY;
-  const points = polyline.points;
-  for (let i = 0; i < points.length - 1; i += 1) {
-    const a = points[i];
-    const b = points[i + 1];
-    const dist = distancePointToSegmentCoords(obstacle.x, obstacle.y, a.x, a.y, b.x, b.y);
-    if (dist < best) {
-      best = dist;
-    }
-  }
-  return best;
-}
-
-function findBlockingObstacleOnPolyline(polyline) {
-  if (!simObstacles.length || !polyline) {
-    return null;
-  }
-  for (const obstacle of simObstacles) {
-    const lookahead = OBSTACLE_LOOKAHEAD_M + obstacle.radius;
-    const distToRobot = Math.hypot(obstacle.x - robot.pose.x, obstacle.y - robot.pose.y);
-    if (distToRobot > lookahead) {
-      continue;
-    }
-    const distToPath = distanceObstacleToPolyline(obstacle, polyline);
-    if (distToPath <= obstacle.radius + OBSTACLE_CLEARANCE_M + ROBOT_RADIUS_M) {
-      return obstacle;
-    }
-  }
-  return null;
-}
-
-function smoothstep(t) {
-  const clamped = clamp(t, 0, 1);
-  return clamped * clamped * (3 - 2 * clamped);
-}
-
-function projectPointToPolyline(polyline, point) {
-  if (!polyline || !point || !Array.isArray(polyline.points)) {
-    return null;
-  }
-  const points = polyline.points;
-  if (points.length < 2) {
-    return null;
-  }
-  let best = null;
-  let bestDist = Number.POSITIVE_INFINITY;
-  for (let i = 0; i < points.length - 1; i += 1) {
-    const a = points[i];
-    const b = points[i + 1];
-    const abx = b.x - a.x;
-    const aby = b.y - a.y;
-    const abLenSq = abx * abx + aby * aby;
-    if (abLenSq === 0) {
-      continue;
-    }
-    const apx = point.x - a.x;
-    const apy = point.y - a.y;
-    const t = clamp((apx * abx + apy * aby) / abLenSq, 0, 1);
-    const cx = a.x + abx * t;
-    const cy = a.y + aby * t;
-    const dist = Math.hypot(point.x - cx, point.y - cy);
-    if (dist < bestDist) {
-      bestDist = dist;
-      const segLen = Math.sqrt(abLenSq);
-      const s = polyline.lengths[i] + t * segLen;
-      const heading = Math.atan2(aby, abx);
-      best = {
-        s,
-        point: { x: cx, y: cy },
-        heading,
-        tangent: unitVector(abx, aby)
-      };
-    }
-  }
-  return best;
-}
-
-function collectSegmentObstacles(segment, progress, maxOffset, mode) {
-  if (!segment || !segment.polyline || !simObstacles.length) {
-    return [];
-  }
-  const list = [];
-  const totalLength = segment.polyline.totalLength;
-  const effectiveOffset = Math.max(0, maxOffset || 0);
-  for (const obstacle of simObstacles) {
-    if (mode && obstacle.mode !== mode) {
-      continue;
-    }
-    const lookahead = OBSTACLE_LOOKAHEAD_M + obstacle.radius + ROBOT_RADIUS_M + effectiveOffset;
-    const distToRobot = Math.hypot(obstacle.x - robot.pose.x, obstacle.y - robot.pose.y);
-    if (distToRobot > lookahead) {
-      continue;
-    }
-    const projection = projectPointToPolyline(segment.polyline, obstacle);
-    if (!projection) {
-      continue;
-    }
-    const normal = { x: -projection.tangent.y, y: projection.tangent.x };
-    const signedDist =
-      (obstacle.x - projection.point.x) * normal.x +
-      (obstacle.y - projection.point.y) * normal.y;
-    const required = obstacle.radius + ROBOT_RADIUS_M + OBSTACLE_CLEARANCE_M;
-    if (Math.abs(signedDist) > required + effectiveOffset) {
-      continue;
-    }
-    if (Number.isFinite(progress)) {
-      const behindLimit = required + OBSTACLE_CLEARANCE_M;
-      if (projection.s + behindLimit < progress) {
-        continue;
-      }
-    }
-    if (projection.s > totalLength + required) {
-      continue;
-    }
-    list.push({
-      obstacle,
-      projection,
-      signedDist,
-      required,
-      distToRobot
-    });
-  }
-  list.sort((a, b) => a.distToRobot - b.distToRobot);
-  return list;
-}
-
-function buildAllowedOffsetRanges(obstacles, maxOffset) {
-  const forbidden = [];
-  for (const info of obstacles) {
-    let start = info.signedDist - info.required;
-    let end = info.signedDist + info.required;
-    if (end < -maxOffset || start > maxOffset) {
-      continue;
-    }
-    start = clamp(start, -maxOffset, maxOffset);
-    end = clamp(end, -maxOffset, maxOffset);
-    if (start <= end) {
-      forbidden.push([start, end]);
-    }
-  }
-  forbidden.sort((a, b) => a[0] - b[0]);
-  const allowed = [];
-  let cursor = -maxOffset;
-  for (const [start, end] of forbidden) {
-    if (end <= cursor) {
-      continue;
-    }
-    if (start > cursor) {
-      allowed.push([cursor, Math.min(start, maxOffset)]);
-    }
-    cursor = Math.max(cursor, end);
-    if (cursor >= maxOffset) {
-      break;
-    }
-  }
-  if (cursor < maxOffset) {
-    allowed.push([cursor, maxOffset]);
-  }
-  return allowed;
-}
-
-function chooseOffsetFromRanges(ranges, preferred) {
-  if (!ranges.length) {
-    return null;
-  }
-  if (Number.isFinite(preferred)) {
-    for (const [start, end] of ranges) {
-      if (preferred >= start && preferred <= end) {
-        return preferred;
-      }
-    }
-  }
-  let best = null;
-  for (const [start, end] of ranges) {
-    let candidate = null;
-    if (start <= 0 && end >= 0) {
-      candidate = 0;
-    } else if (end < 0) {
-      candidate = end;
-    } else {
-      candidate = start;
-    }
-    if (best === null || Math.abs(candidate) < Math.abs(best)) {
-      best = candidate;
-    }
-  }
-  return best;
-}
-
-function buildAvoidPlan(segment, obstacles, preferredOffset) {
-  if (!segment || !segment.polyline || !obstacles || obstacles.length === 0) {
-    return null;
-  }
-  const corridorWidth = Number.isFinite(segment.corridorWidth) ? segment.corridorWidth : 0;
-  if (corridorWidth <= 0) {
-    return null;
-  }
-  const maxOffset = corridorWidth / 2 - ROBOT_RADIUS_M - OBSTACLE_CLEARANCE_M;
-  if (maxOffset <= 0) {
-    return null;
-  }
-  const allowed = buildAllowedOffsetRanges(obstacles, maxOffset);
-  const offset = chooseOffsetFromRanges(allowed, preferredOffset);
-  if (!Number.isFinite(offset)) {
-    return null;
-  }
-  let s0 = Number.POSITIVE_INFINITY;
-  let s1 = Number.NEGATIVE_INFINITY;
-  let maxRequired = 0;
-  for (const info of obstacles) {
-    const buffer = info.required + OBSTACLE_CLEARANCE_M;
-    s0 = Math.min(s0, info.projection.s - buffer);
-    s1 = Math.max(s1, info.projection.s + buffer);
-    if (info.required > maxRequired) {
-      maxRequired = info.required;
-    }
-  }
-  if (!Number.isFinite(s0) || !Number.isFinite(s1) || s0 > s1) {
-    return null;
-  }
-  const totalLength = segment.polyline.totalLength;
-  s0 = clamp(s0, 0, totalLength);
-  s1 = clamp(s1, 0, totalLength);
-  const ramp = clamp(maxRequired * 0.6, 0.4, 1.2);
-  const r0 = clamp(s0 - ramp, 0, s0);
-  const r1 = clamp(s1 + ramp, s1, totalLength);
-  return {
-    obstacleIds: obstacles.map((info) => info.obstacle.id),
-    offset,
-    s0,
-    s1,
-    r0,
-    r1
-  };
-}
-
-function avoidOffsetAtS(plan, s) {
-  if (!plan) {
-    return 0;
-  }
-  if (s <= plan.r0 || s >= plan.r1) {
-    return 0;
-  }
-  if (s < plan.s0) {
-    const denom = plan.s0 - plan.r0;
-    if (denom <= 0) {
-      return plan.offset;
-    }
-    return plan.offset * smoothstep((s - plan.r0) / denom);
-  }
-  if (s <= plan.s1) {
-    return plan.offset;
-  }
-  const denom = plan.r1 - plan.s1;
-  if (denom <= 0) {
-    return plan.offset;
-  }
-  return plan.offset * smoothstep((plan.r1 - s) / denom);
-}
-
-function segmentPoseAtDistance(segment, distance) {
-  const base = polylineAtDistance(segment.polyline, distance);
-  const plan = segment.avoidPlan;
-  if (!plan) {
-    return { x: base.x, y: base.y, heading: base.heading };
-  }
-  const offset = avoidOffsetAtS(plan, distance);
-  if (offset === 0) {
-    return { x: base.x, y: base.y, heading: base.heading };
-  }
-  const normal = { x: -Math.sin(base.heading), y: Math.cos(base.heading) };
-  return {
-    x: base.x + normal.x * offset,
-    y: base.y + normal.y * offset,
-    heading: base.heading
-  };
-}
-
-function edgeBlockedByObstacle(edge, obstacle) {
-  if (!edge || !edge.polyline) {
-    return false;
-  }
-  const dist = distanceObstacleToPolyline(obstacle, edge.polyline);
-  return dist <= obstacle.radius + OBSTACLE_CLEARANCE_M + ROBOT_RADIUS_M;
-}
-
-function findPathAvoidingObstacles(startId, endId) {
-  if (!nodesById.has(startId) || !nodesById.has(endId)) {
-    return null;
-  }
-  if (!simObstacles.length) {
-    return findPath(startId, endId);
-  }
-  if (startId === endId) {
-    return [startId];
-  }
-
-  const distances = new Map();
-  const previous = new Map();
-  const visited = new Set();
-  for (const nodeId of nodesById.keys()) {
-    distances.set(nodeId, Infinity);
-  }
-  distances.set(startId, 0);
-
-  while (true) {
-    let current = null;
-    let bestDist = Infinity;
-    for (const [nodeId, dist] of distances.entries()) {
-      if (visited.has(nodeId)) continue;
-      if (dist < bestDist) {
-        bestDist = dist;
-        current = nodeId;
-      }
-    }
-    if (!current || current === endId) {
-      break;
-    }
-    visited.add(current);
-    const neighbors = adjacency.get(current) || [];
-    for (const neighbor of neighbors) {
-      if (visited.has(neighbor.to)) continue;
-      const edge = edgesByKey.get(`${current}->${neighbor.to}`);
-      if (!edge) continue;
-      let blocked = false;
-      for (const obstacle of simObstacles) {
-        if (edgeBlockedByObstacle(edge, obstacle)) {
-          blocked = true;
-          break;
-        }
-      }
-      if (blocked) continue;
-      const nextDist = bestDist + neighbor.cost;
-      if (nextDist < distances.get(neighbor.to)) {
-        distances.set(neighbor.to, nextDist);
-        previous.set(neighbor.to, current);
-      }
-    }
-  }
-
-  if (!previous.has(endId) && startId !== endId) {
-    return null;
-  }
-  const path = [endId];
-  let cursor = endId;
-  while (cursor !== startId) {
-    const prev = previous.get(cursor);
-    if (!prev) break;
-    path.push(prev);
-    cursor = prev;
-  }
-  path.reverse();
-  return path;
-}
-
-function clampBattery(value) {
-  return Math.max(1, Math.min(100, value));
-}
-
-function batteryRatio(value) {
-  if (!Number.isFinite(value)) {
-    return 0;
-  }
-  if (value > 1) {
-    return clamp(value / 100, 0, 1);
-  }
-  return clamp(value, 0, 1);
-}
-
-function createScriptPathState() {
-  return {
-    active: false,
-    done: false,
-    plan: null,
-    progress: 0,
-    mode: 'idle',
-    reachDist: ARRIVAL_EPS,
-    reachAngle: ROTATE_EPS_RAD,
-    maxSpeed: SPEED_M_S,
-    maxRot: ROTATE_SPEED_RAD_S,
-    backMode: false,
-    useOdo: false,
-    holdDir: 999,
-    targetAngle: null,
-    startHeading: 0,
-    kind: null
-  };
-}
-
-function createRobot(startNodeId, poseOverride) {
-  const node = nodesById.get(startNodeId);
-  const pos = node ? node.pos : { x: 0, y: 0 };
-  const pose = poseOverride && Number.isFinite(poseOverride.x) && Number.isFinite(poseOverride.y) ? poseOverride : pos;
-  const angle = poseOverride && Number.isFinite(poseOverride.angle) ? poseOverride.angle : 0;
-  const forkHeight = Number.isFinite(START_FORK_HEIGHT) ? clampForkHeight(START_FORK_HEIGHT) : 0;
-  return {
-    id: ROBOT_ID,
-    model: ROBOT_MODEL,
-    version: ROBOT_VERSION,
-    modelVersion: ROBOT_MODEL_VERSION,
-    mapVersion: ROBOT_MAP_VERSION,
-    modbusVersion: ROBOT_MODBUS_VERSION,
-    netProtocolVersion: ROBOT_NET_PROTOCOL_VERSION,
-    safeModelMd5: ROBOT_SAFE_MODEL_MD5,
-    calibrated: ROBOT_CALIBRATED,
-    versionList: ROBOT_VERSION_LIST,
-    networkControllers: ROBOT_NETWORK_CONTROLLERS,
-    hardware: ROBOT_HARDWARE,
-    mac: ROBOT_MAC,
-    wlanMac: ROBOT_WLAN_MAC,
-    currentIp: ROBOT_IP || '127.0.0.1',
-    currentMap: mapInfo.name || '',
-    currentMapMd5: mapInfo.md5 || '',
-    currentMapEntries: mapEntries,
-    online: true,
-    dispatchable: true,
-    controlled: true,
-    blocked: false,
-    blockReason: 0,
-    blockPos: { x: 0, y: 0 },
-    blockId: 0,
-    blockDi: 0,
-    blockUltrasonicId: 0,
-    slowDown: false,
-    slowReason: 0,
-    slowPos: { x: 0, y: 0 },
-    slowId: 0,
-    slowDi: 0,
-    slowUltrasonicId: 0,
-    emergency: false,
-    driverEmc: false,
-    electric: false,
-    softEmc: false,
-    softEmcPaused: false,
-    brake: false,
-    confidence: 0.93,
-    battery: 82,
-    batteryTemp: 15,
-    controllerTemp: 45.2,
-    controllerHumi: 16.5,
-    controllerVoltage: 23.8,
-    voltage: IDLE_VOLTAGE_V,
-    current: IDLE_CURRENT_A,
-    requestVoltage: 0,
-    requestCurrent: 0,
-    batteryCycle: 0,
-    charging: false,
-    chargeTargetId: null,
-    chargeEngageAt: null,
-    chargeActiveAt: null,
-    odo: 0,
-    todayOdo: 0,
-    bootAt: nowMs(),
-    motors: createMotorStates(motorNames),
-    pose: { x: pose.x, y: pose.y, angle },
-    velocity: {
-      vx: 0,
-      vy: 0,
-      w: 0,
-      steer: 0,
-      spin: 0,
-      r_vx: 0,
-      r_vy: 0,
-      r_w: 0,
-      r_steer: 0,
-      r_spin: 0
-    },
-    motion: {
-      linearSpeed: 0,
-      angularSpeed: 0
-    },
-    manual: {
-      active: false,
-      vx: 0,
-      vy: 0,
-      w: 0,
-      steer: 0,
-      realSteer: 0
-    },
-    manualBlock: true,
-    fork: {
-      height: forkHeight,
-      targetHeight: forkHeight,
-      speed: 0,
-      heightInPlace: true,
-      autoFlag: true,
-      forwardVal: forkHeight,
-      forwardInPlace: false,
-      pressureActual: 0
-    },
-    forkTaskActive: false,
-    forkTaskMode: null,
-    forkTaskReport: false,
-    forkPending: null,
-    forkHoldTask: false,
-    io: {
-      di: {},
-      do: {},
-      diMeta: {},
-      doMeta: {}
-    },
-    alarms: {
-      fatals: [],
-      errors: [],
-      warnings: [],
-      notices: []
-    },
-    scriptPath: createScriptPathState(),
-    containers: [],
-    goods: { hasGoods: false, shape: null },
-    goodsRegion: cloneGoodsRegion(EMPTY_GOODS_REGION),
-    sound: { name: '', loop: false, count: 0, playing: false },
-    gData: {},
-    modbus: { '0x': {}, '1x': {}, '3x': {}, '4x': {} },
-    disabledSensors: { depth: [], laser: [] },
-    laserWidths: {},
-    lockInfo: {
-      locked: false,
-      nick_name: '',
-      ip: '',
-      port: 0,
-      time_t: 0,
-      type: DEFAULT_LOCK_TYPE,
-      desc: ''
-    },
-    lockRequest: null,
-    currentStation: startNodeId,
-    reportedStationId: startNodeId,
-    lastStation: startNodeId,
-    homeStation: startNodeId || null,
-    relocStatus: 1,
-    relocCompleteAt: null,
-    taskStatus: 0,
-    taskType: 0,
-    paused: false,
-    currentTask: null,
-    lastTask: null,
-    updatedAt: nowMs()
-  };
-}
-
 const startPoseOverride = resolveStartPoseOverride();
 const startPoseFromConfig = resolveStartPose(robotConfigEntry);
 const startPose = startPoseOverride || startPoseFromConfig;
@@ -1693,39 +938,92 @@ const startNodeId = resolveStartNode(
   startPoseOverride,
   startPoseFromConfig
 );
-const robot = createRobot(startNodeId, startPose);
+const forkHeight = Number.isFinite(START_FORK_HEIGHT) ? clampForkHeight(START_FORK_HEIGHT) : 0;
+const robotConfigRuntime = {
+  ...config,
+  ROBOT_VERSION_LIST,
+  ROBOT_NETWORK_CONTROLLERS,
+  ROBOT_HARDWARE
+};
+const robot = createRobotState({
+  startNodeId,
+  poseOverride: startPose,
+  nodesById,
+  mapInfo,
+  mapEntries,
+  config: robotConfigRuntime,
+  motorNames,
+  forkHeight,
+  nowMs,
+  cloneGoodsRegion,
+  emptyGoodsRegion: EMPTY_GOODS_REGION,
+  defaultLockType: DEFAULT_LOCK_TYPE
+});
 let taskEngine = null;
 let forkController = null;
-const startMoveToNodeProxy = (...args) =>
-  taskEngine ? taskEngine.startMoveToNode(...args) : { ok: false, error: 'task_engine_unready' };
-const startMoveToPointProxy = (...args) =>
-  taskEngine ? taskEngine.startMoveToPoint(...args) : { ok: false, error: 'task_engine_unready' };
-const startMultiStationTaskProxy = (...args) =>
-  taskEngine
-    ? taskEngine.startMultiStationTask(...args)
-    : { ok: false, error: 'task_engine_unready' };
+let addSimObstacle = () => ({ ok: false, error: 'obstacle_manager_unavailable' });
+let clearSimObstacles = () => {};
+let listSimObstacles = () => [];
+let setRobotBlockedState = () => {};
+let shouldBlockForObstacle = () => null;
+let segmentPoseAtDistance = (segment, distance) => {
+  if (!segment || !segment.polyline) {
+    return { x: robot.pose.x, y: robot.pose.y, heading: robot.pose.angle };
+  }
+  const base = polylineAtDistance(segment.polyline, distance);
+  return { x: base.x, y: base.y, heading: base.heading };
+};
+let reportedPoseCache = null;
+let reportedPoseAt = null;
+function getReportedPose() {
+  const basePose = robot.pose || { x: 0, y: 0, angle: 0 };
+  const lastUpdate = Number.isFinite(robot.updatedAt) ? robot.updatedAt : nowMs();
+  let dt = Math.max(0, (nowMs() - lastUpdate) / 1000);
+  const maxDt = Number.isFinite(TICK_MS) && TICK_MS > 0 ? TICK_MS / 1000 : null;
+  if (maxDt && dt > maxDt) {
+    dt = maxDt;
+  }
+  if (!dt) {
+    return { x: basePose.x, y: basePose.y, angle: basePose.angle };
+  }
+  const velocity = robot.velocity || { vx: 0, vy: 0, w: 0 };
+  const targetPose = {
+    x: basePose.x + velocity.vx * dt,
+    y: basePose.y + velocity.vy * dt,
+    angle: normalizeAngle(basePose.angle + velocity.w * dt)
+  };
+  const now = nowMs();
+  if (!reportedPoseCache || !reportedPoseAt) {
+    reportedPoseCache = targetPose;
+    reportedPoseAt = now;
+    return targetPose;
+  }
+  const dtReport = Math.max(0, (now - reportedPoseAt) / 1000);
+  if (dtReport <= 0) {
+    return reportedPoseCache;
+  }
+  const maxAngleDelta = ROTATE_SPEED_RAD_S * dtReport;
+  const angleDelta = normalizeAngle(targetPose.angle - reportedPoseCache.angle);
+  let nextAngle = targetPose.angle;
+  if (Number.isFinite(maxAngleDelta) && maxAngleDelta > 0 && Math.abs(angleDelta) > maxAngleDelta) {
+    nextAngle = normalizeAngle(reportedPoseCache.angle + Math.sign(angleDelta) * maxAngleDelta);
+  }
+  const nextPose = {
+    x: targetPose.x,
+    y: targetPose.y,
+    angle: nextAngle
+  };
+  reportedPoseCache = nextPose;
+  reportedPoseAt = now;
+  return nextPose;
+}
 const getTaskPathsProxy = (task) =>
   taskEngine ? taskEngine.getTaskPaths(task) : { finished: [], unfinished: [] };
-const simModule = new SimModule({
-  robot,
-  graph,
-  nodesById,
-  startMoveToNode: startMoveToNodeProxy,
-  startMoveToPoint: startMoveToPointProxy,
-  startMultiStationTask: startMultiStationTaskProxy,
-  updateVelocity,
-  resetVelocity,
-  helpers: MotionKernel,
-  reachDist: ARRIVAL_EPS,
-  reachAngle: ROTATE_EPS_RAD,
-  maxSpeed: SPEED_M_S,
-  maxRot: ROTATE_SPEED_RAD_S,
-  holdDir: 999,
-  log: (...args) => console.log(...args)
-});
-robot.scriptApi = simModule;
 robot.rng = rng;
-simModule.rng = rng;
+const stateMachine = createStateMachine({
+  now: () => simClock.now(),
+  onTransition: (entry) => diagLog('state_change', entry)
+});
 let taskCounter = 1;
 
 let controlArbiter = null;
@@ -1801,7 +1099,8 @@ const statusBuilder = createStatusBuilder({
   mapPropertiesPayload,
   configMapDataPayload,
   fileRoots,
-  listSimObstacles,
+  listSimObstacles: () => listSimObstacles(),
+  getReportedPose,
   createOn,
   nowMs,
   batteryRatio,
@@ -1912,6 +1211,34 @@ const {
   getTaskPaths
 } = taskEngine;
 
+const obstacleManager = createObstacleManager({
+  robot,
+  nodesById,
+  edgesByKey,
+  adjacency,
+  findPath,
+  rebuildTaskPath,
+  clamp,
+  normalizeAngle,
+  distancePointToSegmentCoords,
+  unitVector,
+  polylineAtDistance,
+  CURRENT_POINT_DIST,
+  ROBOT_RADIUS_M,
+  OBSTACLE_RADIUS_M,
+  OBSTACLE_CLEARANCE_M,
+  OBSTACLE_LOOKAHEAD_M,
+  OBSTACLE_AVOID_ENABLED,
+  BLOCK_REASON_OBSTACLE,
+  BLOCK_REASON_MANUAL
+});
+addSimObstacle = obstacleManager.addSimObstacle;
+clearSimObstacles = obstacleManager.clearSimObstacles;
+listSimObstacles = obstacleManager.listSimObstacles;
+setRobotBlockedState = obstacleManager.setRobotBlockedState;
+shouldBlockForObstacle = obstacleManager.shouldBlockForObstacle;
+segmentPoseAtDistance = obstacleManager.segmentPoseAtDistance;
+
 forkController = createForkController({
   robot,
   nowMs,
@@ -1954,6 +1281,7 @@ const pushBuilder = createPushBuilder({
   buildDiList,
   buildDoList,
   getReportedCurrentStation,
+  getReportedPose,
   isStopped,
   pushMaxFields: PUSH_MAX_FIELDS
 });
@@ -1997,7 +1325,22 @@ const simulationEngine = createSimulationEngine({
   },
   diagLog,
   diagLogTickMs: DIAG_LOG_TICK_MS,
-  diagTeleportThreshold: DIAG_TELEPORT_THRESHOLD_M
+  diagTeleportThreshold: DIAG_TELEPORT_THRESHOLD_M,
+  updateState: stateMachine.update
+});
+
+const tickScheduler = createTickScheduler({
+  tickMs: TICK_MS,
+  mode: SIM_TIME_MODE,
+  onTick: () => {
+    simulationEngine.tick();
+    pushManager.tick();
+  },
+  onError: (err) => {
+    console.error('robokit-robot-sim tick error', err);
+    shutdown('tick_error');
+  },
+  logger: (event, payload) => diagLog(event, payload)
 });
 
 function updateVelocity(vx, vy, w, steer, spin) {
@@ -2111,103 +1454,6 @@ function applyOdo(distance) {
   for (const motor of robot.motors) {
     motor.position += distance;
   }
-}
-
-function tryAvoidObstacle(task) {
-  if (!OBSTACLE_AVOID_ENABLED || !task) {
-    return false;
-  }
-  const currentNodeId = robot.currentStation;
-  const currentNode = currentNodeId ? nodesById.get(currentNodeId) : null;
-  if (!currentNode || !currentNode.pos) {
-    return false;
-  }
-  const distToNode = Math.hypot(currentNode.pos.x - robot.pose.x, currentNode.pos.y - robot.pose.y);
-  if (distToNode > CURRENT_POINT_DIST) {
-    return false;
-  }
-  const targetId = task.targetId;
-  if (!targetId || !nodesById.has(targetId)) {
-    return false;
-  }
-  const newPath = findPathAvoidingObstacles(currentNodeId, targetId);
-  if (!newPath) {
-    return false;
-  }
-  return rebuildTaskPath(task, newPath);
-}
-
-function shouldBlockForObstacle(polyline, task, segment) {
-  if (segment) {
-    const corridorWidth = Number.isFinite(segment.corridorWidth) ? segment.corridorWidth : 0;
-    const maxOffset =
-      corridorWidth > 0 ? corridorWidth / 2 - ROBOT_RADIUS_M - OBSTACLE_CLEARANCE_M : 0;
-    const progress = task && Number.isFinite(task.segmentProgress) ? task.segmentProgress : 0;
-    const blockingObstacles = collectSegmentObstacles(segment, progress, maxOffset, 'block');
-    if (blockingObstacles.length) {
-      if (segment.avoidPlan) {
-        segment.avoidPlan = null;
-      }
-      const blockObstacle = blockingObstacles[0].obstacle;
-      setRobotBlockedState(true, {
-        reason: BLOCK_REASON_OBSTACLE,
-        id: blockObstacle.id,
-        x: blockObstacle.x,
-        y: blockObstacle.y
-      });
-      return blockObstacle;
-    }
-    const avoidObstacles = collectSegmentObstacles(segment, progress, maxOffset, 'avoid');
-    if (!avoidObstacles.length) {
-      if (segment.avoidPlan) {
-        segment.avoidPlan = null;
-      }
-      if (robot.blocked && robot.blockReason === BLOCK_REASON_OBSTACLE) {
-        setRobotBlockedState(false);
-      }
-      return null;
-    }
-    if (corridorWidth > 0) {
-      const preferredOffset = segment.avoidPlan ? segment.avoidPlan.offset : null;
-      const plan = buildAvoidPlan(segment, avoidObstacles, preferredOffset);
-      if (plan) {
-        segment.avoidPlan = plan;
-        if (robot.blocked && robot.blockReason === BLOCK_REASON_OBSTACLE) {
-          setRobotBlockedState(false);
-        }
-        return null;
-      }
-    }
-    const blockObstacle = avoidObstacles[0].obstacle;
-    setRobotBlockedState(true, {
-      reason: BLOCK_REASON_OBSTACLE,
-      id: blockObstacle.id,
-      x: blockObstacle.x,
-      y: blockObstacle.y
-    });
-    return blockObstacle;
-  }
-
-  const obstacle = findBlockingObstacleOnPolyline(polyline);
-  if (!obstacle) {
-    if (robot.blocked && robot.blockReason === BLOCK_REASON_OBSTACLE) {
-      setRobotBlockedState(false);
-    }
-    return null;
-  }
-  if (obstacle.mode === 'avoid' && task && tryAvoidObstacle(task)) {
-    if (robot.blocked && robot.blockReason === BLOCK_REASON_OBSTACLE) {
-      setRobotBlockedState(false);
-    }
-    return null;
-  }
-  setRobotBlockedState(true, {
-    reason: BLOCK_REASON_OBSTACLE,
-    id: obstacle.id,
-    x: obstacle.x,
-    y: obstacle.y
-  });
-  return obstacle;
 }
 
 function handleReloc(payload) {
@@ -2772,7 +2018,6 @@ function encodeFrameRaw(seq, apiNo, bodyBuffer, options = {}) {
 }
 
 const pushConnections = new Map();
-let pushSeq = 1;
 let totalConnections = 0;
 function getTotalConnections() {
   return totalConnections;
@@ -2785,6 +2030,17 @@ const pushDefaults = {
   includedFields: null,
   excludedFields: null
 };
+
+const pushManager = createPushManager({
+  pushConnections,
+  buildPushPayload,
+  encodeFrame,
+  apiNo: API.robot_push,
+  minIntervalMs: PUSH_MIN_INTERVAL_MS,
+  maxIntervalMs: PUSH_MAX_INTERVAL_MS,
+  maxQueueBytes: PUSH_MAX_QUEUE_BYTES,
+  now: () => simClock.now()
+});
 
 function cloneFieldList(list) {
   return Array.isArray(list) ? [...list] : null;
@@ -2825,30 +2081,11 @@ function applyPushConfig(target, payload) {
 }
 
 function startPushTimer(conn) {
-  if (conn.timer) {
-    clearInterval(conn.timer);
+  if (!conn) {
+    return;
   }
-  const minInterval = Number.isFinite(PUSH_MIN_INTERVAL_MS) ? PUSH_MIN_INTERVAL_MS : 0;
-  const interval = Math.max(minInterval, Number.parseInt(conn.intervalMs || 1000, 10));
-  conn.timer = setInterval(() => {
-    if (conn.socket.destroyed) {
-      clearInterval(conn.timer);
-      return;
-    }
-    if (PUSH_MAX_QUEUE_BYTES && conn.socket.writableLength > PUSH_MAX_QUEUE_BYTES) {
-      conn.socket.destroy();
-      clearInterval(conn.timer);
-      return;
-    }
-    conn.trimmed = false;
-    const payload = buildPushPayload(conn);
-    if (conn.trimmed && !conn.trimNoticeLogged) {
-      console.warn('robokit-robot-sim push payload trimmed to PUSH_MAX_FIELDS');
-      conn.trimNoticeLogged = true;
-    }
-    const frame = encodeFrame(pushSeq++, API.robot_push, payload);
-    conn.socket.write(frame);
-  }, interval);
+  conn.enabled = true;
+  conn.lastSentAt = 0;
 }
 
 function handleHttpSetOrder(order) {
@@ -2888,6 +2125,7 @@ function handleHttpListObstacles() {
 }
 
 function buildRobotsStatusResponse(request = {}) {
+  const pose = getReportedPose();
   const status = {
     id: robot.id,
     name: ROBOT_VEHICLE_ID || robot.id,
@@ -2900,9 +2138,9 @@ function buildRobotsStatusResponse(request = {}) {
     battery_level: batteryRatio(robot.battery),
     charging: robot.charging,
     blocked: robot.blocked,
-    x: robot.pose.x,
-    y: robot.pose.y,
-    angle: robot.pose.angle,
+    x: pose.x,
+    y: pose.y,
+    angle: pose.angle,
     vx: robot.velocity.vx,
     vy: robot.velocity.vy,
     w: robot.velocity.w,
@@ -3037,6 +2275,9 @@ function shutdown(reason) {
   for (const timer of intervals) {
     clearInterval(timer);
   }
+  if (tickScheduler) {
+    tickScheduler.stop();
+  }
   for (const server of servers) {
     server.close();
   }
@@ -3066,7 +2307,7 @@ process.on('unhandledRejection', (err) => {
 logEffectiveConfig();
 console.log(`robokit-robot-sim time mode: ${SIM_TIME_MODE}`);
 
-intervals.push(setInterval(() => simulationEngine.tick(), TICK_MS));
+tickScheduler.start();
 intervals.push(
   setInterval(() => {
     clientRegistry.sweep(nowMs());
@@ -3263,6 +2504,8 @@ servers.push(
       includedFields: cloneFieldList(pushDefaults.includedFields),
       excludedFields: cloneFieldList(pushDefaults.excludedFields),
       timer: null,
+      enabled: false,
+      lastSentAt: 0,
       trimmed: false,
       trimNoticeLogged: false
     })
@@ -3286,6 +2529,15 @@ adminServer = startAdminServer({
     pushConnections: pushConnections.size,
     lockOwner: controlArbiter ? controlArbiter.getOwner() : null
   }),
+  getTickState: () => ({
+    paused: tickScheduler.isPaused(),
+    tickId: tickScheduler.getTickId(),
+    tickMs: TICK_MS,
+    mode: SIM_TIME_MODE
+  }),
+  pauseTick: () => tickScheduler.pause(),
+  resumeTick: () => tickScheduler.resume(),
+  stepTick: (count) => tickScheduler.step(count),
   getTime: () => simClock.now(),
   setTime: (value) => simClock.setNow(value)
 });

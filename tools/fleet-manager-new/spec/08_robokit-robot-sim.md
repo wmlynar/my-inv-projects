@@ -255,6 +255,8 @@ Notes:
 - Default `TICK_MS` is 100 (10 Hz).
 - Default push interval is 500 ms (configurable via `robot_push_config_req` and `PUSH_MIN_INTERVAL_MS`/`PUSH_MAX_INTERVAL_MS`).
 - `robot_status_file_req` serves files from `ROBOT_FILE_ROOTS` plus the map directory.
+- Admin endpoints (`/_health`, `/_metrics`, `/_time`, `/_tick`) are served on `ADMIN_HTTP_PORT`.
+- `/_tick` accepts `{ "action": "pause" | "resume" | "step", "count"?: number }` for tick control.
 - Paths respect edge direction when the map provides a `direction` property.
 - Feature lines can impose one-way travel; `direction < 0` marks backward driving.
 - Motion uses a tricycle-style kinematic model (steered front wheel) and rotates
@@ -299,9 +301,6 @@ Robot payload fixtures:
 - Defaults live in `apps/robokit-robot-sim/data/` (`robot_params.json`, `device_types_full.json`, `device_types_ext.json`, `device_types_module.json`, `file_list_assets.json`, `file_list_modules.json`, `map_properties.json`, `config_map_data.json`).
 - Override with the `ROBOT_*_PATH` env vars listed above.
 - `RDS_PARAMS_PATH` / `RDS_DEVICE_TYPES_PATH` remain for legacy compatibility.
-
-Roboshop script simulator:
-- `apps/robokit-robot-sim/syspy-js` provides a JS `SimModule` wired into the simulator state.
 
 Simulator HTTP controls (stub ports `HTTP_PORTS`):
 - `GET /sim/obstacles` -> `{ ok, obstacles }`

@@ -23,7 +23,8 @@ function createSimulationEngine(deps) {
     constants,
     diagLog,
     diagLogTickMs,
-    diagTeleportThreshold
+    diagTeleportThreshold,
+    updateState
   } = deps;
 
   const {
@@ -181,6 +182,10 @@ function createSimulationEngine(deps) {
         });
         diagState.lastTickLogAt = now;
       }
+    }
+
+    if (typeof updateState === 'function') {
+      updateState(robot);
     }
 
     diagState.lastPose = nextPose;
@@ -368,7 +373,11 @@ function createSimulationEngine(deps) {
   function tick() {
     simClock.tick(tickMs);
     const now = nowMs();
-    const dt = Math.max(0, (now - lastTickAt) / 1000);
+    let dt = Math.max(0, (now - lastTickAt) / 1000);
+    const maxDt = Number.isFinite(tickMs) && tickMs > 0 ? tickMs / 1000 : null;
+    if (maxDt && dt > maxDt) {
+      dt = maxDt;
+    }
     lastTickAt = now;
     const prevPose = snapshotPose();
     const prevFlags = snapshotFlags();

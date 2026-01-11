@@ -28,4 +28,14 @@ test('buildCompiledMap creates corridors from undirected chains', () => {
   assert.ok(corridor.corridorId.startsWith(`C:${expectedA}\u2192${expectedB}:`));
   assert.equal(corridor.segments[0].edgeId, edge.edgeId);
   assert.ok(Math.abs(corridor.lengthM - edge.lengthM) < 0.05);
+
+  assert.ok(Array.isArray(compiledMap.nodes));
+  assert.ok(Array.isArray(compiledMap.edges));
+  assert.equal(compiledMap.nodes.length, 2);
+  assert.equal(compiledMap.edges.length, 1);
+  assert.ok(Array.isArray(compiledMap.nodeStopZones));
+  assert.equal(compiledMap.nodeStopZones.length, 2);
+  assert.ok(compiledMap.nodeStopZones.every((zone) => Array.isArray(zone.conflictCells)));
+  assert.ok(Array.isArray(compiledMap.transitions));
+  assert.equal(compiledMap.transitions.length, 0);
 });

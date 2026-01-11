@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { loadConfig } = require('../lib/config');
 const { parseSmap } = require('../lib/smap_parser');
-const { buildCompiledMap } = require('../lib/compiler');
+const { buildCompiledMap, normalizeSceneGraph } = require('../lib/compiler');
 const { loadRobotProfile } = require('../lib/robot_profile');
 
 const DEFAULT_CONFIG = {
@@ -118,7 +118,7 @@ function compile(options, config) {
   fs.mkdirSync(outDir, { recursive: true });
   let sceneGraph = null;
   try {
-    sceneGraph = parseSmap(smap);
+    sceneGraph = normalizeSceneGraph(parseSmap(smap), config.compileParams);
   } catch (err) {
     console.error(`failed to parse smap: ${err.message}`);
     process.exit(1);
@@ -135,8 +135,9 @@ function compile(options, config) {
     compileParams: config.compileParams,
     robotModel,
     compiledMapHash: compiledMap?.meta?.compiledMapHash || null,
+    paramsHash: compiledMap?.meta?.paramsHash || null,
     compiledTsMs: Date.now(),
-    status: 'skeleton'
+    status: 'compiled'
   };
   const sceneGraphPath = path.join(outDir, 'sceneGraph.json');
   const compiledMapPath = path.join(outDir, 'compiledMap.json');

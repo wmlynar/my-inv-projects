@@ -49,6 +49,10 @@ function startAdminServer(options = {}) {
   const getHealth = typeof options.getHealth === 'function' ? options.getHealth : () => ({ ok: true });
   const getTime = typeof options.getTime === 'function' ? options.getTime : null;
   const setTime = typeof options.setTime === 'function' ? options.setTime : null;
+  const getTickState = typeof options.getTickState === 'function' ? options.getTickState : null;
+  const pauseTick = typeof options.pauseTick === 'function' ? options.pauseTick : null;
+  const resumeTick = typeof options.resumeTick === 'function' ? options.resumeTick : null;
+  const stepTick = typeof options.stepTick === 'function' ? options.stepTick : null;
 
   const server = http.createServer((req, res) => {
     if (req.url === '/_health') {
@@ -78,6 +82,37 @@ function startAdminServer(options = {}) {
         }
         setTime(parsed);
         sendJson(res, 200, { ok: true, now_ms: getTime ? getTime() : parsed });
+      });
+      return;
+    }
+    if (req.url === '/_tick' && req.method === 'GET' && getTickState) {
+      sendJson(res, 200, { ok: true, ...getTickState() });
+      return;
+    }
+    if (req.url === '/_tick' && req.method === 'POST' && (pauseTick || resumeTick || stepTick)) {
+      readJsonBody(req, (err, body) => {
+        if (err) {
+          sendJson(res, 400, { ok: false, error: 'invalid_json' });
+          return;
+        }
+        const action = body && body.action ? String(body.action).toLowerCase() : '';
+        const count = Number.isFinite(body && body.count) ? body.count : Number.parseInt(body && body.count, 10);
+        if (action === 'pause' && pauseTick) {
+          pauseTick();
+          sendJson(res, 200, { ok: true, state: getTickState ? getTickState() : {} });
+          return;
+        }
+        if (action === 'resume' && resumeTick) {
+          resumeTick();
+          sendJson(res, 200, { ok: true, state: getTickState ? getTickState() : {} });
+          return;
+        }
+        if (action === 'step' && stepTick) {
+          stepTick(Number.isFinite(count) ? count : 1);
+          sendJson(res, 200, { ok: true, state: getTickState ? getTickState() : {} });
+          return;
+        }
+        sendJson(res, 400, { ok: false, error: 'invalid_action' });
       });
       return;
     }

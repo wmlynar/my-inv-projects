@@ -19,6 +19,7 @@ function createStatusBuilder(deps) {
     configMapDataPayload,
     fileRoots,
     listSimObstacles,
+    getReportedPose,
     createOn,
     nowMs,
     batteryRatio,
@@ -50,6 +51,16 @@ function createStatusBuilder(deps) {
     MAX_CHARGE_CURRENT_A,
     STATUS_HIDE_POSE
   } = config;
+
+  const resolvePose = () => {
+    if (typeof getReportedPose === 'function') {
+      const pose = getReportedPose();
+      if (pose && Number.isFinite(pose.x) && Number.isFinite(pose.y) && Number.isFinite(pose.angle)) {
+        return pose;
+      }
+    }
+    return robot.pose || { x: 0, y: 0, angle: 0 };
+  };
 
   function buildCurrentLockPayload(lockInfo) {
     if (!lockInfo || !lockInfo.locked) {
@@ -148,9 +159,10 @@ function createStatusBuilder(deps) {
   }
 
   function buildLocResponse() {
+    const poseValue = resolvePose();
     const pose = STATUS_HIDE_POSE
       ? { x: null, y: null, angle: null }
-      : { x: robot.pose.x, y: robot.pose.y, angle: robot.pose.angle };
+      : { x: poseValue.x, y: poseValue.y, angle: poseValue.angle };
     const currentStation = getReportedCurrentStation();
     const lastStation = getReportedLastStation(currentStation);
     return buildBaseResponse({
@@ -633,6 +645,7 @@ function createStatusBuilder(deps) {
     const diList = buildDiList();
     const doList = buildDoList();
     const currentStation = getReportedCurrentStation();
+    const pose = resolvePose();
 
     payload.create_on = now;
     payload.ret_code = 0;
@@ -646,10 +659,10 @@ function createStatusBuilder(deps) {
     payload.WLANMAC = robot.wlanMac || '';
     payload.current_ip = robot.currentIp || '';
     payload.confidence = robot.confidence;
-    payload.x = robot.pose.x;
-    payload.y = robot.pose.y;
-    payload.angle = robot.pose.angle;
-    payload.yaw = robot.pose.angle;
+    payload.x = pose.x;
+    payload.y = pose.y;
+    payload.angle = pose.angle;
+    payload.yaw = pose.angle;
     payload.vx = robot.velocity.vx;
     payload.vy = robot.velocity.vy;
     payload.w = robot.velocity.w;

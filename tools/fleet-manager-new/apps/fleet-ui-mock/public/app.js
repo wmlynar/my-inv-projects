@@ -133,6 +133,12 @@
   const robotRepo = FleetDomain.RobotRepository ? new FleetDomain.RobotRepository(domainStore) : null;
   const taskRepo = FleetDomain.TaskRepository ? new FleetDomain.TaskRepository(domainStore) : null;
   const robotService = FleetDomain.RobotService ? new FleetDomain.RobotService(robotRepo) : null;
+  const logger = window.FleetUI?.Logger || null;
+  const geometry = window.FleetUI?.Geometry || null;
+  let dataSource = null;
+  let scenesManager = null;
+  let mapView = null;
+  let scenesView = null;
 
   const viewMeta = {
     map: {
@@ -216,9 +222,7 @@
     svg: mapSvg,
     miniMapSvg
   });
-  const mapLayers = window.MapLayers?.init?.({ svg: mapSvg });
   const mapStore = window.MapStore?.create?.();
-  const mapAdapters = window.MapAdapters?.init?.({ store: mapStore });
   if (mapStore?.setLayers) {
     mapStore.setLayers({ ...mapLayerVisibility }, "init");
   }
@@ -1069,8 +1073,6 @@
       button.setAttribute("aria-pressed", next ? "true" : "false");
       if (mapStore?.setLayers) {
         mapStore.setLayers({ [layerId]: next }, "layers");
-      } else if (mapLayers?.render) {
-        mapLayers.render(mapStore?.getState?.() || {});
       }
     });
     mapLayerPanelBound = true;
@@ -1690,6 +1692,9 @@
   };
 
   const fetchJson = async (path) => {
+    if (dataSource?.fetchJson) {
+      return dataSource.fetchJson(path);
+    }
     const response = await fetch(path, { cache: "no-store" });
     if (!response.ok) {
       throw new Error(`Failed to load ${path}`);
@@ -1698,9 +1703,12 @@
   };
 
   const fetchJsonSafe = async (path) => {
+    if (dataSource?.fetchJsonSafe) {
+      return dataSource.fetchJsonSafe(path);
+    }
     try {
       return await fetchJson(path);
-    } catch (error) {
+    } catch (_error) {
       return null;
     }
   };
@@ -1788,6 +1796,10 @@
   };
 
   const renderScenes = () => {
+    if (scenesView?.render) {
+      scenesView.render();
+      return;
+    }
     if (!scenesList) return;
     const scenes = Array.isArray(scenesState?.scenes) ? scenesState.scenes : [];
     scenesList.innerHTML = "";
@@ -1871,6 +1883,9 @@
   };
 
   const loadScenes = async (options = {}) => {
+    if (scenesView?.loadScenes) {
+      return scenesView.loadScenes(options);
+    }
     if (!scenesList || scenesLoading) return;
     const silent = Boolean(options.silent);
     scenesLoading = true;
@@ -1894,6 +1909,12 @@
   };
 
   const activateScene = async (sceneId, mapId) => {
+    if (scenesManager?.activate) {
+      await scenesManager.activate(sceneId, mapId);
+      await loadData({ reset: true, silent: true });
+      await loadScenes({ silent: true });
+      return;
+    }
     if (!sceneId || scenesBusy) return;
     scenesBusy = true;
     scenesError = null;
@@ -3009,8 +3030,8 @@
     persistRobotState();
     refreshRobotDiagnosticsCache();
     renderRobots();
-    if (mapLayers) {
-      mapLayers.render(mapStore?.getState?.() || {});
+    if (mapView?.updateRobots) {
+      mapView.updateRobots(robots);
     } else {
       updateRobotMarkers();
     }
@@ -3291,14 +3312,24 @@
 
   const updateWorksiteStateFromCore = (coreWorksites) => {
     if (!Array.isArray(coreWorksites)) return;
+    let touched = false;
     coreWorksites.forEach((site) => {
       if (!site || !site.id) return;
       const state = getWorksiteState(site.id);
       state.occupancy = site.filled ? "filled" : "empty";
       state.blocked = Boolean(site.blocked);
       worksiteState[site.id] = state;
-      applyWorksiteState(site.id);
+      touched = true;
     });
+    if (touched) {
+      if (mapView?.updateWorksiteState) {
+        mapView.updateWorksiteState(worksiteState);
+      } else {
+        coreWorksites.forEach((site) => {
+          if (site?.id) applyWorksiteState(site.id);
+        });
+      }
+    }
     renderStreams();
     renderFields();
   };
@@ -3659,57 +3690,6 @@
     return { label, className };
   };
 
-  if (mapLayers) {
-    const edgesLayer = {
-      render({ state }) {
-        renderEdgesLayer({ state });
-      }
-    };
-    const linksLayer = {
-      render({ state }) {
-        renderWorksiteLinksLayer({ state });
-      }
-    };
-    const obstaclesLayer = {
-      render({ state }) {
-        renderObstaclesLayer({ state });
-      }
-    };
-    const nodesLayer = {
-      render({ state }) {
-        renderNodesLayer({ state });
-      }
-    };
-    const actionPointsLayer = {
-      render({ state }) {
-        renderActionPointsLayer({ state });
-      }
-    };
-    const worksitesLayer = {
-      render({ state }) {
-        renderWorksitesLayer({ state });
-      }
-    };
-    const robotLayer = {
-      render({ state }) {
-        renderRobotLayer({ state });
-      }
-    };
-    mapLayers.register(edgesLayer);
-    mapLayers.register(linksLayer);
-    mapLayers.register(obstaclesLayer);
-    mapLayers.register(nodesLayer);
-    mapLayers.register(actionPointsLayer);
-    mapLayers.register(worksitesLayer);
-    mapLayers.register(robotLayer);
-    if (mapStore) {
-      mapStore.subscribe((state, reason) => {
-        if (reason === "map_state" || reason === "viewport") return;
-        mapLayers.render(state);
-      });
-    }
-  }
-
   const getNavControlTarget = () => {
     if (manualTargetRobotId) {
       const robot = getRobotById(manualTargetRobotId);
@@ -3757,6 +3737,9 @@
     }
     renderNavControls();
     renderManualDrivePanel();
+    if (mapView?.updateRobots) {
+      mapView.updateRobots(robots);
+    }
   };
 
   const setManualDriveTarget = (robotId) => {
@@ -3801,6 +3784,8 @@
     }
     renderManualDrivePanel();
   };
+
+  const manualDriveEnabled = (robotId) => manualDrive.enabled && manualDrive.robotId === robotId;
 
   const renderManualDrivePanel = () => {
     if (!manualDrivePanel || !manualDriveRobot || !manualDriveToggle) return;
@@ -4576,8 +4561,12 @@
       })
       .filter(Boolean);
     obstacleIdSeq = Math.max(obstacleIdSeq, maxId + 1 || 1);
-    renderObstacles();
-    renderMiniMap();
+    if (mapView?.updateObstacles) {
+      mapView.updateObstacles(obstacles);
+    } else {
+      renderObstacles();
+      renderMiniMap();
+    }
   };
 
   const refreshSimObstacles = async () => {
@@ -4622,8 +4611,12 @@
       mode: options.mode === "avoid" ? "avoid" : "block"
     };
     obstacles = [...obstacles, obstacle];
-    renderObstacles();
-    renderMiniMap();
+    if (mapView?.updateObstacles) {
+      mapView.updateObstacles(obstacles);
+    } else {
+      renderObstacles();
+      renderMiniMap();
+    }
     if (isLocalSim()) {
       syncLocalSimObstacleAdd(obstacle).catch(() => {});
     } else {
@@ -4636,8 +4629,12 @@
     const next = obstacles.filter((obstacle) => obstacle.id !== obstacleId);
     if (next.length === obstacles.length) return false;
     obstacles = next;
-    renderObstacles();
-    renderMiniMap();
+    if (mapView?.updateObstacles) {
+      mapView.updateObstacles(obstacles);
+    } else {
+      renderObstacles();
+      renderMiniMap();
+    }
     if (isLocalSim()) {
       syncLocalSimObstacleRemove(obstacleId).catch(() => {});
     } else {
@@ -4649,8 +4646,12 @@
 
   const clearObstacles = () => {
     obstacles = [];
-    renderObstacles();
-    renderMiniMap();
+    if (mapView?.updateObstacles) {
+      mapView.updateObstacles(obstacles);
+    } else {
+      renderObstacles();
+      renderMiniMap();
+    }
     if (isLocalSim()) {
       syncLocalSimObstacleClear().catch(() => {});
     } else {
@@ -4670,6 +4671,18 @@
 
   const renderMap = () => {
     if (!graphData || !workflowData) return;
+    if (mapView?.setData) {
+      mapView.setData({
+        graph: graphData,
+        workflow: workflowData,
+        worksites,
+        worksiteState,
+        robots,
+        robotsConfig,
+        obstacles
+      });
+      return;
+    }
     mapSvg.innerHTML = "";
     worksiteElements = new Map();
     worksiteLabels = new Map();
@@ -4717,18 +4730,14 @@
     updateViewBox();
     mapSvg.setAttribute("preserveAspectRatio", "xMidYMid meet");
     mapLayerNeedsRebuild = true;
-    if (mapLayers?.render) {
-      mapLayers.render(mapStore?.getState?.() || {});
-    } else {
-      const state = mapStore?.getState?.() || {};
-      renderEdgesLayer({ state });
-      renderWorksiteLinksLayer({ state });
-      renderObstaclesLayer({ state });
-      renderNodesLayer({ state });
-      renderActionPointsLayer({ state });
-      renderWorksitesLayer({ state });
-      renderRobotLayer({ state });
-    }
+    const state = mapStore?.getState?.() || {};
+    renderEdgesLayer({ state });
+    renderWorksiteLinksLayer({ state });
+    renderObstaclesLayer({ state });
+    renderNodesLayer({ state });
+    renderActionPointsLayer({ state });
+    renderWorksitesLayer({ state });
+    renderRobotLayer({ state });
     mapLayerNeedsRebuild = false;
     renderObstacles();
     renderMiniMap();
@@ -4871,7 +4880,11 @@
     } else {
       persistWorksiteState();
     }
-    applyWorksiteState(id);
+    if (mapView?.updateWorksiteState) {
+      mapView.updateWorksiteState(worksiteState);
+    } else {
+      applyWorksiteState(id);
+    }
     renderStreams();
     renderFields();
   };
@@ -4885,7 +4898,11 @@
     } else {
       persistWorksiteState();
     }
-    applyWorksiteState(id);
+    if (mapView?.updateWorksiteState) {
+      mapView.updateWorksiteState(worksiteState);
+    } else {
+      applyWorksiteState(id);
+    }
     renderStreams();
     renderFields();
   };
@@ -5262,44 +5279,90 @@
   };
 
   const init = () => {
+    dataSource = window.FleetUI?.DataSource?.create?.() || window.FleetUI?.DataSource || null;
+    scenesManager = window.FleetUI?.ScenesManager?.create?.({
+      fetchJson,
+      postJson: dataSource?.postJson || window.FleetUI?.DataSource?.postJson,
+      logger
+    });
+    mapView = window.FleetUI?.MapView?.init({
+      elements: {
+        mapShell,
+        mapWrap,
+        mapSvg,
+        miniMapSvg,
+        layerPanel: mapLayerPanel,
+        fitViewBtn,
+        resetViewBtn,
+        navControlsPause,
+        navControlsStop,
+        worksiteMenu,
+        manualMenu,
+        manualMenuRobot,
+        mapMenu
+      },
+      store: mapStore,
+      geometry,
+      logger,
+      constants: {
+        LABEL_SIZE_PX,
+        LABEL_OFFSET_PX,
+        NODE_LABEL_SIZE_PX,
+        NODE_LABEL_OFFSET_PX,
+        NODE_LABEL_MIN_ZOOM,
+        LABEL_MIN_ZOOM,
+        MAP_OUTER_MARGIN,
+        WORKSITE_AP_OFFSET,
+        WORKSITE_POS_MAX_DRIFT
+      },
+      layerConfig: MAP_LAYER_CONFIG,
+      handlers: {
+        onRobotClick: handleRobotMarkerClick,
+        removeObstacle,
+        buildRobotMarkerClass,
+        resolveRobotModel,
+        ensureRobotMotion,
+        setWorksiteOccupancy,
+        setWorksiteBlocked,
+        issueManualCommand,
+        getManualCommandRobot,
+        sendRobotCommand,
+        refreshFleetStatus,
+        addObstacle,
+        isRemoteSim,
+        getWorksiteState,
+        manualDriveEnabled,
+        setManualDriveEnabled,
+        toggleNavigationPause,
+        stopNavigation
+      }
+    });
+    if (mapStore) {
+      mapStore.subscribe((_state, reason) => {
+        if (reason === "map_state" || reason === "viewport") return;
+        if (mapView?.updateRobots) {
+          mapView.updateRobots(robots);
+        }
+      });
+    }
+    scenesView = scenesManager
+      ? window.FleetUI?.ScenesView?.init({
+          elements: { scenesList, scenesRefreshBtn },
+          services: { scenesManager },
+          handlers: {
+            onSceneActivated: async () => {
+              await loadData({ reset: true, silent: true });
+            }
+          },
+          logger
+        })
+      : null;
     loadSettingsState();
     initNavigation();
-    initWorksiteMenu();
-    initManualMenu();
-    initMapMenu();
     initFaultControls();
     initManualDriveControls();
     initSettingsControls();
     initLogin();
-    bindPanZoom();
-    bindKeyboardShortcuts();
-    renderLayerPanel();
-    bindLayerPanel();
-    if (navControlsPause && navControlsStop) {
-      navControlsPause.addEventListener("click", () => {
-        const robotId = navControlsPause.dataset.id;
-        if (robotId) toggleNavigationPause(robotId);
-      });
-      navControlsStop.addEventListener("click", () => {
-        const robotId = navControlsStop.dataset.id;
-        if (robotId) stopNavigation(robotId);
-      });
-    }
-    if (resetViewBtn) {
-      resetViewBtn.addEventListener("click", () => {
-        resetViewBox();
-      });
-    }
-    if (fitViewBtn) {
-      fitViewBtn.addEventListener("click", () => {
-        fitViewBox();
-      });
-    }
-    if (scenesRefreshBtn) {
-      scenesRefreshBtn.addEventListener("click", () => {
-        loadScenes();
-      });
-    }
 
     const session = loadSession();
     if (session) {

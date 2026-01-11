@@ -192,7 +192,8 @@ Notes:
 - Default `TICK_MS` is 100 (10 Hz).
 - Default push interval is 500 ms (configurable via `robot_push_config_req` and `PUSH_MIN_INTERVAL_MS`/`PUSH_MAX_INTERVAL_MS`).
 - `robot_status_file_req` serves files from `ROBOT_FILE_ROOTS` plus the map directory.
-- Optional admin endpoints (`/_health`, `/_metrics`, `/_time`) are served on `ADMIN_HTTP_PORT` and are separate from Robokit/Roboshop traffic.
+- Optional admin endpoints (`/_health`, `/_metrics`, `/_time`, `/_tick`) are served on `ADMIN_HTTP_PORT` and are separate from Robokit/Roboshop traffic.
+- `/_tick` accepts `{ "action": "pause" | "resume" | "step", "count"?: number }` to control the tick loop (useful in non-real time modes).
 - Set `DIAG_LOG=true` to emit JSON diagnostic events (to stdout unless `EVENT_LOG_*` is set).
 - `DIAG_LOG_TICK_MS` adds periodic snapshots; `DIAG_TELEPORT_THRESHOLD_M` controls pose-jump detection.
 - `SIM_REPLAY_LOG_DIR` enables the Roboshop replay e2e test; use `SIM_REPLAY_TIME_SCALE` to speed it up.
@@ -242,9 +243,6 @@ Robot payload fixtures:
 - Defaults live in `apps/robokit-robot-sim/data/` (`robot_params.json`, `device_types_full.json`, `device_types_ext.json`, `device_types_module.json`, `file_list_assets.json`, `file_list_modules.json`, `map_properties.json`, `config_map_data.json`).
 - Override with the `ROBOT_*_PATH` env vars listed above.
 - `RDS_PARAMS_PATH` / `RDS_DEVICE_TYPES_PATH` remain for legacy compatibility.
-
-Roboshop script simulator:
-- `robokit-robot-sim/syspy-js` provides a JS `SimModule` wired into the simulator state.
 
 Simulator HTTP controls (stub ports `HTTP_PORTS`):
 - `GET /sim/obstacles` -> `{ ok, obstacles }`
