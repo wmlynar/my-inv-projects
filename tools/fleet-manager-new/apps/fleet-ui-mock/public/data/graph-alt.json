@@ -1,0 +1,52 @@
+{
+  "meta": {
+    "source": "mock-alt",
+    "mapType": "2D-Map",
+    "mapName": "Alt map",
+    "version": "1.0.0",
+    "resolution": 0.05,
+    "bounds": {
+      "min": { "x": 0, "y": 0 },
+      "max": { "x": 60, "y": 30 }
+    }
+  },
+  "nodes": [
+    { "id": "LM1", "className": "LocationMark", "pos": { "x": 6, "y": 6 } },
+    { "id": "LM12", "className": "LocationMark", "pos": { "x": 32, "y": 10 } },
+    { "id": "AP20", "className": "ActionPoint", "pos": { "x": 12, "y": 18 }, "props": { "spin": true } },
+    { "id": "AP21", "className": "ActionPoint", "pos": { "x": 46, "y": 22 }, "props": { "spin": true } },
+    { "id": "CP1", "className": "ChargePoint", "pos": { "x": 52, "y": 6 } }
+  ],
+  "edges": [
+    {
+      "id": "E1",
+      "className": "DegenerateBezier",
+      "start": "LM1",
+      "end": "AP20",
+      "props": { "direction": 1, "movestyle": 0, "width": 1.2, "maxspeed": 1.0 }
+    },
+    {
+      "id": "E2",
+      "className": "DegenerateBezier",
+      "start": "AP20",
+      "end": "LM12",
+      "props": { "direction": 1, "movestyle": 0, "width": 1.2, "maxspeed": 1.0 }
+    },
+    {
+      "id": "E3",
+      "className": "DegenerateBezier",
+      "start": "LM12",
+      "end": "AP21",
+      "props": { "direction": 1, "movestyle": 0, "width": 1.2, "maxspeed": 1.0 }
+    },
+    {
+      "id": "E4",
+      "className": "DegenerateBezier",
+      "start": "AP21",
+      "end": "CP1",
+      "props": { "direction": 1, "movestyle": 0, "width": 1.2, "maxspeed": 1.0 }
+    }
+  ],
+  "lines": [],
+  "areas": []
+}

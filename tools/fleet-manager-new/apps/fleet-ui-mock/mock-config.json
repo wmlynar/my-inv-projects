@@ -42,8 +42,9 @@
           {
             "id": "map-2",
             "name": "Mapa magazynu",
-            "fileName": "graph.json",
+            "fileName": "graph-alt.json",
             "data": {
+              "workflow": "workflow-alt.json5",
               "robots": "data/robots-alt.json"
             },
             "meta": {

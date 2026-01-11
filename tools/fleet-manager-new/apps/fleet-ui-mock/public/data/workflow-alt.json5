@@ -1,0 +1,48 @@
+{
+  "map": {
+    "name": "Alt map",
+    "version": "1.0.0",
+    "source": "mock-alt"
+  },
+  "groups": {
+    "PICK_GROUP": ["AP20"],
+    "DROP_GROUP": ["AP21"]
+  },
+  "bin_locations": {
+    "PICK-01": {
+      "group": "PICK_GROUP",
+      "point": "AP20",
+      "pos": { "x": 11, "y": 17 }
+    },
+    "DROP-01": {
+      "group": "DROP_GROUP",
+      "point": "AP21",
+      "pos": { "x": 45, "y": 21 }
+    }
+  },
+  "action_points": [
+    { "id": "AP20", "pos": { "x": 12, "y": 18 }, "props": { "spin": true } },
+    { "id": "AP21", "pos": { "x": 46, "y": 22 }, "props": { "spin": true } }
+  ],
+  "occupancy": {
+    "source": "mock-alt",
+    "pick_groups": ["PICK_GROUP"],
+    "drop_groups": ["DROP_GROUP"]
+  },
+  "streams": [
+    {
+      "id": "stream-1",
+      "pick_group": "PICK_GROUP",
+      "drop_group_order": ["DROP_GROUP"],
+      "drop_policy": { "order": "asc", "access_rule": "any_free" }
+    }
+  ],
+  "buffer_group": "BUFFER",
+  "thresholds": {
+    "heartbeat_timeout_s": 5,
+    "no_progress_timeout_s": 60,
+    "blocked_retry_limit": 3,
+    "charge_target_pct": 80,
+    "commit_distance_m": 0.3
+  }
+}

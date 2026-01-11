@@ -87,6 +87,13 @@ const viewBoxChanged = (prev, next, epsilon = 1e-3) => {
   return prev.some((value, index) => Math.abs(value - next[index]) > epsilon);
 };
 
+const getRobotIds = async (page) => {
+  const ids = await page.$$eval('#map-svg .robot-marker', (nodes) =>
+    nodes.map((node) => node.dataset.id || '').filter(Boolean)
+  );
+  return ids.sort();
+};
+
 const runTest = async (name, fn) => {
   const start = Date.now();
   try {
@@ -404,6 +411,49 @@ const main = async () => {
       if (originalViewport) {
         await page.setViewportSize(originalViewport);
       }
+    });
+
+    await runTest('scene activation reloads map data', async () => {
+      const initialViewBox = await page.getAttribute('#map-svg', 'viewBox');
+      assert(initialViewBox, 'initial viewBox missing');
+      const initialIds = await getRobotIds(page);
+      assert(initialIds.length > 0, 'expected initial robot markers');
+
+      await page.click('.nav-item[data-view="scenes"]');
+      await page.waitForSelector('#scenes-list .scene-card', { timeout: ACTION_TIMEOUT_MS });
+      await page.waitForSelector(
+        '#scenes-list [data-action="activate-scene"][data-scene-id="scene-warehouse"]',
+        { timeout: ACTION_TIMEOUT_MS }
+      );
+      await page.click('#scenes-list [data-action="activate-scene"][data-scene-id="scene-warehouse"]');
+
+      await page.waitForFunction(
+        (prevViewBox) => {
+          const viewBox = document.querySelector('#map-svg')?.getAttribute('viewBox');
+          return viewBox && viewBox !== prevViewBox;
+        },
+        initialViewBox,
+        { timeout: ACTION_TIMEOUT_MS }
+      );
+
+      await page.waitForFunction(
+        (ids) => {
+          const current = Array.from(document.querySelectorAll('#map-svg .robot-marker'))
+            .map((node) => node.dataset.id || '')
+            .filter(Boolean);
+          if (!current.length) return false;
+          return current.some((id) => !ids.includes(id)) || ids.some((id) => !current.includes(id));
+        },
+        initialIds,
+        { timeout: ACTION_TIMEOUT_MS }
+      );
+
+      const updatedIds = await getRobotIds(page);
+      assert(updatedIds.length > 0, 'expected robot markers after scene switch');
+      assert(
+        updatedIds.join(',') !== initialIds.join(','),
+        'expected robot ids to change after scene switch'
+      );
     });
   } finally {
     await browser.close();
