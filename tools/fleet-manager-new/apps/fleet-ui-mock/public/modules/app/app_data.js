@@ -546,6 +546,20 @@
     const activeId = state.mvp0.activeTaskId;
     if (activeId) {
       const active = mappedTasks.find((task) => task.id === activeId);
+      if (active?.status === "Completed") {
+        const pickSite = state.worksites.find(
+          (site) => site.kind === "pick" && site.point === active.pickId
+        );
+        const dropSite = state.worksites.find(
+          (site) => site.kind === "drop" && site.point === active.dropId
+        );
+        if (pickSite?.id) {
+          App.map?.setWorksiteOccupancy?.(pickSite.id, "empty");
+        }
+        if (dropSite?.id) {
+          App.map?.setWorksiteOccupancy?.(dropSite.id, "filled");
+        }
+      }
       if (!active || ["Completed", "Failed", "Cancelled"].includes(active.status)) {
         state.mvp0.activeTaskId = null;
       }
