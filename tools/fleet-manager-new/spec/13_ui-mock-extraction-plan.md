@@ -524,3 +524,44 @@
 - Brak zmian w CSS klasach mapy/menu.
 - Wszystkie importy i zaleznosci mapy/menu przechodza w nowym projekcie.
 - W mocku widac przesuwanie znacznikow robotow (ruch po grafie).
+
+## 17) Plan refaktoru modulowego (AI-friendly)
+Cel: rozbic monolit na male moduly z jasnym API, bez zmiany zachowania UI.
+
+### 17.1) Etap 1 - kontrakty i store
+- Spisac API modulow: `MapCore`, `MapLayers`, `DataSource`, `ScenesManager`, `Views`.
+- Zamrozic eventy (np. `map:context`, `scene:changed`, `selection:changed`).
+- Utrzymywac stan tylko przez store (`getState/setState/subscribe`).
+
+### 17.2) Etap 2 - MapCore
+- Wydzielic `public/modules/core/map_core.js`.
+- API: `init({svg, miniSvg, store, layers})`, `setData({graph, workflow, robots, obstacles})`, `destroy()`.
+- Przeniesc: `renderMap`, `renderMiniMap`, `bindMapInteractions`, `bindKeyboardShortcuts`, `updateViewBox`.
+
+### 17.3) Etap 3 - MapLayers (pluginy)
+- Wydzielic `public/modules/core/map_layers.js`.
+- API: `register(layer)`, `render(state)`, `setVisibility(layers)`.
+- Warstwy jako osobne moduly: `layers/edges.js`, `layers/nodes.js`, `layers/worksites.js`, `layers/robots.js`, `layers/obstacles.js`.
+
+### 17.4) Etap 4 - MapOverlay (menu i tooltipy)
+- Wydzielic `public/modules/map_overlay.js`.
+- API: `init({root, store, events})`, `destroy()`.
+- Przeniesc: `initWorksiteMenu`, `initManualMenu`, `initMapMenu` + pozycjonowanie.
+
+### 17.5) Etap 5 - DataSource i ScenesManager
+- `public/modules/services/data_source.js`: `fetchConfig`, `fetchMapBundle`, `streamStatus`.
+- `public/modules/services/scenes_manager.js`: `load()`, `activate(sceneId,mapId)` i event `scene:changed`.
+- `app.js` nie robi bezposrednich fetchy.
+
+### 17.6) Etap 6 - Views jako komponenty
+- `public/modules/views/map_view.js`, `robots_view.js`, `streams_view.js`, `scenes_view.js`, `settings_view.js`.
+- API: `init({root, store, services})`, `render(state)`.
+
+### 17.7) Etap 7 - Compat shim
+- `public/modules/compat/app_shim.js` mapuje stare wywolania na nowe moduly.
+- Pozwala migrowac bez "big-bang".
+
+### 17.8) Etap 8 - Testy i cleanup
+- E2E bez zmian (mapa + sceny).
+- Dodac minimalne testy kontraktowe (np. `MapCore.setData` nie rzuca).
+- Usunac przeniesione fragmenty z `app.js`.
