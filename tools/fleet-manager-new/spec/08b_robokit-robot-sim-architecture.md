@@ -718,6 +718,38 @@ Minimalne zasady, aby aplikacja byla stabilna i "production-like":
 10) **Schema/DTO**: formalne kontrakty payloadow.
 11) **Tests**: multi-client + lock preemption + status regression + replay.
 
+## 12.1 Kryteria akceptacji (MUST)
+Kazdy krok powinien miec jasne kryteria "Done":
+- zmiana jest pokryta testem (unit/e2e/replay),
+- brak regresji w istniecych testach,
+- API/protokol bez zmian w wire format (o ile nie zaznaczono inaczej).
+
+Przyklady:
+- **Pure core step**: testy deterministyczne (`seed`), brak zaleznosci od czasu systemowego.
+- **Profile packs**: replay z wybranej sesji przechodzi po dopasowaniu profilu.
+- **Adaptery**: te same testy e2e uruchamiane na adapterze TCP i replay.
+
+## 12.2 Ryzyka i mitigacje (SHOULD)
+- **Replay diff** z realnymi logami -> stosuj `SIM_REPLAY_IGNORE_FIELDS` + profile-packs.
+- **Lock/reguły kontroli** -> osobne testy e2e + strict gating.
+- **Ruch/odometri** -> testy "no teleport" i "heading jump".
+
+## 12.3 Migracja i kompatybilnosc (MUST)
+- Stare sciezki powinny byc deprecjonowane etapami, nie usuwane od razu.
+- Każda zmiana powinna byc wprowadzona za flaga (np. `SIM_PROFILE_ID`).
+- Backward compatibility: jesli profil brak, symulator powinien uruchomic sie na defaultach.
+
+## 12.4 Matryca API (SHOULD)
+Zdefiniuj liste API w 3 klasach:
+- **MUST** (uzywane przez Roboshop/Fleet Manager)
+- **SHOULD** (nice-to-have)
+- **IGNORE** (legacy/nieobslugiwane)
+
+## 12.5 Workflow profili (SHOULD)
+- `profile-extract` z logow -> JSON5
+- walidacja profile schema w CI
+- repo `profiles/` jako kanoniczne zrodlo profili
+
 ## 13. Test matrix (SHOULD)
 - Wymaganie: multi-client -> test `client_registry` + e2e z 2 klientami
 - Wymaganie: lock preemption -> e2e `fork_and_lock` + dedicated test
