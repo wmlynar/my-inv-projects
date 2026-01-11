@@ -7,12 +7,26 @@ Ten dokument opisuje docelowa architekture `robokit-robot-sim`, z naciskiem na:
 - semantyke `seize control` z natychmiastowym przejeciem kontroli przez nowego klienta,
 - plan refactoringu bez zrywania kompatybilnosci protokolowej.
 
+## 1.1 Slownik pojec (MUST)
+- **Robokit**: protokol TCP robota (RoboCore/Robokit).
+- **Roboshop**: UI kliencka laczaca sie po TCP/HTTP do robota/RDS.
+- **RDS**: serwis HTTP robota (nie protokol robota).
+- **Core**: czysta logika symulatora (stan + tick).
+- **Adapter**: warstwa transportu/protokolu (TCP/HTTP/replay).
+- **Profile-pack**: plik danych definiujacy identyfikacje robota (VERSION_LIST, params, deviceTypes).
+- **Replay**: odtwarzanie logow i porownanie odpowiedzi.
+
 ## 2. Problemy w obecnej implementacji (skrot)
 - Jedna, globalna instancja stanu robota, bez kontroli dostepu dla roznych klientow.
 - `lock` istnieje w payloadach, ale nie jest egzekwowany (kazdy moze sterowac).
 - Push config jest globalny (zmiana z jednego klienta wplywa na wszystkie polaczenia).
 - Logika protokolu, stanu i widokow jest wymieszana w jednym pliku.
 - Brak wyraznego modelu sesji klienta (Roboshop laczy sie wieloma socketami).
+
+## 2.1 Non-goals (MUST)
+- Multi-robot w jednym procesie (nie wspierane).
+- Pelna emulacja HW (lasery, sterowniki) poza payloadami protokolu.
+- Symulacja fizyki 3D (tylko ruch 2D po mapie).
 
 ## 3. Wymagania funkcjonalne (MUST)
 ### 3.1 Wielu klientow
@@ -65,6 +79,26 @@ Ten dokument opisuje docelowa architekture `robokit-robot-sim`, z naciskiem na:
 └──────────────────────────────────────────────────────────────┘
 ```
 
+### 4.0 Zasada AI-friendly (MUST)
+Symulator ma byc "AI-friendly": logika powinna byc podzielona na male, czyste moduly z jasnymi kontraktami.
+Cel: minimalne efekty uboczne, przewidywalnosc i latwe testowanie.
+
+### 4.0.1 Docelowa struktura repo (SHOULD)
+```
+apps/
+  robokit-robot-sim/          # adapter TCP
+  robokit-http-stub/          # adapter HTTP (RDS, osobny kanal)
+packages/
+  robokit-sim-core/           # czysty core
+  robokit-protocol/           # rbk codec + router + policy
+  robokit-sim-profiles/       # profile-packs + schemas
+tests/
+  replay/                     # harness CLI
+  fixtures/                   # golden logs
+schemas/
+  robokit/                    # JSON schema payloadow
+```
+
 ### 4.1 Transport
 **Odpowiedzialnosci:**
 - utrzymanie socketow i parserow per polaczenie,
@@ -99,6 +133,12 @@ Ten dokument opisuje docelowa architekture `robokit-robot-sim`, z naciskiem na:
   - klasyfikacja komend: `read`, `control`, `fork`, `nav`, `config`
   - gate: wymaga locka dla wybranych klas
 
+### 4.2.2 Adaptery (MUST)
+Transport nie powinien zawierac logiki domenowej. Zamiast tego uzywamy adapterow:
+- `adapters/robokit-tcp` (robokit TCP)
+- `adapters/roboshop-http` (HTTP stub, oddzielny kanal)
+- `adapters/replay` (odtwarzanie logow, bez socketow)
+
 ### 4.2.1 Bledy protokolu i resync (MUST)
 - Jesli parser wykryje niepoprawny `startMark` lub zbyt duzy `bodyLength`, socket jest zamykany.
 - Jesli `apiNo` jest nieznane:
@@ -127,6 +167,17 @@ Ten dokument opisuje docelowa architekture `robokit-robot-sim`, z naciskiem na:
 - `core/ControlArbiter.ts`
   - stan locka i polityka przejecia kontroli
 
+### 4.3.1 Pure core (MUST)
+Core powinien byc maksymalnie czysty i deterministyczny:
+- `step(state, inputs, dt) -> { state, outputs }`
+- bez socketow, bez IO, bez globalnych singletonow
+- wszystkie zaleznosci wstrzykiwane (zegary, RNG, mapy)
+
+### 4.3.2 Explainability hooks (SHOULD)
+Core powinien umiec zwrocic "dlaczego":
+- `explain()` zwraca powody stopu / blokady / wyboru trasy
+- eventy diagnostyczne jako JSONL (AI-friendly)
+
 ### 4.4 View
 **Odpowiedzialnosci:**
 - budowanie odpowiedzi i payloadow statusowych,
@@ -139,6 +190,44 @@ Ten dokument opisuje docelowa architekture `robokit-robot-sim`, z naciskiem na:
   - buildPushPayload(state, filters)
 - `views/FileResponseBuilder.ts`
   - file list, map files, device types
+
+### 4.4.1 Profile packs (MUST)
+Identycznosc robota nie powinna byc kodowana w kodzie.
+Wprowadzamy profile (JSON/JSON5) jako data-driven zrodlo:
+- VERSION_LIST
+- robot_params (API 11400)
+- deviceTypes i file lists
+- map list / md5 / metadata
+- domyslne feature flags
+
+Sciezka profilu:
+- `SIM_PROFILE_PATH=/abs/path/to/profile.json5`
+- lub `SIM_PROFILE_ID=robokit-amb-01` (szukaj w `profiles/`)
+
+Precedencja:
+1) explicit env vars
+2) profile pack
+3) defaulty w kodzie
+
+### 4.4.3 Profile jako single source of truth (MUST)
+Wszystkie dane "identity" robota powinny byc w profilu, a nie w kodzie:
+- VERSION_LIST, robot_params, deviceTypes, map list
+- defaultowe feature flags
+
+Kod moze tylko:
+- walidowac profile,
+- nadpisac wybrane pola przez env (np. dla testow).
+
+### 4.4.2 Przykladowy profile-pack (INFORMATIVE)
+```json5
+{
+  "id": "robokit-amb-01",
+  "version_list": { "MCLoc": "1.0.0-git:3.4.8-...", "TaskManager": "1.0.0-git:..." },
+  "robot_params": { "MCLoc": { "FTScoreThd": { "value": 0.7, "defaultValue": 0.7, "type": "double" } } },
+  "device_types": { "deviceTypes": [] },
+  "maps": [{ "name": "sanden_smalll", "md5": "4a57..." }]
+}
+```
 
 ### 4.5 Kontrakty interfejsow modulow (MUST)
 Minimalne interfejsy (TypeScript-like):
@@ -166,6 +255,53 @@ interface SimulationEngine {
   getState(): RobotState;
 }
 ```
+
+### 4.5.1 Kontrakty modulow (MUST)
+Każdy modul powinien miec:
+- wejscia/wyjscia (sygnatura),
+- efekty uboczne (np. zapis do event log),
+- minimalny test jednostkowy.
+
+### 4.5.2 Kontrakty payloadow (SHOULD)
+Wprowadz JSON Schema dla kluczowych payloadow:
+- `status_loc`, `status_all`, `current_lock`
+- `robot_params` (API 11400)
+- `device_types`, `file_list`
+To ujednolici replay i diff.
+
+### 4.6 Reuse w Fleet Managerze (MUST)
+Fleet Manager powinien moc uzyc core bez TCP:
+- `createSimulator({ profile, mapProvider, configProvider, clock, rng })`
+- `sim.step(inputs, dt)` lub `sim.tick(nowMs)`
+- `sim.getSnapshot()` jako stabilny kontrakt
+
+To pozwala uruchamiac symulator:
+- jako proces (TCP)
+- jako biblioteke (in-process)
+- w testach E2E bez portow
+
+### 4.6.1 Kontrakt API core (MUST)
+Minimalny kontrakt core, aby FM mogl go reuse bez protokolu:
+```ts
+type SimInput = {
+  commands: Command[];
+  nowMs: number;
+  dtMs: number;
+};
+
+type SimOutput = {
+  responses: Response[];
+  events: Event[];
+  snapshot: RobotSnapshot;
+};
+
+function step(state: RobotState, input: SimInput): { state: RobotState; output: SimOutput };
+```
+
+Zasady:
+- `snapshot` musi byc stabilny i gotowy do serializacji (bez cyclic refs).
+- `responses` musza zawierac `apiNo` i payload (adapter mapuje do TCP).
+
 
 ## 5. Model danych (kontrakt wewnetrzny)
 ### 5.1 RobotState
@@ -486,6 +622,24 @@ Domyslne wartosci (zalecane):
   - liczba push connections,
   - liczba odrzuconych komend z powodu locka.
 
+### 10.3 Kontrakty DTO i schema (SHOULD)
+Zdefiniuj schematy JSON (np. JSON Schema) dla:
+- request/response per API
+- profile packs
+- snapshot stanu
+
+To stabilizuje replay, diffy i uzycie przez AI.
+
+### 10.4 Test harness (SHOULD)
+Oddzielny modul CLI:
+- `sim-replay --log-dir ...`
+- `sim-compare --base-ref ...`
+- mozliwosc ignorowania pol i tolerance numeryczne
+
+W CI:
+- replay testy moga byc uruchamiane osobno (job "replay")
+- diffy zapisywane jako artefakt dla analizy AI
+
 ### 10.1 Format event log (SHOULD)
 Preferowany zapis JSONL (jeden event na linie):
 ```json5
@@ -529,19 +683,50 @@ Minimalne zasady, aby aplikacja byla stabilna i "production-like":
 1) `TcpPortServer` odbiera dane z socketu.
 2) `RbkCodec.decode` zwraca ramki.
 3) `ApiRouter.handle(frame, context)`:
-   - pobiera `ClientSession`,
-   - sprawdza `ControlPolicy`,
-   - wywoluje `core` (np. TaskEngine, ForkController),
-   - buduje response przez `view`.
+  - pobiera `ClientSession`,
+  - sprawdza `ControlPolicy`,
+  - wywoluje `core` (np. TaskEngine, ForkController),
+  - buduje response przez `view`.
 4) `RbkCodec.encode` -> zapis do socketu.
+
+## 11.1 Flow: goTarget (INFORMATIVE)
+1) `task/goTarget` -> `TaskEngine.createTask`
+2) `SimulationEngine` startuje segment
+3) `status_loc` i `push` raportuja postep
+
+## 11.2 Flow: seize control (INFORMATIVE)
+1) `config/lock` -> `ControlArbiter.acquire`
+2) preempcja: wyzerowanie manual poprzedniego ownera
+3) `status_current_lock` odzwierciedla nowego ownera
+
+## 11.3 Flow: replay (INFORMATIVE)
+1) `replay-adapter` wczytuje `listeners.json5`
+2) odtwarza c2s/s2c
+3) porownuje odpowiedzi z tolerancja numeryczna
+
 
 ## 12. Plan refactoringu (kolejnosc bez ryzyka)
 1) **Extract View**: przenies `build*Response` do `views/`.
 2) **Extract Core**: przenies `tick`, `TaskEngine`, `ForkController`, `Navigation`.
-3) **Add ClientRegistry**: mapuj socket -> clientId.
-4) **Add ControlArbiter**: implementuj lock/preempcje + gating.
-5) **Fix Push**: per-connection config.
-6) **Tests**: multi-client + lock preemption + status regression.
+3) **Pure core step**: `step(state, inputs, dt)` + deterministyczny clock/RNG.
+4) **Profile packs**: przenies VERSION_LIST / params / deviceTypes do profilu.
+5) **Adaptery**: rozdziel `robokit-tcp`, `roboshop-http`, `replay`.
+6) **Add ClientRegistry**: mapuj socket -> clientId.
+7) **Add ControlArbiter**: implementuj lock/preempcje + gating.
+8) **Fix Push**: per-connection config.
+9) **Explainability**: event bus + explain() + JSONL diag.
+10) **Schema/DTO**: formalne kontrakty payloadow.
+11) **Tests**: multi-client + lock preemption + status regression + replay.
+
+## 13. Test matrix (SHOULD)
+- Wymaganie: multi-client -> test `client_registry` + e2e z 2 klientami
+- Wymaganie: lock preemption -> e2e `fork_and_lock` + dedicated test
+- Wymaganie: replay -> `e2e_roboshop_replay`
+
+## 14. Kompatybilnosc i wersjonowanie (MUST)
+- Profile-pack maja wersje (`profile_version`).
+- Zmiana profilu nie zmienia protokolu.
+- Zmiana payloadu wymaga aktualizacji schema + replay ignore list.
 
 ## 13. Testy i walidacja
 ### 13.1 Jednostkowe
@@ -575,3 +760,12 @@ Minimalne zasady, aby aplikacja byla stabilna i "production-like":
 - Jak rozpoznac dwoch klientow z tego samego IP bez `nick_name` (brak identyfikatora w protokole)?
 - Czy `goTarget` ma byc dozwolone bez locka w trybie testowym (flaga `REQUIRE_LOCK_FOR_NAV`)?
 - Czy lock ma byc twardym lease z wymogiem keep-alive (np. re-lock co N sekund)?
+### 10.5 Reguly replay (MUST)
+Replay powinien miec jawny zestaw ignorowanych pol (noise fields), np.:
+```
+create_on, time, total_time, odo, today_odo, current_ip, current_lock.time_t
+```
+oraz konfiguracje:
+- `SIM_REPLAY_NUM_TOL`
+- `SIM_REPLAY_IGNORE_FIELDS`
+- `SIM_REPLAY_FAIL_ON_DIFF`
