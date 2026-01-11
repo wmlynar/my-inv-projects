@@ -532,16 +532,22 @@ Cel: rozbic monolit na male moduly z jasnym API, bez zmiany zachowania UI.
 - Spisac API modulow: `MapCore`, `MapLayers`, `DataSource`, `ScenesManager`, `Views`.
 - Zamrozic eventy (np. `map:context`, `scene:changed`, `selection:changed`).
 - Utrzymywac stan tylko przez store (`getState/setState/subscribe`).
+- Dodac pliki centralne:
+  - `events.js` jako jedyna lista nazw eventow,
+  - `selectors.js` jako jedyna lista selektorow DOM.
+- Zdefiniowac DoD dla etapu: bez zmian w DOM/CSS mapy i menu, E2E mapy zielone.
 
 ### 17.2) Etap 2 - MapCore
 - Wydzielic `public/modules/core/map_core.js`.
 - API: `init({svg, miniSvg, store, layers})`, `setData({graph, workflow, robots, obstacles})`, `destroy()`.
 - Przeniesc: `renderMap`, `renderMiniMap`, `bindMapInteractions`, `bindKeyboardShortcuts`, `updateViewBox`.
+- Regula: `MapCore` nie importuje store/services - dane tylko przez `init/setData`.
 
 ### 17.3) Etap 3 - MapLayers (pluginy)
 - Wydzielic `public/modules/core/map_layers.js`.
 - API: `register(layer)`, `render(state)`, `setVisibility(layers)`.
 - Warstwy jako osobne moduly: `layers/edges.js`, `layers/nodes.js`, `layers/worksites.js`, `layers/robots.js`, `layers/obstacles.js`.
+- Dodac DoD: brak zmian w klasach warstw + E2E mapy zielone.
 
 ### 17.4) Etap 4 - MapOverlay (menu i tooltipy)
 - Wydzielic `public/modules/map_overlay.js`.
@@ -552,6 +558,7 @@ Cel: rozbic monolit na male moduly z jasnym API, bez zmiany zachowania UI.
 - `public/modules/services/data_source.js`: `fetchConfig`, `fetchMapBundle`, `streamStatus`.
 - `public/modules/services/scenes_manager.js`: `load()`, `activate(sceneId,mapId)` i event `scene:changed`.
 - `app.js` nie robi bezposrednich fetchy.
+- Dodac cienka warstwe normalizacji danych: `normalizeGraph`, `normalizeWorkflow`.
 
 ### 17.6) Etap 6 - Views jako komponenty
 - `public/modules/views/map_view.js`, `robots_view.js`, `streams_view.js`, `scenes_view.js`, `settings_view.js`.
@@ -560,8 +567,74 @@ Cel: rozbic monolit na male moduly z jasnym API, bez zmiany zachowania UI.
 ### 17.7) Etap 7 - Compat shim
 - `public/modules/compat/app_shim.js` mapuje stare wywolania na nowe moduly.
 - Pozwala migrowac bez "big-bang".
+- Zasada: strangler pattern - stare funkcje deleguja do nowych modulow.
 
 ### 17.8) Etap 8 - Testy i cleanup
 - E2E bez zmian (mapa + sceny).
 - Dodac minimalne testy kontraktowe (np. `MapCore.setData` nie rzuca).
 - Usunac przeniesione fragmenty z `app.js`.
+- Dodac testy jednostkowe geometrii (bounds/projection/hit-test).
+- Dodac prosty logger (`debug('map-core', ...)`) i stosowac w krytycznych modulach.
+
+## 18) Konkretna sciezka refaktoru (krok po kroku)
+Cel: rozbic kod na moduly, tak aby AI moglo szybko lokalizowac odpowiedzialnosci i unikac efektow ubocznych.
+
+### 18.1) Struktura katalogow
+- `public/modules/core/` (MapCore, MapLayers, warstwy)
+- `public/modules/views/` (MapView, ScenesView, RobotsView, StreamsView, SettingsView)
+- `public/modules/services/` (DataSource, ScenesManager)
+- `public/modules/lib/` (pure funkcje bez DOM)
+- `public/modules/compat/` (app_shim na czas migracji)
+
+### 18.2) Centralne kontrakty
+- `public/modules/events.js` jako jedyna lista nazw eventow.
+- `public/modules/selectors.js` jako jedyna lista selektorow DOM.
+
+### 18.3) Pure lib (geometria)
+- `public/modules/lib/geometry.js`:
+  - przeniesc: `getBounds`, `distanceBetweenPoints`, projekcje punktow.
+- Dodac minimalne testy jednostkowe w `tests/unit/geometry.test.js`.
+
+### 18.4) MapCore
+- `public/modules/core/map_core.js`:
+  - API: `init({svg, miniSvg, store, layers})`, `setData({graph, workflow, robots, obstacles})`, `destroy()`.
+  - przeniesc: `renderMap`, `renderMiniMap`, `bindMapInteractions`, `bindKeyboardShortcuts`, `updateViewBox`.
+
+### 18.5) MapLayers (pluginy)
+- `public/modules/core/map_layers.js`:
+  - API: `register(layer)`, `render(state)`, `setVisibility(layers)`.
+- Warstwy jako osobne pliki:
+  - `public/modules/core/layers/edges.js`
+  - `public/modules/core/layers/nodes.js`
+  - `public/modules/core/layers/worksites.js`
+  - `public/modules/core/layers/robots.js`
+  - `public/modules/core/layers/obstacles.js`
+
+### 18.6) MapOverlay
+- `public/modules/map_overlay.js`:
+  - API: `init({root, store, events})`, `destroy()`.
+  - przeniesc: `initWorksiteMenu`, `initManualMenu`, `initMapMenu` + pozycjonowanie.
+
+### 18.7) Services
+- `public/modules/services/data_source.js`:
+  - `fetchConfig`, `fetchMapBundle`, `streamStatus`.
+- `public/modules/services/scenes_manager.js`:
+  - `load()`, `activate(sceneId,mapId)`, event `scene:changed`.
+
+### 18.8) Views
+- `public/modules/views/map_view.js`, `scenes_view.js`, `robots_view.js`, `streams_view.js`, `settings_view.js`.
+- API: `init({root, store, services})`, `render(state)`.
+
+### 18.9) Compat shim
+- `public/modules/compat/app_shim.js` mapuje stare wywolania na nowe moduly.
+- Stosowac strangler pattern (stare funkcje deleguja do nowych).
+
+### 18.10) Index i kolejnosc skryptow
+- `public/index.html` laduje kolejno:
+  1) `events.js`, `selectors.js`,
+  2) `lib/*`,
+  3) `core/*`,
+  4) `services/*`,
+  5) `views/*`,
+  6) `compat/*`,
+  7) `app.js`.
