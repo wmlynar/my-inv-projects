@@ -63,11 +63,103 @@
     }
   };
 
+  const postLogJson = async (path, payload = null) => {
+    try {
+      const body = payload ? JSON.stringify(payload) : null;
+      await fetch(path, {
+        method: "POST",
+        headers: body ? { "Content-Type": "application/json" } : {},
+        body
+      });
+    } catch (_err) {
+      // ignore logging failures
+    }
+  };
+
+  const logWorksiteChange = (id, changes) => {
+    postLogJson(`/api/log/worksites/${encodeURIComponent(id)}`, changes);
+  };
+
+  const resolveMvp0ParkNodeId = () => {
+    if (state.mvp0?.parkNodeId) return state.mvp0.parkNodeId;
+    const robots = state.robotsConfig?.robots || [];
+    const targetId = state.mvp0?.robotId || null;
+    const robot = targetId ? robots.find((item) => item.id === targetId) : robots[0];
+    return robot?.ref || robot?.point || robot?.start || null;
+  };
+
+  const findMvp0DropSite = () => {
+    const drops = state.worksites.filter((site) => site.kind === "drop" && site.point);
+    if (!drops.length) return null;
+    for (const site of drops) {
+      const siteState = getWorksiteState(site.id);
+      if (siteState.blocked) continue;
+      if (siteState.occupancy === "filled") continue;
+      return site;
+    }
+    return drops[0];
+  };
+
+  const dispatchMvp0Task = async (pickId) => {
+    if (!state.mvp0?.enabled || !state.fleetCoreAvailable) return;
+    if (state.mvp0.pendingTask || state.mvp0.activeTaskId) return;
+    const pick = state.worksites.find((site) => site.id === pickId);
+    if (!pick || pick.kind !== "pick" || !pick.point) return;
+    const drop = findMvp0DropSite();
+    if (!drop?.point) return;
+    const parkNodeId = resolveMvp0ParkNodeId();
+    const task = {
+      kind: "pickDrop",
+      fromNodeId: pick.point,
+      toNodeId: drop.point,
+      parkNodeId: parkNodeId || null,
+      pickHeightM: Number.isFinite(state.mvp0.pickHeightM) ? state.mvp0.pickHeightM : undefined,
+      dropHeightM: Number.isFinite(state.mvp0.dropHeightM) ? state.mvp0.dropHeightM : undefined
+    };
+    state.mvp0.pendingTask = true;
+    try {
+      const response = await App.data?.postFleetJson?.("/tasks", { task });
+      if (response?.taskId) {
+        state.mvp0.activeTaskId = response.taskId;
+      }
+    } catch (error) {
+      console.warn("MVP0 task dispatch failed", error);
+    } finally {
+      state.mvp0.pendingTask = false;
+    }
+  };
+
+  const maybeAutoStartMvp0 = () => {
+    if (!state.mvp0?.enabled || !state.mvp0.autoStart || state.mvp0.autoStarted) return;
+    const pickId = state.mvp0.autoPickId;
+    if (pickId) {
+      const pick = state.worksites.find((site) => site.id === pickId);
+      if (pick && pick.kind === "pick") {
+        const current = getWorksiteState(pick.id);
+        if (current.occupancy !== "filled") {
+          setWorksiteOccupancy(pick.id, "filled");
+        } else {
+          dispatchMvp0Task(pick.id);
+        }
+        state.mvp0.autoStarted = true;
+        return;
+      }
+    }
+    const filled = state.worksites.find(
+      (site) => site.kind === "pick" && getWorksiteState(site.id).occupancy === "filled"
+    );
+    if (filled) {
+      dispatchMvp0Task(filled.id);
+      state.mvp0.autoStarted = true;
+    }
+  };
+
   const setWorksiteOccupancy = (id, occupancy) => {
     const current = getWorksiteState(id);
+    const prev = current.occupancy;
     current.occupancy = constants.WORKSITE_OCCUPANCY.includes(occupancy) ? occupancy : current.occupancy;
     state.worksiteState[id] = current;
-    if (App.data?.isRemoteSim?.()) {
+    if (App.data?.isRemoteSim?.() && !state.mvp0?.enabled) {
       updateWorksiteRemote(id, { filled: current.occupancy === "filled" });
     } else {
       persistWorksiteState();
@@ -75,13 +167,20 @@
     services.mapView?.updateWorksiteState?.(state.worksiteState);
     App.ui?.renderStreams?.();
     App.ui?.renderFields?.();
+    if (prev !== current.occupancy) {
+      logWorksiteChange(id, { occupancy: current.occupancy });
+    }
+    if (prev !== current.occupancy && current.occupancy === "filled") {
+      dispatchMvp0Task(id);
+    }
   };
 
   const setWorksiteBlocked = (id, blocked) => {
     const current = getWorksiteState(id);
+    const prev = current.blocked;
     current.blocked = Boolean(blocked);
     state.worksiteState[id] = current;
-    if (App.data?.isRemoteSim?.()) {
+    if (App.data?.isRemoteSim?.() && !state.mvp0?.enabled) {
       updateWorksiteRemote(id, { blocked: current.blocked });
     } else {
       persistWorksiteState();
@@ -89,6 +188,9 @@
     services.mapView?.updateWorksiteState?.(state.worksiteState);
     App.ui?.renderStreams?.();
     App.ui?.renderFields?.();
+    if (prev !== current.blocked) {
+      logWorksiteChange(id, { blocked: current.blocked });
+    }
   };
 
   const toggleWorksiteOccupancy = (id) => {
@@ -315,6 +417,7 @@
     clearObstacles,
     getWorksiteState,
     loadWorksiteState,
+    maybeAutoStartMvp0,
     refreshSimObstacles,
     removeObstacle,
     renderMap,

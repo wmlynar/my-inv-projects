@@ -107,6 +107,7 @@
     services.streamsView = window.FleetUI?.StreamsView?.init({
       elements: {
         streamsList: App.elements.streamsList,
+        streamsAdvancedList: App.elements.streamsAdvancedList,
         fieldsList: App.elements.fieldsList,
         tasksList: App.elements.tasksList,
         trafficLocksList: App.elements.trafficLocksList,
@@ -214,6 +215,7 @@
     bindDomainStore();
     initViews();
     App.ui?.loadSettingsState?.();
+    App.ui?.initBus?.();
     App.ui?.initNavigation?.();
     App.robots?.initFaultControls?.();
     App.robots?.initManualDriveControls?.();

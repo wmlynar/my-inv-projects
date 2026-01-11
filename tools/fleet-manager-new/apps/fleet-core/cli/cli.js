@@ -58,6 +58,7 @@ function main() {
 
   const configPath = args.config || path.join(__dirname, '..', 'configs', 'fleet-core.local.json5');
   const config = loadConfig(DEFAULT_CONFIG, configPath);
+  config._configDir = path.dirname(configPath);
 
   if (toBool(args['print-effective-config'], false)) {
     console.log(JSON.stringify(config, null, 2));

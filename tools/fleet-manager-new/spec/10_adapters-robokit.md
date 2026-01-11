@@ -350,6 +350,9 @@ Parser Gateway MUST:
 - jeśli `jsonSizeHeader > 0 && jsonSizeHeader <= bodyLength`, traktować pierwsze `jsonSizeHeader` bajtów jako JSON,
   a resztę jako binary (MAY ignorować jeśli nie używane),
 - w innym wypadku próbować parsować cały body jako JSON.
+Observed (robokit_logs/2026-01-09_18_07_robot_odkladanie-palety-bez-rozpoznawania):
+- `jsonSizeHeader` is always 0 in captured frames.
+- bodies are either full JSON or non-JSON text blobs; for non-JSON payloads treat the whole body as binary and leave JSON null.
 
 ### 2.3 Korelacja request/response
 - Response ma `seq` taki sam jak request.

@@ -1,9 +1,9 @@
 {
   "data": {
-    "graph": "data/graph.json",
-    "workflow": "data/workflow.json5",
+    "graph": "data/mvp0-graph.json",
+    "workflow": "data/mvp0-workflow.json5",
     "packaging": "data/packaging.json",
-    "robots": "data/robots.json"
+    "robots": "data/mvp0-robots.json"
   },
   "sim": {
     "speed": 0.6,
@@ -11,9 +11,44 @@
     "simMode": "robokit",
     "simModeMutable": false
   },
+  "core": {
+    "apiBase": "http://localhost:8080/api/v1",
+    "syncMs": 200
+  },
+  "mvp0": {
+    "enabled": true,
+    "pickHeightM": 1.2,
+    "dropHeightM": 0.1,
+    "parkNodeId": "PARK-01",
+    "robotId": "RB-01",
+    "autoStart": true,
+    "autoPickId": "PICK-01"
+  },
   "scenes": {
-    "activeSceneId": "scene-default",
+    "activeSceneId": "scene-mvp0",
     "scenes": [
+      {
+        "id": "scene-mvp0",
+        "name": "MVP0 demo",
+        "kind": "mock",
+        "createdAt": "2025-01-01T00:00:00Z",
+        "activeMapId": "map-mvp0",
+        "maps": [
+          {
+            "id": "map-mvp0",
+            "name": "Mapa MVP0",
+            "fileName": "mvp0-graph.json",
+            "data": {
+              "workflow": "mvp0-workflow.json5",
+              "robots": "data/mvp0-robots.json"
+            },
+            "meta": {
+              "mapType": "2D-Map",
+              "version": "1.0.0"
+            }
+          }
+        ]
+      },
       {
         "id": "scene-default",
         "name": "Mock scena",

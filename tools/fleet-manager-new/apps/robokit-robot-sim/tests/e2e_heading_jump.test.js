@@ -9,6 +9,7 @@ let PORTS = null;
 
 const KEEPALIVE_INTERVAL_MS = 100;
 const STATE_INTERVAL_MS = 100;
+const TICK_MS = 100;
 const RUN_AFTER_TARGET_MS = 3500;
 const ROTATE_SPEED_RAD_S = 1.2;
 const ANGLE_MARGIN_RAD = 0.05;
@@ -188,14 +189,14 @@ async function run() {
       try {
         const res = await request(PORTS.STATE, API.robot_status_loc_req, {});
         if (res && Number.isFinite(res.angle)) {
-          const now = Date.now();
-          if (lastAngle !== null && lastTs !== null) {
-            const dtSec = Math.max(0.05, (now - lastTs) / 1000);
-            const delta = Math.abs(normalizeAngle(res.angle - lastAngle));
-            const allowed = ROTATE_SPEED_RAD_S * dtSec + ANGLE_MARGIN_RAD;
-            if (delta > allowed) {
-              throw new Error(
-                `angle jump detected: ${delta.toFixed(3)}rad in ${dtSec.toFixed(2)}s` +
+            const now = Date.now();
+            if (lastAngle !== null && lastTs !== null) {
+              const dtSec = Math.max(0.05, (now - lastTs) / 1000);
+              const delta = Math.abs(normalizeAngle(res.angle - lastAngle));
+            const allowed = ROTATE_SPEED_RAD_S * (dtSec + TICK_MS / 1000) + ANGLE_MARGIN_RAD;
+              if (delta > allowed) {
+                throw new Error(
+                  `angle jump detected: ${delta.toFixed(3)}rad in ${dtSec.toFixed(2)}s` +
                   ` (prev=${lastAngle.toFixed(3)} next=${res.angle.toFixed(3)} allowed=${allowed.toFixed(3)})`
               );
             }

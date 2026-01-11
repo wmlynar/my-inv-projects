@@ -759,7 +759,10 @@ function pickEdgeForDirection(group, fromNodeId, toNodeId) {
     }
   }
   if (!candidates.length) return null;
-  candidates.sort((a, b) => a.edge.edgeId.localeCompare(b.edge.edgeId));
+  candidates.sort((a, b) => {
+    if (a.aligned !== b.aligned) return a.aligned ? -1 : 1;
+    return a.edge.edgeId.localeCompare(b.edge.edgeId);
+  });
   const chosen = candidates[0];
   const baseStyle = normalizeMoveStyle(chosen.edge?.props?.movestyle ?? chosen.edge?.props?.moveStyle);
   const movestyle = chosen.invert ? invertMoveStyle(baseStyle) : baseStyle;

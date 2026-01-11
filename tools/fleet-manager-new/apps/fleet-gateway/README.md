@@ -1,6 +1,6 @@
-# fleet-gateway (skeleton)
+# fleet-gateway
 
-Minimal HTTP skeleton for Fleet Gateway based on `spec/02_fleet-gateway.md`.
+HTTP gateway for robot providers (internalSim, simDirect, robokitSim, robocore) based on `spec/02_fleet-gateway.md`.
 
 ## Run
 
@@ -8,7 +8,7 @@ Minimal HTTP skeleton for Fleet Gateway based on `spec/02_fleet-gateway.md`.
 node apps/fleet-gateway/cli/cli.js --config apps/fleet-gateway/configs/fleet-gateway.local.json5
 ```
 
-## Endpoints (stub)
+## Endpoints
 
 - `GET /gateway/v1/health`
 - `GET /gateway/v1/robots`

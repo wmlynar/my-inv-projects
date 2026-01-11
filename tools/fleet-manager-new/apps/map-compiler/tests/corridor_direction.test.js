@@ -279,6 +279,14 @@ test('sanden_smalll pivots stay monotonic from LM8 to LM7 and back', () => {
 
   const nodeById = new Map(compiledMap.nodes.map((node) => [node.nodeId, node]));
   const eps = 1e-4;
+  const baseStart = nodeById.get(corridor.aNodeId);
+  const baseEnd = nodeById.get(corridor.bNodeId);
+  assert.ok(baseStart && baseEnd, 'corridor endpoints missing');
+  const baseDx = baseEnd.pos.xM - baseStart.pos.xM;
+  const baseDy = baseEnd.pos.yM - baseStart.pos.yM;
+  const baseLen = Math.hypot(baseDx, baseDy);
+  assert.ok(baseLen > eps, 'corridor length should be positive');
+  const baseDir = { x: baseDx / baseLen, y: baseDy / baseLen };
 
   for (const dir of ['A_TO_B', 'B_TO_A']) {
     const startId = dir === 'A_TO_B' ? corridor.aNodeId : corridor.bNodeId;
@@ -287,11 +295,7 @@ test('sanden_smalll pivots stay monotonic from LM8 to LM7 and back', () => {
     const endNode = nodeById.get(endId);
     assert.ok(startNode && endNode, 'corridor endpoints missing');
 
-    const dx = endNode.pos.xM - startNode.pos.xM;
-    const dy = endNode.pos.yM - startNode.pos.yM;
-    const len = Math.hypot(dx, dy);
-    assert.ok(len > eps, 'corridor length should be positive');
-    const travel = { x: dx / len, y: dy / len };
+    const travel = dir === 'A_TO_B' ? baseDir : { x: -baseDir.x, y: -baseDir.y };
 
     const cells = compiledMap.cells
       .filter((cell) => cell.corridorId === corridor.corridorId && cell.dir === dir)
@@ -301,6 +305,7 @@ test('sanden_smalll pivots stay monotonic from LM8 to LM7 and back', () => {
     assert.ok(cells.length > 0, `missing ${dir} cells`);
 
     let prev = -Infinity;
+    let headingSum = 0;
     const orderedRects = [];
     for (const cell of cells) {
       const rects = cell.sweptShape?.rects || [];
@@ -309,6 +314,7 @@ test('sanden_smalll pivots stay monotonic from LM8 to LM7 and back', () => {
         const heading = { x: Math.cos(rect.angleRad), y: Math.sin(rect.angleRad) };
         const dot = heading.x * travel.x + heading.y * travel.y;
         assert.ok(dot >= -0.01, 'pivot heading flips against corridor direction');
+        headingSum += heading.x * baseDir.x + heading.y * baseDir.y;
         const value = progressAlong(startNode.pos, travel, rect);
         assert.ok(value + eps >= prev, 'pivot direction flips along corridor');
         prev = value;
@@ -368,5 +374,57 @@ test('sanden_smalll pivots stay monotonic from LM8 to LM7 and back', () => {
       }
       prevFrontSign = sign;
     }
+
+    if (dir === 'A_TO_B') {
+      assert.ok(headingSum > 0, 'A_TO_B pivots are not aligned with corridor direction');
+    } else {
+      assert.ok(headingSum < 0, 'B_TO_A pivots are not opposite to corridor direction');
+    }
   }
+});
+
+test('sanden_smalll AP9 to LM11 segments occupy distinct corridor distances', () => {
+  assert.ok(fs.existsSync(SANDEN_PATH), 'missing sanden_smalll.smap');
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'map-compiler-'));
+  const outDir = path.join(tempRoot, 'out');
+  execFileSync('node', [CLI_PATH, 'compile', '--smap', SANDEN_PATH, '--out-dir', outDir], {
+    stdio: 'ignore',
+    env: { ...process.env }
+  });
+  const compiledMap = JSON.parse(
+    fs.readFileSync(path.join(outDir, 'compiledMap.json'), 'utf8')
+  );
+
+  const corridor = compiledMap.corridors.find((entry) => {
+    const edgeIds = (entry.segments || []).map((segment) => segment.edgeId).filter(Boolean);
+    const hasAp9Lm10 = edgeIds.some((edgeId) => edgeConnects(edgeId, 'AP9', 'LM10'));
+    const hasLm10Lm11 = edgeIds.some((edgeId) => edgeConnects(edgeId, 'LM10', 'LM11'));
+    return hasAp9Lm10 && hasLm10Lm11;
+  });
+  assert.ok(corridor, 'corridor AP9-LM11 not found');
+
+  const segmentAp9 = (corridor.segments || []).find((segment) =>
+    edgeConnects(segment.edgeId, 'AP9', 'LM10')
+  );
+  const segmentLm11 = (corridor.segments || []).find((segment) =>
+    edgeConnects(segment.edgeId, 'LM10', 'LM11')
+  );
+  assert.ok(segmentAp9 && segmentLm11, 'corridor segments missing');
+  assert.ok(
+    Number.isFinite(segmentAp9.corridorS0M) && Number.isFinite(segmentAp9.corridorS1M),
+    'AP9-LM10 corridor distance missing'
+  );
+  assert.ok(
+    Number.isFinite(segmentLm11.corridorS0M) && Number.isFinite(segmentLm11.corridorS1M),
+    'LM10-LM11 corridor distance missing'
+  );
+
+  const midAp9 = (segmentAp9.corridorS0M + segmentAp9.corridorS1M) / 2;
+  const midLm11 = (segmentLm11.corridorS0M + segmentLm11.corridorS1M) / 2;
+  assert.ok(Math.abs(midAp9 - midLm11) > 0.1, 'segments overlap in corridor distance');
+  const eps = 1e-6;
+  const ordered =
+    segmentAp9.corridorS1M <= segmentLm11.corridorS0M + eps ||
+    segmentLm11.corridorS1M <= segmentAp9.corridorS0M + eps;
+  assert.ok(ordered, 'segments are not ordered along corridor');
 });

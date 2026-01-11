@@ -1,5 +1,6 @@
 const fs = require('fs');
 const http = require('http');
+const https = require('https');
 const path = require('path');
 
 const ROOT_DIR = path.resolve(__dirname, 'public');
@@ -18,6 +19,22 @@ const STATION_EPS_T = 0.12;
 const STATION_EPS_DIST = 0.4;
 const MOTION_EPS = 1e-4;
 const BODY_LIMIT = 1_000_000;
+const ROBOT_STATUS_LOG_MS = 1000;
+const LOG_PREFIX = 'mock-ui';
+
+function logEvent(type, details) {
+  const ts = new Date().toISOString();
+  if (details === undefined) {
+    console.log(`[${LOG_PREFIX}] ${ts} ${type}`);
+    return;
+  }
+  console.log(`[${LOG_PREFIX}] ${ts} ${type} ${JSON.stringify(details)}`);
+}
+
+function roundValue(value) {
+  if (!Number.isFinite(value)) return null;
+  return Number(value.toFixed(3));
+}
 
 const MIME_TYPES = {
   '.css': 'text/css; charset=utf-8',
@@ -46,6 +63,8 @@ const mockConfig = loadJson(CONFIG_PATH, {});
 const dataConfig = mockConfig && typeof mockConfig === 'object' ? mockConfig.data || {} : {};
 const simConfig = mockConfig && typeof mockConfig === 'object' ? mockConfig.sim || {} : {};
 const scenesConfig = mockConfig && typeof mockConfig === 'object' ? mockConfig.scenes || {} : {};
+const coreConfig = mockConfig && typeof mockConfig === 'object' ? mockConfig.core || {} : {};
+const mvp0Config = mockConfig && typeof mockConfig === 'object' ? mockConfig.mvp0 || {} : {};
 
 function resolveDataPath(value, fallback) {
   if (!value) return fallback;
@@ -66,6 +85,9 @@ const defaultSpeed = Number.isFinite(simConfig.speed) ? simConfig.speed : DEFAUL
 const simModeValue = typeof simConfig.simMode === 'string' ? simConfig.simMode.toLowerCase() : 'robokit';
 const simMode = ['local', 'robokit'].includes(simModeValue) ? simModeValue : 'robokit';
 const simModeMutable = Boolean(simConfig.simModeMutable);
+const coreApiBase = typeof coreConfig.apiBase === 'string' && coreConfig.apiBase ? coreConfig.apiBase : null;
+const coreSyncMs = Number.isFinite(coreConfig.syncMs) ? coreConfig.syncMs : streamIntervalMs;
+const autoDriveEnabled = !(coreApiBase && mvp0Config && mvp0Config.enabled);
 
 let activeDataPaths = { ...DATA_PATH_DEFAULTS };
 let graphData = loadJson(activeDataPaths.graph, { nodes: [], edges: [] });
@@ -107,15 +129,17 @@ function buildSimRobots(config) {
         pos: { ...edges[0].startPos },
         currentStation: edges[0].start || null,
         lastStation: edges[0].start || null,
-        manualMode: false,
-        dispatchable: true,
-        controlled: true,
-        navPaused: false,
-        target: null,
-        manualMotion: null
-      }
-    ];
-  }
+      manualMode: false,
+      dispatchable: true,
+      controlled: true,
+      navPaused: false,
+      target: null,
+      targetNodeId: null,
+      manualMotion: null,
+      forkHeightM: 0.1
+    }
+  ];
+}
 
   return list.map((robot, index) => {
     const nodeId = resolveStartNodeId(robot);
@@ -140,7 +164,9 @@ function buildSimRobots(config) {
       controlled: robot.controlled !== false,
       navPaused: false,
       target: null,
-      manualMotion: null
+      targetNodeId: null,
+      manualMotion: null,
+      forkHeightM: Number.isFinite(robot.forkHeightM) ? robot.forkHeightM : 0.1
     };
   });
 }
@@ -218,6 +244,10 @@ const simState = {
   robots: [],
   worksites: []
 };
+
+const coreTaskLogState = new Map();
+const robotLogState = new Map();
+let coreSyncInFlight = false;
 
 const applyActiveDataPaths = (paths) => {
   activeDataPaths = { ...activeDataPaths, ...paths };
@@ -303,10 +333,15 @@ function applyTargetMotion(robot, deltaSec) {
   if (dist <= MOTION_EPS) {
     robot.pos = { x: target.x, y: target.y };
     robot.target = null;
+    robot.targetNodeId = null;
     const nearest = findNearestNode(robot.pos);
     if (nearest) {
+      const prev = robot.currentStation;
       robot.currentStation = nearest;
       robot.lastStation = nearest;
+      if (prev !== nearest) {
+        logEvent('robot.arrive', { robotId: robot.id, nodeId: nearest });
+      }
     }
     return true;
   }
@@ -314,10 +349,15 @@ function applyTargetMotion(robot, deltaSec) {
   if (step >= dist) {
     robot.pos = { x: target.x, y: target.y };
     robot.target = null;
+    robot.targetNodeId = null;
     const nearest = findNearestNode(robot.pos);
     if (nearest) {
+      const prev = robot.currentStation;
       robot.currentStation = nearest;
       robot.lastStation = nearest;
+      if (prev !== nearest) {
+        logEvent('robot.arrive', { robotId: robot.id, nodeId: nearest });
+      }
     }
     robot.heading = Math.atan2(dy, dx);
     return true;
@@ -396,6 +436,7 @@ function stepRobot(robot, deltaSec) {
     return;
   }
   if (applyTargetMotion(robot, deltaSec)) return;
+  if (!autoDriveEnabled) return;
   stepRobotAuto(robot, deltaSec);
 }
 
@@ -406,7 +447,251 @@ function advanceSim() {
   simState.robots.forEach((robot) => {
     stepRobot(robot, deltaSec);
     robot.battery = Math.max(0, Math.min(100, robot.battery - deltaSec * 0.005));
+    logRobotStateChanges(robot);
   });
+}
+
+function resolveCoreUrl(pathname) {
+  if (!coreApiBase) return null;
+  try {
+    const base = coreApiBase.endsWith('/') ? coreApiBase : `${coreApiBase}/`;
+    const path = pathname.startsWith('/') ? pathname.slice(1) : pathname;
+    return new URL(path, base);
+  } catch (_err) {
+    return null;
+  }
+}
+
+function postJson(url, payload, timeoutMs = 1000) {
+  return new Promise((resolve, reject) => {
+    if (!url) {
+      reject(new Error('missing url'));
+      return;
+    }
+    const data = JSON.stringify(payload || {});
+    const transport = url.protocol === 'https:' ? https : http;
+    const req = transport.request(
+      url,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Content-Length': Buffer.byteLength(data)
+        },
+        timeout: timeoutMs
+      },
+      (res) => {
+        res.on('data', () => {});
+        res.on('end', () => resolve(res.statusCode || 0));
+      }
+    );
+    req.on('error', reject);
+    req.on('timeout', () => {
+      req.destroy(new Error('timeout'));
+    });
+    req.write(data);
+    req.end();
+  });
+}
+
+function getJson(url, timeoutMs = 1000) {
+  return new Promise((resolve, reject) => {
+    if (!url) {
+      reject(new Error('missing url'));
+      return;
+    }
+    const transport = url.protocol === 'https:' ? https : http;
+    const req = transport.request(
+      url,
+      { method: 'GET', timeout: timeoutMs },
+      (res) => {
+        const chunks = [];
+        res.on('data', (chunk) => chunks.push(chunk));
+        res.on('end', () => {
+          const text = Buffer.concat(chunks).toString('utf8');
+          try {
+            resolve(JSON.parse(text));
+          } catch (err) {
+            reject(err);
+          }
+        });
+      }
+    );
+    req.on('error', reject);
+    req.on('timeout', () => {
+      req.destroy(new Error('timeout'));
+    });
+    req.end();
+  });
+}
+
+function buildCoreRobotStatus(robot) {
+  const nodeId = robot.currentStation || robot.lastStation || null;
+  return {
+    status: 'online',
+    nodeId,
+    forkHeightM: Number.isFinite(robot.forkHeightM) ? robot.forkHeightM : 0.1,
+    pose: { x: robot.pos.x, y: robot.pos.y, angle: robot.heading }
+  };
+}
+
+function snapshotRobotState(robot) {
+  return {
+    nodeId: robot.currentStation || null,
+    targetNodeId: robot.targetNodeId || null,
+    forkHeightM: Number.isFinite(robot.forkHeightM) ? robot.forkHeightM : null,
+    manualMode: Boolean(robot.manualMode),
+    navPaused: Boolean(robot.navPaused)
+  };
+}
+
+function logRobotStateChanges(robot) {
+  if (!robot || !robot.id) return;
+  const prev = robotLogState.get(robot.id);
+  const next = snapshotRobotState(robot);
+  if (!prev) {
+    logEvent('robot.state', { robotId: robot.id, ...next });
+    robotLogState.set(robot.id, next);
+    return;
+  }
+  if (prev.targetNodeId !== next.targetNodeId) {
+    logEvent('robot.target', { robotId: robot.id, from: prev.targetNodeId, to: next.targetNodeId });
+  }
+  if (prev.forkHeightM !== next.forkHeightM) {
+    logEvent('robot.forkHeight', { robotId: robot.id, heightM: next.forkHeightM });
+  }
+  if (prev.manualMode !== next.manualMode || prev.navPaused !== next.navPaused) {
+    logEvent('robot.nav', {
+      robotId: robot.id,
+      manualMode: next.manualMode,
+      navPaused: next.navPaused
+    });
+  }
+  robotLogState.set(robot.id, next);
+}
+
+async function syncCoreRobots() {
+  if (!coreApiBase) return;
+  advanceSim();
+  const updates = simState.robots.map((robot) => {
+    const url = resolveCoreUrl(`/robots/${encodeURIComponent(robot.id)}/status`);
+    const status = buildCoreRobotStatus(robot);
+    return postJson(url, { status }).catch(() => null);
+  });
+  await Promise.all(updates);
+}
+
+function snapshotTaskState(task) {
+  const activeStep = Array.isArray(task.steps)
+    ? task.steps.find((step) => step.status !== 'completed')
+    : null;
+  return {
+    status: task.status || null,
+    robotId: task.assignedRobotId || task.robotId || null,
+    stepId: activeStep?.stepId || null,
+    stepType: activeStep?.type || null,
+    stepNodeId: activeStep?.targetRef?.nodeId || null,
+    stepHeightM: Number.isFinite(activeStep?.params?.toHeightM) ? activeStep.params.toHeightM : null
+  };
+}
+
+function logTaskChanges(tasks) {
+  const seen = new Set();
+  for (const task of tasks) {
+    const taskId = task.taskId || task.id;
+    if (!taskId) continue;
+    seen.add(taskId);
+    const prev = coreTaskLogState.get(taskId);
+    const next = snapshotTaskState(task);
+    if (!prev) {
+      logEvent('task.new', {
+        taskId,
+        status: next.status,
+        robotId: next.robotId,
+        fromNodeId: task.fromNodeId || null,
+        toNodeId: task.toNodeId || null,
+        parkNodeId: task.parkNodeId || null
+      });
+    } else {
+      if (prev.status !== next.status) {
+        logEvent('task.status', { taskId, from: prev.status, to: next.status });
+      }
+      if (prev.robotId !== next.robotId && next.robotId) {
+        logEvent('task.assigned', { taskId, robotId: next.robotId });
+      }
+      if (prev.stepId !== next.stepId && next.stepId) {
+        logEvent('task.step', {
+          taskId,
+          stepId: next.stepId,
+          type: next.stepType,
+          nodeId: next.stepNodeId,
+          heightM: next.stepHeightM
+        });
+      }
+    }
+    coreTaskLogState.set(taskId, next);
+  }
+  for (const taskId of coreTaskLogState.keys()) {
+    if (!seen.has(taskId)) {
+      logEvent('task.removed', { taskId });
+      coreTaskLogState.delete(taskId);
+    }
+  }
+}
+
+async function pollCoreTasks() {
+  if (!coreApiBase) return;
+  const url = resolveCoreUrl('/state');
+  if (!url) return;
+  try {
+    const payload = await getJson(url, 1000);
+    if (payload && Array.isArray(payload.tasks)) {
+      logTaskChanges(payload.tasks);
+    }
+  } catch (_err) {
+    // ignore polling errors
+  }
+}
+
+let coreSyncTimer = null;
+function startCoreSync() {
+  if (!coreApiBase || coreSyncTimer) return;
+  syncCoreRobots().then(pollCoreTasks).catch(() => {});
+  coreSyncTimer = setInterval(() => {
+    if (coreSyncInFlight) return;
+    coreSyncInFlight = true;
+    syncCoreRobots()
+      .then(pollCoreTasks)
+      .catch(() => {})
+      .finally(() => {
+        coreSyncInFlight = false;
+      });
+  }, coreSyncMs);
+}
+
+let robotStatusTimer = null;
+function startRobotStatusLog() {
+  if (robotStatusTimer) return;
+  robotStatusTimer = setInterval(() => {
+    if (!simState.robots.length) return;
+    simState.robots.forEach((robot) => {
+      logEvent('robot.status', {
+        robotId: robot.id,
+        pos: {
+          x: roundValue(robot.pos?.x),
+          y: roundValue(robot.pos?.y)
+        },
+        heading: roundValue(robot.heading),
+        nodeId: robot.currentStation || null,
+        targetNodeId: robot.targetNodeId || null,
+        forkHeightM: roundValue(robot.forkHeightM),
+        manualMode: Boolean(robot.manualMode),
+        navPaused: Boolean(robot.navPaused),
+        speed: roundValue(robot.speed),
+        battery: roundValue(robot.battery)
+      });
+    });
+  }, ROBOT_STATUS_LOG_MS);
 }
 
 function buildFleetState() {
@@ -558,6 +843,7 @@ async function handleRobotCommand(req, res, robotId, action) {
     if (!enabled) {
       robot.manualMotion = null;
       robot.target = null;
+      robot.targetNodeId = null;
     }
     sendOk(res);
     return;
@@ -570,6 +856,7 @@ async function handleRobotCommand(req, res, robotId, action) {
     robot.manualMode = true;
     robot.manualMotion = { vx, vy, w };
     robot.target = null;
+    robot.targetNodeId = null;
     sendOk(res);
     return;
   }
@@ -585,6 +872,7 @@ async function handleRobotCommand(req, res, robotId, action) {
     robot.manualMotion = null;
     robot.navPaused = false;
     robot.target = { x, y };
+    robot.targetNodeId = null;
     sendOk(res);
     return;
   }
@@ -600,6 +888,7 @@ async function handleRobotCommand(req, res, robotId, action) {
     robot.manualMotion = null;
     robot.navPaused = false;
     robot.target = { x: pos.x, y: pos.y };
+    robot.targetNodeId = targetId;
     sendOk(res);
     return;
   }
@@ -620,6 +909,7 @@ async function handleRobotCommand(req, res, robotId, action) {
     robot.target = null;
     robot.manualMotion = null;
     robot.navPaused = false;
+    robot.targetNodeId = null;
     sendOk(res);
     return;
   }
@@ -646,6 +936,7 @@ async function handleWorksiteUpdate(req, res, siteId) {
     send(res, 404, 'worksite not found');
     return;
   }
+  const prev = { filled: site.filled, blocked: site.blocked };
   if (payload && typeof payload === 'object') {
     if (typeof payload.filled === 'boolean') {
       site.filled = payload.filled;
@@ -653,6 +944,13 @@ async function handleWorksiteUpdate(req, res, siteId) {
     if (typeof payload.blocked === 'boolean') {
       site.blocked = payload.blocked;
     }
+  }
+  if (prev.filled !== site.filled || prev.blocked !== site.blocked) {
+    logEvent('worksite.update', {
+      id: site.id,
+      filled: site.filled,
+      blocked: site.blocked
+    });
   }
   sendOk(res);
 }
@@ -686,15 +984,28 @@ async function handleApi(req, res, pathname) {
   }
 
   if (pathname === '/api/fleet/config' && req.method === 'GET') {
-    sendJson(res, 200, {
-      apiBase: '/api/fleet',
-      statePath: '/api/fleet/state',
-      streamPath: '/api/fleet/stream',
+    const apiBase = coreApiBase || '/api/fleet';
+    const configPayload = {
+      apiBase,
+      statePath: `${apiBase}/state`,
+      streamPath: `${apiBase}/stream`,
       pollMs: streamIntervalMs,
       simMode,
       simModeMutable,
-      coreConfigured: true
-    });
+      coreConfigured: Boolean(apiBase)
+    };
+    if (mvp0Config && typeof mvp0Config === 'object') {
+      configPayload.mvp0 = {
+        enabled: Boolean(mvp0Config.enabled),
+        pickHeightM: Number.isFinite(mvp0Config.pickHeightM) ? mvp0Config.pickHeightM : undefined,
+        dropHeightM: Number.isFinite(mvp0Config.dropHeightM) ? mvp0Config.dropHeightM : undefined,
+        parkNodeId: typeof mvp0Config.parkNodeId === 'string' ? mvp0Config.parkNodeId : undefined,
+        robotId: typeof mvp0Config.robotId === 'string' ? mvp0Config.robotId : undefined,
+        autoStart: Boolean(mvp0Config.autoStart),
+        autoPickId: typeof mvp0Config.autoPickId === 'string' ? mvp0Config.autoPickId : undefined
+      };
+    }
+    sendJson(res, 200, configPayload);
     return;
   }
 
@@ -705,6 +1016,23 @@ async function handleApi(req, res, pathname) {
 
   if (pathname === '/api/fleet/stream' && req.method === 'GET') {
     handleFleetStream(req, res);
+    return;
+  }
+
+  const logWorksiteMatch = pathname.match(/^\/api\/log\/worksites\/([^/]+)$/);
+  if (logWorksiteMatch && req.method === 'POST') {
+    const siteId = decodeURIComponent(logWorksiteMatch[1]);
+    const payload = await readJsonBody(req);
+    if (payload && typeof payload === 'object') {
+      logEvent('worksite.log', {
+        id: siteId,
+        occupancy: payload.occupancy,
+        blocked: payload.blocked
+      });
+    } else {
+      logEvent('worksite.log', { id: siteId });
+    }
+    sendOk(res);
     return;
   }
 
@@ -727,6 +1055,64 @@ async function handleApi(req, res, pathname) {
   send(res, 404, 'not found');
 }
 
+function applyGatewayCommand(robot, command) {
+  if (!command || !robot) {
+    return { ok: false, status: 400, error: 'invalid_command' };
+  }
+  if (command.type === 'goTarget') {
+    const nodeId = command.payload?.targetRef?.nodeId;
+    const pos = nodeId ? nodesById.get(nodeId) : null;
+    if (!pos) {
+      return { ok: false, status: 404, error: 'target_not_found' };
+    }
+    logEvent('cmd.goTarget', { robotId: robot.id, nodeId });
+    robot.manualMode = true;
+    robot.manualMotion = null;
+    robot.navPaused = false;
+    robot.target = { x: pos.x, y: pos.y };
+    robot.targetNodeId = nodeId;
+    return { ok: true };
+  }
+  if (command.type === 'forkHeight') {
+    const height = Number(command.payload?.toHeightM);
+    if (!Number.isFinite(height)) {
+      return { ok: false, status: 400, error: 'invalid_height' };
+    }
+    logEvent('cmd.forkHeight', { robotId: robot.id, heightM: height });
+    robot.forkHeightM = height;
+    return { ok: true };
+  }
+  if (command.type === 'stop') {
+    logEvent('cmd.stop', { robotId: robot.id });
+    robot.target = null;
+    robot.manualMotion = null;
+    robot.manualMode = false;
+    robot.navPaused = true;
+    robot.targetNodeId = null;
+    return { ok: true };
+  }
+  return { ok: false, status: 404, error: 'unsupported_command' };
+}
+
+async function handleGatewayCommand(req, res, robotId) {
+  const robot = getRobotById(robotId);
+  if (!robot) {
+    send(res, 404, 'robot not found');
+    return;
+  }
+  const payload = await readJsonBody(req);
+  const command = payload?.command || null;
+  const result = applyGatewayCommand(robot, command);
+  if (!result.ok) {
+    send(res, result.status || 400, result.error || 'bad command');
+    return;
+  }
+  sendJson(res, 200, { ok: true });
+}
+
+startCoreSync();
+startRobotStatusLog();
+
 const server = http.createServer(async (req, res) => {
   if (!req.url) {
     send(res, 400, 'bad request');
@@ -735,6 +1121,17 @@ const server = http.createServer(async (req, res) => {
 
   const parsedUrl = new URL(req.url, URL_BASE);
   const pathname = parsedUrl.pathname || '/';
+
+  if (pathname.startsWith('/gateway/')) {
+    const match = pathname.match(/^\/gateway\/v1\/robots\/([^/]+)\/commands$/);
+    if (match && req.method === 'POST') {
+      const robotId = decodeURIComponent(match[1]);
+      await handleGatewayCommand(req, res, robotId);
+      return;
+    }
+    send(res, 404, 'not found');
+    return;
+  }
 
   if (pathname.startsWith('/api/')) {
     await handleApi(req, res, pathname);

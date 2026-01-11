@@ -16,7 +16,7 @@ Wymagania nadrzędne:
 - Specyfikacja jest „append-only”: nic nie znika; rzeczy zdezaktualizowane przenoś do końcowej sekcji „Rzeczy usunięte / zdezaktualizowane”.
 - Specyfikacja ma być wygodna dla AI i łatwa do implementacji: utrzymuj typy/schemy (Zod) i fixtures jako artefakty implementacyjne (patrz rozdz. 17.8).
 
-- Zaimplementuj wszystkie widoki opisane w specyfikacji (Mapa, Roboty, Pola, Bufory, Streamy, Sceny, Ustawienia, Zadania, Diagnostyka, Awarie).
+- Zaimplementuj wszystkie widoki opisane w specyfikacji (Mapa, Roboty, Pola, Bufory, Streamy: proces + zaawansowane, Sceny, Ustawienia, Zadania, Diagnostyka, Awarie).
 - Prototyp ma mieć dwa tryby źródła danych (jedna abstrakcja DataSource):
   1) MOCK (domyślny): wbudowany mini‑symulator poruszający roboty po grafie, generujący taski i diagnostykę w sposób prosty i deterministyczny.
   2) LIVE: możliwość podłączenia do backendu przez Base URL; UI używa tych samych modeli i eventów co w MOCK (tylko inny adapter).
@@ -347,16 +347,22 @@ Ta sekcja redukuje ryzyko, że w różnych miejscach UI pojawią się 2–3 syno
 
 ### 3.3 Lista widoków (MUST)
 
+**Podstawowe (etap 1):**
 1. **Mapa** — realtime mapa grafu, worksites, roboty, przeszkody, operowanie manual.  
 2. **Roboty** — tabela/lista robotów + podgląd + akcje przez menu/drawer.  
 3. **Pola** — lista worksites (pick/drop) + stany (filled/empty/blocked).  
-4. **Bufory** — UI buforów opakowań + edycja komórek + zgłoszenia linii (mock może uprościć).  
-5. **Streamy** — konfiguracja i stan strumieni.  
-6. **Sceny** — lista scen i map, aktywacja sceny/mapy.  
-7. **Ustawienia** — źródło danych (mock/live), parametry symulatora, parametry algorytmów (UI), seed/debug.  
-8. **Zadania** — lista tasków, status/phase, relacja pick→drop, robot, stream.  
-9. **Diagnostyka** — widok blokad/locków/kolejek/stalli + powiązanie z mapą.  
-10. **Awarie** — narzędzia do wstrzykiwania problemów (TYLKO w Mock/Sim; w Live ukryte).
+4. **Streamy (proces transferu)** — skad/dokad jedzie paleta + biezacy stan procesu.  
+5. **Sceny** — lista scen i map, aktywacja sceny/mapy.  
+
+**Zaawansowane (etap 2):**
+6. **Bufory** — UI buforów opakowań + edycja komórek + zgłoszenia linii (mock może uprościć).  
+7. **Streamy (zaawansowane)** — konfiguracja i stan strumieni.  
+8. **Ustawienia** — źródło danych (mock/live), parametry symulatora, parametry algorytmów (UI), seed/debug.  
+9. **Zadania** — lista tasków, status/phase, relacja pick→drop, robot, stream.  
+10. **Diagnostyka** — widok blokad/locków/kolejek/stalli + powiązanie z mapą.  
+11. **Awarie** — narzędzia do wstrzykiwania problemów (TYLKO w Mock/Sim; w Live ukryte).
+
+`FMUI-LAYOUT-006` Sidebar **MUST** mieć separator miedzy listami "Podstawowe" oraz "Zaawansowane (etap 2)".
 
 ### 3.4 Header: meta i bezpieczeństwo (MUST)
 
@@ -1387,22 +1393,43 @@ To jest w prototypie rozbudowane. Dla mocku minimalnie zachowujemy układ i pods
 
 ## 11. Widok: Streamy
 
-- Lista streamów jako karty.  
-- Każda karta pokazuje:
+### 11.1 Streamy (proces transferu) — widok podstawowy
+
+- Pojedyncza karta "biezacy proces" (lub lista kilku, jeśli istnieje wiecej niz 1 stream).  
+- Karta pokazuje:
+  - id strumienia,
+  - **skad** (pick group),
+  - **dokad** (drop groups),
+  - **aktualny pick/drop** (z aktywnego taska, jeśli istnieje),
+  - liczbe aktywnych zadan dla tego strumienia.
+- Gdy nie ma aktywnego taska, pola "aktualny pick/drop" pokazuja `--`.
+
+`FMUI-STREAMS-BASE-001` Widok podstawowy **MUST** pokazywac konfiguracje transferu skad→dokad dla aktywnego strumienia.
+
+### 11.2 Kryteria akceptacji (Streamy — proces transferu)
+
+- `AC-STREAMS-BASE-001` Widok pokazuje pick group + drop groups dla aktywnego strumienia.  
+- `AC-STREAMS-BASE-002` Gdy nie ma aktywnego taska, "aktualny pick/drop" maja wartosc `--`.  
+- `AC-STREAMS-BASE-003` Gdy brak konfiguracji streamow, widok pokazuje czytelny empty state.
+
+### 11.3 Streamy (zaawansowane)
+
+- Lista streamow jako karty.  
+- Kazda karta pokazuje:
   - id + nazwa,
   - trigger,
   - routes count / steps,
-  - aktywne zgłoszenia,
+  - aktywne zgloszenia,
   - goodsType / goodsTypeMode,
-  - next pick / next drop candidate (jeśli dostępne).
+  - next pick / next drop candidate (jesli dostepne).
 
-`FMUI-STREAMS-001` Klik w stream **SHOULD** otwierać szczegóły + listę tasków powiązanych (filtrowane).
+`FMUI-STREAMS-ADV-001` Klik w stream (zaawansowany) **SHOULD** otwierac szczegoly + liste taskow powiazanych (filtrowane).
 
-### 11.1 Kryteria akceptacji (Streamy)
+### 11.4 Kryteria akceptacji (Streamy — zaawansowane)
 
-- `AC-STREAMS-001` Lista streamów ma loading/empty/error i nie crashuje przy brakujących polach meta.  
-- `AC-STREAMS-002` Klik w stream otwiera szczegóły lub filtruje Zadania po streamie.  
-- `AC-STREAMS-003` W Read‑only nie ma akcji sterujących (jeśli dodane w przyszłości — muszą być gated Operate).
+- `AC-STREAMS-ADV-001` Lista streamow ma loading/empty/error i nie crashuje przy brakujacych polach meta.  
+- `AC-STREAMS-ADV-002` Klik w stream otwiera szczegoly lub filtruje Zadania po streamie.  
+- `AC-STREAMS-ADV-003` W Read‑only nie ma akcji sterujacych (jesli dodane w przyszlosci — musza byc gated Operate).
 
 ---
 
@@ -2106,7 +2133,7 @@ Rola: Jesteś doświadczonym projektantem UX/UI oraz inżynierem frontendu (Type
 Wymagania nadrzędne:
 - Skup się na UX i wyglądzie, nie na algorytmie sterowania flotą.
 - Zachowaj ogólny układ i estetykę prototypu (jasny, ciepły motyw “Nowy Styl”, lewy sidebar, nagłówek, panele; mapa w SVG + minimapa).
-- Zaimplementuj wszystkie widoki opisane w specyfikacji: Mapa, Roboty, Pola, Bufory, Streamy, Sceny, Ustawienia, Zadania, Diagnostyka, Awarie.
+- Zaimplementuj wszystkie widoki opisane w specyfikacji: Mapa, Roboty, Pola, Bufory, Streamy: proces + zaawansowane, Sceny, Ustawienia, Zadania, Diagnostyka, Awarie.
 - Prototyp ma mieć tryb danych:
   1) MOCK (domyślny): wbudowany “mini-symulator” poruszający roboty po grafie, generujący taski i diagnostykę w prosty sposób (animacja ma tylko wspierać UX).
   2) LIVE: możliwość podłączenia do prawdziwego backendu przez skonfigurowany base URL; UI ma korzystać z tej samej warstwy DataSource (adapter).
@@ -2161,7 +2188,7 @@ Cel:
 
 Wymagania nadrzędne:
 - Zachowaj ducha i estetykę prototypu („Nowy Styl”): jasny, ciepły motyw, lewy sidebar, header, karty/panele, mapa w SVG + minimapa.
-- Zaimplementuj wszystkie widoki opisane w specyfikacji (Mapa, Roboty, Pola, Bufory, Streamy, Sceny, Ustawienia, Zadania, Diagnostyka, Awarie).
+- Zaimplementuj wszystkie widoki opisane w specyfikacji (Mapa, Roboty, Pola, Bufory, Streamy: proces + zaawansowane, Sceny, Ustawienia, Zadania, Diagnostyka, Awarie).
 - Prototyp ma mieć dwa tryby źródła danych (jedna abstrakcja DataSource):
   1) MOCK (domyślny): wbudowany mini‑symulator poruszający roboty po grafie, generujący taski i diagnostykę w sposób prosty i deterministyczny.
   2) LIVE: możliwość podłączenia do backendu przez Base URL; UI używa tych samych modeli i eventów co w MOCK (tylko inny adapter).
@@ -2192,4 +2219,3 @@ Wyjście:
 - Działający klikalny mock: przełączanie widoków, selekcja robota, drawer szczegółów, menu kontekstowe na mapie, tryb Operate/Read-only, dodawanie przeszkód z Undo, log zdarzeń/alertów.
 - Kod modularny: komponenty UI + warstwa DataSource (MockDataSource/LiveDataSource) + schemy/fixtures.
 ```
-

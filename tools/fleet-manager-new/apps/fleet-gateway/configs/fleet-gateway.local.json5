@@ -1,9 +1,71 @@
 {
-  server: {
-    host: "0.0.0.0",
-    port: 8081
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8081
   },
-  robots: [
-    { robotId: "RB-01", provider: "robokitSim", status: "offline" }
+  "defaultProvider": "internalSim",
+  "commandDedupTtlMs": 60000,
+  "providers": {
+    "internalSim": {
+      "enabled": true,
+      "baseUrl": "http://127.0.0.1:8091",
+      "commandPathTemplate": "/gateway/v1/robots/:robotId/commands",
+      "statusPath": "/api/fleet/state",
+      "commandEnvelope": "wrapped"
+    },
+    "simDirect": {
+      "enabled": false,
+      "baseUrl": "http://127.0.0.1:8092"
+    },
+    "robokitSim": {
+      "enabled": false,
+      "robots": {
+        "RB-01": {
+          "host": "127.0.0.1",
+          "ports": {
+            "state": 19204,
+            "ctrl": 19205,
+            "task": 19206,
+            "other": 19210,
+            "push": 19301
+          }
+        }
+      },
+      "tcp": {
+        "requestTimeoutMs": 1000,
+        "maxConcurrentPerRobot": 4,
+        "circuitBreaker": {
+          "failureThreshold": 5,
+          "openMs": 5000
+        },
+        "reconnect": {
+          "enabled": true,
+          "baseDelayMs": 500,
+          "maxDelayMs": 10000,
+          "backoffFactor": 2
+        }
+      }
+    },
+    "robocore": {
+      "enabled": false,
+      "robots": {},
+      "tcp": {
+        "requestTimeoutMs": 1000,
+        "maxConcurrentPerRobot": 4,
+        "circuitBreaker": {
+          "failureThreshold": 5,
+          "openMs": 5000
+        },
+        "reconnect": {
+          "enabled": true,
+          "baseDelayMs": 500,
+          "maxDelayMs": 10000,
+          "backoffFactor": 2
+        }
+      }
+    }
+  },
+  "robots": [
+    { "robotId": "RB-01", "provider": "internalSim" }
   ]
 }

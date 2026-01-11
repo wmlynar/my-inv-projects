@@ -50,6 +50,36 @@
     services.settingsView?.render?.();
   };
 
+  const initBus = () => {
+    if (!App.bus?.on) return;
+    App.bus.on("state:changed", (payload = {}) => {
+      if (payload?.reason === "map_bundle") {
+        App.map?.renderMap?.();
+        const refreshObstacles = App.map?.refreshSimObstacles?.();
+        if (refreshObstacles?.catch) {
+          refreshObstacles.catch(() => {});
+        }
+        App.robots?.refreshRobotDiagnostics?.();
+        renderRobots();
+        App.robots?.renderManualDrivePanel?.();
+        renderStreams();
+        renderFields();
+        renderTasks();
+        renderTrafficDiagnostics();
+        App.packaging?.renderPackaging?.();
+        syncSettingsPanel();
+        if (App.data?.isLocalSim?.()) {
+          App.packaging?.refreshPackagingState?.();
+        }
+      }
+      if (payload?.reason === "fleet_status") {
+        App.robots?.refreshRobotViews?.();
+        renderTasks();
+        services.robotsView?.syncFaultRobotSelect?.();
+      }
+    });
+  };
+
   const showLogin = () => {
     elements.loginView.classList.remove("hidden");
     elements.appView.classList.add("hidden");
@@ -245,6 +275,7 @@
   App.ui = {
     applyAlgorithmSettings,
     applySimModeSetting,
+    initBus,
     initLogin,
     initNavigation,
     initSettingsControls,

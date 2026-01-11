@@ -1,0 +1,24 @@
+{
+  "strategy": "nearest",
+  "traffic": {
+    "yieldRecovery": false,
+    "forwardStopDistanceM": 0
+  },
+  "models": {
+    "forklift": { "head": 0.5, "tail": 2, "width": 1 }
+  },
+  "defaultModel": "forklift",
+  "robots": [
+    {
+      "id": "RB-01",
+      "name": "Robot 01",
+      "ref": "PARK-01",
+      "model": "forklift",
+      "battery": 90,
+      "dispatchable": true,
+      "online": true,
+      "controlled": true,
+      "manualMode": false
+    }
+  ]
+}

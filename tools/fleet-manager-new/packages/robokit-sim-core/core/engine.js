@@ -406,7 +406,7 @@ function createSimulationEngine(deps) {
       resetVelocity();
       return finishTick(prevPose, prevFlags, now, dt, 'paused_or_soft_emc');
     }
-    if (robot.blocked && robot.blockReason === BLOCK_REASON_MANUAL) {
+    if (robot.blocked) {
       resetVelocity();
       return finishTick(prevPose, prevFlags, now, dt, 'blocked_manual');
     }

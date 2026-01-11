@@ -80,6 +80,18 @@
       state.fleetSimModeMutable = config.simModeMutable;
     }
     state.fleetCoreAvailable = Boolean(config.coreConfigured);
+    if (config.mvp0 && typeof config.mvp0 === "object") {
+      state.mvp0 = {
+        ...state.mvp0,
+        enabled: Boolean(config.mvp0.enabled),
+        pickHeightM: Number.isFinite(config.mvp0.pickHeightM) ? config.mvp0.pickHeightM : state.mvp0.pickHeightM,
+        dropHeightM: Number.isFinite(config.mvp0.dropHeightM) ? config.mvp0.dropHeightM : state.mvp0.dropHeightM,
+        parkNodeId: typeof config.mvp0.parkNodeId === "string" ? config.mvp0.parkNodeId : state.mvp0.parkNodeId,
+        robotId: typeof config.mvp0.robotId === "string" ? config.mvp0.robotId : state.mvp0.robotId,
+        autoStart: Boolean(config.mvp0.autoStart),
+        autoPickId: typeof config.mvp0.autoPickId === "string" ? config.mvp0.autoPickId : state.mvp0.autoPickId
+      };
+    }
   };
 
   const applySettingsOverrides = () => {
@@ -341,6 +353,12 @@
 
   const applyMapBundle = ({ graph, workflow, packaging, robotsCfg }) => {
     state.graphData = graph;
+    state.nodePosById = (graph?.nodes || []).reduce((acc, node) => {
+      if (node?.id && node?.pos) {
+        acc[node.id] = node.pos;
+      }
+      return acc;
+    }, {});
     state.workflowData = workflow;
     state.packagingConfig = packaging;
     services.packagingService?.setConfig?.(state.packagingConfig);
@@ -361,24 +379,9 @@
       state.tasks = initialTasks;
     }
     App.robots?.syncDomainState?.();
-    App.map?.renderMap?.();
-    const refreshObstacles = App.map?.refreshSimObstacles?.();
-    if (refreshObstacles?.catch) {
-      refreshObstacles.catch(() => {});
-    }
-    App.robots?.refreshRobotDiagnostics?.();
-    App.ui?.renderRobots?.();
-    App.robots?.renderManualDrivePanel?.();
-    App.ui?.renderStreams?.();
-    App.ui?.renderFields?.();
-    App.ui?.renderTasks?.();
-    App.ui?.renderTrafficDiagnostics?.();
-    App.packaging?.renderPackaging?.();
-    App.ui?.syncSettingsPanel?.();
     state.dataLoaded = true;
-    if (isLocalSim()) {
-      App.packaging?.refreshPackagingState?.();
-    }
+    App.bus?.emit?.("state:changed", { reason: "map_bundle" });
+    App.map?.maybeAutoStartMvp0?.();
     startFleetUpdates();
     App.robots?.startManualDriveLoop?.();
   };
@@ -388,6 +391,7 @@
     const placeholders = [
       elements.robotsList,
       elements.streamsList,
+      elements.streamsAdvancedList,
       elements.fieldsList,
       elements.tasksList
     ].filter(Boolean);
@@ -461,10 +465,10 @@
   const mapCoreTasks = (coreTasks) => {
     if (!Array.isArray(coreTasks)) return [];
     return coreTasks.map((task) => ({
-      id: task.id,
-      robotId: task.robotId || null,
-      pickId: task.pickId || null,
-      dropId: task.dropId || null,
+      id: task.id || task.taskId || null,
+      robotId: task.robotId || task.assignedRobotId || null,
+      pickId: task.pickId || task.fromNodeId || null,
+      dropId: task.dropId || task.toNodeId || null,
       status: formatCoreTaskStatus(task.status),
       phase: formatCoreTaskPhase(task.phase),
       streamId: task.streamId || null,
@@ -483,27 +487,33 @@
       }
     });
     const mapped = (Array.isArray(coreRobots) ? coreRobots : []).map((core) => {
-      const base = baseById.get(core.id) || {};
+      const coreId = core.id || core.robotId || null;
+      const base = coreId ? baseById.get(coreId) || {} : {};
       const baseDispatchable = helpers.resolveBoolean(base.dispatchable, true);
       const baseControlled = helpers.resolveBoolean(base.controlled, true);
       const baseOnline = helpers.resolveBoolean(base.online, true);
       const baseManualMode = helpers.resolveBoolean(base.manualMode, false);
       const baseBlocked = helpers.resolveBoolean(base.blocked, false);
       const pose = core.pose || {};
+      const nodePos = core.nodeId ? state.nodePosById?.[core.nodeId] : null;
       const pos =
         Number.isFinite(pose.x) && Number.isFinite(pose.y)
           ? { x: pose.x, y: pose.y }
-          : base.pos || { x: 0, y: 0 };
-      const task = taskByRobot.get(core.id);
+          : nodePos
+            ? { x: nodePos.x, y: nodePos.y }
+            : base.pos || { x: 0, y: 0 };
+      const task = taskByRobot.get(coreId);
       const activity =
         core.activity ||
         (task?.status === "Paused"
           ? "Paused"
           : task?.phase || (task ? "In progress" : "Idle"));
+      const statusOnline = typeof core.status === "string" ? core.status === "online" : null;
+      const online = statusOnline !== null ? statusOnline : helpers.resolveBoolean(core.online, baseOnline);
       return {
         ...base,
-        id: core.id || base.id,
-        name: base.name || core.id || "Robot",
+        id: coreId || base.id,
+        name: base.name || coreId || "Robot",
         battery: Number.isFinite(core.battery) ? core.battery : base.battery,
         blocked: helpers.resolveBoolean(core.blocked, baseBlocked),
         task: task ? task.id : null,
@@ -515,7 +525,7 @@
         heading: Number.isFinite(pose.angle) ? pose.angle : base.heading || 0,
         speed: Number.isFinite(core.speed) ? core.speed : base.speed || 0,
         dispatchable: helpers.resolveBoolean(core.dispatchable, baseDispatchable),
-        online: helpers.resolveBoolean(core.online, baseOnline),
+        online,
         controlled: helpers.resolveBoolean(core.controlled, baseControlled),
         manualMode: helpers.resolveBoolean(core.manualMode, baseManualMode),
         state: core.state || null,
@@ -529,6 +539,27 @@
       }
     });
     return mapped;
+  };
+
+  const syncMvp0TaskState = (mappedTasks) => {
+    if (!state.mvp0?.enabled) return;
+    const activeId = state.mvp0.activeTaskId;
+    if (activeId) {
+      const active = mappedTasks.find((task) => task.id === activeId);
+      if (!active || ["Completed", "Failed", "Cancelled"].includes(active.status)) {
+        state.mvp0.activeTaskId = null;
+      }
+    }
+    if (state.mvp0.pendingTask && state.mvp0.activeTaskId) {
+      state.mvp0.pendingTask = false;
+    }
+    if (state.mvp0.pendingTask && !state.mvp0.activeTaskId) {
+      const candidate = mappedTasks.find((task) => task.status && task.status !== "Completed");
+      if (candidate) {
+        state.mvp0.activeTaskId = candidate.id;
+        state.mvp0.pendingTask = false;
+      }
+    }
   };
 
   const applyFleetStatus = (payload) => {
@@ -549,6 +580,7 @@
     }
     state.lastFleetUpdateAt = Date.now();
     App.robots?.syncDomainState?.();
+    syncMvp0TaskState(mappedTasks);
     if (state.manualTargetRobotId) {
       const target = App.robots?.getRobotById?.(state.manualTargetRobotId);
       if (!target || !target.manualMode) {
@@ -556,9 +588,7 @@
       }
     }
     services.manualDriveService?.syncRobotAvailability?.();
-    App.robots?.refreshRobotViews?.();
-    App.ui?.renderTasks?.();
-    services.robotsView?.syncFaultRobotSelect?.();
+    App.bus?.emit?.("state:changed", { reason: "fleet_status" });
     App.map?.updateWorksiteStateFromCore?.(payload.worksites || []);
   };
 

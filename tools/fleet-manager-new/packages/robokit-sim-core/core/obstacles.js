@@ -64,6 +64,7 @@ function createObstacleManager(deps = {}) {
     }
     robot.blocked = Boolean(blocked);
     if (!robot.blocked) {
+      robot.blockedForced = false;
       robot.blockReason = 0;
       robot.blockId = 0;
       robot.blockDi = 0;
@@ -73,6 +74,11 @@ function createObstacleManager(deps = {}) {
         robot.taskStatus = 2;
       }
       return;
+    }
+    if (options.force) {
+      robot.blockedForced = true;
+    } else if (!robot.blockedForced) {
+      robot.blockedForced = false;
     }
     robot.blockReason = Number.isFinite(options.reason) ? options.reason : BLOCK_REASON_MANUAL;
     robot.blockId = Number.isFinite(options.id) ? options.id : robot.blockId || 0;
@@ -495,7 +501,7 @@ function createObstacleManager(deps = {}) {
         if (segment.avoidPlan) {
           segment.avoidPlan = null;
         }
-        if (robot.blocked && robot.blockReason === BLOCK_REASON_OBSTACLE) {
+        if (robot.blocked && robot.blockReason === BLOCK_REASON_OBSTACLE && !robot.blockedForced) {
           setRobotBlockedState(false);
         }
         return null;
@@ -505,7 +511,7 @@ function createObstacleManager(deps = {}) {
         const plan = buildAvoidPlan(segment, avoidObstacles, preferredOffset);
         if (plan) {
           segment.avoidPlan = plan;
-          if (robot.blocked && robot.blockReason === BLOCK_REASON_OBSTACLE) {
+          if (robot.blocked && robot.blockReason === BLOCK_REASON_OBSTACLE && !robot.blockedForced) {
             setRobotBlockedState(false);
           }
           return null;
@@ -522,7 +528,7 @@ function createObstacleManager(deps = {}) {
     }
     const obstacle = findBlockingObstacleOnPolyline(polyline);
     if (!obstacle) {
-      if (robot.blocked && robot.blockReason === BLOCK_REASON_OBSTACLE) {
+      if (robot.blocked && robot.blockReason === BLOCK_REASON_OBSTACLE && !robot.blockedForced) {
         setRobotBlockedState(false);
       }
       return null;

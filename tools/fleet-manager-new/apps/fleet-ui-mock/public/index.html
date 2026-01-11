@@ -51,9 +51,11 @@
             <button class="nav-item active" data-view="map">Mapa</button>
             <button class="nav-item" data-view="robots">Roboty</button>
             <button class="nav-item" data-view="fields">Pola</button>
-            <button class="nav-item" data-view="packaging">Bufory</button>
             <button class="nav-item" data-view="streams">Streamy</button>
             <button class="nav-item" data-view="scenes">Sceny</button>
+            <div class="nav-separator">Zaawansowane (etap 2)</div>
+            <button class="nav-item" data-view="packaging">Bufory</button>
+            <button class="nav-item" data-view="streams-advanced">Streamy (zaawansowane)</button>
             <button class="nav-item" data-view="settings">Ustawienia</button>
             <button class="nav-item" data-view="tasks">Zadania</button>
             <button class="nav-item" data-view="traffic">Diagnostyka</button>
@@ -216,11 +218,21 @@
             <section id="view-streams" class="panel">
               <div class="panel-header">
                 <div>
-                  <h2>Streamy</h2>
-                  <p>Aktywne strumienie pracy.</p>
+                  <h2>Proces transferu</h2>
+                  <p>Konfiguracja biezacego strumienia: skad i dokad jedzie paleta.</p>
                 </div>
               </div>
               <div id="streams-list" class="card-list"></div>
+            </section>
+
+            <section id="view-streams-advanced" class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>Streamy (zaawansowane)</h2>
+                  <p>Konfiguracja strumieni, reguly i kandydaci.</p>
+                </div>
+              </div>
+              <div id="streams-advanced-list" class="card-list"></div>
             </section>
 
             <section id="view-scenes" class="panel">

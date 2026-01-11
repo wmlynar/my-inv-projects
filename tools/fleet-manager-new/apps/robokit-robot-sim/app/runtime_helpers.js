@@ -706,26 +706,7 @@ function createRuntimeHelpers(options) {
   function getReportedPose() {
     const robot = requireRobot();
     const basePose = robot.pose || { x: 0, y: 0, angle: 0 };
-    const lastUpdate = Number.isFinite(robot.updatedAt) ? robot.updatedAt : nowMs();
-    let dt = Math.max(0, (nowMs() - lastUpdate) / 1000);
-    const maxDt = Number.isFinite(TICK_MS) && TICK_MS > 0 ? TICK_MS / 1000 : null;
-    if (maxDt && dt > maxDt) {
-      dt = maxDt;
-    }
-    if (!dt) {
-      return { x: basePose.x, y: basePose.y, angle: basePose.angle };
-    }
-    const velocity = robot.velocity || { vx: 0, vy: 0, w: 0 };
-    const cos = Math.cos(basePose.angle);
-    const sin = Math.sin(basePose.angle);
-    const worldVx = velocity.vx * cos - velocity.vy * sin;
-    const worldVy = velocity.vx * sin + velocity.vy * cos;
-    const targetPose = {
-      x: basePose.x + worldVx * dt,
-      y: basePose.y + worldVy * dt,
-      angle: normalizeAngle(basePose.angle + velocity.w * dt)
-    };
-    return targetPose;
+    return { x: basePose.x, y: basePose.y, angle: basePose.angle };
   }
 
   return {

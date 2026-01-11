@@ -5,6 +5,28 @@ const { startServer } = require('../server');
 
 const DEFAULT_CONFIG = {
   server: { host: '0.0.0.0', port: 8081 },
+  defaultProvider: 'internalSim',
+  commandDedupTtlMs: 60000,
+  providers: {
+    internalSim: {
+      enabled: true,
+      baseUrl: 'http://127.0.0.1:8091',
+      commandPathTemplate: '/gateway/v1/robots/:robotId/commands',
+      statusPath: '/api/fleet/state',
+      commandEnvelope: 'wrapped'
+    },
+    simDirect: {
+      enabled: false
+    },
+    robokitSim: {
+      enabled: false,
+      robots: {}
+    },
+    robocore: {
+      enabled: false,
+      robots: {}
+    }
+  },
   robots: []
 };
 

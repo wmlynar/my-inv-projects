@@ -1718,6 +1718,242 @@ Następny krok po Level0: włączenie docelowego algorytmu rezerwacji korytarzy 
 
 ---
 
+## MVP0 (pojedynczy wózek, bez rolling target i bez koordynacji)
+
+Cel: uruchomić minimalny przepływ zadania `pick→drop` dla **jednego** robota, bez locków i bez globalnej koordynacji.
+
+Plan implementacji (kolejność):
+1) **Źródło mapy i punktów**: wczytanie `sceneGraph.json` (LocationMark/ActionPoint) i walidacja ID używanych w taskach.
+2) **Model stanu robota**: minimalny zestaw pól (`robotId`, `nodeId`, `status`, `forkHeightM`, `lastSeenTsMs`).
+3) **Gateway/Adapter**: komendy `goTarget`, `forkHeight`, `stop` z retry/timeout.
+4) **Task API**: `POST /api/v1/tasks` dla `pickDrop` (from/to + wysokości wideł).
+5) **TaskRunner (Level0)**: kroki `moveTo -> forkHeight -> moveTo -> forkHeight`, wykonywane sekwencyjnie.
+6) **Tick loop w Core**: cykliczne sprawdzanie statusu robota i przełączanie kroków/komend; fail-safe przy offline/timeout.
+7) **Telemetria**: ingest statusu (arrival + fork height) i aktualizacja stanu.
+8) **Testy**:
+   - unit: TaskRunner (kolejność kroków, warunki ukończenia),
+   - integration: Core + mock gateway (goTarget/forkHeight),
+   - e2e: scenariusz „pick→drop” na symulatorze.
+
+Kryterium ukończenia MVP0:
+- Jeden robot wykonuje `pick→drop` end‑to‑end na mapie z ActionPointami.
+- Core poprawnie aktualizuje statusy task/steps i potrafi zatrzymać robota w fail‑safe.
+
+### MVP0 orchestrator: go-target (zasada dzialania)
+Ta implementacja nazywa sie **go-target orchestrator** (wysyla tylko punkt docelowy i nie bierze pod uwage innych robotow).
+Implementacja MVP0 (go-target orchestrator) jest tickowa i wysyla tylko komendy `goTarget`/`forkHeight`.
+
+W kazdym ticku:
+- pobiera statusy robotow i oznacza je jako `offline`, gdy status jest zbyt stary; dla `offline/blocked` wysyla `stop`,
+- przypisuje taski `created` do pierwszego wolnego robota (sort po `robotId`), bez kosztow/tras/lockow,
+- buduje kroki taska: `moveTo(from)` → `forkHeight(pick)` → `moveTo(to)` → `forkHeight(drop)` → opcjonalnie `moveTo(park)`,
+- uznaje `moveTo` za zakonczony tylko, gdy `robot.nodeId === target.nodeId` (brak planowania trasy),
+- uznaje `forkHeight` za zakonczony, gdy wysokosc widel jest w tolerancji,
+- wysyla `goTarget`/`forkHeight` dla aktywnego kroku i deduplikuje identyczne komendy (cooldown).
+
+Ograniczenia:
+- brak rezerwacji korytarzy i koordynacji multi‑robot,
+- brak retry/backoff i brak utrwalania stanu po restarcie,
+- brak reakcji na dynamiczne przeszkody (brak replanu).
+
+Referencja kodu: `apps/fleet-core/mvp0/runtime.js`, `apps/fleet-core/mvp0/task_runner.js`.
+
+#### Kontrakt wejsc/wyjsc (MVP0)
+Wejscia (na tick):
+- lista robotow z minimum: `robotId`, `nodeId`, `status`, `forkHeightM`, `lastSeenTsMs`, `blocked`,
+- lista taskow z minimum: `taskId`, `status`, `fromNodeId`, `toNodeId`, `parkNodeId`, `pickHeightM`, `dropHeightM`,
+- konfiguracja runtime: `statusAgeMaxMs`, `commandCooldownMs`.
+
+Wyjscia:
+- komendy `goTarget` i `forkHeight` dla aktywnego kroku,
+- `stop` dla robotow offline/blocked,
+- zaktualizowane taski (status + kroki) i roboty (status).
+
+#### Polityka przydzialu robota
+- taski `created` sa przypisywane do pierwszego wolnego robota (sort rosnaco po `robotId`),
+- brak kosztow, priorytetow i ograniczen zasobow.
+
+#### Przejscia stanow (task/step)
+- `moveTo` jest uznany za zakonczony, gdy `robot.nodeId === target.nodeId`,
+- `forkHeight` jest uznany za zakonczony, gdy `abs(robot.forkHeightM - targetHeightM) <= tolerance`,
+- task przechodzi `created -> assigned -> running -> completed` (brak obslugi `failed` w MVP0).
+
+#### Fail-safe
+- robot `offline` lub `blocked` dostaje `stop`,
+- brak retry/backoff dla komend.
+
+#### Dedup i rate-limit
+- identyczne komendy do danego robota sa throttlowane (`commandCooldownMs`).
+
+#### Logowanie (weryfikowalnosc przez AI)
+Core SHOULD logowac:
+- na kazdym ticku: `tickId`, `nowMs`, liczba robotow, liczba taskow,
+- dla kazdego taska: status, aktywny krok, wybrany `robotId`,
+- dla kazdej komendy: `robotId`, `type`, `payload`, `reason`, wynik dispatchu (ok/err),
+- zmiany statusu robota: `online/offline/blocked` + powod (timeout/blocked),
+- decyzje dedup: odrzucone komendy (ten sam key, cooldown).
+
+Format logu powinien byc deterministyczny i latwy do parsowania (JSONL).
+
+### Orchestrator DCL (graph-lock) — zasada dzialania
+Drugi orchestrator (z `apps/fleet-core/orchestrator`) jest swiadomy grafu i rezerwacji korytarzy.
+Jego rola to przypisac task do robota, zaplanowac trase po grafie i zablokowac korytarze czasowo.
+
+Wejscia (na tick):
+- `compiledMap` (w konstruktorze): `nodes`, `edges`, `corridors` z kierunkowoscia,
+- `robots`: `robotId`, `nodeId`, `status`, `blocked`, `speedMps`, `pendingTasks`,
+- `tasks`: `taskId`, `status`, `priority`, `fromNodeId`, `toNodeId`, `assignedRobotId`, `steps`,
+- `reservations`: aktualne rezerwacje (z poprzednich tickow).
+
+Wyjscia:
+- `assignments` (taskId -> robotId + koszt),
+- zaktualizowane `tasks` (statusy i kroki),
+- `reservations` (granted/denied/active),
+- `commands` (goTarget/forkHeight) oraz `holds`/`diagnostics` z powodami.
+
+Flow ticka:
+- buduje graf z compiledMap (kierunkowosc korytarzy z `edge.props.direction`),
+- normalizuje roboty/taski i wybiera `availableRobots` (online, nie blocked),
+- wybiera `openTasks` (created, bez assignedRobotId), sortuje po `priority` desc, potem `taskId`,
+- dla kazdego taska dobiera najlepszego robota przez najkrotsza trase:
+  - koszt = `route.lengthM + pendingTasks * 10`,
+  - trasa = robot -> fromNode -> toNode (jesli oba sa ustawione),
+- jezeli task nie ma `steps`, buduje kroki `moveTo(fromNode)` i `moveTo(toNode)`,
+- wykrywa aktywny krok (pierwszy nie `completed`):
+  - `moveTo` -> jesli robot jest juz na `nodeId`, krok jest `completed`,
+  - brak trasy -> `hold` + `diagnostic` (`reason: no_route`),
+  - inny krok -> mapowany na komende (obecnie: `forkHeight`),
+- buduje rezerwacje czasowe dla kazdego korytarza na trasie (time window z `speedMps`),
+- lock manager przyznaje/odrzuca rezerwacje (single-lane konflikt),
+- jesli lock odrzucony -> `hold` + `diagnostic` (`reason: lock_denied`),
+- w przeciwnym razie emituje komende dla aktywnego kroku.
+
+Ograniczenia:
+- komendy sa nadal tylko `goTarget` do docelowego nodeId i `forkHeight`,
+- rezerwacje zakladaja, ze robot pojedzie zaplanowana trasa (brak weryfikacji zgodnosci),
+- brak jawnego `stop`, retry/backoff i limitu wysylki komend,
+- brak persystencji stanu i brak replanu przy zmianie mapy.
+
+Referencja kodu: `apps/fleet-core/orchestrator/core.js`, `apps/fleet-core/orchestrator/graph.js`,
+`apps/fleet-core/orchestrator/locks.js`, `apps/fleet-core/orchestrator/adapter.js`.
+
+#### Nazwa i zakres
+- Nazwa docelowa: **dcl-orchestrator** (DCL-2D, bez okien czasowych).
+- Obecna implementacja: **graph-lock orchestrator** (time-window reservations).
+- Zakres: planowanie tras po grafie + rezerwacje korytarzy + mapowanie krokow na komendy.
+
+#### Bezpieczenstwo i kontrola (wymagane do doprecyzowania)
+- Przy `control-lease`/`soft_emc` orchestrator MUST wejsc w `hold` (bez nowych komend).
+- W trybie manualnym orchestrator MUST nie nadpisywac komend operatora.
+
+#### Lifecycle rezerwacji
+- Rezerwacje maja okna czasowe z `startTsMs`/`endTsMs` i powinny byc odnawiane w kolejnych tickach.
+- Po `lock_denied` robot przechodzi w `hold` do czasu otrzymania okna bez konfliktu.
+
+#### Dedup/ACK/timeout
+- Komendy powinny byc deduplikowane per robot (jak w go-target).
+- Dla `goTarget`/`forkHeight` wymagany timeout ACK i retry (polityka do uzgodnienia).
+
+#### Bledy wejsc i reason codes
+- Brak nodeId / bledny task / brak mapy -> task `failed` z reason code (np. `invalid_task`).
+- `no_route` -> `hold` + diagnostyka; po timeout `failed`.
+
+#### Replan i odchylenia
+- Jezeli robot zjedzie z trasy albo mapa sie zmieni -> replan i odswiezenie rezerwacji.
+- Dynamiczne przeszkody powinny uniewazniac rezerwacje i wymuszac replan.
+
+#### Semantyka krokow
+- Kroki `moveTo` i `forkHeight` maja jawne statusy i reason codes,
+- Jesli task ma zdefiniowane kroki, orchestrator respektuje ich kolejnosc.
+
+#### Mapowanie LM/AP
+- `targetRef` (LM/AP) powinien byc rozwiazany do `nodeId` przed planowaniem trasy.
+
+#### Logowanie (weryfikowalnosc przez AI)
+Core SHOULD logowac:
+- na kazdym ticku: `tickId`, `nowMs`, liczby: robots/tasks/reservations,
+- assignmenty: `taskId`, `robotId`, `cost`, `route.lengthM`,
+- rezerwacje: granted/denied + reason + okna czasowe,
+- komendy: `robotId`, `type`, `payload`, `reason`,
+- hold/diagnostyka: `robotId`, `taskId`, `reason`.
+
+#### Testy
+- unit: routing + lock manager (konflikty, kierunkowosc korytarzy),
+- integration: task -> assignment -> rezerwacje -> komenda,
+- e2e: dwa roboty, konflikt na single-lane, oczekiwanie i wznowienie.
+
+#### Docelowy mechanizm lockow (DCL-2D, bez okien czasowych)
+W docelowym algorytmie lockowanie nie uzywa okien czasowych. Zamiast tego:
+- robot buduje `CorridorRequest` jako prefiks **komorek** (CELL) na trasie (routeS),
+  z `lockLookahead` i `lockLookback` (sliding window, locki "jadaja" z robotem),
+- zasoby lockowane atomowo: `CELL`, `NODE_STOP_ZONE`, `CORRIDOR_DIR`, `CRITICAL_SECTION`,
+- `conflictSet` komorek pochodzi z map-compiler (swept-shape 2D) i jest jedyna baza konfliktow,
+- LockManager.tick jest czysta i deterministyczna funkcja: (prev snapshot + requests) -> grants,
+  bez TTL i bez zaleznosci od czasu przejazdu,
+- invariants: `occupied(R) ⊆ granted(R)`; gdy telemetria niepewna -> freeze (fail-closed),
+- rezerwacje zwalniaja sie po przekroczeniu `routeS` z marginesem (lookback + safety),
+- wynik lockow wyznacza `holdPointRouteS` (stop-line); RTP target nie moze przekroczyc hold-point,
+- single-lane: token `CORRIDOR_DIR` blokuje przeciwne kierunki; wybor deterministyczny + fairness/aging,
+- critical sections: nie wjezdzaj jesli nie masz wyjazdu (exitClearance),
+- brak "backoff/reverse" jako mechanizmu odblokowania (zabronione; tylko direction token + CS gating).
+
+#### Wymagane logi dla DCL-2D (AI-friendly)
+- requests/grants per robot (lista zasobow, przyciety prefix, reasonCode),
+- `occupied` vs `granted` per tick + powody freeze (stale telemetry/off-route/pose jump),
+- `holdPointRouteS` i skladniki: hold_lock / hold_standoff / hold_node,
+- zmiany `CORRIDOR_DIR` (dir flips) i blokady CS,
+- metryki anti-oscillation (GO<->HOLD, jitter hold-point, RTP jitter).
+
+#### Mapping: obecna implementacja -> DCL-2D (co trzeba zmienic)
+- **Rezerwacje**: z okien czasowych (`startTsMs/endTsMs`) na zasoby (CELL/NODE_STOP_ZONE/CORRIDOR_DIR/CS).
+- **Wejscia**: dodac `routeProgress` (routeS/edgeS) i `RoutePlan` zamiast samego `nodeId`.
+- **LockManager**: zastapic `locks.js` logika DCL-2D (prefiks + conflictSet + deterministic grants).
+- **Hold-point/RTP**: wyznaczac `holdPointRouteS` i ograniczac target (`targetRouteS <= holdPointRouteS`).
+- **Single-lane + CS**: dodac tokeny `CORRIDOR_DIR` i gating `CRITICAL_SECTION` (exitClearance).
+- **Occupied/Granted**: wprowadzic `occupied ⊆ granted`, freeze przy stale telemetry/off-route.
+- **Release**: zwalniac zasoby po przekroczeniu `routeS` z lookback, bez TTL.
+- **Telemetry**: wymagane `pose/edgeProgress/routeProgress` do projekcji i konfliktow 2D.
+- **Logowanie**: zapisywac requests/grants + holdPoint + reason codes per tick (JSONL).
+
+#### Braki specyfikacji do domkniecia (checklist)
+- **Kontrakt I/O** orchestratora: typy wejsc/wyjsc, wersjonowanie, walidacja payloadow.
+- **Konfiguracja**: parametry lock/rtp (lookahead/lookback/stopStandoff/brake/telemetryTimeout/fairness).
+- **Maszyny stanow**: task/step/robot + reason codes i warunki przejsc.
+- **Replan policy**: trigger + throttling + zachowanie lockow przy off-route/pose-jump.
+- **Integracja z kontrola**: lease/soft_emc/manual -> HOLD/STOP + priorytety.
+- **Zrodlo prawdy trasy**: kto planuje i jak wykrywamy rozjazd z trajektoria robota.
+- **Deterministyczne sortowanie**: tie-breaki dla assignment/lock/CS.
+- **Inwarianty bezpieczenstwa**: occupied ⊆ granted, brak konfliktow conflictSet, single-lane token.
+- **Persystencja/replay**: co logujemy, jak odtwarzamy, jak walidujemy deterministycznosc.
+- **Testy i golden scenarios**: single-lane, CS, off-route, deadlock avoidance.
+- **Metryki**: flapping GO/HOLD, jitter hold-point, lock denial rate.
+
+#### Plan implementacji (backlog DCL-orchestrator)
+1) **Kontrakty i walidacja**: zdefiniowac `OrchestratorInput/Decision` + wersje kontraktow,
+   rozszerzyc `apps/fleet-core/orchestrator/model.js` o walidacje DCL (resources, grants, progress).
+2) **RoutePlan + routeS**: dodac modul `route_plan.js` (routeS/edgeS), mapowanie LM/AP -> nodeId,
+   rozszerzyc `graph.js` o dane potrzebne do routeS (dlugosci, kierunki, corridorId).
+3) **ProgressEstimator**: nowy modul `progress.js` (projekcja pose -> edgeS/routeS, off-route/pose-jump).
+4) **CorridorRequest builder**: z `routeS` budowac prefiks CELL + lookahead/lookback,
+   konsumowac `CompiledMap.conflictSet` i `cells` (integracja z map-compiler).
+5) **LockManager DCL-2D**: zastapic `locks.js` deterministycznym przydzialem zasobow,
+   tokeny `CORRIDOR_DIR`, `NODE_STOP_ZONE`, `CRITICAL_SECTION`, fairness + histereza.
+6) **Hold-point + RTP**: modul `hold_point.js` i `rtp_controller.js`,
+   ograniczac target (`targetRouteS <= holdPointRouteS`), generowac `RollingTargetCommand`.
+7) **Integracja safety/control**: lease/soft_emc/manual -> HOLD/STOP, brak nowych komend ruchu.
+8) **Logging + replay**: JSONL tick snapshot (requests/grants/holdPoint/reason codes),
+   minimalny runner do replay (deterministyczny).
+9) **Testy**: unit (conflictSet, lock grants, routeS), integration (2 roboty, single-lane),
+   e2e (CS + off-route + recovery).
+
+#### Braki implementacyjne (do dopisania w kodzie)
+- DCL-2D zasoby i locki bez okien czasowych: `CELL/conflictSet`, `NODE_STOP_ZONE`, `CORRIDOR_DIR`, `CRITICAL_SECTION`.
+- `RoutePlan` + projekcja `routeS/edgeS` i `ProgressEstimator` (off-route/pose-jump).
+- `holdPointRouteS` + RTP controller (target <= hold-point), dedup/rate-limit komend.
+- Integracja safety/control: lease/soft_emc/manual -> HOLD/STOP.
+- Logging/replay per tick (requests/grants/hold-point/reason codes) + testy golden.
+
+
 ## 1. MUST w MVP (produktowe minimum)
 
 ### 1.1 Fleet Core (source of truth)
@@ -1870,6 +2106,61 @@ Deliverables:
 Testy:
 - deterministyczny replay,
 - scenariusze E2E.
+
+### Faza 5A — Fleet Orchestrator / Dispatcher (TDD, MVP)
+Cel: brakujący moduł MVP, który spina `compiledMap` + stan robotów + tasks i generuje egzekwowalny plan (przydział, rezerwacje, dispatch).
+Zakładamy, że jest to **wewnętrzny moduł Fleet-core** (nie osobny serwis), ale z czystymi kontraktami i testami jak osobny komponent.
+
+Plan TDD (kolejność implementacji):
+1) **Modele domenowe + walidacja kontraktów**  
+   Testy: serializacja i walidacja `Robot`, `Task`, `Assignment`, `Reservation`, `CorridorSegment`.
+2) **Graph builder z `compiledMap.json`**  
+   Testy: poprawne wagi/kierunki, obsługa `singleLane`, zgodność `corridors/segments`.
+3) **Planner tras (Dijkstra/A*)**  
+   Testy: najkrótsza ścieżka, brak trasy, kierunkowość, stabilność kosztu.
+4) **Rezerwacje korytarzy (timeline-lock)**  
+   Testy: konflikt czasowy, brak konfliktu, zwalnianie po zakończeniu, retry.
+5) **Przydział zadań (cost-based)**  
+   Testy: wybór robota o najniższym koszcie, fallback do `pending` przy braku dostępnych.
+6) **Task lifecycle (state machine)**  
+   Testy: `queued -> assigned -> executing -> done/failed`, zwalnianie rezerwacji.
+7) **Kontrakty adaptera robota**  
+   Testy: `sendMovePlan`, timeout/retry, idempotencja.
+8) **API + integracja z Core tick loop**  
+   Testy: create/cancel task, list tasks/robots, SSE events, deterministyczny replay.
+9) **E2E scenariusze MVP**  
+   Testy: „single task”, „multi-robot contention”, „failure/retry” na symulatorze.
+
+Struktura plików (zbalansowana, bez „mikro‑modułów”):
+- `apps/fleet-core/orchestrator/core.js` — pipeline ticka + state machine + publiczne API modułu.
+- `apps/fleet-core/orchestrator/graph.js` — budowa grafu + routing + koszty.
+- `apps/fleet-core/orchestrator/locks.js` — rezerwacje, konflikt, zwalnianie.
+- `apps/fleet-core/orchestrator/model.js` — modele + walidacje kontraktów.
+- (opcjonalnie) `apps/fleet-core/orchestrator/adapter.js` — mapowanie planu → komendy gateway.
+
+Zasady balansu:
+- celuj w 300–800 LOC na plik; poniżej ~120 LOC scalaj, powyżej ~900 LOC dziel,
+- jeden temat = jeden plik (graph/locks/model/pipeline),
+- testy też „grube”: `orchestrator.unit.test.js`, `orchestrator.integration.test.js`, `orchestrator.e2e.test.js`.
+
+Wpięcie w Fleet Manager (runtime flow):
+1) **Scene activation**  
+   - `fleet-core` po aktywacji sceny buduje kontekst Orchestratora: `compiledMap`, indeksy węzłów/korytarzy, graf.  
+   - Kontekst jest trzymany w runtime Core (cache), wersjonowany `sceneHash`.
+2) **Tick loop**  
+   - Każdy tick Core tworzy `OrchestratorInput` (snapshot: robots, tasks, locks, time).  
+   - `orchestrator.step(input)` zwraca `OrchestratorDecision`: przydziały, rezerwacje, komendy, diagnostyka.  
+3) **Event sourcing**  
+   - Core materializuje decyzje jako eventy (`taskAssigned`, `lockGranted`, `commandIssued`) i zapisuje do logu.  
+   - Dopiero po zapisie eventów Core dispatchuje komendy do `fleet-gateway` (idempotentnie).
+4) **Dispatch i feedback**  
+   - Statusy z gateway aktualizują stan robotów i tasków, a kolejny tick bierze je jako input.  
+   - W razie błędu/timeoutu Orchestratora: Core przechodzi w `hold` (fail-safe).
+
+Integracja z algorithm-service (jeśli aktywny):
+- Orchestrator może być użyty **wewnątrz** algorithm-service jako implementacja planowania.  
+- W takim wariancie Core nie woła lokalnego Orchestratora, tylko `POST /algo/v1/decide`, a decyzje mapuje jak wyżej.  
+- MVP dopuszcza tryb „in-process” (Orchestrator w Core) oraz „external” (Orchestrator w algo-service); wybór jest konfiguracyjny.
 
 ### Faza 6 — Algorithm-service (Level0 → docelowy)
 Deliverables:

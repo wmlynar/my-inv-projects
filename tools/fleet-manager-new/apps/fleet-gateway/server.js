@@ -1,5 +1,6 @@
 const http = require('http');
 const crypto = require('crypto');
+const { createGateway } = require('./lib/gateway');
 
 function nowMs() {
   return Date.now();
@@ -27,6 +28,15 @@ function sendText(res, statusCode, text) {
     'Access-Control-Allow-Origin': '*'
   });
   res.end(text);
+}
+
+function sendOptions(res) {
+  res.writeHead(204, {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type'
+  });
+  res.end();
 }
 
 function readJsonBody(req, limitBytes = 1_000_000) {
@@ -64,31 +74,16 @@ function readJsonBody(req, limitBytes = 1_000_000) {
   });
 }
 
-function normalizeRobots(list) {
-  if (!Array.isArray(list)) return [];
-  return list.map((robot, index) => ({
-    robotId: robot.robotId || robot.id || `RB-${String(index + 1).padStart(2, '0')}`,
-    provider: robot.provider || 'unknown',
-    status: robot.status || 'offline',
-    lastSeenTsMs: robot.lastSeenTsMs || null
-  }));
-}
-
-function startServer(config) {
-  const robots = normalizeRobots(config.robots);
-
-  function upsertRobot(robotId, update) {
-    let robot = robots.find((entry) => entry.robotId === robotId);
-    if (!robot) {
-      robot = { robotId, provider: 'unknown', status: 'offline', lastSeenTsMs: null };
-      robots.push(robot);
-    }
-    Object.assign(robot, update);
-    return robot;
-  }
+function startServer(config, options = {}) {
+  const gateway = options.gateway || createGateway(config, options.deps || {});
 
   const server = http.createServer(async (req, res) => {
-    const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    if (req.method === 'OPTIONS') {
+      sendOptions(res);
+      return;
+    }
+
+    const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
     const { pathname } = url;
 
     if (req.method === 'GET' && pathname === '/gateway/v1/health') {
@@ -97,24 +92,26 @@ function startServer(config) {
     }
 
     if (req.method === 'GET' && pathname === '/gateway/v1/robots') {
+      const robots = await gateway.listRobots();
       sendJson(res, 200, { robots });
       return;
     }
 
     const statusMatch = pathname.match(/^\/gateway\/v1\/robots\/([^/]+)\/status$/);
     if (req.method === 'GET' && statusMatch) {
-      const robotId = statusMatch[1];
-      const robot = robots.find((entry) => entry.robotId === robotId);
-      if (!robot) {
+      const robotId = decodeURIComponent(statusMatch[1]);
+      const status = await gateway.getRobotStatus(robotId);
+      if (!status) {
         sendJson(res, 404, { error: 'robot_not_found', robotId });
         return;
       }
-      sendJson(res, 200, { robotId, status: robot.status, provider: robot.provider, lastSeenTsMs: robot.lastSeenTsMs });
+      sendJson(res, 200, status);
       return;
     }
 
     const commandMatch = pathname.match(/^\/gateway\/v1\/robots\/([^/]+)\/commands$/);
     if (req.method === 'POST' && commandMatch) {
+      const robotId = decodeURIComponent(commandMatch[1]);
       let payload = null;
       try {
         payload = await readJsonBody(req);
@@ -122,15 +119,23 @@ function startServer(config) {
         sendJson(res, 400, { error: err.code || 'invalid_json' });
         return;
       }
-      const robotId = commandMatch[1];
-      const commandId = createId('cmd');
-      const robot = upsertRobot(robotId, { lastSeenTsMs: nowMs(), status: 'command_sent' });
-      sendJson(res, 200, { ok: true, robotId, commandId, provider: robot.provider, command: payload?.command || null });
+
+      const command = payload?.command || payload || {};
+      if (!command.commandId) {
+        command.commandId = createId('cmd');
+      }
+      const result = await gateway.sendCommand(robotId, command);
+      if (!result.ok && !result.ack) {
+        sendJson(res, result.httpStatus || 500, { error: result.error || 'command_failed' });
+        return;
+      }
+      sendJson(res, result.httpStatus || 200, result.ack || { ok: true });
       return;
     }
 
     const providerMatch = pathname.match(/^\/gateway\/v1\/robots\/([^/]+)\/provider-switch$/);
     if (req.method === 'POST' && providerMatch) {
+      const robotId = decodeURIComponent(providerMatch[1]);
       let payload = null;
       try {
         payload = await readJsonBody(req);
@@ -138,9 +143,13 @@ function startServer(config) {
         sendJson(res, 400, { error: err.code || 'invalid_json' });
         return;
       }
-      const robotId = providerMatch[1];
-      const robot = upsertRobot(robotId, { provider: payload?.targetProvider || 'unknown' });
-      sendJson(res, 200, { ok: true, robotId, provider: robot.provider });
+      const targetProvider = payload?.targetProvider || payload?.provider || null;
+      const result = await gateway.switchProvider(robotId, targetProvider);
+      if (!result.ok) {
+        sendJson(res, result.httpStatus || 500, { error: result.error || 'provider_switch_failed' });
+        return;
+      }
+      sendJson(res, 200, { ok: true, robotId, provider: result.provider });
       return;
     }
 
@@ -148,7 +157,7 @@ function startServer(config) {
   });
 
   const host = config.server?.host || '0.0.0.0';
-  const port = config.server?.port || 8081;
+  const port = Number.isFinite(config.server?.port) ? config.server.port : 8081;
   server.listen(port, host, () => {
     console.log(`fleet-gateway listening on ${host}:${port}`);
   });

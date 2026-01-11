@@ -127,7 +127,11 @@
     },
     streams: {
       title: "Streamy",
-      subtitle: "Konfiguracja strumieni pracy i grup."
+      subtitle: "Biezacy proces transferu: skad i dokad jedzie paleta."
+    },
+    "streams-advanced": {
+      title: "Streamy (zaawansowane)",
+      subtitle: "Konfiguracja strumieni pracy, reguly i kandydaci."
     },
     scenes: {
       title: "Sceny",
@@ -235,6 +239,7 @@
     miniMapSvg: helpers.select(Selectors.MINI_MAP_SVG),
     robotsList: helpers.select(Selectors.ROBOTS_LIST),
     streamsList: helpers.select(Selectors.STREAMS_LIST),
+    streamsAdvancedList: helpers.select(Selectors.STREAMS_ADVANCED_LIST),
     scenesList: helpers.select(Selectors.SCENES_LIST),
     scenesRefreshBtn: helpers.select(Selectors.SCENES_REFRESH),
     fieldsList: helpers.select(Selectors.FIELDS_LIST),
@@ -279,6 +284,7 @@
   const state = {
     graphData: null,
     workflowData: null,
+    nodePosById: {},
     robotsConfig: null,
     worksites: [],
     robots: [],
@@ -311,6 +317,18 @@
     fleetSimModeMutable: true,
     fleetStream: null,
     lastFleetUpdateAt: null,
+    mvp0: {
+      enabled: false,
+      pickHeightM: null,
+      dropHeightM: null,
+      parkNodeId: null,
+      robotId: null,
+      autoStart: false,
+      autoPickId: null,
+      autoStarted: false,
+      activeTaskId: null,
+      pendingTask: false
+    },
     settingsState: {
       simMode: null,
       dispatchStrategy: null,
@@ -352,10 +370,49 @@
     selectors: Selectors
   };
 
+  const createBus = ({ logger } = {}) => {
+    const listeners = new Map();
+    const on = (event, handler) => {
+      if (!event || typeof handler !== "function") return () => {};
+      const bucket = listeners.get(event) || new Set();
+      bucket.add(handler);
+      listeners.set(event, bucket);
+      return () => {
+        off(event, handler);
+      };
+    };
+    const off = (event, handler) => {
+      const bucket = listeners.get(event);
+      if (!bucket) return;
+      bucket.delete(handler);
+      if (!bucket.size) {
+        listeners.delete(event);
+      }
+    };
+    const emit = (event, payload) => {
+      const bucket = listeners.get(event);
+      if (!bucket || !bucket.size) return;
+      bucket.forEach((handler) => {
+        try {
+          handler(payload);
+        } catch (error) {
+          console.warn("Bus handler failed", error);
+        }
+      });
+      if (logger?.debug) {
+        logger.debug("app-bus", event, payload);
+      }
+    };
+    return { on, off, emit };
+  };
+
+  const bus = createBus({ logger });
+
   App.constants = constants;
   App.state = state;
   App.elements = elements;
   App.helpers = helpers;
   App.viewMeta = viewMeta;
   App.services = services;
+  App.bus = bus;
 })();

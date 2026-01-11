@@ -1,0 +1,22 @@
+{
+  "map": {
+    "name": "mvp0-demo",
+    "version": "1.0.0"
+  },
+  "groups": {
+    "PICK-GROUP": ["AP-PICK"],
+    "DROP-GROUP": ["AP-DROP"]
+  },
+  "bin_locations": {
+    "PICK-01": {
+      "group": "PICK-GROUP",
+      "point": "AP-PICK",
+      "pos": { "x": 4, "y": 0 }
+    },
+    "DROP-01": {
+      "group": "DROP-GROUP",
+      "point": "AP-DROP",
+      "pos": { "x": 8, "y": 0 }
+    }
+  }
+}

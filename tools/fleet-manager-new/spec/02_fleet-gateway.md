@@ -428,3 +428,67 @@ Wymagania:
 ## 6. Failure modes (MUST)
 - Jeśli provider offline: Core MUST hold (nie wysyłać goTarget/forkHeight).
 - Jeśli provider zmienia się: Core MUST hold do czasu online.
+
+---
+
+## 7. Plan implementacji (TDD + reuse)
+
+1) Kontrakt `GatewayProvider` + modele wspólne
+   - Testy (nazwy + wejście -> oczekiwane):
+     - `codec.validateCommand_goTarget_ok`: `{ type:"goTarget", payload:{ targetRef:{ nodeId:"AP1" }}}` -> `{ ok:true }`
+     - `codec.validateCommand_forkHeight_requires_number`: `{ type:"forkHeight", payload:{ toHeightM:"x" }}` -> `{ ok:false, error:"toHeightM" }`
+     - `codec.validateCommand_stop_ok`: `{ type:"stop" }` -> `{ ok:true }`
+     - `codec.validateCommand_unknown_reject`: `{ type:"fly" }` -> `{ ok:false, error:"type" }`
+     - `codec.normalizeStatus_minimal`: `{ nodeId:"LM1", pose:{x:1,y:2,angle:0} }` -> `normalized.nodeId="LM1", normalized.pose.x=1`
+   - Kod: interfejs providera + wspólne mapowanie komend/statusów (np. `lib/codec.js`).
+
+2) Rejestr providerów + konfiguracja trybu
+   - Testy (nazwy + wejście -> oczekiwane):
+     - `providerFactory_selects_internalSim`: config `providers.internalSim.enabled=true` -> `kind="internalSim"`
+     - `providerFactory_selects_robokitSim`: config `providers.robokitSim.enabled=true` -> `kind="robokitSim"`
+     - `providerFactory_unknown_provider_errors`: config `provider="xyz"` -> błąd `unknown_provider`
+   - Kod: fabryka providerów + wspólne logowanie/retry (reuse).
+
+3) Provider `internalSim` (mock)
+   - Testy (nazwy + wejście -> oczekiwane):
+     - `internalSim.sendCommand_goTarget_posts_http`: `goTarget(AP1)` -> `POST /sim/robots/RB-01/command` z `targetRef.nodeId="AP1"`
+     - `internalSim.sendCommand_forkHeight_posts_http`: `forkHeight(1.2)` -> `POST` z `toHeightM=1.2`
+     - `internalSim.status_maps_to_normalized`: odpowiedź `{ nodeId:"AP1", forkHeightM:1.2 }` -> `normalized.nodeId="AP1"`
+   - Kod: reuse wspólnych mapperów i klienta HTTP.
+
+4) Provider `robokitSim` (pełny symulator przez Robokit TCP)
+   - Testy (nazwy + wejście -> oczekiwane):
+     - `robokit.frame_encode_goTarget`: `goTarget(AP1)` -> ramka z `apiNo` i `stationId="AP1"`
+     - `robokit.frame_decode_partial`: 2 fragmenty ramki -> 1 pełny status po złożeniu
+     - `robokit.timeout_fails_command`: brak odpowiedzi > timeout -> błąd `timeout`
+   - Kod: wspólny parser/serializer ramek (reuse z `robocore`).
+
+5) Provider `robocore` (prawdziwy robot)
+   - Testy (nazwy + wejście -> oczekiwane):
+     - `robocore.reconnects_after_drop`: rozłączenie -> reconnect po backoff
+     - `robocore.reports_connection_status`: brak statusu > timeout -> `connectionStatus="offline"`
+   - Kod: reuse TCP stack i normalizatorów.
+
+6) Opcjonalny provider `simDirect` (pełny symulator przez HTTP API)
+   - Testy (nazwy + wejście -> oczekiwane):
+     - `simDirect.sendCommand_goTarget_maps_to_api`: `goTarget(AP1)` -> `POST /sim/targets` z `nodeId="AP1"`
+     - `simDirect.sendCommand_forkHeight_maps_to_api`: `forkHeight(1.2)` -> `POST /sim/fork` z `height=1.2`
+   - Kod: reuse wspólnego klienta HTTP i retry.
+
+7) Ekspozycja statusu przez gateway
+   - Testy (nazwy + wejście -> oczekiwane):
+     - `http.get_robots_returns_normalized`: provider zwraca 2 roboty -> `/robots` zwraca `normalized` dla każdego
+     - `http.get_robot_status_returns_404`: brak robota -> `404`
+     - `http.post_commands_dedup`: 2x `commandId` -> drugi zwraca ten sam ACK
+   - Kod: agregacja statusu z providera + normalizator.
+
+8) Integracja end-to-end
+   - Testy (nazwy + wejście -> oczekiwane):
+     - `e2e_task_completes_via_gateway`: task pick->drop -> komendy -> status -> `completed`
+     - `e2e_provider_switch_hold`: switch provider -> brak komend do czasu `online`
+   - Kod: scenariusz e2e + wspólne fixture do testów.
+
+**Reuse (konkretne miejsca):**
+- `lib/codec.js` (mapowanie komend/statusów)
+- `lib/http.js` (HTTP klient + retry)
+- wspólny TCP framing (robokitSim/robocore)

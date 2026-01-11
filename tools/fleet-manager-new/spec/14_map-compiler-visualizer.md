@@ -16,8 +16,8 @@ uruchamiania calego systemu.
 - UI MUST bazowac na mapowym layoutcie i stylach z `apps/fleet-ui-mock/public`.
 - Wymagane identyfikatory DOM: `map-shell`, `map-wrap`, `map-svg`, `mini-map-svg`,
   `fit-view-btn`, `reset-view-btn`.
-- Visualizer MUST uzywac modulow: `map_window.js`, `map_layers.js`, `map_store.js`,
-  `map_adapters.js` z `apps/fleet-ui-mock/public`.
+- Visualizer MUST uzywac modulu: `map_runtime.js` z `packages/robokit-map-ui/public`
+  (zapewnia `MapWindow`, `MapLayers`, `MapStore`, `MapAdapters`).
 - Visualizer MUST uruchamiac widok mapy oraz menu wizualizacji (sidebar jak w mock-ui),
   bez loginu i paneli domenowych (robots/tasks/packaging).
 - Visualizer MUST pozostac w pelni offline: usunac z HTML zewnetrzne fonty/asset

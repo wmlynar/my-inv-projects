@@ -2,6 +2,7 @@
   const init = ({ elements = {}, state = {}, helpers = {} } = {}) => {
     const {
       streamsList,
+      streamsAdvancedList,
       fieldsList,
       tasksList,
       trafficLocksList,
@@ -75,15 +76,98 @@
       return null;
     };
 
+    const getActiveTasks = (tasks) => {
+      if (!Array.isArray(tasks)) return [];
+      return tasks.filter(
+        (task) =>
+          task &&
+          task.status &&
+          task.status !== "Completed" &&
+          task.status !== "Failed" &&
+          task.status !== "Cancelled"
+      );
+    };
+
+    const getActiveStream = (streams, tasks) => {
+      if (!Array.isArray(streams) || !streams.length) return null;
+      const byId = new Map(streams.map((stream) => [stream.id, stream]));
+      const candidate = (tasks || []).find((task) => task?.streamId && byId.has(task.streamId));
+      if (candidate) {
+        return byId.get(candidate.streamId);
+      }
+      return streams[0];
+    };
+
     const renderStreams = () => {
       if (!streamsList) return;
+      const workflowData = getWorkflowData();
+      const streams = workflowData?.streams || [];
+      if (!streams.length) {
+        streamsList.innerHTML = "<div class=\"card\">Brak konfiguracji transferu.</div>";
+        return;
+      }
+      const tasks = getTasks();
+      const activeTasks = getActiveTasks(tasks);
+      const activeStream = getActiveStream(streams, activeTasks);
+      if (!activeStream) {
+        streamsList.innerHTML = "<div class=\"card\">Brak aktywnego strumienia.</div>";
+        return;
+      }
+      const dropGroups = activeStream.drop_group_order || [];
+      const dropGroupLabel = dropGroups.join(", ") || "--";
+      const activeStreamTasks = activeTasks.filter(
+        (task) => !task.streamId || task.streamId === activeStream.id
+      );
+      const focusTask = activeStreamTasks[0] || null;
+      const activePick = focusTask?.pickId || "--";
+      const activeDrop = focusTask?.dropId || "--";
+      const activeLabel = activeStreamTasks.length ? `${activeStreamTasks.length} aktywne` : "Brak aktywnych zadan";
+
+      streamsList.innerHTML = "";
+      const card = document.createElement("div");
+      card.className = "stream-card";
+      card.innerHTML = `
+        <div class="stream-header">
+          <div>
+            <div class="stream-title">${activeStream.id || "Proces transferu"}</div>
+            <div class="stream-meta">Konfiguracja przeplywu palet</div>
+          </div>
+          <span class="stream-pill">${activeLabel}</span>
+        </div>
+        <div class="stream-section">
+          <div class="stream-step-title">Skad -> dokad</div>
+          <div class="stream-grid">
+            <div>
+              <div class="stream-label">Pick group</div>
+              <div class="stream-value">${activeStream.pick_group || "--"}</div>
+            </div>
+            <div>
+              <div class="stream-label">Drop groups</div>
+              <div class="stream-value">${dropGroupLabel}</div>
+            </div>
+            <div>
+              <div class="stream-label">Aktualny pick</div>
+              <div class="stream-value">${activePick}</div>
+            </div>
+            <div>
+              <div class="stream-label">Aktualny drop</div>
+              <div class="stream-value">${activeDrop}</div>
+            </div>
+          </div>
+        </div>
+      `;
+      streamsList.appendChild(card);
+    };
+
+    const renderStreamsAdvanced = () => {
+      if (!streamsAdvancedList) return;
       const packagingConfig = getPackagingConfig();
       const workflowData = getWorkflowData();
       const lineRequests = getLineRequests();
 
       if (packagingConfig?.streams?.length) {
         const streams = packagingConfig.streams;
-        streamsList.innerHTML = "";
+        streamsAdvancedList.innerHTML = "";
         streams.forEach((stream) => {
           const routeCount = stream.routes?.length || 0;
           const activeCount = lineRequests.filter((req) => req[stream.trigger]?.active).length;
@@ -111,17 +195,17 @@
             </div>
           </div>
         `;
-          streamsList.appendChild(card);
+          streamsAdvancedList.appendChild(card);
         });
         return;
       }
 
       const streams = workflowData?.streams || [];
       if (!streams.length) {
-        streamsList.innerHTML = "<div class=\"card\">Brak streamow.</div>";
+        streamsAdvancedList.innerHTML = "<div class=\"card\">Brak streamow.</div>";
         return;
       }
-      streamsList.innerHTML = "";
+      streamsAdvancedList.innerHTML = "";
       streams.forEach((stream) => {
         const dropGroups = stream.drop_group_order || [];
         const dropOrder = getDropOrder(stream);
@@ -172,7 +256,7 @@
           </div>
         </div>
       `;
-        streamsList.appendChild(card);
+        streamsAdvancedList.appendChild(card);
       });
     };
 
@@ -261,9 +345,15 @@
       trafficStallsList.innerHTML = `<div class="traffic-empty">${label}</div>`;
     };
 
+    const render = () => {
+      renderStreams();
+      renderStreamsAdvanced();
+    };
+
     return {
-      render: renderStreams,
+      render,
       renderStreams,
+      renderStreamsAdvanced,
       renderFields,
       renderTasks,
       renderTrafficDiagnostics

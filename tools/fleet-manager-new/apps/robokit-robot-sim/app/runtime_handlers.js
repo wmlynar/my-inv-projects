@@ -550,7 +550,8 @@ function createHttpHandlers(options) {
         reason: payload.reason,
         id: payload.id,
         x,
-        y
+        y,
+        force: true
       });
     } else {
       setRobotBlockedState(false);

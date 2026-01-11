@@ -643,6 +643,7 @@ function createTaskEngine(deps) {
     if (robot.currentTask) {
       robot.paused = true;
       robot.taskStatus = 3;
+      resetVelocity();
     }
     return buildBaseResponse({});
   }

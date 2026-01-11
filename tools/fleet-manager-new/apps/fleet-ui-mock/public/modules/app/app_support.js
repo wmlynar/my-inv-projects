@@ -45,6 +45,7 @@
     SCENES_REFRESH: "#scenes-refresh",
     ROBOTS_LIST: "#robots-list",
     STREAMS_LIST: "#streams-list",
+    STREAMS_ADVANCED_LIST: "#streams-advanced-list",
     FIELDS_LIST: "#fields-list",
     TASKS_LIST: "#tasks-list",
     TRAFFIC_LOCKS: "#traffic-locks",

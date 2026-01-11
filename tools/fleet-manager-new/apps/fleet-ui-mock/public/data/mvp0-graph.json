@@ -1,0 +1,57 @@
+{
+  "meta": {
+    "mapType": "2D-Map",
+    "mapName": "mvp0-demo",
+    "version": "1.0.0",
+    "resolution": 0.1,
+    "bounds": {
+      "min": { "x": -1, "y": -2 },
+      "max": { "x": 9, "y": 2 }
+    }
+  },
+  "nodes": [
+    {
+      "id": "PARK-01",
+      "className": "LocationMark",
+      "pos": { "x": 0, "y": 0 },
+      "ignoreDir": true,
+      "props": { "spin": false }
+    },
+    {
+      "id": "AP-PICK",
+      "className": "ActionPoint",
+      "pos": { "x": 4, "y": 0 },
+      "props": { "spin": false }
+    },
+    {
+      "id": "AP-DROP",
+      "className": "ActionPoint",
+      "pos": { "x": 8, "y": 0 },
+      "props": { "spin": false }
+    }
+  ],
+  "edges": [
+    {
+      "id": "PARK-AP-PICK",
+      "className": "DegenerateBezier",
+      "start": "PARK-01",
+      "end": "AP-PICK",
+      "startPos": { "x": 0, "y": 0 },
+      "endPos": { "x": 4, "y": 0 },
+      "controlPos1": { "x": 1.5, "y": 0 },
+      "controlPos2": { "x": 2.5, "y": 0 },
+      "props": { "direction": 0, "movestyle": 0, "width": 2 }
+    },
+    {
+      "id": "AP-PICK-AP-DROP",
+      "className": "DegenerateBezier",
+      "start": "AP-PICK",
+      "end": "AP-DROP",
+      "startPos": { "x": 4, "y": 0 },
+      "endPos": { "x": 8, "y": 0 },
+      "controlPos1": { "x": 5.5, "y": 0 },
+      "controlPos2": { "x": 6.5, "y": 0 },
+      "props": { "direction": 0, "movestyle": 0, "width": 2 }
+    }
+  ]
+}
