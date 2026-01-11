@@ -1,0 +1,22 @@
+{
+  "robotId": "F01",
+  "model": {
+    "head": 0.5,
+    "tail": 3.0,
+    "width": 0.95,
+    "safetyFront": 0.5,
+    "safetyRear": 0.5,
+    "safetySide": 0.3,
+    "stopStandoff": 3.0,
+    "poseMargin": 0.2,
+    "trackingMargin": 0.2,
+    "turningExtraMargin": 0.1
+  },
+  "dynamics": {
+    "vMax": 1.2,
+    "accel": 0.6,
+    "brake": 0.8,
+    "commandLatency": 150
+  },
+  "parkingNodeId": "Park_F01"
+}

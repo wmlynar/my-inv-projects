@@ -1,0 +1,15 @@
+{
+  "robotId": "TEST",
+  "model": {
+    "head": 1.0,
+    "tail": 1.0,
+    "width": 1.0,
+    "safetyFront": 0.0,
+    "safetyRear": 0.0,
+    "safetySide": 0.0,
+    "stopStandoff": 0.0,
+    "poseMargin": 0.0,
+    "trackingMargin": 0.0,
+    "turningExtraMargin": 0.0
+  }
+}

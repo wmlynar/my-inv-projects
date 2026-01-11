@@ -1,0 +1,15 @@
+{
+  "server": {
+    "host": "127.0.0.1",
+    "port": 8092
+  },
+  "artifacts": {
+    "dir": "./compiled"
+  },
+  "open": false,
+  "validate": false,
+  "viewer": {
+    "cellsMinZoom": 1.4,
+    "labelMinZoom": 1.0
+  }
+}

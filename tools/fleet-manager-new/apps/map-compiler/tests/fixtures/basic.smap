@@ -1,0 +1,36 @@
+{
+  "header": {
+    "mapType": "2D-Map",
+    "mapName": "basic-fixture",
+    "version": "1.0.0"
+  },
+  "advancedPointList": [
+    {
+      "className": "LocationMark",
+      "instanceName": "LM1",
+      "pos": { "x": 0, "y": 0 },
+      "dir": 0.0
+    },
+    {
+      "className": "ActionPoint",
+      "instanceName": "AP1",
+      "pos": { "x": 2, "y": 0 },
+      "dir": 0.0
+    }
+  ],
+  "advancedCurveList": [
+    {
+      "className": "DegenerateBezier",
+      "instanceName": "LM1-AP1",
+      "startPos": { "instanceName": "LM1", "pos": { "x": 0, "y": 0 } },
+      "endPos": { "instanceName": "AP1", "pos": { "x": 2, "y": 0 } },
+      "controlPos1": { "x": 0.7, "y": 0 },
+      "controlPos2": { "x": 1.3, "y": 0 },
+      "property": [
+        { "key": "direction", "type": "int", "int32Value": 1 },
+        { "key": "movestyle", "type": "int", "int32Value": 0 },
+        { "key": "width", "type": "double", "doubleValue": 2.5 }
+      ]
+    }
+  ]
+}

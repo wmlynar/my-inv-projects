@@ -1,0 +1,13 @@
+{
+  "name": "map-compiler-visualizer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "bin": {
+    "map-compiler-visualizer": "cli/cli.js"
+  },
+  "scripts": {
+    "start": "node cli/cli.js --config ./configs/visualizer.local.json5",
+    "validate": "node cli/cli.js --config ./configs/visualizer.local.json5 --validate true"
+  }
+}

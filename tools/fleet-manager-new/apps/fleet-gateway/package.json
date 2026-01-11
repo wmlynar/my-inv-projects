@@ -1,0 +1,14 @@
+{
+  "name": "fleet-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "server.js",
+  "bin": {
+    "fleet-gateway": "cli/cli.js"
+  },
+  "scripts": {
+    "start": "node cli/cli.js --config ./configs/fleet-gateway.local.json5",
+    "print-config": "node cli/cli.js --config ./configs/fleet-gateway.local.json5 --print-effective-config"
+  }
+}

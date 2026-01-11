@@ -1,0 +1,266 @@
+.viewer-shell {
+  padding: 24px;
+}
+
+.panel-stack {
+  gap: 16px;
+}
+
+.viewer-meta {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.viewer-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0 4px;
+}
+
+.viewer-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.viewer-toggle {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.swept-toolbar {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.swept-legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 4px;
+  border: 1px solid rgba(35, 28, 22, 0.2);
+  display: inline-block;
+}
+
+.legend-swatch.dir-a {
+  background: rgba(27, 154, 170, 0.35);
+  border-color: rgba(27, 154, 170, 0.55);
+}
+
+.legend-swatch.dir-b {
+  background: rgba(52, 97, 201, 0.35);
+  border-color: rgba(52, 97, 201, 0.6);
+}
+
+.viewer-search {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.viewer-search input {
+  border: 1px solid rgba(35, 28, 22, 0.2);
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 13px;
+  background: #fff;
+}
+
+.validation-badge {
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(35, 28, 22, 0.18);
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--muted);
+}
+
+.validation-badge.error {
+  background: rgba(191, 64, 43, 0.12);
+  border-color: rgba(191, 64, 43, 0.45);
+  color: rgba(120, 33, 20, 0.9);
+}
+
+.validation-badge.warn {
+  background: rgba(221, 106, 31, 0.12);
+  border-color: rgba(221, 106, 31, 0.45);
+  color: rgba(120, 70, 20, 0.9);
+}
+
+.viewer-details {
+  margin-top: 16px;
+}
+
+.viewer-pre {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(35, 28, 22, 0.12);
+  border-radius: 12px;
+  padding: 12px;
+  font-size: 12px;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.viewer-metrics {
+  border: 1px solid rgba(35, 28, 22, 0.12);
+  border-radius: 12px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.85);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.viewer-placeholder {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px dashed rgba(35, 28, 22, 0.2);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.cell-rect {
+  fill: rgba(27, 154, 170, 0.12);
+  stroke: rgba(27, 154, 170, 0.55);
+  stroke-width: 0.3;
+  vector-effect: non-scaling-stroke;
+  cursor: pointer;
+}
+
+.cell-rect.dir-b {
+  fill: rgba(52, 97, 201, 0.12);
+  stroke: rgba(52, 97, 201, 0.6);
+}
+
+.cell-rect.heat {
+  fill: var(--cell-heat-fill, rgba(27, 154, 170, 0.12));
+  stroke: var(--cell-heat-stroke, rgba(27, 154, 170, 0.55));
+}
+
+.cell-rect.selected {
+  stroke: rgba(221, 106, 31, 0.9) !important;
+  fill: rgba(221, 106, 31, 0.18) !important;
+}
+
+.cell-rect.conflict {
+  stroke: rgba(191, 64, 43, 0.9) !important;
+  fill: rgba(191, 64, 43, 0.12) !important;
+}
+
+.cell-rect.is-match {
+  stroke: #111;
+  stroke-width: 0.6;
+}
+
+.cell-arrow {
+  stroke: rgba(35, 28, 22, 0.9);
+  stroke-width: 0.4;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.cell-arrow.dir-b {
+  stroke: rgba(52, 97, 201, 0.95);
+}
+
+.cell-pivot {
+  fill: rgba(255, 255, 255, 0.9);
+  stroke: rgba(35, 28, 22, 0.95);
+  stroke-width: 0.35;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.cell-pivot.dir-b {
+  fill: rgba(240, 244, 255, 0.95);
+  stroke: rgba(52, 97, 201, 0.95);
+}
+
+.pivot-arrow-head {
+  fill: rgba(35, 28, 22, 0.95);
+}
+
+.cell-bbox {
+  fill: none;
+  stroke: rgba(35, 28, 22, 0.45);
+  stroke-width: 0.35;
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.cell-bbox.dir-b {
+  stroke: rgba(52, 97, 201, 0.6);
+}
+
+.cell-bbox.selected {
+  stroke: rgba(221, 106, 31, 0.95);
+  stroke-width: 0.7;
+}
+
+.map-edge.is-match {
+  stroke: #111;
+  stroke-width: 1.1;
+}
+
+.map-edge.selected {
+  stroke: rgba(221, 106, 31, 0.95);
+  stroke-width: 1.2;
+}
+
+.coverage-gap {
+  fill: none;
+  stroke: rgba(191, 64, 43, 0.9);
+  stroke-width: 1.2;
+  stroke-dasharray: 4 4;
+  vector-effect: non-scaling-stroke;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.length-mismatch {
+  fill: none;
+  stroke: rgba(221, 106, 31, 0.95);
+  stroke-width: 1.1;
+  vector-effect: non-scaling-stroke;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.map-node.is-match {
+  stroke: #111;
+  stroke-width: 0.8;
+}
+
+.node-label {
+  font-size: 0.16px;
+  text-anchor: middle;
+  dominant-baseline: hanging;
+}
+
+.node-label.hidden,
+.node-label.search-hidden {
+  opacity: 0;
+}
+
+.viewer-mini-viewport {
+  fill: rgba(27, 154, 170, 0.08);
+  stroke: rgba(27, 154, 170, 0.8);
+  stroke-width: 0.8;
+  vector-effect: non-scaling-stroke;
+}

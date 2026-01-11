@@ -155,6 +155,10 @@ Config via env:
 - `SIM_SEED`
 - `EVENT_LOG_PATH`
 - `EVENT_LOG_STDOUT`
+- `DIAG_LOG`
+- `DIAG_LOG_TICK_MS`
+- `DIAG_TELEPORT_THRESHOLD_M`
+- `MANUAL_CONTROL_DEADBAND`
 - `ADMIN_HTTP_PORT`
 - `ADMIN_HTTP_HOST`
 - `PRINT_EFFECTIVE_CONFIG`
@@ -185,8 +189,15 @@ Config via env:
 Notes:
 - The simulator uses the Robokit TCP frame header (16 bytes, JSON body).
 - Responses use `apiNo + 10000`.
+- Default `TICK_MS` is 100 (10 Hz).
+- Default push interval is 500 ms (configurable via `robot_push_config_req` and `PUSH_MIN_INTERVAL_MS`/`PUSH_MAX_INTERVAL_MS`).
 - `robot_status_file_req` serves files from `ROBOT_FILE_ROOTS` plus the map directory.
 - Optional admin endpoints (`/_health`, `/_metrics`, `/_time`) are served on `ADMIN_HTTP_PORT` and are separate from Robokit/Roboshop traffic.
+- Set `DIAG_LOG=true` to emit JSON diagnostic events (to stdout unless `EVENT_LOG_*` is set).
+- `DIAG_LOG_TICK_MS` adds periodic snapshots; `DIAG_TELEPORT_THRESHOLD_M` controls pose-jump detection.
+- `SIM_REPLAY_LOG_DIR` enables the Roboshop replay e2e test; use `SIM_REPLAY_TIME_SCALE` to speed it up.
+- `SIM_REPLAY_COMPARE`/`SIM_REPLAY_FAIL_ON_DIFF` toggle response diffs, `SIM_REPLAY_IGNORE_FIELDS` adds ignored paths.
+- `SIM_REPLAY_DIFF_MAX` limits diff output and `SIM_REPLAY_NUM_TOL` controls numeric tolerance.
 - Paths respect edge direction when the map provides a `direction` property.
 - Feature lines can impose one-way travel; `direction < 0` marks backward driving.
 - Motion uses a tricycle-style kinematic model (steered front wheel) and rotates

@@ -183,7 +183,7 @@ const config = {
   CHARGE_VOLTAGE_RAMP_V_S: parseEnvNumber('CHARGE_VOLTAGE_RAMP_V_S', 0.03),
   MAX_CHARGE_CURRENT_A: parseEnvNumber('MAX_CHARGE_CURRENT_A', 157.5),
   MAX_CHARGE_VOLTAGE_V: parseEnvNumber('MAX_CHARGE_VOLTAGE_V', 58.4),
-  TICK_MS: parseEnvNumber('TICK_MS', 200, Number.parseInt),
+  TICK_MS: parseEnvNumber('TICK_MS', 100, Number.parseInt),
   RELOC_MS: parseEnvNumber('RELOC_MS', 500, Number.parseInt),
   SPEED_M_S: parseEnvNumber('SPEED_M_S', 0.6),
   ACCEL_M_S2: parseEnvNumber('ACCEL_M_S2', 0.6),
@@ -229,6 +229,10 @@ const config = {
   SIM_SEED: parseEnvString('SIM_SEED', ''),
   EVENT_LOG_PATH: parseEnvString('EVENT_LOG_PATH', ''),
   EVENT_LOG_STDOUT: parseEnvBool('EVENT_LOG_STDOUT', false),
+  DIAG_LOG: parseEnvBool('DIAG_LOG', false),
+  DIAG_LOG_TICK_MS: parseEnvNumber('DIAG_LOG_TICK_MS', 0, Number.parseInt),
+  DIAG_TELEPORT_THRESHOLD_M: parseEnvNumber('DIAG_TELEPORT_THRESHOLD_M', 0.5),
+  MANUAL_CONTROL_DEADBAND: parseEnvNumber('MANUAL_CONTROL_DEADBAND', 0.001),
   ADMIN_HTTP_PORT: parseEnvNumber('ADMIN_HTTP_PORT', 0, Number.parseInt),
   ADMIN_HTTP_HOST: parseEnvString('ADMIN_HTTP_HOST', '127.0.0.1'),
   PRINT_EFFECTIVE_CONFIG: parseEnvBool('PRINT_EFFECTIVE_CONFIG', false),
@@ -265,6 +269,12 @@ function validateConfig(values = config) {
   }
   if (!Number.isFinite(values.TICK_MS) || values.TICK_MS <= 0) {
     errors.push(`invalid TICK_MS: ${values.TICK_MS}`);
+  }
+  if (!Number.isFinite(values.DIAG_LOG_TICK_MS) || values.DIAG_LOG_TICK_MS < 0) {
+    errors.push(`invalid DIAG_LOG_TICK_MS: ${values.DIAG_LOG_TICK_MS}`);
+  }
+  if (!Number.isFinite(values.MANUAL_CONTROL_DEADBAND) || values.MANUAL_CONTROL_DEADBAND < 0) {
+    errors.push(`invalid MANUAL_CONTROL_DEADBAND: ${values.MANUAL_CONTROL_DEADBAND}`);
   }
   if (!Number.isFinite(values.MAX_BODY_LENGTH) || values.MAX_BODY_LENGTH <= 0) {
     errors.push(`invalid MAX_BODY_LENGTH: ${values.MAX_BODY_LENGTH}`);

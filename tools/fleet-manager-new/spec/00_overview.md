@@ -109,7 +109,8 @@ Jeśli implementacja koliduje z opisem, obowiązuje kolejność: **Contracts →
 10. `08a_robokit-rds-sim.md`
 11. `09_map-compiler.md`
 12. `10_adapters-robokit.md`
-13. `99_pozostale.md` *(wszystko przekrojowe: kontrakty, semantyka runtime, testy, E2E, MVP, ryzyka, „rzeczy wypadłe”)*
+13. `14_map-compiler-visualizer.md`
+14. `99_pozostale.md` *(wszystko przekrojowe: kontrakty, semantyka runtime, testy, E2E, MVP, ryzyka, „rzeczy wypadłe”)*
 
 > **Zmiana v0.9:** w dokumentach komponentów dopisano szczegółowe „wejściowe API”, przykłady request/response (JSON5), lokalne struktury danych oraz pobieżne algorytmy działania — spójnie z aktualną specyfikacją algorytmu v0.5.
 

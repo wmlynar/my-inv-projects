@@ -94,11 +94,7 @@ class ControlArbiter {
     if (!this.lockTtlMs || !this.expiresAt) {
       return false;
     }
-    if (this.now() <= this.expiresAt) {
-      return false;
-    }
-    this.releaseIfExpired();
-    return true;
+    return this.now() > this.expiresAt;
   }
 
   applyLockMeta(meta = {}) {

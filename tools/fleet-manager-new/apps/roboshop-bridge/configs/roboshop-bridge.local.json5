@@ -1,0 +1,9 @@
+{
+  coreUrl: "http://localhost:8080/api/v1",
+  activate: true,
+  sceneName: "warehouseA",
+  smap: "./exports/warehouseA.smap",
+  worksites: "./exports/worksites.json5",
+  streams: "./exports/streams.json5",
+  robots: "./exports/robots.json5"
+}

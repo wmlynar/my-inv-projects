@@ -1,0 +1,12 @@
+{
+  "name": "roboshop-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "bin": {
+    "roboshop-bridge": "cli/cli.js"
+  },
+  "scripts": {
+    "help": "node cli/cli.js --help"
+  }
+}

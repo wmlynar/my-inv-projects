@@ -252,6 +252,8 @@ Config via env:
 Notes:
 - The simulator uses the Robokit TCP frame header (16 bytes, JSON body).
 - Responses use `apiNo + 10000`.
+- Default `TICK_MS` is 100 (10 Hz).
+- Default push interval is 500 ms (configurable via `robot_push_config_req` and `PUSH_MIN_INTERVAL_MS`/`PUSH_MAX_INTERVAL_MS`).
 - `robot_status_file_req` serves files from `ROBOT_FILE_ROOTS` plus the map directory.
 - Paths respect edge direction when the map provides a `direction` property.
 - Feature lines can impose one-way travel; `direction < 0` marks backward driving.

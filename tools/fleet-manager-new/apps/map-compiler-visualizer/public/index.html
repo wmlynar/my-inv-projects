@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Map Compiler Visualizer</title>
+    <link rel="stylesheet" href="/mock/styles.css" />
+    <link rel="stylesheet" href="/viewer.css" />
+  </head>
+  <body>
+    <div class="ambient-glow"></div>
+    <main class="shell viewer-shell">
+      <section class="app">
+        <aside class="sidebar">
+          <div class="sidebar-header">
+            <div class="brand-mark small"></div>
+            <div>
+              <p class="brand-title">Map Compiler</p>
+              <p class="brand-subtitle">Visualizer</p>
+            </div>
+          </div>
+          <nav class="nav">
+            <button class="nav-item active" data-view="map">Map</button>
+            <button class="nav-item" data-view="coverage">Coverage</button>
+            <button class="nav-item" data-view="conflicts">Conflicts</button>
+            <button class="nav-item" data-view="swept">Swept shape</button>
+            <button class="nav-item" data-view="connectivity">Connectivity</button>
+            <button class="nav-item" data-view="length">Length sanity</button>
+            <button class="nav-item" data-view="determinism">Determinism</button>
+            <button class="nav-item" data-view="report">Report</button>
+          </nav>
+          <div class="sidebar-footer">
+            <div class="status-pill">
+              <span class="status-dot"></span>
+              <span id="status-text">ready</span>
+            </div>
+          </div>
+        </aside>
+
+        <section class="content">
+          <header class="content-header">
+            <div>
+              <h1 id="view-title">Map</h1>
+              <p id="view-subtitle">SceneGraph + CompiledMap layers</p>
+              <p id="meta-line" class="viewer-meta">Offline viewer for sceneGraph.json + compiledMap.json</p>
+            </div>
+          </header>
+
+          <div class="panel-stack">
+            <section id="panel-map" class="panel active map-panel">
+              <div class="panel-header">
+                <div>
+                  <h2>Mapa</h2>
+                  <p>SceneGraph + CompiledMap layers</p>
+                </div>
+                <div class="panel-actions">
+                  <div class="map-actions">
+                    <button id="fit-view-btn" class="ghost-btn small">Fit</button>
+                    <button id="reset-view-btn" class="ghost-btn small">Reset</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="viewer-toolbar">
+                <div class="viewer-controls">
+                  <label class="viewer-toggle">
+                    <input type="checkbox" data-layer="edges" checked />
+                    <span>Edges</span>
+                  </label>
+                  <label class="viewer-toggle">
+                    <input type="checkbox" data-layer="nodes" checked />
+                    <span>Nodes</span>
+                  </label>
+                  <label class="viewer-toggle">
+                    <input type="checkbox" data-layer="corridors" />
+                    <span>Corridors</span>
+                  </label>
+                  <label class="viewer-toggle">
+                    <input type="checkbox" data-layer="cells" />
+                    <span>Cells</span>
+                  </label>
+                  <label class="viewer-toggle">
+                    <input type="checkbox" data-layer="conflicts" checked />
+                    <span>Conflicts</span>
+                  </label>
+                </div>
+                <div class="viewer-search">
+                  <input id="search-input" type="text" placeholder="Search id (node/edge/cell)" />
+                  <button id="clear-search" class="ghost-btn small">Clear</button>
+                </div>
+                <div id="validation-badge" class="validation-badge hidden">validation</div>
+              </div>
+
+              <div id="map-shell" class="map-shell">
+                <div id="map-wrap" class="map-wrap">
+                  <svg id="map-svg" aria-label="Map"></svg>
+                  <div class="mini-map">
+                    <svg id="mini-map-svg" aria-label="Mini map"></svg>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section id="view-map" class="panel view-panel active" data-view="map">
+              <div class="panel-header">
+                <div>
+                  <h2>Selection</h2>
+                  <p id="selection-hint">Click a node/cell or use search.</p>
+                </div>
+              </div>
+              <pre id="selection-details" class="viewer-pre">{}</pre>
+            </section>
+
+            <section id="view-coverage" class="panel view-panel" data-view="coverage">
+              <div class="panel-header">
+                <div>
+                  <h2>Coverage</h2>
+                  <p>Cells coverage gaps and corridor completeness.</p>
+                </div>
+              </div>
+              <div id="coverage-summary" class="viewer-placeholder">Coverage view placeholder.</div>
+            </section>
+
+            <section id="view-conflicts" class="panel view-panel" data-view="conflicts">
+              <div class="panel-header">
+                <div>
+                  <h2>Conflicts</h2>
+                  <p>Heatmap and conflict density summary.</p>
+                </div>
+              </div>
+              <div id="conflicts-summary" class="viewer-placeholder">Conflicts view placeholder.</div>
+            </section>
+
+            <section id="view-swept" class="panel view-panel" data-view="swept">
+              <div class="panel-header">
+                <div>
+                  <h2>Swept shape</h2>
+                  <p>Rotated rects with bounding boxes for each cell.</p>
+                </div>
+              </div>
+              <div class="viewer-toolbar swept-toolbar">
+                <div class="viewer-controls">
+                  <label class="viewer-toggle">
+                    <input type="checkbox" data-swept-dir="A_TO_B" checked />
+                    <span>A-&gt;B</span>
+                  </label>
+                  <label class="viewer-toggle">
+                    <input type="checkbox" data-swept-dir="B_TO_A" checked />
+                    <span>B-&gt;A</span>
+                  </label>
+                </div>
+                <div class="swept-legend">
+                  <span class="legend-swatch dir-a"></span>
+                  <span>A-&gt;B</span>
+                  <span class="legend-swatch dir-b"></span>
+                  <span>B-&gt;A</span>
+                </div>
+              </div>
+              <div id="swept-summary" class="viewer-placeholder">Swept shape view placeholder.</div>
+            </section>
+
+            <section id="view-connectivity" class="panel view-panel" data-view="connectivity">
+              <div class="panel-header">
+                <div>
+                  <h2>Connectivity</h2>
+                  <p>Connected components and isolated subgraphs.</p>
+                </div>
+              </div>
+              <div class="viewer-placeholder">Connectivity view placeholder.</div>
+            </section>
+
+            <section id="view-length" class="panel view-panel" data-view="length">
+              <div class="panel-header">
+                <div>
+                  <h2>Length sanity</h2>
+                  <p>Edge length vs curve length checks.</p>
+                </div>
+              </div>
+              <div id="length-summary" class="viewer-placeholder">Length sanity view placeholder.</div>
+            </section>
+
+            <section id="view-determinism" class="panel view-panel" data-view="determinism">
+              <div class="panel-header">
+                <div>
+                  <h2>Determinism</h2>
+                  <p>Diff summary between compilation runs.</p>
+                </div>
+              </div>
+              <div id="determinism-placeholder" class="viewer-placeholder">Determinism view placeholder.</div>
+            </section>
+
+            <section id="view-report" class="panel view-panel" data-view="report">
+              <div class="panel-header">
+                <div>
+                  <h2>Compile Health</h2>
+                  <p>Validation report and summary metrics.</p>
+                </div>
+              </div>
+              <div id="health-metrics" class="viewer-metrics"></div>
+              <pre id="validation-details" class="viewer-pre">{}</pre>
+            </section>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script src="/mock/map_window.js"></script>
+    <script src="/mock/map_layers.js"></script>
+    <script src="/mock/map_store.js"></script>
+    <script src="/mock/map_adapters.js"></script>
+    <script src="/lib/motion_kernel.js"></script>
+    <script src="/viewer.js"></script>
+  </body>
+</html>

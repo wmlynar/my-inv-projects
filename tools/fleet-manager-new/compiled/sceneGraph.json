@@ -1,0 +1,357 @@
+{
+  "nodes": [
+    {
+      "nodeId": "LM6",
+      "nodeType": "locationMark",
+      "className": "LocationMark",
+      "pos": {
+        "xM": -4.139,
+        "yM": -1.904
+      },
+      "angleRad": 0.013500000000000227
+    },
+    {
+      "nodeId": "LM7",
+      "nodeType": "locationMark",
+      "className": "LocationMark",
+      "pos": {
+        "xM": 0.087,
+        "yM": -1.821
+      },
+      "angleRad": 0.00879999999999995
+    },
+    {
+      "nodeId": "LM8",
+      "nodeType": "locationMark",
+      "className": "LocationMark",
+      "pos": {
+        "xM": -5.839,
+        "yM": -1.894
+      },
+      "angleRad": 0.014399999999999647
+    },
+    {
+      "nodeId": "AP9",
+      "nodeType": "actionPoint",
+      "className": "ActionPoint",
+      "pos": {
+        "xM": -4.413,
+        "yM": -0.679
+      }
+    },
+    {
+      "nodeId": "LM10",
+      "nodeType": "locationMark",
+      "className": "LocationMark",
+      "pos": {
+        "xM": -1.472,
+        "yM": -0.628
+      },
+      "angleRad": 0.00879999999999995
+    },
+    {
+      "nodeId": "LM11",
+      "nodeType": "locationMark",
+      "className": "LocationMark",
+      "pos": {
+        "xM": -0.954,
+        "yM": -0.628
+      },
+      "angleRad": 0.00879999999999995
+    },
+    {
+      "nodeId": "CP12",
+      "nodeType": "chargePoint",
+      "className": "ChargePoint",
+      "pos": {
+        "xM": 2.127,
+        "yM": -3.09
+      },
+      "angleRad": -3.0371832958728646
+    },
+    {
+      "nodeId": "LM13",
+      "nodeType": "locationMark",
+      "className": "LocationMark",
+      "pos": {
+        "xM": 2.445,
+        "yM": -3.057
+      },
+      "angleRad": -3.044260525368784
+    }
+  ],
+  "edges": [
+    {
+      "edgeId": "LM6-LM7",
+      "className": "DegenerateBezier",
+      "startNodeId": "LM6",
+      "endNodeId": "LM7",
+      "p0": {
+        "xM": -4.139,
+        "yM": -1.904
+      },
+      "p1": {
+        "xM": -2.896,
+        "yM": -2.127
+      },
+      "p2": {
+        "xM": -1.602,
+        "yM": -2.115
+      },
+      "p3": {
+        "xM": 0.087,
+        "yM": -1.821
+      },
+      "props": {
+        "direction": 0,
+        "movestyle": 0,
+        "width": 10
+      },
+      "lengthM": 4.249481580749477
+    },
+    {
+      "edgeId": "LM7-LM6",
+      "className": "DegenerateBezier",
+      "startNodeId": "LM7",
+      "endNodeId": "LM6",
+      "p0": {
+        "xM": 0.087,
+        "yM": -1.821
+      },
+      "p1": {
+        "xM": -1.602,
+        "yM": -2.115
+      },
+      "p2": {
+        "xM": -2.896,
+        "yM": -2.127
+      },
+      "p3": {
+        "xM": -4.139,
+        "yM": -1.904
+      },
+      "props": {
+        "direction": 1,
+        "movestyle": 0,
+        "width": 10
+      },
+      "lengthM": 4.249481580749476
+    },
+    {
+      "edgeId": "LM6-LM8",
+      "className": "DegenerateBezier",
+      "startNodeId": "LM6",
+      "endNodeId": "LM8",
+      "p0": {
+        "xM": -4.139,
+        "yM": -1.904
+      },
+      "p1": {
+        "xM": -4.706,
+        "yM": -1.901
+      },
+      "p2": {
+        "xM": -5.272,
+        "yM": -1.897
+      },
+      "p3": {
+        "xM": -5.839,
+        "yM": -1.894
+      },
+      "props": {
+        "direction": 1,
+        "movestyle": 0
+      },
+      "lengthM": 1.7000294673798624
+    },
+    {
+      "edgeId": "LM8-LM6",
+      "className": "DegenerateBezier",
+      "startNodeId": "LM8",
+      "endNodeId": "LM6",
+      "p0": {
+        "xM": -5.839,
+        "yM": -1.894
+      },
+      "p1": {
+        "xM": -5.272,
+        "yM": -1.897
+      },
+      "p2": {
+        "xM": -4.706,
+        "yM": -1.901
+      },
+      "p3": {
+        "xM": -4.139,
+        "yM": -1.904
+      },
+      "props": {
+        "direction": 0,
+        "movestyle": 0
+      },
+      "lengthM": 1.7000294673798624
+    },
+    {
+      "edgeId": "LM10-AP9",
+      "className": "DegenerateBezier",
+      "startNodeId": "LM10",
+      "endNodeId": "AP9",
+      "p0": {
+        "xM": -1.472,
+        "yM": -0.628
+      },
+      "p1": {
+        "xM": -2.452,
+        "yM": -0.645
+      },
+      "p2": {
+        "xM": -3.433,
+        "yM": -0.662
+      },
+      "p3": {
+        "xM": -4.413,
+        "yM": -0.679
+      },
+      "props": {
+        "direction": 1,
+        "movestyle": 0
+      },
+      "lengthM": 2.9414421633033685
+    },
+    {
+      "edgeId": "AP9-LM10",
+      "className": "DegenerateBezier",
+      "startNodeId": "AP9",
+      "endNodeId": "LM10",
+      "p0": {
+        "xM": -4.413,
+        "yM": -0.679
+      },
+      "p1": {
+        "xM": -3.433,
+        "yM": -0.662
+      },
+      "p2": {
+        "xM": -2.452,
+        "yM": -0.645
+      },
+      "p3": {
+        "xM": -1.472,
+        "yM": -0.628
+      },
+      "props": {
+        "direction": 0,
+        "movestyle": 0
+      },
+      "lengthM": 2.941442163303369
+    },
+    {
+      "edgeId": "LM11-LM10",
+      "className": "DegenerateBezier",
+      "startNodeId": "LM11",
+      "endNodeId": "LM10",
+      "p0": {
+        "xM": -0.954,
+        "yM": -0.628
+      },
+      "p1": {
+        "xM": -0.793,
+        "yM": -0.625
+      },
+      "p2": {
+        "xM": -1.163,
+        "yM": -0.622
+      },
+      "p3": {
+        "xM": -1.472,
+        "yM": -0.628
+      },
+      "props": {
+        "direction": 1,
+        "movestyle": 0
+      },
+      "lengthM": 0.591408204795963
+    },
+    {
+      "edgeId": "LM10-LM11",
+      "className": "DegenerateBezier",
+      "startNodeId": "LM10",
+      "endNodeId": "LM11",
+      "p0": {
+        "xM": -1.472,
+        "yM": -0.628
+      },
+      "p1": {
+        "xM": -1.163,
+        "yM": -0.622
+      },
+      "p2": {
+        "xM": -0.793,
+        "yM": -0.625
+      },
+      "p3": {
+        "xM": -0.954,
+        "yM": -0.628
+      },
+      "props": {
+        "direction": 0,
+        "movestyle": 0
+      },
+      "lengthM": 0.591408204795963
+    },
+    {
+      "edgeId": "LM13-CP12",
+      "className": "DegenerateBezier",
+      "startNodeId": "LM13",
+      "endNodeId": "CP12",
+      "p0": {
+        "xM": 2.445,
+        "yM": -3.057
+      },
+      "p1": {
+        "xM": 2.339,
+        "yM": -3.068
+      },
+      "p2": {
+        "xM": 2.233,
+        "yM": -3.079
+      },
+      "p3": {
+        "xM": 2.127,
+        "yM": -3.09
+      },
+      "props": {
+        "direction": 0,
+        "movestyle": 0
+      },
+      "lengthM": 0.31970767898191
+    },
+    {
+      "edgeId": "CP12-LM13",
+      "className": "DegenerateBezier",
+      "startNodeId": "CP12",
+      "endNodeId": "LM13",
+      "p0": {
+        "xM": 2.127,
+        "yM": -3.09
+      },
+      "p1": {
+        "xM": 2.233,
+        "yM": -3.079
+      },
+      "p2": {
+        "xM": 2.339,
+        "yM": -3.068
+      },
+      "p3": {
+        "xM": 2.445,
+        "yM": -3.057
+      },
+      "props": {
+        "direction": 1,
+        "movestyle": 0
+      },
+      "lengthM": 0.31970767898191
+    }
+  ]
+}

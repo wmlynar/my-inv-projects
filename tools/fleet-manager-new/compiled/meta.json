@@ -1,0 +1,28 @@
+{
+  "compilerVersion": "map-compiler-0.0.0",
+  "source": "./maps/sanden_smalll.smap",
+  "robotProfile": "/home/inovatica/seal/monorepo/tools/fleet-manager-new/apps/map-compiler/configs/robot-profile.local.json5",
+  "compileParams": {
+    "cellLenM": 0.5,
+    "arcLutStepM": 0.1,
+    "sweepSampleStepM": 0.25,
+    "geomEpsM": 0.000001,
+    "maxRectsPerCell": 32,
+    "inflateMarginScale": 0
+  },
+  "robotModel": {
+    "head": 0.5,
+    "tail": 3,
+    "width": 0.95,
+    "safetyFront": 0.5,
+    "safetyRear": 0.5,
+    "safetySide": 0.3,
+    "stopStandoff": 3,
+    "poseMargin": 0.2,
+    "trackingMargin": 0.2,
+    "turningExtraMargin": 0.1
+  },
+  "compiledMapHash": "sha256:a4fd365f57a5fd241543047f2254c5ceceaf3a088d7effc9b793f81b0ff2bf22",
+  "compiledTsMs": 1768124060658,
+  "status": "skeleton"
+}

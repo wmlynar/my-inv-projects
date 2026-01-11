@@ -1,0 +1,14 @@
+{
+  "compilerVersion": "map-compiler-0.0.0",
+  "outDir": "./compiled",
+  "smap": "./maps/example.smap",
+  "robotProfile": "./robot-profile.local.json5",
+  "compileParams": {
+    "cellLenM": 0.5,
+    "arcLutStepM": 0.1,
+    "sweepSampleStepM": 0.25,
+    "geomEpsM": 0.000001,
+    "maxRectsPerCell": 32,
+    "inflateMarginScale": 0
+  }
+}
