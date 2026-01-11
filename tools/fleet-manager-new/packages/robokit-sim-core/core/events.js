@@ -1,3 +1,5 @@
+const fs = require('fs');
+
 const STATES = {
   SOFT_EMC: 'soft_emc',
   PAUSED: 'paused',
@@ -64,8 +66,63 @@ function createStateMachine(options = {}) {
   };
 }
 
+class EventLogger {
+  constructor(options = {}) {
+    this.path = options.path || '';
+    this.stdout = Boolean(options.stdout);
+    this.now = typeof options.now === 'function' ? options.now : () => Date.now();
+    this.stream = null;
+    if (this.path) {
+      this.stream = fs.createWriteStream(this.path, { flags: 'a' });
+    }
+  }
+
+  log(event, payload = {}) {
+    const entry = {
+      ts: this.now(),
+      event,
+      ...payload
+    };
+    const line = `${JSON.stringify(entry)}\n`;
+    if (this.stream) {
+      this.stream.write(line);
+    }
+    if (this.stdout) {
+      process.stdout.write(line);
+    }
+  }
+
+  close() {
+    if (this.stream) {
+      this.stream.end();
+      this.stream = null;
+    }
+  }
+}
+
+function createDiagLogger(options = {}) {
+  const enabled = Boolean(options.enabled);
+  const logger = options.logger || null;
+  const now = typeof options.now === 'function' ? options.now : () => Date.now();
+
+  return function diagLog(event, payload = {}) {
+    if (!enabled) {
+      return;
+    }
+    const name = `diag_${event}`;
+    if (logger && typeof logger.log === 'function') {
+      logger.log(name, payload);
+      return;
+    }
+    const entry = { ts: now(), event: name, ...payload };
+    process.stdout.write(`${JSON.stringify(entry)}\n`);
+  };
+}
+
 module.exports = {
   STATES,
+  deriveState,
   createStateMachine,
-  deriveState
+  EventLogger,
+  createDiagLogger
 };

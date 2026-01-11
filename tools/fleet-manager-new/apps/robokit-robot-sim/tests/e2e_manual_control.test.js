@@ -2,19 +2,10 @@ const net = require('net');
 const path = require('path');
 const { spawn } = require('child_process');
 const { encodeFrame, responseApi, RbkParser, API } = require('../../../packages/robokit-lib/rbk');
+const { findFreeRobokitPorts } = require('./helpers/ports');
 
 const HOST = '127.0.0.1';
-const BASE_PORT = 30000 + Math.floor(Math.random() * 20000);
-const PORTS = {
-  ROBOD: BASE_PORT,
-  STATE: BASE_PORT + 4,
-  CTRL: BASE_PORT + 5,
-  TASK: BASE_PORT + 6,
-  CONFIG: BASE_PORT + 7,
-  KERNEL: BASE_PORT + 8,
-  OTHER: BASE_PORT + 10,
-  PUSH: BASE_PORT + 11
-};
+let PORTS = null;
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -130,9 +121,38 @@ async function assertManualMove({ vx, vy, w, label }) {
 
   const cos = Math.cos(before.angle || 0);
   const sin = Math.sin(before.angle || 0);
-  const worldVx = vx * cos - vy * sin;
-  const worldVy = vx * sin + vy * cos;
+  const worldVx = vx * cos;
+  const worldVy = vx * sin;
   assert(dot(dx, dy, worldVx, worldVy) > 0, `${label}: moved opposite to expected direction`);
+}
+
+async function assertNoStrafe({ vy, label }) {
+  await request(PORTS.CTRL, API.robot_control_motion_req, {
+    vx: 0,
+    vy: 0,
+    w: 0,
+    steer: 0,
+    real_steer: 0
+  });
+  await wait(200);
+  const before = await request(PORTS.STATE, API.robot_status_loc_req, {});
+  assert(before && Number.isFinite(before.x), `${label}: missing pose before`);
+
+  const motionRes = await request(PORTS.CTRL, API.robot_control_motion_req, {
+    vx: 0,
+    vy,
+    w: 0,
+    steer: 0,
+    real_steer: 0
+  });
+  assert(motionRes && motionRes.ret_code === 0, `${label}: control_motion rejected`);
+
+  await wait(350);
+  const after = await request(PORTS.STATE, API.robot_status_loc_req, {});
+  assert(after && Number.isFinite(after.x), `${label}: missing pose after`);
+
+  const moved = Math.hypot(after.x - before.x, after.y - before.y);
+  assert(moved < 0.002, `${label}: unexpected lateral translation`);
 }
 
 async function assertManualRotate({ w, label }) {
@@ -173,6 +193,8 @@ function stopChild(child) {
 
 async function run() {
   const appDir = path.resolve(__dirname, '..');
+  const allocation = await findFreeRobokitPorts({ host: HOST });
+  PORTS = allocation.ports;
   const child = spawn(process.execPath, [path.join(appDir, 'start.js')], {
     cwd: appDir,
     env: {
@@ -220,9 +242,8 @@ async function run() {
 
     await assertManualMove({ vx: 0.4, vy: 0, w: 0, label: 'forward' });
     await assertManualMove({ vx: -0.3, vy: 0, w: 0, label: 'backward' });
-    await assertManualMove({ vx: 0, vy: 0.3, w: 0, label: 'strafe_left' });
-    await assertManualMove({ vx: 0, vy: -0.3, w: 0, label: 'strafe_right' });
-    await assertManualMove({ vx: 0.25, vy: 0.25, w: 0, label: 'diagonal' });
+    await assertNoStrafe({ vy: 0.3, label: 'strafe_left_ignored' });
+    await assertNoStrafe({ vy: -0.3, label: 'strafe_right_ignored' });
 
     await assertManualRotate({ w: 0.6, label: 'rotate_left' });
     await assertManualRotate({ w: -0.6, label: 'rotate_right' });

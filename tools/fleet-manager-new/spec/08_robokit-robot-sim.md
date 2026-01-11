@@ -264,6 +264,167 @@ Notes:
 - If no path exists from the current station to a target, the simulator blends onto
   the nearest reachable graph edge and continues along the planned route.
 
+### Model ruchu i "fizyka" symulatora (INFORMATIVE)
+
+#### 1) Model kinematyczny i tick
+- Symulacja jest kinematyczna (bez dynamiki/poślizgów). Każdy tick (`TICK_MS`) integruje pozycję
+  z zadanych prędkości liniowych i obrotowych.
+- Prędkości liniowe/obrotowe w trybie automatycznym są rampowane (`ACCEL_M_S2`, `DECEL_M_S2`,
+  `ROT_ACCEL_RAD_S2`, `ROT_DECEL_RAD_S2`) i ograniczane `SPEED_M_S`, `ROTATE_SPEED_RAD_S`.
+- `vy` jest traktowane jako boczne przesunięcie w układzie robota, ale w trybie jazdy
+  (manual + segment) jest zerowane — model „trójkołowca” (steer + vx).
+
+#### 2) Sterowanie strzałkami (manual / `robot_control_motion_req`)
+- Komenda manualna ustawia `vx`, `w`, `steer`. `vy` jest ignorowane (brak jazdy bokiem).
+- Jeżeli podano `steer` i `vx`, symulator wylicza `w = (vx / WHEELBASE_M) * tan(steer)`.
+  Jeśli brak `steer`, ale jest `w`, ster jest wyliczany z `atan(WHEELBASE_M * w / vx)`.
+- Manual override anuluje aktywny task i wyłącza ścieżkę skryptową (approach).
+- Pozycja jest integrowana w układzie robota (vx wzdłuż osi robota), a następnie
+  przeliczana do układu świata na podstawie aktualnego kąta.
+
+#### 3) Ruch po ścieżkach grafu (task + segmenty)
+- Task buduje segmenty z `pathNodes`. Każda krawędź = segment z polilinią (edge polyline),
+  a jeśli jej brak — odcinek prosty start→end.
+- Segment ma dwa stany: `rotate` → `move`.
+  - `rotate`: obrót w miejscu do `segment.startHeading` (z `ROTATE_EPS_RAD`).
+  - `move`: postęp `segmentProgress` wzdłuż polilinii, prędkość rampowana.
+- Gdy wymagany obrót w ticku przekracza `ROTATE_SPEED_RAD_S * dt`, postęp jest redukowany
+  (żeby ograniczyć zmianę kąta), a jeśli nadal przekracza limit — robot obraca się w miejscu
+  i **nie przesuwa** (zapobiega „jazdzie bokiem”).
+- Na końcu segmentu aktualizowane są `currentStation` i `visitedNodes`, a następny segment
+  zaczyna się od `rotate`.
+- Dla krawędzi `driveBackward` robot jedzie „tyłem”: heading = `pathHeading + PI`,
+  a prędkość ma znak ujemny.
+
+#### 4) Dojazd do grafu (approach)
+- Gdy robot jest daleko od trasy lub nie ma ścieżki, wybierany jest punkt wejścia na graf
+  (`findBestApproach`) i budowana jest krzywa dojazdowa (Bezier) z bieżącej pozycji do wejścia.
+- Dojazd jest realizowany jako `scriptPath`:
+  - najpierw obrót w miejscu (jeśli kąt nie nadąża),
+  - następnie ruch po krzywej z rampowaniem prędkości.
+- Po zakończeniu approach robot przełącza się na normalny ruch po segmentach i kontynuuje trasę.
+
+#### 5) Węzły bez styczności (ostre zakręty)
+- Jeżeli węzeł łączy krawędzie o różnych stycznych, symulator **zatrzymuje się**,
+  obraca w miejscu do nowego `segment.startHeading`, i dopiero potem rusza.
+- Nie ma automatycznego „łuku przejściowego” między krawędziami, chyba że dana krawędź
+  ma własną zakrzywioną polilinię (wtedy ruch po niej jest płynny w ramach segmentu).
+
+#### 6) Przeszkody, blokady i uniki
+- Symulator potrafi oznaczać blokady przez przeszkody. Gdy `blocked` jest aktywne,
+  ruch automatyczny zatrzymuje się, a prędkości są resetowane.
+- Obsługa przeszkód opiera się o korytarz segmentu (szerokość `edge.width`) i promienie
+  przeszkód (`OBSTACLE_RADIUS_M`, `OBSTACLE_CLEARANCE_M`). Jeżeli przeszkoda wchodzi w
+  korytarz, segment jest blokowany lub planowany jest objazd (jeśli włączone).
+- `OBSTACLE_AVOID_ENABLED` kontroluje, czy symulator próbuje budować plan omijania
+  (avoid plan). Gdy plan omijania jest aktywny, pozycja na segmencie jest przesuwana
+  o offset, ale nadal poruszamy się wzdłuż tej samej polilinii segmentu.
+- **Uwaga:** pełne obstacle avoidance NIE jest jeszcze zaimplementowane w zachowaniu
+  symulatora. To będzie dopiero w kolejnym etapie.
+
+#### 7) Stop / pause / soft‑EMC
+- `robot_control_stop_req` zatrzymuje ruch, resetuje prędkości i może oznaczyć task jako
+  zakończony (gdy brak aktywnego zadania fork).
+- `pause` zatrzymuje ruch bez usuwania taska; `resume` wznawia.
+- `soft_emc` zatrzymuje ruch i blokuje sterowanie do czasu zwolnienia; w tym stanie
+  manual i skryptowe ścieżki są wygaszane.
+
+#### 8) Seize control (lock) i wielu klientów
+- Lock jest wymagany dla manual control i części operacji. Tylko jeden klient może
+  trzymać lock. Nowy klient może odebrać lock (zależnie od konfiguracji/arbiter).
+- Lock ma timeout (odświeżany przez keepalive); po wygaśnięciu lock jest zwalniany,
+  a manual control czyszczony.
+
+#### 9) Raportowanie stacji (current/last)
+- `current_station` jest raportowane, gdy robot jest wystarczająco blisko węzła
+  (`CURRENT_POINT_DIST`) i porusza się po trasie (off‑route wymusza wyczyszczenie).
+- W trybie manualnym `current_station` jest ukryte, jeżeli robot się porusza.
+- `last_station` jest aktualizowane po wejściu do węzła; może być ustawione na
+  `current_station` w zależności od flag konfiguracji.
+
+#### 10) Forki i zadania fork
+- Wysokość wideł jest rampowana (`FORK_SPEED_M_S`, `FORK_ACCEL_M_S2`) do celu.
+- `forkHeight` działa jako osobny task, z opóźnieniem startu (`FORK_TASK_DELAY_MS`)
+  i stanami `waiting/active/done` w telemetrii.
+- `forkStop` zatrzymuje ruch wideł i utrzymuje aktualną wysokość.
+
+#### 11) Telemetria i push
+- Statusy (`robot_status_*`) zwracają `x/y/angle` z aktualnej pozycji robota.
+- Push na porcie `19301` wysyła cykliczne snapshoty stanu z konfiguracją interwału
+  (`robot_push_config_req`, `PUSH_MIN_INTERVAL_MS`, `PUSH_MAX_INTERVAL_MS`).
+- `STATUS_HIDE_*` umożliwia wymuszone ukrywanie wybranych pól (np. current_station).
+
+#### 12) Relokacja
+- `robot_control_reloc_req` może ustawić pozycję na węźle lub współrzędnych.
+- Relokacja ma własne statusy (start → complete), które są raportowane w statusach.
+
+#### 13) Tryby czasu symulacji
+- `SIM_TIME_MODE` obsługuje tryb „real” i tryby deterministyczne. W trybie deterministycznym
+  czas jest inkrementowany stałym krokiem, co stabilizuje testy.
+
+#### 14) Odporność protokołu i błędy
+- Symulator toleruje reconnecty i brak keepalive; po rozłączeniu klienta jego lock
+  jest zwalniany przez arbiter.
+- Komendy z niepełnym payloadem zwracają `ret_code != 0` (lub fallback), ale nie
+  powinny crashować procesu.
+
+#### 15) Taski, statusy i kolejki
+- `task_status` i `task_type` są ustawiane w silniku ticków: w trakcie jazdy `task_status=2`,
+  po zakończeniu `task_status=4`. `pause` i `soft_emc` ustawiają statusy „zatrzymany”.
+- Task wielostacyjny (`robot_task_multistation_req`) buduje listę `pathNodes` i segmentów,
+  z aktualizacją `pathIndex` i `visitedNodes` po osiągnięciu węzłów.
+- Tryb append/replace determinuje, czy nowy task nadpisuje aktywny, czy dokleja się
+  do bieżącej ścieżki.
+
+#### 16) Reconnect, idempotencja i lock
+- Lock jest przypisany do klienta (IP/port). Gdy klient znika, arbiter zwalnia lock
+  po timeoutcie. Manual control jest wtedy czyszczony.
+- Symulator akceptuje duplikaty komend, ale to gateway powinien dbać o idempotencję
+  (symulator nie deduplikuje po `commandId`).
+
+#### 17) Diagnostyka i eventy
+- `DIAG_LOG` generuje zdarzenia typu `diag_*` (np. `pose_set`, `heading_clamped`,
+  `script_start`, `approach_start`, `approach_stalled`) i pomaga w analizie teleportów
+  lub driftu pozycji.
+- `EVENT_LOG_STDOUT` i `EVENT_LOG_PATH` sterują gdzie logi są zapisywane.
+
+#### 18) Admin / narzędzia (out of band)
+- Endpointy administracyjne `/_health`, `/_metrics`, `/_time`, `/_tick` działają na
+  `ADMIN_HTTP_PORT` i służą tylko do diagnostyki (nie są częścią protokołu Robokit).
+
+#### 19) Automatyczne testy zachowania (E2E)
+Poniższe testy MUST istnieć i wykonywać **ruch w czasie** (nie statycznie), aby wykrywać
+regresje w zachowaniu symulatora.
+
+1) Manual control — jazda i obrót:
+   - robot wykonuje obrót w miejscu, po czym jedzie do przodu; test weryfikuje, że kierunek
+     ruchu zgadza się z raportowanym kątem (brak „jazdy bokiem”).
+   - test sprawdza, że `vy` nie powoduje ruchu bocznego.
+2) Approach (dojazd do grafu):
+   - start poza grafem, `goTarget` na daleki node, robot najpierw obraca się w miejscu,
+     potem dojeżdża do grafu bez teleportacji i bez skoków kąta.
+3) Ruch po segmentach:
+   - robot przejeżdża przez co najmniej 2 węzły, a między segmentami pojawia się
+     obrót w miejscu (gdy styczne nie pasują).
+4) Brak teleportów pozycji:
+   - robot porusza się przez kilka sekund, test sprawdza maksymalny „skok” pozycji
+     na podstawie `SPEED_M_S` i `TICK_MS`.
+5) Task lifecycle:
+   - `goTarget` → `task_status=2`, po dotarciu `task_status=4`.
+6) Seize control i wieloklientowość:
+   - klient A przejmuje kontrolę, klient B przejmuje ją po chwili; test potwierdza, że
+     manual control działa tylko dla aktualnego właściciela.
+7) Pause/stop/soft‑EMC:
+   - `pause` zatrzymuje ruch, `resume` wznawia; `soft_emc` blokuje sterowanie,
+     a po zwolnieniu sterowanie wraca do normalnego trybu.
+8) ForkHeight:
+   - zadanie fork zmienia wysokość w czasie (rampowanie), `forkStop` zatrzymuje ruch wideł.
+9) Push:
+   - konfiguracja push włącza cykliczne raportowanie, a interwał nie schodzi poniżej
+     `PUSH_MIN_INTERVAL_MS` ani nie przekracza `PUSH_MAX_INTERVAL_MS`.
+10) Reconnect:
+   - po rozłączeniu klienta lock wygasa i manual control jest czyszczony.
+
 Map loading:
 - `GRAPH_PATH` can point to a `graph.json` (generated) or a raw `.smap` file.
 - `MAP_NAME` resolves to `<MAPS_DIR>/<MAP_NAME>.smap` (unless it already ends with `.smap`).

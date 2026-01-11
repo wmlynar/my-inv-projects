@@ -4,6 +4,7 @@ const os = require('os');
 const path = require('path');
 const { spawn, execFileSync } = require('child_process');
 const { encodeFrame, responseApi, RbkParser, API } = require('../../../packages/robokit-lib/rbk');
+const { findFreeRobokitPorts } = require('./helpers/ports');
 
 const HOST = '127.0.0.1';
 const BASE_REF = process.env.SIM_COMPARE_BASE_REF || '';
@@ -114,19 +115,6 @@ function stopChild(child) {
     });
     child.kill('SIGINT');
   });
-}
-
-function makePorts(base) {
-  return {
-    ROBOD: base,
-    STATE: base + 4,
-    CTRL: base + 5,
-    TASK: base + 6,
-    CONFIG: base + 7,
-    KERNEL: base + 8,
-    OTHER: base + 10,
-    PUSH: base + 11
-  };
 }
 
 function createTempMap() {
@@ -342,17 +330,19 @@ async function run() {
       targetId: 'D'
     };
 
+    const basePortsOn = (await findFreeRobokitPorts({ host: HOST })).ports;
+    const currentPortsOn = (await findFreeRobokitPorts({ host: HOST })).ports;
     const baseTrace = await runScenario({
       label: 'baseline_on_graph',
       appDir: baseAppDir,
-      ports: makePorts(38000 + Math.floor(Math.random() * 5000)),
+      ports: basePortsOn,
       mapPath,
       ...scenario
     });
     const newTrace = await runScenario({
       label: 'current_on_graph',
       appDir: currentAppDir,
-      ports: makePorts(45000 + Math.floor(Math.random() * 5000)),
+      ports: currentPortsOn,
       mapPath,
       ...scenario
     });
@@ -362,17 +352,19 @@ async function run() {
     assert(baseTrace.finalStation === newTrace.finalStation, 'final station mismatch on-graph');
     assert(baseTrace.teleportDetected === newTrace.teleportDetected, 'teleport mismatch on-graph');
 
+    const basePortsOff = (await findFreeRobokitPorts({ host: HOST })).ports;
+    const currentPortsOff = (await findFreeRobokitPorts({ host: HOST })).ports;
     const baseOff = await runScenario({
       label: 'baseline_off_graph',
       appDir: baseAppDir,
-      ports: makePorts(40000 + Math.floor(Math.random() * 5000)),
+      ports: basePortsOff,
       mapPath,
       ...scenarioOff
     });
     const newOff = await runScenario({
       label: 'current_off_graph',
       appDir: currentAppDir,
-      ports: makePorts(47000 + Math.floor(Math.random() * 5000)),
+      ports: currentPortsOff,
       mapPath,
       ...scenarioOff
     });

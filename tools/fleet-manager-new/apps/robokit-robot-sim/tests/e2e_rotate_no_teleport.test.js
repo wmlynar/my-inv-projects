@@ -4,6 +4,7 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const { encodeFrame, responseApi, RbkParser, API } = require('../../../packages/robokit-lib/rbk');
+const { findFreeRobokitPorts } = require('./helpers/ports');
 
 const HOST = '127.0.0.1';
 const ROTATE_SPEED_RAD_S = 1.0;
@@ -138,22 +139,8 @@ function createTempMap() {
   return mapPath;
 }
 
-function makePorts(base) {
-  return {
-    ROBOD: base,
-    STATE: base + 4,
-    CTRL: base + 5,
-    TASK: base + 6,
-    CONFIG: base + 7,
-    KERNEL: base + 8,
-    OTHER: base + 10,
-    PUSH: base + 11
-  };
-}
-
 async function run() {
-  const basePort = 36000 + Math.floor(Math.random() * 20000);
-  const ports = makePorts(basePort);
+  const { ports } = await findFreeRobokitPorts({ host: HOST });
   const mapPath = createTempMap();
   const appDir = path.resolve(__dirname, '..');
   const child = spawn(process.execPath, [path.join(appDir, 'start.js')], {

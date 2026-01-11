@@ -2,19 +2,10 @@ const net = require('net');
 const path = require('path');
 const { spawn } = require('child_process');
 const { encodeFrame, responseApi, RbkParser, API } = require('../../../packages/robokit-lib/rbk');
+const { findFreeRobokitPorts } = require('./helpers/ports');
 
 const HOST = '127.0.0.1';
-const BASE_PORT = 52000 + Math.floor(Math.random() * 10000);
-const PORTS = {
-  ROBOD: BASE_PORT,
-  STATE: BASE_PORT + 4,
-  CTRL: BASE_PORT + 5,
-  TASK: BASE_PORT + 6,
-  CONFIG: BASE_PORT + 7,
-  KERNEL: BASE_PORT + 8,
-  OTHER: BASE_PORT + 10,
-  PUSH: BASE_PORT + 11
-};
+let PORTS = null;
 
 const KEEPALIVE_INTERVAL_MS = 100;
 const STATE_INTERVAL_MS = 200;
@@ -120,6 +111,8 @@ function stopChild(child) {
 
 async function run() {
   const appDir = path.resolve(__dirname, '..');
+  const allocation = await findFreeRobokitPorts({ host: HOST });
+  PORTS = allocation.ports;
   const child = spawn(process.execPath, [path.join(appDir, 'start.js')], {
     cwd: appDir,
     env: {

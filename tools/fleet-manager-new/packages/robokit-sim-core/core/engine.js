@@ -346,13 +346,18 @@ function createSimulationEngine(deps) {
           maxDelta
         });
       }
-      heading = clamped;
-      deltaHeading = normalizeAngle(heading - prevAngle);
+      const angular = dt > 0 ? normalizeAngle(clamped - prevAngle) / dt : 0;
+      sp.progress = prevProgress;
+      setPose({ x: robot.pose.x, y: robot.pose.y, angle: clamped }, 'script_rotate');
+      updateVelocity(0, 0, angular, 0, angular);
+      robot.taskStatus = 2;
+      return true;
     }
-    const vx = Math.cos(pathHeading) * speed;
-    const vy = Math.sin(pathHeading) * speed;
     const w = dt > 0 ? deltaHeading / dt : 0;
-    const steer = speed > 0 ? Math.atan(WHEELBASE_M * (w / speed)) : 0;
+    const speedSigned = sp.backMode ? -speed : speed;
+    const vx = speedSigned;
+    const vy = 0;
+    const steer = speedSigned !== 0 ? Math.atan(WHEELBASE_M * (w / speedSigned)) : 0;
     setPose({ x: pose.x, y: pose.y, angle: heading }, 'script_move');
     updateVelocity(vx, vy, w, steer, 0);
     applyOdo(distanceMoved);
@@ -518,10 +523,11 @@ function createSimulationEngine(deps) {
         }
       }
       const speed = dt > 0 ? distanceMoved / dt : 0;
-      const vx = Math.cos(pathHeading) * speed;
-      const vy = Math.sin(pathHeading) * speed;
       const w = dt > 0 ? deltaHeading / dt : 0;
-      const steer = speed > 0 ? Math.atan(WHEELBASE_M * (w / speed)) : 0;
+      const speedSigned = segment.driveBackward ? -speed : speed;
+      const vx = speedSigned;
+      const vy = 0;
+      const steer = speedSigned !== 0 ? Math.atan(WHEELBASE_M * (w / speedSigned)) : 0;
       setPose({ x: pose.x, y: pose.y, angle: heading }, 'segment_move');
       updateVelocity(vx, vy, w, steer, 0);
       applyOdo(distanceMoved);

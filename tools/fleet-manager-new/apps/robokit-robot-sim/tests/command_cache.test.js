@@ -1,6 +1,6 @@
 const assert = require('assert');
 
-const { CommandCache } = require('../protocol/command_cache');
+const { CommandCache } = require('../../../packages/robokit-protocol/protocol/command_cache');
 
 function run() {
   let now = 1000;

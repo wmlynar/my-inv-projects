@@ -1,6 +1,6 @@
 const assert = require('assert');
 
-const { ClientRegistry } = require('../transport/client_registry');
+const { ClientRegistry } = require('../app/client_registry');
 
 function createContext(ip, port) {
   return {

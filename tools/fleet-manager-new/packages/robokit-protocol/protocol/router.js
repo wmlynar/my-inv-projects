@@ -1,4 +1,5 @@
-const { API } = require('../../../packages/robokit-lib/rbk');
+const { API } = require('../../robokit-lib/rbk');
+const { buildErrorResponse: defaultErrorResponse, controlLockedError, wrongPortError } = require('./errors');
 
 function createApiRouter(options = {}) {
   const {
@@ -81,6 +82,7 @@ function createApiRouter(options = {}) {
   } = handlers;
 
   const idempotentSet = idempotentApis instanceof Set ? idempotentApis : new Set();
+  const errorResponse = typeof buildErrorResponse === 'function' ? buildErrorResponse : defaultErrorResponse;
 
   function extractCommandId(payload) {
     if (!payload || typeof payload !== 'object') {
@@ -115,7 +117,7 @@ function createApiRouter(options = {}) {
 
   function handle(apiNo, payload, allowedApis, context = {}) {
     if (allowedApis && !allowedApis.has(apiNo)) {
-      return buildErrorResponse('wrong_port', 60000);
+      return wrongPortError();
     }
     const clientId = context.clientId || context.remoteAddress || null;
     const commandId = extractCommandId(payload);
@@ -140,7 +142,7 @@ function createApiRouter(options = {}) {
               port: context.remotePort || null
             });
           }
-          return buildErrorResponse('control_locked', 60001);
+          return controlLockedError();
         }
         controlArbiter.touch(clientId);
       }
@@ -271,7 +273,7 @@ function createApiRouter(options = {}) {
         responsePayload = buildMapPropertiesResponse();
         break;
       case API.robot_status_file_req:
-        responsePayload = buildFileResponse(payload) || buildErrorResponse('missing_file', 404);
+        responsePayload = buildFileResponse(payload) || errorResponse('missing_file', 404);
         break;
       case API.robot_config_req_4005:
         responsePayload = handleConfigLock(payload || {}, context);
@@ -449,13 +451,13 @@ function createApiRouter(options = {}) {
         responsePayload = handleForkStop();
         break;
       case API.robot_config_push_req:
-        responsePayload = buildErrorResponse('wrong_port', 60000);
+        responsePayload = wrongPortError();
         break;
       case API.robot_push_config_req:
-        responsePayload = buildErrorResponse('wrong_port', 60000);
+        responsePayload = wrongPortError();
         break;
       default:
-        responsePayload = buildErrorResponse(`unsupported_api_${apiNo}`);
+        responsePayload = errorResponse(`unsupported_api_${apiNo}`);
     }
 
     if (commandCache && commandId && idempotentSet.has(apiNo) && shouldCache(responsePayload)) {

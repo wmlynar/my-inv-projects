@@ -2,10 +2,12 @@
 
 Structure mirrors the proxy to keep tooling consistent:
 
-- `configs/` – JSON5 presets/environment defaults for simulated robots (ports, paths, strategy).
-- `cli/` – command-line helpers for launching the simulator, generating scenarios, and inspecting state.
-- `docs/` – runbooks, architecture notes, API mappings, and integration checklists.
-- `lib/` – shared helpers, parsers, and adapters for RoboKit framing or RDS APIs.
-- `tests/` – fixtures, unit tests, and scenario runners to keep simulator behavior deterministic.
+- `apps/robokit-robot-sim/app/` – runtime adapter (TCP/HTTP/push) and bootstrapping.
+- `packages/robokit-sim-core/core/` – simulation engine + state/task/obstacle logic.
+- `packages/robokit-protocol/protocol/` – Robokit framing and API mapping.
+- `packages/robokit-sim-profiles/profiles/` – JSON5 profiles and defaults loaded via `SIM_PROFILE`.
+- `apps/robokit-robot-sim/data/` – static payload fixtures and file lists.
+- `apps/robokit-robot-sim/docs/` – runbooks, architecture notes, API mappings, and integration checklists.
+- `apps/robokit-robot-sim/tests/` – fixtures, unit tests, and scenario runners to keep simulator behavior deterministic.
 
-Add more folders/files as we reverse-engineer replayed sessions or extend the simulator with richer behaviors.
+Keep new files grouped by layer so the adapter stays thin and reusable.

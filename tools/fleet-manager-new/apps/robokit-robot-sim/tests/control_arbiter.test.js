@@ -1,6 +1,6 @@
 const assert = require('assert');
 
-const { ControlArbiter } = require('../core/control_arbiter');
+const { ControlArbiter } = require('../app/control_arbiter');
 
 function createRobot() {
   return {

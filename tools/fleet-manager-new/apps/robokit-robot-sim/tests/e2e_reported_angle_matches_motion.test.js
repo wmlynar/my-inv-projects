@@ -5,13 +5,11 @@ const { encodeFrame, responseApi, RbkParser, API } = require('../../../packages/
 const { findFreeRobokitPorts } = require('./helpers/ports');
 
 const HOST = '127.0.0.1';
-let PORTS = null;
-
-const KEEPALIVE_INTERVAL_MS = 100;
-const STATE_INTERVAL_MS = 100;
-const RUN_AFTER_TARGET_MS = 3500;
-const ROTATE_SPEED_RAD_S = 1.2;
-const ANGLE_MARGIN_RAD = 0.05;
+const ROTATE_COMMAND_W = 3.0;
+const ROTATE_DURATION_MS = 600;
+const MOVE_VX = 1.0;
+const MOVE_DURATION_MS = 300;
+const ANGLE_DIFF_LIMIT = 0.35;
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -120,29 +118,28 @@ function stopChild(child) {
 async function run() {
   const appDir = path.resolve(__dirname, '..');
   const allocation = await findFreeRobokitPorts({ host: HOST });
-  PORTS = allocation.ports;
+  const ports = allocation.ports;
   const child = spawn(process.execPath, [path.join(appDir, 'start.js')], {
     cwd: appDir,
     env: {
       ...process.env,
       BIND_HOST: HOST,
-      ROBOD_PORT: String(PORTS.ROBOD),
-      STATE_PORT: String(PORTS.STATE),
-      CTRL_PORT: String(PORTS.CTRL),
-      TASK_PORT: String(PORTS.TASK),
-      CONFIG_PORT: String(PORTS.CONFIG),
-      KERNEL_PORT: String(PORTS.KERNEL),
-      OTHER_PORT: String(PORTS.OTHER),
-      PUSH_PORT: String(PORTS.PUSH),
+      ROBOD_PORT: String(ports.ROBOD),
+      STATE_PORT: String(ports.STATE),
+      CTRL_PORT: String(ports.CTRL),
+      TASK_PORT: String(ports.TASK),
+      CONFIG_PORT: String(ports.CONFIG),
+      KERNEL_PORT: String(ports.KERNEL),
+      OTHER_PORT: String(ports.OTHER),
+      PUSH_PORT: String(ports.PUSH),
       HTTP_PORTS: '0',
       ADMIN_HTTP_PORT: '0',
       EVENT_LOG_STDOUT: 'false',
       EVENT_LOG_PATH: '',
       TICK_MS: '100',
-      ROTATE_SPEED_RAD_S: String(ROTATE_SPEED_RAD_S),
+      ROTATE_SPEED_RAD_S: '1.0',
       START_NODE_ID: 'CP12',
-      REQUIRE_LOCK_FOR_CONTROL: 'true',
-      REQUIRE_LOCK_FOR_NAV: 'true'
+      REQUIRE_LOCK_FOR_CONTROL: 'true'
     },
     stdio: ['ignore', 'pipe', 'pipe']
   });
@@ -155,97 +152,71 @@ async function run() {
     logs += chunk.toString();
   });
 
-  let stop = false;
-  let loopError = null;
-  let lastAngle = null;
-  let lastTs = null;
-  let samples = 0;
-
-  const keepaliveLoop = async () => {
-    while (!stop) {
-      try {
-        const res = await request(PORTS.CTRL, API.robot_control_motion_req, {
-          vx: 0,
-          vy: 0,
-          w: 0,
-          steer: 0,
-          real_steer: 0
-        });
-        if (!res || res.ret_code !== 0) {
-          throw new Error(`control_motion rejected: ${res ? res.ret_code : 'no_response'}`);
-        }
-      } catch (err) {
-        loopError = loopError || err;
-        stop = true;
-        break;
-      }
-      await wait(KEEPALIVE_INTERVAL_MS);
-    }
-  };
-
-  const stateLoop = async () => {
-    while (!stop) {
-      try {
-        const res = await request(PORTS.STATE, API.robot_status_loc_req, {});
-        if (res && Number.isFinite(res.angle)) {
-          const now = Date.now();
-          if (lastAngle !== null && lastTs !== null) {
-            const dtSec = Math.max(0.05, (now - lastTs) / 1000);
-            const delta = Math.abs(normalizeAngle(res.angle - lastAngle));
-            const allowed = ROTATE_SPEED_RAD_S * dtSec + ANGLE_MARGIN_RAD;
-            if (delta > allowed) {
-              throw new Error(
-                `angle jump detected: ${delta.toFixed(3)}rad in ${dtSec.toFixed(2)}s` +
-                  ` (prev=${lastAngle.toFixed(3)} next=${res.angle.toFixed(3)} allowed=${allowed.toFixed(3)})`
-              );
-            }
-          }
-          lastAngle = res.angle;
-          lastTs = now;
-          samples += 1;
-        }
-      } catch (err) {
-        loopError = loopError || err;
-        stop = true;
-        break;
-      }
-      await wait(STATE_INTERVAL_MS);
-    }
-  };
-
   try {
-    await waitForPort(PORTS.CONFIG, HOST);
-    await waitForPort(PORTS.STATE, HOST);
-    await waitForPort(PORTS.CTRL, HOST);
-    await waitForPort(PORTS.TASK, HOST);
+    await waitForPort(ports.CONFIG, HOST);
+    await waitForPort(ports.STATE, HOST);
+    await waitForPort(ports.CTRL, HOST);
 
-    const lockRes = await request(PORTS.CONFIG, API.robot_config_req_4005, { nick_name: 'e2e' });
+    const lockRes = await request(ports.CONFIG, API.robot_config_req_4005, { nick_name: 'e2e' });
     assert(lockRes && lockRes.ret_code === 0, 'lock failed');
 
-    const keepalivePromise = keepaliveLoop();
-    const statePromise = stateLoop();
+    await request(ports.CTRL, API.robot_control_motion_req, {
+      vx: 0,
+      vy: 0,
+      w: 0,
+      steer: 0,
+      real_steer: 0
+    });
+    await wait(150);
 
-    await wait(300);
-    const goRes = await request(PORTS.TASK, API.robot_task_gotarget_req, { id: 'LM7' });
-    assert(goRes && goRes.ret_code === 0, 'goTarget failed');
+    const initialLoc = await request(ports.STATE, API.robot_status_loc_req, {});
+    assert(initialLoc && Number.isFinite(initialLoc.angle), 'missing initial angle');
 
-    await wait(RUN_AFTER_TARGET_MS);
-    stop = true;
-    await Promise.all([keepalivePromise, statePromise]);
+    const rotateRes = await request(ports.CTRL, API.robot_control_motion_req, {
+      vx: 0,
+      vy: 0,
+      w: ROTATE_COMMAND_W,
+      steer: 0,
+      real_steer: 0
+    });
+    assert(rotateRes && rotateRes.ret_code === 0, 'rotation command rejected');
+    await wait(ROTATE_DURATION_MS);
 
-    if (loopError) {
-      throw loopError;
-    }
-    assert(samples > 5, 'insufficient state samples');
-    console.log('e2e_heading_jump.test ok');
+    const afterRotateLoc = await request(ports.STATE, API.robot_status_loc_req, {});
+    assert(afterRotateLoc && Number.isFinite(afterRotateLoc.angle), 'missing angle after rotation');
+    const rotateDelta = Math.abs(normalizeAngle(afterRotateLoc.angle - initialLoc.angle));
+    assert(rotateDelta > 0.3, 'rotation did not advance enough');
+
+    const moveRes = await request(ports.CTRL, API.robot_control_motion_req, {
+      vx: MOVE_VX,
+      vy: 0,
+      w: 0,
+      steer: 0,
+      real_steer: 0
+    });
+    assert(moveRes && moveRes.ret_code === 0, 'forward command rejected');
+    await wait(MOVE_DURATION_MS);
+
+    const afterMoveLoc = await request(ports.STATE, API.robot_status_loc_req, {});
+    assert(afterMoveLoc && Number.isFinite(afterMoveLoc.angle), 'missing angle after move');
+
+    const dx = afterMoveLoc.x - afterRotateLoc.x;
+    const dy = afterMoveLoc.y - afterRotateLoc.y;
+    const dist = Math.hypot(dx, dy);
+    assert(dist > 0.05, 'insufficient movement for heading check');
+
+    const motionAngle = Math.atan2(dy, dx);
+    const diff = Math.abs(normalizeAngle(motionAngle - afterMoveLoc.angle));
+    assert(diff <= ANGLE_DIFF_LIMIT, `reported angle lagging behind motion (diff=${diff.toFixed(2)}rad)`);
+
+    console.log('e2e_reported_angle_matches_motion.test ok');
   } catch (err) {
-    console.error('e2e_heading_jump.test failed');
+    console.error('e2e_reported_angle_matches_motion.test failed');
     if (logs) {
       console.error(logs.trim());
     }
     throw err;
   } finally {
-    stop = true;
     await stopChild(child);
   }
 }

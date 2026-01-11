@@ -4,6 +4,7 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const { encodeFrame, responseApi, RbkParser, API } = require('../../../packages/robokit-lib/rbk');
+const { findFreeRobokitPorts } = require('./helpers/ports');
 
 const HOST = '127.0.0.1';
 const MAX_SPEED_M_S = 1.8;
@@ -118,6 +119,26 @@ function distancePointToSegment(px, py, ax, ay, bx, by) {
   return Math.hypot(px - cx, py - cy);
 }
 
+function normalizeAngle(value) {
+  let angle = value;
+  while (angle > Math.PI) angle -= Math.PI * 2;
+  while (angle < -Math.PI) angle += Math.PI * 2;
+  return angle;
+}
+
+function closestPointOnSegment(px, py, ax, ay, bx, by) {
+  const abx = bx - ax;
+  const aby = by - ay;
+  const abLenSq = abx * abx + aby * aby;
+  if (abLenSq <= 0) {
+    return { x: ax, y: ay, dist: Math.hypot(px - ax, py - ay) };
+  }
+  const t = Math.max(0, Math.min(((px - ax) * abx + (py - ay) * aby) / abLenSq, 1));
+  const cx = ax + abx * t;
+  const cy = ay + aby * t;
+  return { x: cx, y: cy, dist: Math.hypot(px - cx, py - cy) };
+}
+
 function distanceToGraph(pos, edges) {
   let best = Number.POSITIVE_INFINITY;
   for (const edge of edges) {
@@ -130,6 +151,23 @@ function distanceToGraph(pos, edges) {
     }
   }
   return best;
+}
+
+function headingToGraph(pos, edges) {
+  let best = null;
+  for (const edge of edges) {
+    const start = edge.startPos || edge.start_pos;
+    const end = edge.endPos || edge.end_pos;
+    if (!start || !end) continue;
+    const projection = closestPointOnSegment(pos.x, pos.y, start.x, start.y, end.x, end.y);
+    if (!best || projection.dist < best.dist) {
+      best = projection;
+    }
+  }
+  if (!best) {
+    return pos.angle || 0;
+  }
+  return Math.atan2(best.y - pos.y, best.x - pos.x);
 }
 
 function createTempMap() {
@@ -161,22 +199,8 @@ function createTempMap() {
   return { mapPath, edges: map.edges };
 }
 
-function makePorts(base) {
-  return {
-    ROBOD: base,
-    STATE: base + 4,
-    CTRL: base + 5,
-    TASK: base + 6,
-    CONFIG: base + 7,
-    KERNEL: base + 8,
-    OTHER: base + 10,
-    PUSH: base + 11
-  };
-}
-
 async function run() {
-  const basePort = 39000 + Math.floor(Math.random() * 20000);
-  const ports = makePorts(basePort);
+  const { ports } = await findFreeRobokitPorts({ host: HOST });
   const { mapPath, edges } = createTempMap();
   const appDir = path.resolve(__dirname, '..');
   const child = spawn(process.execPath, [path.join(appDir, 'start.js')], {
@@ -234,23 +258,49 @@ async function run() {
     const initialLoc = await request(ports.STATE, API.robot_status_loc_req, {});
     const initialDist = distanceToGraph(initialLoc, edges);
     assert(initialDist > 5, `expected to start far from graph (dist=${initialDist.toFixed(2)})`);
+    const initialHeadingToGraph = headingToGraph(initialLoc, edges);
+    const needsRotation = Math.abs(normalizeAngle(initialHeadingToGraph - initialLoc.angle)) > 0.2;
 
     let prevLoc = initialLoc;
     let prevTime = Date.now();
     let prevSpeed = 0;
     let prevDist = initialDist;
+    let sawRotateInPlace = !needsRotation;
+    let movementStarted = false;
     let sawApproach = false;
     let reachedGraph = false;
+    let samplesAfterGraph = 0;
     const deadline = Date.now() + 20000;
 
     while (Date.now() < deadline) {
-      await wait(250);
+      await wait(150);
       const loc = await request(ports.STATE, API.robot_status_loc_req, {});
       const speed = await request(ports.STATE, API.robot_status_speed_req, {});
 
       const now = Date.now();
       const dtSec = Math.max(0.05, (now - prevTime) / 1000);
-      const stepDist = Math.hypot(loc.x - prevLoc.x, loc.y - prevLoc.y);
+      const dx = loc.x - prevLoc.x;
+      const dy = loc.y - prevLoc.y;
+      const stepDist = Math.hypot(dx, dy);
+      const angleDelta = Math.abs(normalizeAngle(loc.angle - prevLoc.angle));
+      if (stepDist < 0.01 && angleDelta > 0.03) {
+        sawRotateInPlace = true;
+      }
+      if (stepDist > 0.02) {
+        const motionAngle = Math.atan2(dy, dx);
+        const motionDiff = Math.abs(normalizeAngle(motionAngle - loc.angle));
+        assert(motionDiff <= 0.35, `sideways motion detected (diff=${motionDiff.toFixed(2)}rad)`);
+        if (!movementStarted) {
+          movementStarted = true;
+          if (needsRotation && !sawRotateInPlace) {
+            const headingNow = headingToGraph(loc, edges);
+            const alignDiff = Math.abs(normalizeAngle(headingNow - loc.angle));
+            if (alignDiff > 0.25) {
+              throw new Error('started moving before rotate in place');
+            }
+          }
+        }
+      }
       const vx = speed && Number.isFinite(speed.vx) ? speed.vx : 0;
       const vy = speed && Number.isFinite(speed.vy) ? speed.vy : 0;
       const speedMag = Math.hypot(vx, vy);
@@ -268,7 +318,15 @@ async function run() {
       }
       if (dist <= 0.5) {
         reachedGraph = true;
-        break;
+        if (!samplesAfterGraph) {
+          samplesAfterGraph = 6;
+        }
+      }
+      if (samplesAfterGraph) {
+        samplesAfterGraph -= 1;
+        if (samplesAfterGraph <= 0) {
+          break;
+        }
       }
 
       prevLoc = loc;

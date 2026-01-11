@@ -3,20 +3,11 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { encodeFrame, responseApi, RbkParser, API } = require('../../../packages/robokit-lib/rbk');
 const { loadMapGraphLight } = require('../../../packages/robokit-lib/map_loader');
+const { findFreeRobokitPorts } = require('./helpers/ports');
 
 const HOST = '127.0.0.1';
-const BASE_PORT = 41000 + Math.floor(Math.random() * 15000);
 const MAX_SPEED_M_S = 1.2;
-const PORTS = {
-  ROBOD: BASE_PORT,
-  STATE: BASE_PORT + 4,
-  CTRL: BASE_PORT + 5,
-  TASK: BASE_PORT + 6,
-  CONFIG: BASE_PORT + 7,
-  KERNEL: BASE_PORT + 8,
-  OTHER: BASE_PORT + 10,
-  PUSH: BASE_PORT + 11
-};
+let PORTS = null;
 const MAP_PATH = path.resolve(__dirname, '..', '..', '..', 'maps', 'sanden_smalll.smap');
 
 function wait(ms) {
@@ -128,6 +119,8 @@ async function run() {
   const targetPos = targetNode.pos;
 
   const appDir = path.resolve(__dirname, '..');
+  const allocation = await findFreeRobokitPorts({ host: HOST });
+  PORTS = allocation.ports;
   const child = spawn(process.execPath, [path.join(appDir, 'start.js')], {
     cwd: appDir,
     env: {

@@ -6,6 +6,6 @@
   "main": "server.js",
   "scripts": {
     "start": "node start.js",
-    "test": "node tests/control_arbiter.test.js && node tests/client_registry.test.js && node tests/command_cache.test.js && node tests/e2e_manual_control.test.js && node tests/e2e_roboshop_keepalive.test.js && node tests/e2e_heading_jump.test.js && node tests/e2e_roboshop_replay.test.js && node tests/e2e_path_navigation.test.js && node tests/e2e_ap9_to_lm6_no_teleport.test.js && node tests/e2e_cp12_to_lm8_no_teleport.test.js && node tests/e2e_fork_and_lock.test.js && node tests/e2e_approach_and_station.test.js && node tests/e2e_approach_no_teleport.test.js && node tests/e2e_compare_baseline.test.js"
+    "test": "node tests/control_arbiter.test.js && node tests/client_registry.test.js && node tests/command_cache.test.js && node tests/e2e_manual_control.test.js && node tests/e2e_reported_angle_matches_motion.test.js && node tests/e2e_roboshop_keepalive.test.js && node tests/e2e_heading_jump.test.js && node tests/e2e_roboshop_replay.test.js && node tests/e2e_path_navigation.test.js && node tests/e2e_ap9_to_lm6_no_teleport.test.js && node tests/e2e_cp12_to_lm8_no_teleport.test.js && node tests/e2e_fork_and_lock.test.js && node tests/e2e_approach_and_station.test.js && node tests/e2e_approach_no_teleport.test.js && node tests/e2e_compare_baseline.test.js"
   }
 }

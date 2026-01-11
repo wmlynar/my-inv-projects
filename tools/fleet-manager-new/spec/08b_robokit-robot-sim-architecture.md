@@ -126,12 +126,19 @@ schemas/
 
 **apps/robokit-robot-sim/**
 - `app/server.js` — bootstrap + wiring modulu.
+- `app/runtime_servers.js` — TCP/HTTP/push serwery + tick loop.
+- `app/runtime_helpers.js` — helpery nawigacji, pose, diagnostyka.
+- `app/runtime_handlers.js` — handler-y TCP/HTTP + mutacje stanu.
 - `app/adapter_tcp.js` — TCP adapter (robokit).
 - `app/adapter_http.js` — HTTP stub (RDS, oddzielny kanal).
-- `app/views.js` — status + push (jedna warstwa widoku).
+- `app/views.js` — status builder (odpowiedzi robota).
+- `app/views_files.js` — file/device/map odpowiedzi.
+- `app/views_push.js` — push payload builder.
 - `app/client_registry.js` — sesje klientow.
 - `app/control_arbiter.js` — lock + preempcja.
 - `app/push_manager.js` — per-connection push + limity.
+- `app/map_context.js` — mapy + file roots.
+- `app/robot_defaults.js` — statyczne payloady (features/version/hardware).
 - `app/config.js` — env + walidacja.
 
 ### 4.0.3 Rozklad rozmiaru plikow (MUST)
