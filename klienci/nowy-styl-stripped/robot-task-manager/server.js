@@ -1650,7 +1650,7 @@ function startHttpServer() {
   });
 
   app.listen(HTTP_PORT, () => {
-    logInfo(`HTTP API listening on http:
+    logInfo(`HTTP API listening on http://localhost:${HTTP_PORT}`);
   });
 }
 

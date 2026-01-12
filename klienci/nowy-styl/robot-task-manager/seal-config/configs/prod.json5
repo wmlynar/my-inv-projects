@@ -11,12 +11,12 @@
     "enableAutoKillOnEmptySource": true,
     "enableDispatchableSnapshotFix": true,
     "respectDispatchableInAutostart": false,
-    "debugLog": true,
+    "debugLog": false,
     "enableOldTaskCleanup": false
   },
   "intervals": {
     "loopMs": 500,
-    "emptyTimeoutMs": 1000,
+    "emptyTimeoutMs": 10000,
     "dispatchableFixDelayMs": 1000
   },
   "tempBlock": {

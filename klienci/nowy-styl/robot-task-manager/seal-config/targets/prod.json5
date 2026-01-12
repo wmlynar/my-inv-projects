@@ -5,8 +5,8 @@
   user: "admin",
   sshPort: 22,
   serviceScope: "system",
-  installDir: "/home/admin/apps/robot-task-manager",
-  serviceName: "robot-task-manager",
+  installDir: "/srv/taskman2",
+  serviceName: "taskman2",
   packager: "auto",
   config: "prod",
   readiness: {
