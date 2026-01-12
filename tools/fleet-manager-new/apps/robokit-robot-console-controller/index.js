@@ -21,6 +21,7 @@ const DEFAULTS = {
   pollMs: 200,
   sendMs: 100,
   holdMs: 300,
+  initialHoldMs: 500,
   comboHoldMs: 700,
   keyLogPath: '',
   forkStep: 0.1
@@ -90,6 +91,10 @@ function parseArgs(argv) {
         args.holdMs = Number.parseInt(next, 10);
         i += 1;
         break;
+      case '--initial-hold-ms':
+        args.initialHoldMs = Number.parseInt(next, 10);
+        i += 1;
+        break;
       case '--combo-hold-ms':
         args.comboHoldMs = Number.parseInt(next, 10);
         i += 1;
@@ -114,7 +119,7 @@ function printHelp() {
     'Usage:',
     '  node index.js [--host 127.0.0.1] [--state-port 19204] [--task-port 19206] [--ctrl-port 19205] [--other-port 19210] [--config-port 19207]',
     '  --nick-name console-controller --speed 0.6 --omega-deg 15 --poll-ms 200 --send-ms 100',
-    '  --hold-ms 300 --combo-hold-ms 700 --key-log ./key-events.jsonl',
+    '  --hold-ms 300 --initial-hold-ms 500 --combo-hold-ms 700 --key-log ./key-events.jsonl',
     '',
     'Keys:',
     '  Enter: soft EMC on',
@@ -180,6 +185,7 @@ options.omegaDeg = clampNonNegative(options.omegaDeg);
 options.pollMs = Number.isFinite(options.pollMs) ? options.pollMs : DEFAULTS.pollMs;
 options.sendMs = Number.isFinite(options.sendMs) ? options.sendMs : DEFAULTS.sendMs;
 options.holdMs = Number.isFinite(options.holdMs) ? options.holdMs : DEFAULTS.holdMs;
+options.initialHoldMs = Number.isFinite(options.initialHoldMs) ? options.initialHoldMs : DEFAULTS.initialHoldMs;
 options.comboHoldMs = Number.isFinite(options.comboHoldMs) ? options.comboHoldMs : DEFAULTS.comboHoldMs;
 options.keyLogPath = options.keyLogPath || '';
 options.taskPort = Number.isFinite(options.taskPort) ? options.taskPort : DEFAULTS.taskPort;
@@ -198,12 +204,15 @@ const state = {
   softEmc: false,
   lock: { locked: false, nickName: '' }
 };
+let lastMotionSent = { vx: 0, w: 0 };
 
 const command = {
   linearDir: 0,
   angularDir: 0,
   linearAt: 0,
   angularAt: 0,
+  linearHoldUntil: 0,
+  angularHoldUntil: 0,
   linearCmd: 0,
   angularCmd: 0
 };
@@ -384,13 +393,20 @@ function handleFrame(client, msg) {
 }
 
 function sendMotion(vx, w) {
+  const safeVx = Number.isFinite(vx) ? vx : 0;
+  const safeW = Number.isFinite(w) ? w : 0;
+  const wasZero = !lastMotionSent.vx && !lastMotionSent.w;
+  const isZero = !safeVx && !safeW;
+  if (isZero && wasZero) {
+    return;
+  }
+  // Match Roboshop: omit steer fields for manual control.
   clients.ctrl.send(API.robot_control_motion_req, {
-    vx,
+    vx: safeVx,
     vy: 0,
-    w,
-    steer: 0,
-    real_steer: 0
+    w: safeW
   });
+  lastMotionSent = { vx: safeVx, w: safeW };
 }
 
 function sendSoftEmc(status) {
@@ -419,7 +435,12 @@ function sendStop() {
 }
 
 function sendForkHeight(height) {
-  clients.other.send(API.robot_other_forkheight_req, { height });
+  // Match Roboshop: send ForkHeight via task goTarget (3051).
+  clients.task.send(API.robot_task_gotarget_req, {
+    operation: 'ForkHeight',
+    skill_name: 'Action',
+    end_height: height
+  });
 }
 
 function sendGoTarget(id) {
@@ -449,12 +470,18 @@ function releaseControl() {
 
 function applyLinear(direction) {
   const now = Date.now();
+  if (command.linearDir !== direction) {
+    command.linearHoldUntil = now + options.initialHoldMs;
+  }
   command.linearDir = direction;
   command.linearAt = now;
 }
 
 function applyAngular(direction) {
   const now = Date.now();
+  if (command.angularDir !== direction) {
+    command.angularHoldUntil = now + options.initialHoldMs;
+  }
   command.angularDir = direction;
   command.angularAt = now;
 }
@@ -502,11 +529,12 @@ function exitTargetPrompt() {
   inputBuffer = '';
 }
 
-function axisActive(dir, lastAt, windowMs, now) {
+function axisActive(dir, lastAt, windowMs, now, holdUntil) {
   if (!dir) {
     return 0;
   }
-  if (now - lastAt <= windowMs) {
+  const effectiveUntil = Math.max(lastAt + windowMs, holdUntil || 0);
+  if (now <= effectiveUntil) {
     return dir;
   }
   return 0;
@@ -669,21 +697,25 @@ function tickCommand() {
     && now - command.angularAt <= options.comboHoldMs;
   const linearWindow = comboActive ? options.comboHoldMs : options.holdMs;
   const angularWindow = comboActive ? options.comboHoldMs : options.holdMs;
-  const linearDir = axisActive(command.linearDir, command.linearAt, linearWindow, now);
-  const angularDir = axisActive(command.angularDir, command.angularAt, angularWindow, now);
+  const linearDir = axisActive(command.linearDir, command.linearAt, linearWindow, now, command.linearHoldUntil);
+  const angularDir = axisActive(command.angularDir, command.angularAt, angularWindow, now, command.angularHoldUntil);
   command.linearCmd = linearDir * targetSpeed;
   command.angularCmd = angularDir * targetOmegaDeg * RAD_PER_DEG;
   if (!comboActive && now - command.linearAt > options.holdMs) {
     command.linearDir = 0;
+    command.linearHoldUntil = 0;
   }
   if (!comboActive && now - command.angularAt > options.holdMs) {
     command.angularDir = 0;
+    command.angularHoldUntil = 0;
   }
   if (!linearDir && now - command.linearAt > options.comboHoldMs) {
     command.linearDir = 0;
+    command.linearHoldUntil = 0;
   }
   if (!angularDir && now - command.angularAt > options.comboHoldMs) {
     command.angularDir = 0;
+    command.angularHoldUntil = 0;
   }
   sendMotion(command.linearCmd, command.angularCmd);
 }
