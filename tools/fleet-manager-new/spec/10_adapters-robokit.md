@@ -93,6 +93,23 @@ Rekomendowany kształt zdekodowanej ramki:
 }
 ```
 
+## 3.1 Telemetry sources and precedence (MUST)
+Gateway and tools MUST treat the following telemetry sources as canonical:
+- `robot_status_task_req` (1020) — **preferred** source for `task_status`.
+- `robot_status_all1_req` (1100) / `all2` (1101) / `all3` (1102) / `all4` (1103) —
+  fallback when 1020 is not available.
+
+Normalization rules (MUST):
+- If 1020 is present in the last `telemetryWindowMs`, use its `task_status`.
+- Else use the newest `task_status` from `all*` payloads.
+- If neither is present, expose `task_status = null` (unknown) and do not synthesize it.
+- If sources disagree within the same tick, prefer 1020 and log a diagnostic event.
+
+## 3.2 Pass-through for goTarget payloads (MUST)
+When encoding `goTarget` (3051), adapters MUST forward all payload fields as-is,
+including `operation`, `start_height`, `end_height`, `recognize`, `recfile`,
+`rec_height`, and any additional fields. Adapters MUST NOT drop unknown fields.
+
 ## 4. Uwagi o semantyce Fleet Managera (MUST)
 - Target na robota w MVP to **LocationMark** lub **ActionPoint**:
   - RoboCore `goTarget` (3051): `{"id":"<LM/AP>"}`
@@ -100,6 +117,47 @@ Rekomendowany kształt zdekodowanej ramki:
   - RoboCore `forkHeight` (6040): `{"height": <meters>}`
   - lub `goTarget` (3051) z `operation: "ForkHeight"` i `end_height`
   - `forkStop` (6041) bez payload.
+- Złożone akcje (ruch + widły) mogą być wysyłane jako pojedynczy `goTarget`
+  z `operation = ForkLoad | ForkUnload` i parametrami akcji:
+  - `id`: LM/AP (target ruchu) — jedyne pole zależne od miejsca,
+  - `start_height`, `end_height` (metry),
+  - `recognize` (bool),
+  - `recfile` (profil palety), `rec_height` (wysokość rozpoznania).
+
+Przykład (ForkLoad z rozpoznawaniem):
+```json5
+{
+  "id": "LM1",
+  "operation": "ForkLoad",
+  "recfile": "plt/p0001.plt",
+  "recognize": true,
+  "rec_height": 0.1,
+  "start_height": 0.1,
+  "end_height": 0.5
+}
+```
+
+Przykład (ForkLoad bez rozpoznawania):
+```json5
+{
+  "id": "LM1",
+  "operation": "ForkLoad",
+  "recfile": "plt/p0001.plt",
+  "recognize": false,
+  "start_height": 0.1,
+  "end_height": 0.5
+}
+```
+
+Przykład (ForkUnload):
+```json5
+{
+  "operation": "ForkUnload",
+  "recognize": false,
+  "start_height": 0.5,
+  "end_height": 0.1
+}
+```
 
 ## 5. Odzyskane z istniejącego repo: aktualny `packages/robokit-lib/rbk.js` (INFORMATIVE)
 Poniższy fragment pokazuje bieżącą definicję framingu i listę API w istniejącym kodzie (dla zgodności implementacyjnej):
@@ -418,7 +476,7 @@ to `3051` jest używane do operacji wideł, np.:
 
 **Mapping (Core→Gateway→Robot):**
 - Core `CommandRecord.type = "goTarget"`
-- Core SHOULD wypełniać `payload.targetExternalId` (z `Node.externalRefs`).
+- Core SHOULD wypełniać `payload.targetExternalId` z `Node.externalRefs.stationId` (jeśli dostępne).
 - Gateway wysyła `robot_task_gotarget_req` z `{id}` gdzie:
   - `id = payload.targetExternalId` jeśli podane,
   - w przeciwnym wypadku `id = payload.targetRef.nodeId`.

@@ -27,16 +27,23 @@ node /home/inovatica/seal/monorepo/tools/fleet-manager-new/apps/robokit-robot-co
 - Arrow Down: backward
 - Arrow Left: rotate left
 - Arrow Right: rotate right
-- S: prompt for a goTarget (LM/AP id)
+- C: prompt for a goTarget (LM/AP id)
+- V: prompt for a multi station (two points)
+- S: pause task
+- D: resume task
+- F: stop task
+- X: pallet pickup (ForkLoad)
 - Space: stop robot and stop forks
 - Plus/Minus: increase/decrease target speed by 0.1 m/s
 - Q/W: decrease/increase target angular speed by 5 deg/s
 - A/Z: fork up/down by 0.1 m
 - P: seize control (lock)
 - L: release control (unlock)
+- U: auto-seize control on
+- I: auto-seize control off
 - Ctrl+C: quit
 
-While the goTarget prompt is open, Enter sends the request and Esc cancels.
+While the goTarget prompt is open, Enter sends the request and Esc cancels. For multi station, the prompt collects two station IDs.
 
 Notes:
 - Hold arrow keys to keep motion active; holding two arrows blends linear + angular motion.
@@ -56,5 +63,6 @@ Notes:
 - `--poll-ms` status polling interval (default: 200)
 - `--send-ms` motion send interval (default: 100)
 - `--hold-ms` key hold window in ms (default: 300)
+- `--initial-hold-ms` first key hold window in ms (default: 500)
 - `--combo-hold-ms` diagonal hold window in ms (default: 700)
 - `--key-log` path to append key events as JSONL (default: off)

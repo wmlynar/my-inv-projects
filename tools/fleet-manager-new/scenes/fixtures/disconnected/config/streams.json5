@@ -1,0 +1,28 @@
+{
+  streams: [
+    {
+      streamId: "stream_pick_drop",
+      enabled: true,
+      kind: "pickDrop",
+      params: {
+        pickGroup: "PICK",
+        dropGroup: "DROP",
+        pickParams: {
+          operation: "ForkLoad",
+          start_height: 0.1,
+          end_height: 0.5,
+          recognize: false,
+          recfile: "plt/default.plt"
+        },
+        dropParams: {
+          operation: "ForkUnload",
+          start_height: 0.5,
+          end_height: 0.1,
+          recognize: false
+        },
+        commitDistanceM: 1.5
+      },
+      meta: { label: "Pick -> Drop (no path)" }
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  worksites: [
+    {
+      worksiteId: "PARK_01",
+      worksiteType: "park",
+      entryNodeId: "LM0",
+      actionNodeId: null,
+      groupId: "PARK",
+      meta: { label: "Park 01" }
+    },
+    {
+      worksiteId: "PICK_01",
+      worksiteType: "pickup",
+      entryNodeId: "LM1",
+      actionNodeId: "AP1",
+      groupId: "PICK",
+      meta: { label: "Pick 01" }
+    },
+    {
+      worksiteId: "DROP_01",
+      worksiteType: "dropoff",
+      entryNodeId: "LM2",
+      actionNodeId: "AP2",
+      groupId: "DROP",
+      meta: { label: "Drop 01" }
+    }
+  ],
+  initialState: [
+    { worksiteId: "PARK_01", occupancy: "empty", occupancyReasonCode: "NONE" },
+    { worksiteId: "PICK_01", occupancy: "filled", occupancyReasonCode: "NONE" },
+    { worksiteId: "DROP_01", occupancy: "empty", occupancyReasonCode: "NONE" }
+  ]
+}

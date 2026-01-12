@@ -415,17 +415,24 @@ co jest „bezpiecznym” defaultem.
 # Fleet Manager 2.0 — Kontrakty: scena i mapa (v0.7)
 
 ## 1. Scene Package (format paczki sceny)
+**Note:** Kanoniczny layout i lifecycle scen jest zdefiniowany w `spec/07_scene-management.md`
+i ten dokument ma pierwszenstwo. Na tym etapie **NIE ma kompatybilnosci wstecznej** —
+legacy paczki i migracje **nie sa wspierane**.
 
 ### 1.1 Struktura katalogu (MUST)
-Scene Package **MUST** być katalogiem (w storage Core) lub zipem (na wejściu importu) o strukturze:
+Scene Package **MUST** być katalogiem (w storage Core) lub zipem (na wejściu importu)
+o strukturze z **rootem paczki jako katalog sceny** (bez dodatkowego poziomu `scene/`):
 
 ```text
-scene/
+<scene-root>/
   manifest.json5              # MUST
   map/
     raw.smap                  # SHOULD (oryginał)
     graph.json                # MUST (kanoniczny SceneGraph; wynik Map Compiler)
     assets/                   # MAY (np. obrazki tła dla UI)
+  compiled/
+    compiledMap.json          # MUST (kanon dla algorytmu/runtime)
+    meta.json                 # SHOULD (statystyki, hashe)
   config/
     robots.json5              # MAY (konfiguracja robotów)
     worksites.json5           # MUST (dla MVP)
@@ -454,7 +461,8 @@ Import zip **MUST**:
   // checksums (SHOULD)
   checksums: {
     "map/graph.json": "sha256:...",
-    "map/raw.smap": "sha256:...",
+    "compiled/compiledMap.json": "sha256:...",
+    "map/raw.smap": "sha256:...", // jeśli istnieje
   },
 
   // opis opcjonalny
@@ -493,23 +501,19 @@ Geometria pochodzi z `.smap`, a w `graph.json` jest reprezentowana m.in. jako `D
 ### 3.1 Wspólne pola Node (MUST)
 ```json5
 {
-  id: "LM1",                  // unikalny w obrębie graph
-  className: "LocationMark",  // enum: LocationMark | ActionPoint | ParkPoint | ChargePoint | ...
+  nodeId: "LM1",                 // unikalny w obrębie graph
+  nodeType: "locationMark",      // locationMark | actionPoint | parkPoint | chargePoint | ...
+  className: "LocationMark",     // zachowane z mapy (case-sensitive)
   pos: { xM: 31.733, yM: 4.833 },
+  angleRad: 0.0,                 // jeśli znany
   props: { /* external/raw */ },
 
   // mapowanie identyfikatorów do systemów zewnętrznych (MAY, ale RECOMMENDED)
-  // Uwaga: NodeId w FM nie musi być tym samym, co „station id” na robocie.
+  // Uwaga: nodeId w FM nie musi być tym samym co „station id” robota.
   externalRefs: {
     // identyfikator używany w protokole RoboCore/Robokit dla goTarget(id)
-    robocoreStationId: "LM1",
-
-    // jeśli kiedykolwiek będą rozjazdy Robokit vs RoboCore
-    robokitStationId: "LM1",
-  },
-
-  // dane po kompilacji (MAY, ale w praktyce SHOULD jeśli algorytm tego potrzebuje)
-  propsCompiled: { /* derived */ },
+    stationId: "LM1",
+  }
 }
 ```
 
@@ -527,26 +531,36 @@ Geometria pochodzi z `.smap`, a w `graph.json` jest reprezentowana m.in. jako `D
 ### 4.1 Edge (MUST)
 ```json5
 {
-  id: "LM1-LM2",
+  edgeId: "LM1-LM2",
   className: "DegenerateBezier",   // klasa geometrii (z mapy)
-  start: "LM1",
-  end: "LM2",
+  startNodeId: "LM1",
+  endNodeId: "LM2",
 
   // geometria w metrach (MUST)
-  startPos: { xM: 31.733, yM: 4.833 },
-  endPos: { xM: 31.650, yM: 4.833 },
-  controlPos1: { xM: 31.700, yM: 4.850 },
-  controlPos2: { xM: 31.680, yM: 4.820 },
+  p0: { xM: 31.733, yM: 4.833 },
+  p1: { xM: 31.700, yM: 4.850 },
+  p2: { xM: 31.680, yM: 4.820 },
+  p3: { xM: 31.650, yM: 4.833 },
 
-  props: { /* external/raw */ },
-
-  // derived (Fix z recenzji: to musi być w kontrakcie, a nie tylko opisem)
-  propsCompiled: {
-    direction: "bidirectional",       // bidirectional | forwardOnly | backwardOnly
-    corridorWidthM: 4.0,              // width > 0 => miejsce potencjalnego omijania (future)
-    lengthM: 12.34,                   // arc length po krzywej (MUST wyliczone przez Map Compiler)
-    forbiddenRotAngleRad: 1.5707963,  // jeśli występuje w mapie
+  // props zachowane z mapy źródłowej (Roboshop)
+  props: {
+    direction: 1,      // kierunek z mapy źródłowej (np. 1/-1/0)
+    movestyle: 0,      // typ ruchu z mapy źródłowej (np. 0/1)
+    width: 2.0         // szerokość korytarza z mapy źródłowej
   },
+
+  // długość krzywej wyliczona przez Map Compiler
+  lengthM: 12.34,
+
+  // opcjonalne próbki geometrii (ułatwiają render i symulację)
+  samples: {
+    arcLengthM: 12.34,
+    stepM: 0.2,
+    points: [
+      { xM: 31.733, yM: 4.833 },
+      { xM: 31.700, yM: 4.845 }
+    ]
+  }
 }
 ```
 
@@ -555,15 +569,15 @@ Geometria pochodzi z `.smap`, a w `graph.json` jest reprezentowana m.in. jako `D
 - Map Compiler MUST wyliczyć `lengthM` deterministycznie.
 - Algorytm MUST mieć dostęp do geometrii (wprost) i/lub do próbkowanej polilinii (jeśli dostarczona).
 
-**Rekomendacja (SHOULD):** Map Compiler dodaje pole `geometrySamples`:
+**Rekomendacja (SHOULD):** Map Compiler dodaje pole `samples`:
 ```json5
 {
-  geometrySamples: {
+  samples: {
+    arcLengthM: 12.34,
     stepM: 0.2,
     points: [
       { xM: 31.733, yM: 4.833 },
-      { xM: 31.700, yM: 4.845 },
-      // ...
+      { xM: 31.700, yM: 4.845 }
     ]
   }
 }
@@ -615,7 +629,7 @@ Kontrakt jest kompatybilny wstecz: `lines[]` i `areas[]` są opcjonalne.
   - Core MUST wykonać pełną procedurę Scene Activation (patrz `07_*` i `08_*`),
   - Core MUST anulować/holdować aktywne komendy i zaktualizować locki.
 
-Szczegóły: `07_semantyka_runtime_i_maszyny_stanow.md` + `14_map_compiler.md`.
+Szczegóły: `01_fleet-core.md`, `07_scene-management.md`, `09_map-compiler.md`.
 
 ---
 
@@ -716,7 +730,7 @@ Szczegóły: `07_semantyka_runtime_i_maszyny_stanow.md` + `14_map_compiler.md`.
 ```json5
 {
   worksiteId: "PICK_01",
-  occupancy: "occupied",  // unknown | empty | occupied | reserved
+  occupancy: "filled",    // unknown | empty | filled | reserved (legacy "occupied" => "filled")
   occupancyReasonCode: "NONE",
   updatedTsMs: 1736160000123,
 }
@@ -724,24 +738,106 @@ Szczegóły: `07_semantyka_runtime_i_maszyny_stanow.md` + `14_map_compiler.md`.
 
 ## 3. Streams
 
-### 3.1 StreamDefinition
+### 3.1 StreamDefinition (kanoniczny, MVP)
+Stream jest **kanonicznym** opisem procesu transportu. W MVP obslugujemy tylko
+`kind = "pickDrop"`. Format jest scisly: **nie** akceptujemy nieznanych pol.
+
 ```json5
 {
-  streamId: "stream_inbound_01",
-  enabled: true,
-
-  // MVP: pickDrop loop
-  kind: "pickDrop",
+  streamId: "stream_inbound_01",     // MUST, unikalny w scenie
+  enabled: true,                     // MUST
+  kind: "pickDrop",                  // MUST (MVP)
 
   params: {
-    pickGroup: ["PICK_01", "PICK_02"],
-    dropGroup: ["DROP_01", "DROP_02"],
-    commitDistanceM: 8.0, // kiedy wybór drop staje się ostateczny (jeśli używane)
+    pickGroup: ["PICK_01", "PICK_02"],          // MUST (lista worksites typu pickup)
+    dropGroup: ["DROP_01", "DROP_02"],          // MUST (lista worksites typu dropoff, z kolejnoscia)
+    commitDistanceM: 8.0,                       // MAY (patrz 3.1.4)
+
+    pickPolicy: {                               // MAY (patrz 3.1.2)
+      selection: "filled_only"
+    },
+    dropPolicy: {                               // MAY (patrz 3.1.3)
+      selection: "first_available_in_order",
+      accessRule: "preceding_empty"
+    },
+
+    pickParams: {                               // MAY (patrz 3.1.5)
+      operation: "ForkLoad",
+      start_height: 0.1,
+      end_height: 1.2,
+      recognize: false
+    },
+    dropParams: {                               // MAY (patrz 3.1.5)
+      operation: "ForkUnload",
+      start_height: 1.2,
+      end_height: 0.1,
+      recognize: false
+    }
   },
 
-  meta: { label: "Inbound" },
+  meta: { label: "Inbound" },        // MAY
 }
 ```
+
+### 3.1.1 Wymagania ogolne (MUST)
+- `streamId` jest unikalne w scenie.
+- `kind` w MVP MUSI byc `pickDrop`.
+- `params.pickGroup` i `params.dropGroup` MUSZA byc:
+  - listą **worksiteId**, albo
+  - nazwą grupy (string), która jest rozwiazywana do listy podczas importu/aktywacji.
+- Lista `pickGroup` musi zawierac tylko worksites typu `pickup`.
+- Lista `dropGroup` musi zawierac tylko worksites typu `dropoff`.
+- Nie dopuszczamy nieznanych pol (strict validation).
+
+### 3.1.2 Pick policy (MVP)
+`params.pickPolicy.selection` (MAY, domyslnie `filled_only`):
+- `filled_only` — wybieraj tylko worksites z `occupancy=filled`.
+- `any` — wybieraj dowolny worksite z `pickGroup` (MVP: tylko do testow).
+
+### 3.1.3 Drop policy (MVP)
+`params.dropPolicy.selection` (MAY, domyslnie `first_available_in_order`):
+- `first_available_in_order` — pierwszy `empty` z `dropGroup` (w tej kolejnosci).
+
+`params.dropPolicy.accessRule` (MAY, domyslnie `preceding_empty`):
+- `preceding_empty` — drop N jest mozliwy tylko, gdy wszystkie poprzednie
+  dropy w `dropGroup` sa `empty`.
+- `none` — brak dodatkowej reguly (MVP: tylko do testow).
+
+### 3.1.4 Commit distance (MVP)
+`params.commitDistanceM` (MAY):
+- gdy robot jest blizej niz `commitDistanceM` od wybranego drop,
+  wybor drop staje sie **ostateczny** i nie moze byc zmieniony.
+- jesli brak, domyslnie `8.0`.
+
+### 3.1.5 Pick/Drop params (MVP, komendy do robota)
+`pickParams` i `dropParams` sa przekazywane jako payload do `goTarget`.
+W MVP obowiazuja pola:
+- `operation` (MUST): `ForkLoad` dla pick, `ForkUnload` dla drop.
+- `start_height` (MUST): wysokosc startowa (m).
+- `end_height` (MUST): wysokosc docelowa (m).
+- `recognize` (MUST): `true|false`.
+- `recfile` (MUST gdy `recognize=true`): profil palety na robocie.
+- `rec_height` (MAY): wysokosc rozpoznania (m).
+
+Domyslne wartosci (MVP fallback):
+- `pickParams`: `start_height=0.1`, `end_height=1.2`, `recognize=false`
+- `dropParams`: `start_height=1.2`, `end_height=0.1`, `recognize=false`
+
+### 3.1.6 Walidacja strumieni (MUST)
+Core **MUST** odrzucic stream, gdy:
+- `pickGroup` lub `dropGroup` jest puste.
+- w listach sa nieistniejace `worksiteId`.
+- `pickGroup`/`dropGroup` jest nazwa grupy, ktora nie istnieje.
+- `pickGroup` zawiera worksite nie typu `pickup`.
+- `dropGroup` zawiera worksite nie typu `dropoff`.
+- `pickGroup` i `dropGroup` maja wspolne elementy (ten sam worksite).
+- brakuje wymaganych pol `pickParams`/`dropParams` przy wysylaniu komend.
+
+### 3.1.7 Normalizacja (MUST)
+- `config/streams.json5` w paczce sceny jest **kanoniczny** i moze zawierac
+  listy `worksiteId` **lub** nazwy grup (string).
+- Jesli uzywane sa nazwy grup, Core MUST rozwiązać je deterministycznie
+  podczas importu/aktywacji (z zachowaniem kolejnosci).
 
 ## 4. Tasks
 
@@ -770,30 +866,52 @@ Ale kontrakt przewiduje kroki, bo są potrzebne do akcji typu widły.
 
   // opcjonalny plan kroków (Task Runner), czytelny dla człowieka i AI
   steps: [
-    { stepId: "step_01", type: "moveTo", targetRef: { nodeId: "LM10" } },
-    { stepId: "step_02", type: "moveTo", targetRef: { nodeId: "AP_PICK_01" } },
-    { stepId: "step_03", type: "forkHeight", params: { toHeightM: 1.20 } },
-    { stepId: "step_04", type: "moveTo", targetRef: { nodeId: "AP_DROP_01" } },
-    { stepId: "step_05", type: "forkHeight", params: { toHeightM: 0.10 } },
+    {
+      stepId: "step_01",
+      type: "goTarget",
+      targetRef: { nodeId: "AP_PICK_01" },
+      params: { operation: "ForkLoad", start_height: 0.1, end_height: 1.2 }
+    },
+    {
+      stepId: "step_02",
+      type: "goTarget",
+      targetRef: { nodeId: "AP_DROP_01" },
+      params: { operation: "ForkUnload", start_height: 1.2, end_height: 0.1 }
+    }
   ],
 
   meta: { label: "PICK_01 -> DROP_01" },
 }
 ```
 
+**MVP note (spojne z orchestrator):**
+- `steps` sa **opcjonalne**. Core moze tworzyc taski bez krokow.
+- Dla `pickDrop` w MVP komenda do robota to **jedno** `goTarget` z
+  `operation = ForkLoad | ForkUnload` (bez osobnych `forkHeight` krokow).
+- `steps` moga byc generowane tylko do celow UI/debug (syntetyczne), ale nie sa
+  wymagane do wykonania tasku.
+
 ### 4.2 TaskStep
 ```json5
 {
   stepId: "step_03",
-  type: "forkHeight", // moveTo | wait | forkHeight | io | custom
-  targetRef: { nodeId: "AP_PICK_01" }, // dla moveTo; dla forkHeight MAY być null (jeśli akcja bez targetu)
+  type: "goTarget", // goTarget | moveTo | wait | forkHeight | io | custom
+  targetRef: { nodeId: "AP_PICK_01" }, // dla goTarget/moveTo; dla forkHeight MAY być null
 
   params: {
-    // forkHeight
-    fromHeightM: 0.10, // MAY
-    toHeightM: 1.20,   // MUST
-    toleranceM: 0.02,  // SHOULD
-    timeoutMs: 20000,  // SHOULD
+    // goTarget with fork operation (MVP)
+    operation: "ForkLoad", // ForkLoad | ForkUnload | ForkHeight
+    start_height: 0.10,    // MAY
+    end_height: 1.20,      // SHOULD
+    recognize: false,      // MAY
+    recfile: "plt/p0001.plt", // MAY
+    rec_height: 0.10,      // MAY
+
+    // forkHeight (legacy/manual)
+    fromHeightM: 0.10,     // MAY
+    toHeightM: 1.20,       // MUST
+    toleranceM: 0.02,      // SHOULD
+    timeoutMs: 20000,      // SHOULD
   },
 
   status: "pending", // pending | running | completed | failed | canceled
@@ -801,7 +919,9 @@ Ale kontrakt przewiduje kroki, bo są potrzebne do akcji typu widły.
 }
 ```
 
-**Zasada:** jeżeli `type = forkHeight`, a `targetRef` jest null, Core wykonuje akcję „tu i teraz”.
+**Zasada:** jeżeli `type = goTarget`, Core wysyła pojedynczą komendę `goTarget` z `operation`
+(ForkLoad/ForkUnload) i traktuje to jako krok złożony.  
+Jeżeli `type = forkHeight`, a `targetRef` jest null, Core wykonuje akcję „tu i teraz”.
 Jeżeli `targetRef` wskazuje ActionPoint, Core SHOULD najpierw doprowadzić robota do AP, a potem wykonać akcję.
 
 ## 5. CommandRecord (komendy do robota)
@@ -812,7 +932,7 @@ CommandRecord jest audytowalny i idempotentny end-to-end (Core→Gateway→Robot
 - Robot protocol ACK (Gateway↔Robot) = `acknowledged` (jeśli wspierane),
 - DONE = `completed` (decyduje Core na podstawie telemetrii/polityki).
 
-Szczegóły semantyki: `07_semantyka_runtime_i_maszyny_stanow.md`.
+Szczegóły semantyki: `01_fleet-core.md` + `16_orchestrator-behavior.md`.
 
 ```json5
 {
@@ -833,7 +953,15 @@ Szczegóły semantyki: `07_semantyka_runtime_i_maszyny_stanow.md`.
     // (Core SHOULD wypełniać na podstawie SceneGraph.nodes[].externalRefs)
     targetExternalId: "LM2",
 
-    // forkHeight
+    // goTarget with fork operation
+    operation: "ForkLoad",
+    start_height: 0.10,
+    end_height: 1.20,
+    recognize: false,
+    recfile: "plt/p0001.plt",
+    rec_height: 0.10,
+
+    // forkHeight (legacy/manual)
     toHeightM: 1.20,
   },
 
@@ -872,7 +1000,7 @@ Szczegóły semantyki: `07_semantyka_runtime_i_maszyny_stanow.md`.
   completion: {
     status: "pending", // pending | completed | failed | canceled
     completedTsMs: null,
-    detectedBy: "NONE", // NONE | navigationArrived | forkHeightReached | stopPolicy | manual
+    detectedBy: "NONE", // NONE | navigationArrived | forkOperationCompleted | forkHeightReached | stopPolicy | manual
     details: { /* opcjonalnie: tolerancje, dystans, itp. */ },
   },
 
@@ -1003,7 +1131,7 @@ W systemie istnieją 3 różne rzeczy, które łatwo pomylić. Spec rozdziela je
 
 3) **DONE / completion (w domenie Core)**  
    - oznacza: Core uznał komendę za zakończoną na podstawie znormalizowanego statusu robota
-     (np. `navigation.state=arrived`, `fork.height reached`) i/lub policy.
+     (np. `navigation.state=arrived`, zakończenie akcji wideł) i/lub policy.
    - to jest warunek stanu `completed`.
    - Gateway MUST NOT markować „completed” — gateway tylko transport + protokół + telemetria.
 
@@ -1061,7 +1189,8 @@ running -> canceled
 
 - Task Runner w Core MUST wykonywać kroki sekwencyjnie.
 - Dla kroków `moveTo` Core dispatchuje `goTarget` (rolling target) aż do `arrived`.
-- Dla kroków `forkHeight` Core wysyła `forkHeight` (6040) i czeka na osiągnięcie `targetHeightM` (z tolerancją).
+- Dla pick/drop w MVP Core używa `goTarget` z `operation=ForkLoad/ForkUnload` (bez osobnych `forkHeight`).
+- `forkHeight` pozostaje jako tryb legacy/manual (poza MVP0).
 
 ---
 
@@ -1071,7 +1200,7 @@ running -> canceled
 - Core MUST emit `robotProviderSwitched` i zapisać snapshot.
 - Gateway MUST umieć przełączyć providera per-robot bez restartu procesu.
 
-Szczegóły w `11_symulacja_i_hot_switch_providerow.md`.
+Szczegóły w `02_fleet-gateway.md` + ta sekcja.
 
 ---
 
@@ -1164,7 +1293,7 @@ Wymagania:
 - Core/Gateway MUST udostępniać status: `currentMap`/`mapName` jeśli dostępne (push/all status).
 
 ## 6. Failure modes (MUST)
-- Jeśli provider offline: Core MUST hold (nie wysyłać goTarget/forkHeight).
+- Jeśli provider offline: Core MUST hold (nie wysyłać goTarget ani innych komend ruchu).
 - Jeśli provider zmienia się: Core MUST hold do czasu online.
 
 ---
@@ -1399,7 +1528,7 @@ Wymaganie: piramida testów + możliwość uruchamiania równolegle + golden ass
 
 2) **Integration tests**
    - Core ↔ Gateway (HTTP) z mock providerem,
-   - Gateway ↔ robokit-robot-sim (TCP) dla goTarget/forkHeight/stop/push,
+   - Gateway ↔ robokit-robot-sim (TCP) dla goTarget (w tym ForkLoad/ForkUnload) / stop / push,
    - Core ↔ Algorithm Service (HTTP) (stub albo real),
    - robot-controller ↔ robokit-robot-sim (TCP) (smoke protokołu),
    - proxy-recorder ↔ robokit-robot-sim / robot-controller (MITM, capture → archive).
@@ -1464,7 +1593,7 @@ Tabela mapuje kluczowe MUST na testy/regresje (referencje do plików spec):
 | ControlLease + seize control | `07_*`, `08_*`, `03_*` | core: lease SM | core+api | Scen. 2 |
 | Scene activation atomowo | `07_*`, `08_*` | core: activation SM | core+gateway stop best-effort | Scen. 6 |
 | goTarget = LM/AP | `10_*`, `05_*`, `09_*` | gateway: encoder | gateway+sim | Scen. 3 |
-| forkHeight (6040) | `10_*`, `05_*`, `09_*` | core: step runner | gateway+sim | Scen. 4 |
+| ForkLoad/ForkUnload (goTarget) | `10_*`, `05_*`, `09_*` | core: step runner | gateway+sim | Scen. 4 |
 | Provider switch | `11_*`, `07_*`, `08_*`, `09_*` | core: policy | gateway: switch | Scen. 7 |
 | Proxy capture + archive | `15_*`, `16_*`, `19_*` | proxy: manifest | proxy+controller | Scen. 0 |
 
@@ -1501,7 +1630,7 @@ Kroki:
    - listen 29210 → upstream 19210
    - listen 29301 → upstream 19301
 3) Uruchom `robot-controller` tak, aby łączył się do portów proxy (292xx), a nie bezpośrednio do sima.
-4) Wykonaj sekwencję: `goTarget(LM2)` → poczekaj na status → `forkHeight(1.2)` → `stop`.
+4) Wykonaj sekwencję: `goTarget(LM2)` → poczekaj na status → `goTarget(operation=ForkLoad)` → `stop`.
 5) Zatrzymaj proxy-recorder.
 6) Wykonaj `archive` i wygeneruj `manifest.json` z checksumami.
 
@@ -1527,7 +1656,7 @@ Kroki:
 1) `robot-controller connect` do `TASK/CTRL/OTHER` (przez proxy lub direct).
 2) Wyślij `goTarget(id="LM2")` (API 3051).
 3) Odbierz status `robot_status_loc_req` (1004) lub push.
-4) Wyślij `forkHeight(height=1.20)` (API 6040).
+4) Wyślij `goTarget(operation=ForkLoad, end_height=1.20)` (API 3051).
 5) Potwierdź zmianę wysokości wideł w statusie.
 6) Wyślij `stop` (2000).
 
@@ -1568,11 +1697,11 @@ Oczekiwane:
 
 ---
 
-## Scenariusz 4: forkHeight jako ActionPoint
-1) Scena ma `actionPoints.json5` dla `AP_PICK_01` (forkHeight 1.2m).
+## Scenariusz 4: ForkLoad/ForkUnload jako ActionPoint
+1) Scena ma `AP_PICK_01` oraz parametry pick/drop (np. w stream `pickParams/dropParams`).
 2) Task runner doprowadza robota do `AP_PICK_01` (goTarget).
-3) Po arrival Core wysyła `forkHeight(height=1.2)` (6040).
-4) Core czeka aż fork status osiągnie wysokość.
+3) Po arrival Core wysyła akcję wideł jako `goTarget` z `operation=ForkLoad/ForkUnload`.
+4) Core czeka aż fork status osiągnie wysokość (lub status taska zakończy się).
 5) Eventy: `commandUpdated` + `taskUpdated`.
 
 ---
@@ -1597,15 +1726,14 @@ Kroki:
    - `status="assigned"` / `assignedRobotId="RB-01"`.
 3) Core (TaskRunner) generuje lub weryfikuje plan kroków:
    - `moveTo(entryNodeId PICK_01)` → `goTarget`,
-   - `moveTo(actionNodeId PICK_01)` → `goTarget` (jeśli istnieje),
-   - `forkHeight(toHeightM=...)` (zgodnie z ActionPoint),
-   - `moveTo(actionNodeId DROP_01)` → `goTarget`,
-   - `forkHeight(toHeightM=...)` (drop),
-   - (opcjonalnie) `moveTo(park)` jeśli brak kolejnych tasków.
+   - `goTarget(actionNodeId PICK_01, operation=ForkLoad)` (jeśli actionNodeId istnieje),
+   - `goTarget(actionNodeId DROP_01, operation=ForkUnload)`,
+   - (opcjonalnie) `goTarget(park)` jako **idle command** jeśli brak kolejnych tasków (nie jako krok taska).
 4) Core wysyła do Gateway komendy domenowe (`CommandRecord`), a Gateway tłumaczy na:
    - `goTarget` (API 3051) z `LocationMark/ActionPoint`,
-   - `forkHeight` (API 6040).
-5) Core monitoruje arrival + status wideł i kończy task.
+   - `goTarget` z `operation=ForkLoad/ForkUnload` dla pick/drop.
+5) Core monitoruje arrival + status wideł i kończy task **po dropie**.
+6) Jeśli brak kolejnych tasków, Core wysyła `goTarget(park)` jako osobną komendę idle.
 
 Oczekiwane (MUST):
 - `locksRequested=[]` i brak blokad ruchu.
@@ -1687,8 +1815,8 @@ Algorithm Level0 MUST spełniać:
 Algorithm Level0 SHOULD:
 - generować minimalnie zrozumiały plan kroków (TaskStep) typu:
   - `moveTo` → `goTarget` na `LocationMark/ActionPoint`,
-  - `forkHeight` → `forkHeight(heightM)` zgodnie z parametrami ActionPoint / worksite.
-- po wykonaniu taska (pick→drop) wysłać robota na park (`ParkPoint`/`LocationMark`) jeśli brak kolejnych zadań.
+  - `pick/drop` → `goTarget` z `operation=ForkLoad/ForkUnload` i parametrami ze streamu.
+- po wykonaniu taska (pick→drop) wysłać robota na park (`ParkPoint`/`LocationMark`) jeśli brak kolejnych zadań (idle command).
 
 Algorithm Level0 MUST NOT:
 - implementować unikania kolizji między robotami (to jest świadomie poza Level0),
@@ -1703,7 +1831,7 @@ Core MUST umożliwić uruchomienie MVP bez warstwy traffic management:
 - MUST zachować pełny audyt (log na dysk + snapshoty) jak dla docelowego algorytmu.
 
 Gateway MUST:
-- obsługiwać `goTarget` (API 3051) oraz `forkHeight` (6040) jako minimalny zestaw do wykonania „pick→drop” na ActionPoint.
+- obsługiwać `goTarget` (API 3051) z `operation=ForkLoad/ForkUnload` jako minimalny zestaw do wykonania „pick→drop”.
 
 ### 0.5 Kryterium ukończenia Level0 (exit criteria)
 
@@ -1711,7 +1839,7 @@ Level0 uznajemy za gotowe, jeśli dla `robokit-robot-sim` (a docelowo real robot
 - UI tworzy Task (PICK→DROP) lub importuje go ze streamu,
 - algorytm przypisuje task do jedynego aktywnego robota,
 - robot dojeżdża do pick i drop (routing w robocie),
-- wykonywana jest akcja wideł (`forkHeight`) na ActionPoint,
+- wykonywana jest akcja wideł jako `goTarget(operation=ForkLoad/ForkUnload)`,
 - całość jest odtwarzalna z logów (replay) i ma deterministyczne snapshoty stanu.
 
 Następny krok po Level0: włączenie docelowego algorytmu rezerwacji korytarzy (Level1/Level2) i przejście na multi-robot.
@@ -1723,16 +1851,16 @@ Następny krok po Level0: włączenie docelowego algorytmu rezerwacji korytarzy 
 Cel: uruchomić minimalny przepływ zadania `pick→drop` dla **jednego** robota, bez locków i bez globalnej koordynacji.
 
 Plan implementacji (kolejność):
-1) **Źródło mapy i punktów**: wczytanie `sceneGraph.json` (LocationMark/ActionPoint) i walidacja ID używanych w taskach.
+1) **Źródło mapy i punktów**: wczytanie `map/graph.json` (LocationMark/ActionPoint) i walidacja ID używanych w taskach.
 2) **Model stanu robota**: minimalny zestaw pól (`robotId`, `nodeId`, `status`, `forkHeightM`, `lastSeenTsMs`).
-3) **Gateway/Adapter**: komendy `goTarget`, `forkHeight`, `stop` z retry/timeout.
-4) **Task API**: `POST /api/v1/tasks` dla `pickDrop` (from/to + wysokości wideł).
-5) **TaskRunner (Level0)**: kroki `moveTo -> forkHeight -> moveTo -> forkHeight`, wykonywane sekwencyjnie.
+3) **Gateway/Adapter**: komendy `goTarget` (w tym ForkLoad/ForkUnload) i `stop` z retry/timeout.
+4) **Task API**: `POST /api/v1/tasks` dla `pickDrop` (from/to + `pickParams/dropParams`).
+5) **TaskRunner (Level0)**: kroki `goTarget(ForkLoad)` → `goTarget(ForkUnload)`, wykonywane sekwencyjnie.
 6) **Tick loop w Core**: cykliczne sprawdzanie statusu robota i przełączanie kroków/komend; fail-safe przy offline/timeout.
-7) **Telemetria**: ingest statusu (arrival + fork height) i aktualizacja stanu.
+7) **Telemetria**: ingest statusu (arrival + task_status) i aktualizacja stanu.
 8) **Testy**:
    - unit: TaskRunner (kolejność kroków, warunki ukończenia),
-   - integration: Core + mock gateway (goTarget/forkHeight),
+   - integration: Core + mock gateway (goTarget z operation),
    - e2e: scenariusz „pick→drop” na symulatorze.
 
 Kryterium ukończenia MVP0:
@@ -1741,15 +1869,16 @@ Kryterium ukończenia MVP0:
 
 ### MVP0 orchestrator: go-target (zasada dzialania)
 Ta implementacja nazywa sie **go-target orchestrator** (wysyla tylko punkt docelowy i nie bierze pod uwage innych robotow).
-Implementacja MVP0 (go-target orchestrator) jest tickowa i wysyla tylko komendy `goTarget`/`forkHeight`.
+Implementacja MVP0 (go-target orchestrator) jest tickowa i wysyla tylko komendy `goTarget`
+(w tym `operation=ForkLoad/ForkUnload`).
 
 W kazdym ticku:
 - pobiera statusy robotow i oznacza je jako `offline`, gdy status jest zbyt stary; dla `offline/blocked` wysyla `stop`,
 - przypisuje taski `created` do pierwszego wolnego robota (sort po `robotId`), bez kosztow/tras/lockow,
-- buduje kroki taska: `moveTo(from)` → `forkHeight(pick)` → `moveTo(to)` → `forkHeight(drop)` → opcjonalnie `moveTo(park)`,
+- buduje kroki taska: `goTarget(from, ForkLoad)` → `goTarget(to, ForkUnload)`; parking jest poza taskiem.
 - uznaje `moveTo` za zakonczony tylko, gdy `robot.nodeId === target.nodeId` (brak planowania trasy),
-- uznaje `forkHeight` za zakonczony, gdy wysokosc widel jest w tolerancji,
-- wysyla `goTarget`/`forkHeight` dla aktywnego kroku i deduplikuje identyczne komendy (cooldown).
+- uznaje krok fork za zakonczony po zmianie `task_status` (2 -> 4/6),
+- wysyla `goTarget` dla aktywnego kroku i deduplikuje identyczne komendy (cooldown).
 
 Ograniczenia:
 - brak rezerwacji korytarzy i koordynacji multi‑robot,
@@ -1760,12 +1889,12 @@ Referencja kodu: `apps/fleet-core/mvp0/runtime.js`, `apps/fleet-core/mvp0/task_r
 
 #### Kontrakt wejsc/wyjsc (MVP0)
 Wejscia (na tick):
-- lista robotow z minimum: `robotId`, `nodeId`, `status`, `forkHeightM`, `lastSeenTsMs`, `blocked`,
-- lista taskow z minimum: `taskId`, `status`, `fromNodeId`, `toNodeId`, `parkNodeId`, `pickHeightM`, `dropHeightM`,
+- lista robotow z minimum: `robotId`, `nodeId`, `status`, `task_status`, `lastSeenTsMs`, `blocked`,
+- lista taskow z minimum: `taskId`, `status`, `fromNodeId`, `toNodeId`, `parkNodeId`, `pickParams`, `dropParams`,
 - konfiguracja runtime: `statusAgeMaxMs`, `commandCooldownMs`.
 
 Wyjscia:
-- komendy `goTarget` i `forkHeight` dla aktywnego kroku,
+- komendy `goTarget` (w tym `operation=ForkLoad/ForkUnload`) dla aktywnego kroku,
 - `stop` dla robotow offline/blocked,
 - zaktualizowane taski (status + kroki) i roboty (status).
 
@@ -1775,7 +1904,7 @@ Wyjscia:
 
 #### Przejscia stanow (task/step)
 - `moveTo` jest uznany za zakonczony, gdy `robot.nodeId === target.nodeId`,
-- `forkHeight` jest uznany za zakonczony, gdy `abs(robot.forkHeightM - targetHeightM) <= tolerance`,
+- krok fork jest uznany za zakonczony po zmianie `task_status` (2 -> 4/6),
 - task przechodzi `created -> assigned -> running -> completed` (brak obslugi `failed` w MVP0).
 
 #### Fail-safe
@@ -1809,7 +1938,7 @@ Wyjscia:
 - `assignments` (taskId -> robotId + koszt),
 - zaktualizowane `tasks` (statusy i kroki),
 - `reservations` (granted/denied/active),
-- `commands` (goTarget/forkHeight) oraz `holds`/`diagnostics` z powodami.
+- `commands` (goTarget z opcjonalnym `operation`) oraz `holds`/`diagnostics` z powodami.
 
 Flow ticka:
 - buduje graf z compiledMap (kierunkowosc korytarzy z `edge.props.direction`),
@@ -1822,14 +1951,14 @@ Flow ticka:
 - wykrywa aktywny krok (pierwszy nie `completed`):
   - `moveTo` -> jesli robot jest juz na `nodeId`, krok jest `completed`,
   - brak trasy -> `hold` + `diagnostic` (`reason: no_route`),
-  - inny krok -> mapowany na komende (obecnie: `forkHeight`),
+  - inny krok -> mapowany na komende `goTarget` z `operation` (ForkLoad/ForkUnload),
 - buduje rezerwacje czasowe dla kazdego korytarza na trasie (time window z `speedMps`),
 - lock manager przyznaje/odrzuca rezerwacje (single-lane konflikt),
 - jesli lock odrzucony -> `hold` + `diagnostic` (`reason: lock_denied`),
 - w przeciwnym razie emituje komende dla aktywnego kroku.
 
 Ograniczenia:
-- komendy sa nadal tylko `goTarget` do docelowego nodeId i `forkHeight`,
+- komendy sa nadal tylko `goTarget` do docelowego nodeId (z opcjonalnym `operation`),
 - rezerwacje zakladaja, ze robot pojedzie zaplanowana trasa (brak weryfikacji zgodnosci),
 - brak jawnego `stop`, retry/backoff i limitu wysylki komend,
 - brak persystencji stanu i brak replanu przy zmianie mapy.
@@ -1852,7 +1981,7 @@ Referencja kodu: `apps/fleet-core/orchestrator/core.js`, `apps/fleet-core/orches
 
 #### Dedup/ACK/timeout
 - Komendy powinny byc deduplikowane per robot (jak w go-target).
-- Dla `goTarget`/`forkHeight` wymagany timeout ACK i retry (polityka do uzgodnienia).
+- Dla `goTarget` (w tym ForkLoad/ForkUnload) wymagany timeout ACK i retry (polityka do uzgodnienia).
 
 #### Bledy wejsc i reason codes
 - Brak nodeId / bledny task / brak mapy -> task `failed` z reason code (np. `invalid_task`).
@@ -1863,7 +1992,7 @@ Referencja kodu: `apps/fleet-core/orchestrator/core.js`, `apps/fleet-core/orches
 - Dynamiczne przeszkody powinny uniewazniac rezerwacje i wymuszac replan.
 
 #### Semantyka krokow
-- Kroki `moveTo` i `forkHeight` maja jawne statusy i reason codes,
+- Kroki `moveTo` i fork (goTarget z `operation`) maja jawne statusy i reason codes,
 - Jesli task ma zdefiniowane kroki, orchestrator respektuje ich kolejnosc.
 
 #### Mapowanie LM/AP
@@ -1964,7 +2093,7 @@ Core MUST dostarczyć:
 - ControlLease (seize/renew/release + seize control wywłaszcza poprzedniego).
 - Event log + snapshoty **na dysk** (wymóg bezdyskusyjny).
 - Manual commands (MVP): `stop`, `goTarget`.
-- Minimalny Task Runner: `pickDrop` + kroki `moveTo` i `forkHeight`.
+- Minimalny Task Runner: `pickDrop` + kroki `goTarget` z `operation=ForkLoad/ForkUnload`.
 - Integracja z Algorithm Service (HTTP): `POST /algo/v1/decide` (w MVP algo może być stubem, ale port i kontrakt muszą istnieć).
 
 ### 1.2 Fleet Gateway (adapter do robotów)
@@ -1974,8 +2103,8 @@ Gateway MUST dostarczyć:
 - Minimalne komendy TCP:
   - 3051 `goTarget` (rolling target: LM/AP),
   - 2000 `stop`,
-  - 6040 `forkHeight`,
-  - 6041 `forkStop`.
+  - (legacy/manual) 6040 `forkHeight`,
+  - (legacy/manual) 6041 `forkStop`.
 - Minimalny status:
   - 1004 `robot_status_loc_req` (pozycja),
   - (opcjonalnie) push 9300/19301.
@@ -1998,7 +2127,7 @@ UI MUST dostarczyć:
 
 ### 1.5 Map Compiler
 Map Compiler MUST dostarczyć:
-- `.smap` → `graph.json` (nodes, edges, `DegenerateBezier`, `propsCompiled.lengthM`),
+- `.smap` → `graph.json` (nodes, edges, `DegenerateBezier`, `lengthM`, `samples`),
 - deterministyczność + walidacje,
 - golden testy (wejście `.smap` → oczekiwane `graph.json`).
 
@@ -2020,7 +2149,7 @@ Spec: `06_proxy-recorder.md`.
 
 ### 2.2 Robot controller (robot-controller)
 robot-controller MUST:
-- potrafić wykonać smoke test protokołu (goTarget/stop/forkHeight),
+- potrafić wykonać smoke test protokołu (goTarget/stop + goTarget z operation),
 - potrafić działać przeciwko robokit-robot-sim i przeciwko real robot (w bezpiecznych warunkach),
 - logować na dysk sekwencje komend i statusów,
 - umieć replay z capture (co najmniej w trybie offline test harness).
@@ -2069,7 +2198,7 @@ Testy:
 
 ### Faza 2 — Robot-controller (smoke test protokołu)
 Deliverables:
-- connect + goTarget(LM/AP) + stop + forkHeight,
+- connect + goTarget(LM/AP) + stop + goTarget(operation=ForkLoad/ForkUnload),
 - logowanie na dysk (komendy + statusy),
 - replay sekwencji z capture.
 
@@ -2079,7 +2208,7 @@ Testy:
 
 ### Faza 3 — Robokit-sim (albo dopięcie istniejącego)
 Deliverables:
-- minimalne API: status + goTarget + forkHeight + stop + push (zgodnie z `10_*`),
+- minimalne API: status + goTarget (w tym operation) + stop + push (zgodnie z `10_*`),
 - tryb „scripted replay” (odtwarzanie statusów z logów) — bardzo pomocne,
 - (opcjonalnie) prosta fizyka.
 
@@ -2164,7 +2293,7 @@ Integracja z algorithm-service (jeśli aktywny):
 
 ### Faza 6 — Algorithm-service (Level0 → docelowy)
 Deliverables:
-- `/algo/v1/decide` z kontraktami (patrz: `06_port_algorytmu_i_api_algorytmu.md`),
+- `/algo/v1/decide` z kontraktami (patrz: `03_algorithm-service.md`),
 - deterministyczne testy (golden I/O; równoległe w CI),
 - przełączalny tryb algorytmu (konfiguracyjnie, bez negocjacji w runtime):
   - `level0` — **walking skeleton**: pojedynczy robot, brak locków, routing po stronie robota,
@@ -2175,7 +2304,7 @@ W tej podfazie celem jest „działa end-to-end”, nie „jest optymalnie”.
 Deliverables:
 - algorytm przypisuje taski tylko do jedynego aktywnego robota,
 - brak `locksRequested`,
-- task wykonuje się jako sekwencja kroków `moveTo`/`forkHeight` (albo równoważna),
+- task wykonuje się jako sekwencja kroków `goTarget` z `operation=ForkLoad/ForkUnload` (albo równoważna),
 - retry/timeouty kroków są jawne i logowane.
 
 ### Faza 6B — Upgrade do docelowego algorytmu
@@ -2206,7 +2335,7 @@ Deliverables:
 3) **Sensory (laser) — capture**: zebrać i skatalogować sesję z danymi sensorów (post-MVP algorytm), ale dane zbieramy już teraz.  
 4) **Porty i warianty protokołu**: potwierdzić na real robocie (proxy + robot-controller).
 
-Szczegóły RE i checklista: `10_protokol_robocore_robokit.md`.
+Szczegóły RE i checklista: `10_adapters-robokit.md`.
 
 ---
 

@@ -2,7 +2,7 @@
 
 ## 1. Rola w systemie (MUST)
 `map-compiler-visualizer` to narzedzie dev/test do wizualizacji artefaktow
-generowanych przez `map-compiler`: `sceneGraph.json` i `compiledMap.json`.
+generowanych przez `map-compiler`: `map/graph.json` i `compiledMap.json`.
 Pomaga szybko zweryfikowac geometrie, korytarze, komorki i konflikty bez
 uruchamiania calego systemu.
 
@@ -26,7 +26,7 @@ uruchamiania calego systemu.
   modulow (robot/task/packaging); uzywa tylko mapowych modulow + wlasnego `viewer.js`.
 
 #### Responsibilities (MUST)
-- Wczytac `sceneGraph.json` i `compiledMap.json` z katalogu `compiled/`.
+- Wczytac `map/graph.json` i `compiled/compiledMap.json` z katalogu sceny.
 - Narysowac geometrie krawedzi `DegenerateBezier`.
 - Pokazac wezly (LM/AP/CP/PP) oraz korytarze i komorki.
 - Udostepnic inspekcje danych po kliknieciu (edge/node/cell/corridor).
@@ -40,17 +40,17 @@ Related: `09_map-compiler.md`, `99_pozostale.md`.
 ## 3. Wejscia / wyjscia (MUST)
 
 ### 3.1 Wejscia
-- `sceneGraph.json` (kanoniczny graf z geometria)
+- `map/graph.json` (kanoniczny graf z geometria)
 - `compiledMap.json` (korytarze, komorki, swept-shape, conflictSet)
 - Opcjonalnie: `meta.json` (informacyjnie)
 
 #### Rozwiazywanie sciezek (MUST)
-- `--dir` wskazuje katalog, w ktorym MUSZA istniec:
-  - `<dir>/sceneGraph.json`
-  - `<dir>/compiledMap.json`
-  - opcjonalnie: `<dir>/meta.json`
+- `--dir` wskazuje katalog sceny, w ktorym MUSZA istniec:
+  - `<dir>/map/graph.json`
+  - `<dir>/compiled/compiledMap.json`
+  - opcjonalnie: `<dir>/compiled/meta.json`
 - `--compare-dir` (jesli podane) MUST wskazywac katalog z analogicznymi plikami
-  (sceneGraph.json + compiledMap.json), uzywanymi do trybu diff.
+  (`map/graph.json` + `compiled/compiledMap.json`), uzywanymi do trybu diff.
 - CLI MAY przyjac jawne nadpisanie:
   - `--scene-graph <path>`
   - `--compiled-map <path>`
@@ -65,11 +65,11 @@ Related: `09_map-compiler.md`, `99_pozostale.md`.
 
 ```
 map-compiler-visualizer \
-  --dir ./compiled \
-  --scene-graph ./compiled/sceneGraph.json \
-  --compiled-map ./compiled/compiledMap.json \
-  --meta ./compiled/meta.json \
-  --compare-dir ./compiled_prev \
+  --dir ./scene \
+  --scene-graph ./scene/map/graph.json \
+  --compiled-map ./scene/compiled/compiledMap.json \
+  --meta ./scene/compiled/meta.json \
+  --compare-dir ./scene_prev \
   --host 127.0.0.1 \
   --port 8092 \
   --open false \
@@ -77,10 +77,10 @@ map-compiler-visualizer \
 ```
 
 Parametry:
-- `--dir` (MUST) katalog z artefaktami
-- `--scene-graph` (MAY) jawna sciezka do `sceneGraph.json`
-- `--compiled-map` (MAY) jawna sciezka do `compiledMap.json`
-- `--meta` (MAY) jawna sciezka do `meta.json`
+- `--dir` (MUST) katalog sceny z artefaktami
+- `--scene-graph` (MAY) jawna sciezka do `map/graph.json`
+- `--compiled-map` (MAY) jawna sciezka do `compiled/compiledMap.json`
+- `--meta` (MAY) jawna sciezka do `compiled/meta.json`
 - `--compare-dir` (MAY) katalog z drugim zestawem artefaktow do trybu diff
 - `--host` (default `127.0.0.1`)
 - `--port` (default `8092`)
@@ -213,7 +213,7 @@ Minimalny stan:
 ## 11. Warstwy i adaptery (MUST, reuse mock-ui)
 W ramach reuse z `fleet-ui-mock`:
 - `map_layers` rejestruje warstwy: `sceneGraph`, `corridors`, `cells`, `conflicts`, `nodes`.
-- `map_adapters` dostarcza adapter, ktory mapuje `sceneGraph.json` i `compiledMap.json`
+- `map_adapters` dostarcza adapter, ktory mapuje `map/graph.json` i `compiledMap.json`
   na stan mapy (min/max bounds, listy elementow, indeksery).
 - Warstwa `conflicts` musi uzywac `conflictSet` tylko przy aktywnej selekcji,
   aby ograniczyc koszt renderu.

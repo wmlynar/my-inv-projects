@@ -9,11 +9,11 @@ Bridge NIE jest domeną — to narzędzie integracji i migracji.
 Bridge jest opcjonalnym komponentem integracyjnym: pobiera mapy/konfiguracje z Roboshop/RDS i generuje paczki sceny dla Core.
 
 Roboshop Bridge MUST:
-- mapować formaty Roboshop/RDS na kanoniczny Scene Package (`04_*`),
+- mapować formaty Roboshop/RDS na kanoniczny Scene Package (`07_scene-management.md`),
 - dokumentować mapowanie ID (Roboshop ↔ SceneGraph nodeIds/externalRefs),
 - umożliwiać import scen do Fleet Core (HTTP lub przez export paczki).
 
-Related: `13_*`, `14_*`.
+Related: `07_scene-management.md`, `09_map-compiler.md`, `14_map-compiler-visualizer.md`.
 
 ## 3. Interfejsy i przepływy
 - Roboshop/RDS (HTTP) → Bridge
@@ -21,7 +21,7 @@ Related: `13_*`, `14_*`.
 - Bridge wysyła paczkę sceny do Core: `POST /api/v1/scenes/import` + `POST /api/v1/scenes/{sceneId}/activate`
 
 ## 4. Kontrakty sceny (kanoniczne)
-Scene Package i SceneGraph: patrz `99_pozostale.md` → „Kontrakty: scena i mapa”.
+Scene Package i SceneGraph: patrz `07_scene-management.md` (kanon).
 
 ---
 
@@ -33,7 +33,7 @@ W architekturze Fleet Managera Roboshop Bridge jest osobnym komponentem (czyteln
 
 ## 1. Rola Roboshop Bridge (MUST)
 - Bridge MUST pobierać/odbierać mapę i konfiguracje z Roboshop.
-- Bridge MUST transformować je do Scene Package (manifest + raw.smap + config/*.json5).
+- Bridge MUST transformować je do Scene Package (manifest.json5 + map/raw.smap + map/graph.json + config/*.json5).
 - Bridge MUST wywołać import sceny do Fleet Core.
 
 ## 2. Interfejsy
@@ -47,7 +47,7 @@ Future:
 ## 3. Wymagania dot. konwersji (MUST)
 - Oryginalna mapa może mieć inne jednostki — Bridge/Map Compiler MUST skonwertować do metrów.
 - Wszelkie identyfikatory LM/AP MUST zostać zachowane (spójne z robotem).
-- Nieznane pola z Roboshop MUST być zachowane w `raw/meta` (dla debug), ale nie używane domenowo.
+- Nieznane pola z Roboshop MUST być zachowane w `meta/roboshopExport.json` (dla debug), ale nie używane domenowo.
 
 ## 4. Proxy między Roboshop a robotem / RDS (kontekst)
 Bridge nie zastępuje Proxy/Recorder.
@@ -100,16 +100,17 @@ Bridge MUST budować Scene Package w układzie zgodnym z `fleet-core`:
 
 ```text
 <scenePackageDir>/
-  manifest.json
-  raw/
-    map.smap
-    graph.json            # opcjonalnie (debug)
+  manifest.json5
+  map/
+    raw.smap              # oryginalna mapa (MAY)
+    graph.json            # kanoniczny SceneGraph (MUST)
   compiled/
     compiledMap.json      # wynik map-compiler (kanon dla algorytmu)
   config/
     robots.json5
     worksites.json5
     streams.json5
+    actionPoints.json5    # opcjonalnie (widły)
   meta/
     roboshopExport.json   # oryginalne metadane (MAY)
 ```
@@ -138,4 +139,3 @@ import-scene():
 - Bridge MUST zachować spójność identyfikatorów LM/AP z robotem:
   - `nodeId` w SceneGraph MUST odpowiadać identyfikatorom używanym w protokole robota **albo** posiadać mapowanie w `externalRefs`.
 - Bridge MUST zapisać mapping w `manifest` lub `meta` tak, aby Gateway mógł rozwiązać `targetExternalId`.
-

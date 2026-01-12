@@ -31,7 +31,7 @@ Algorithm Service MUST NOT:
 #### Testy
 - MUST mieć testy deterministyczności (ten sam input → ten sam output) + golden snapshots.
 
-Related: `06_*`, `17_*`, `18_*`.
+Related: `01_fleet-core.md`, `16_orchestrator-behavior.md`, `specyfikacja-algorytm-runtime-harmonogramowanie-ruch-v0_5.md`.
 
 ## 3. Kontrakty i API
 Pełny kontrakt Core↔Algo: **Załącznik A**.
@@ -73,7 +73,7 @@ Algorithm Level0 MUST spełniać:
 Algorithm Level0 SHOULD:
 - generować minimalnie zrozumiały plan kroków (TaskStep) typu:
   - `moveTo` → `goTarget` na `LocationMark/ActionPoint`,
-  - `forkHeight` → `forkHeight(heightM)` zgodnie z parametrami ActionPoint / worksite.
+  - `pick/drop` → `goTarget` z `operation=ForkLoad/ForkUnload` i parametrami z worksite/stream.
 - po wykonaniu taska (pick→drop) wysłać robota na park (`ParkPoint`/`LocationMark`) jeśli brak kolejnych zadań.
 
 Algorithm Level0 MUST NOT:
@@ -89,7 +89,7 @@ Core MUST umożliwić uruchomienie MVP bez warstwy traffic management:
 - MUST zachować pełny audyt (log na dysk + snapshoty) jak dla docelowego algorytmu.
 
 Gateway MUST:
-- obsługiwać `goTarget` (API 3051) oraz `forkHeight` (6040) jako minimalny zestaw do wykonania „pick→drop” na ActionPoint.
+- obsługiwać `goTarget` (API 3051) z `operation=ForkLoad/ForkUnload` jako minimalny zestaw do wykonania „pick→drop” na ActionPoint.
 
 ### 0.5 Kryterium ukończenia Level0 (exit criteria)
 
@@ -97,7 +97,7 @@ Level0 uznajemy za gotowe, jeśli dla `robokit-robot-sim` (a docelowo real robot
 - UI tworzy Task (PICK→DROP) lub importuje go ze streamu,
 - algorytm przypisuje task do jedynego aktywnego robota,
 - robot dojeżdża do pick i drop (routing w robocie),
-- wykonywana jest akcja wideł (`forkHeight`) na ActionPoint,
+- wykonywana jest akcja wideł jako `goTarget(operation=ForkLoad/ForkUnload)` na ActionPoint,
 - całość jest odtwarzalna z logów (replay) i ma deterministyczne snapshoty stanu.
 
 Następny krok po Level0: włączenie docelowego algorytmu rezerwacji korytarzy (Level1/Level2) i przejście na multi-robot.
@@ -168,7 +168,7 @@ Wszystkie te struktury MUST dać się zserializować do logów debug (dla golden
 ### 6.1 Level0 (walking skeleton) — MVP start
 - Działa tylko dla jednego robota.
 - Nie robi locków (`locksRequested=[]`).
-- Generuje proste komendy: `goTarget` na `LocationMark/ActionPoint` oraz `forkHeight` na ActionPoint.
+- Generuje proste komendy: `goTarget` na `LocationMark/ActionPoint` oraz `goTarget` z `operation=ForkLoad/ForkUnload` dla pick/drop.
 - Zakłada, że robot (Robokit/RoboCore) robi routing lokalnie.
 
 ### 6.2 Level1+ (DCL‑2D) — docelowy runtime
@@ -353,7 +353,7 @@ Core może cache’ować kontekst i przesyłać go albo raz (init), albo w każd
 
 W systemie istnieją dwa poziomy „komend”:
 - **AlgorithmRobotCommand** (wewnętrzny język algorytmu): np. `setRollingTarget`, `hold`.
-- **CommandRecord** (kanoniczna komenda domenowa Core → Gateway): np. `goTarget`, `stop`, `forkHeight`.
+- **CommandRecord** (kanoniczna komenda domenowa Core → Gateway): np. `goTarget`, `stop` (forkHeight tylko jako legacy/manual).
 
 To mapowanie jest wykonywane WYŁĄCZNIE w Fleet Core (single source of truth), zgodnie z regułami:
 
@@ -364,7 +364,7 @@ To mapowanie jest wykonywane WYŁĄCZNIE w Fleet Core (single source of truth), 
 
 2) `hold=true` → Core MUST wstrzymać ruch (brak nowych komend ruchu) i utrzymać robota w stanie `navigation.state = paused|blocked` zgodnie z polityką.
 
-3) (MVP) Algorytm nie wysyła bezpośrednio komend wideł. Widełki są realizowane jako kroki TaskRunner (`TaskStep.type=forkHeight`) oraz mapowane w Core na `CommandRecord.type=forkHeight` (patrz `05_*` i `10_*`).
+3) (MVP) Algorytm nie wysyła bezpośrednio komend wideł jako osobnych kroków. Widełki są realizowane przez `goTarget` z `operation=ForkLoad/ForkUnload` i mapowane w Core na `CommandRecord.type=goTarget` (patrz `10_adapters-robokit.md`).
 
 Uwaga praktyczna: jeśli w przyszłości algorytm będzie generował jawne akcje wideł, to Core MUST mapować je do `CommandRecord` w analogiczny sposób jak powyżej (z pełnym audytem w event log).
 

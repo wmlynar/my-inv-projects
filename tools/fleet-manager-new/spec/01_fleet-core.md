@@ -30,7 +30,7 @@ Fleet Core SHOULD:
 
 #### Interfaces
 Wystawia (public):
-- `/api/v1/*` — patrz `08_api_fleet_core.md`.
+- `/api/v1/*` — patrz Załącznik A w tym pliku.
 
 Konsumuje (private):
 - `algorithm-service` — `POST /algo/v1/decide`.
@@ -194,6 +194,12 @@ HELD -- force seize --> HELD(new owner)
 
 ### 3.2 Procedura aktywacji (MUST)
 1) Validate scene package (manifest + graph + config).
+   - `config/streams.json5` MUST follow kanoniczny format z `spec/99_pozostale.md`.
+   - `pickGroup` i `dropGroup` MUSZA byc listami `worksiteId` **lub** nazwami grup (string),
+     które Core rozwiązuje deterministycznie podczas importu/aktywacji.
+   - `pickGroup` zawiera tylko worksites typu `pickup`.
+   - `dropGroup` zawiera tylko worksites typu `dropoff`.
+   - Brak nieznanych pol (strict validation) — inaczej `validationError`.
 2) Build derived runtime state:
    - index nodes/edges,
    - reset locks/reservations,
@@ -233,7 +239,7 @@ W systemie istnieją 3 różne rzeczy, które łatwo pomylić. Spec rozdziela je
 
 3) **DONE / completion (w domenie Core)**  
    - oznacza: Core uznał komendę za zakończoną na podstawie znormalizowanego statusu robota
-     (np. `navigation.state=arrived`, `fork.height reached`) i/lub policy.
+     (np. `navigation.state=arrived`, zakończenie akcji wideł) i/lub policy.
    - to jest warunek stanu `completed`.
    - Gateway MUST NOT markować „completed” — gateway tylko transport + protokół + telemetria.
 
@@ -326,7 +332,7 @@ Core MUST zdjąć fail-safe (wyjść z hold) dopiero, gdy:
 - Scene import + activation.
 - Tick loop (deterministyczny) + integracja z algo + dispatch do gateway.
 - Manual commands: `stop`, `goTarget`.
-- Minimalny Task Runner: `pickDrop` (moveTo + forkHeight).
+- Minimalny Task Runner: `pickDrop` (goTarget + ForkLoad/ForkUnload).
 Pełna definicja i plan MVP: `99_pozostale.md` → „MVP (v0.7/v0.8)”.
 
 ---
@@ -349,7 +355,7 @@ Ta sekcja ma jeden cel: żeby dało się zaimplementować `fleet-core` bez zgady
   // aktywna scena (lub null)
   activeScene: {
     sceneId: "scene_01JH...",
-    sceneHash: "sha256:...",        // hash kanoniczny paczki sceny / compiled map
+    sceneHash: "sha256:...",        // hash kanoniczny paczki sceny (manifest + pliki kanoniczne)
     activatedTsMs: 1736160000000,
     mode: "active",                 // active | activating | paused | error
     manifest: { /* SceneManifest */ },
@@ -418,16 +424,22 @@ Core MUST używać append-only event logu (JSONL). Minimalny layout (w `dataDir`
     snapshot_000123999.json
   scenes/
     <sceneId>/
-      manifest.json
-      raw/                      # oryginały (zip/katalog)
-        map.smap
-        graph.json              # opcjonalnie jako debug
+      manifest.json5
+      map/
+        graph.json              # MUST (kanoniczny SceneGraph)
+        raw.smap                # MAY (import-only, opcjonalny artefakt)
+        assets/                 # MAY
       compiled/
         compiledMap.json        # artefakt map-compiler (kanon dla algorytmu)
+        meta.json               # MAY
       config/
         worksites.json5
         streams.json5
-        robots.json5
+        robots.json5            # MAY
+        actionPoints.json5      # MAY
+        packaging.json          # MAY
+      README.md                 # MAY
+    # Pelny layout scen: spec/07_scene-management.md
 ```
 
 Event log MUST zawierać:
@@ -536,7 +548,7 @@ Ta checklista pomaga implementować komponentami.
 - `POST /api/v1/scenes/import`
 - `POST /api/v1/scenes/activate`
 - `POST /api/v1/tasks` (minimum: create pickDrop)
-- `POST /api/v1/robots/{robotId}/commands` (minimum: stop + goTarget + forkHeight)
+- `POST /api/v1/robots/{robotId}/commands` (minimum: stop + goTarget)
 - `POST /api/v1/robots/{robotId}/provider-switch`
 
 Szczegóły request/response pozostają w **Załączniku A** (poniżej), ale ta sekcja jest „źródłem prawdy” dla zakresu MVP.

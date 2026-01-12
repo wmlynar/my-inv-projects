@@ -255,7 +255,7 @@ sequenceDiagram
   UI->>Core: POST /api/v1/scenes/import (zip/folder)
   Core->>Core: walidacja + zapis paczki sceny na dysk
   Core-->>UI: 202 {importId}
-  UI->>Core: POST /api/v1/scenes/{sceneId}/activate
+  UI->>Core: POST /api/v1/scenes/activate {sceneId}
   Core->>Core: enter activation state\n(pause + stop/cancel)
   Core->>GW: POST /gateway/v1/robots/{id}/commands (stop/cancel)
   GW-->>Core: ACK
@@ -290,6 +290,52 @@ W skrócie (MVP):
 Post-MVP (w tym pliku tylko jako kontekst):
 - security, HA, dwukierunkowa synchronizacja z Roboshop, advanced obstacle avoidance.
 
+## 5.4 MVP0 — spójna wizja produktu prostego w użyciu (MUST)
+Cel: jeden robot wykonuje prosty cykl pick -> drop -> park w jednym widoku UI.
+
+### 5.4.1 Minimalny UX (MUST)
+- Jeden ekran mapy jako główna nawigacja (MUST).
+- Prosta akcja operatora: oznaczenie pola pick jako `filled` (lub klik w UI).
+- UI pokazuje: aktywna scena, status robota, aktywne zadanie, status pick/drop.
+- Po wykonaniu zadania robot wraca na parking **tylko wtedy**, gdy brak kolejnych zadan.
+
+### 5.4.2 Minimalna konfiguracja (MUST)
+- Jedna scena z:
+  - `map/graph.json`, `compiled/compiledMap.json`
+  - `config/worksites.json5` (min. 1 pick, 1 drop)
+  - `config/streams.json5` (kanoniczne `pickGroup` + `dropGroup` jako listy worksiteId lub nazwy grup)
+- Jeden robot w `config/robots.json5` albo zdefiniowany w runtime.
+- `parkNodeId` zdefiniowany w scenie lub konfiguracji core.
+
+### 5.4.3 Granice systemu (MUST)
+- UI jest klientem: wszystkie akcje trafiaja do core przez `/api/v1`.
+- Core jest jedynym zrodlem prawdy: taski, worksites, scena, roboty.
+- Gateway tylko wykonuje, nie trzyma stanu sceny.
+
+### 5.4.4 Polityka sterowania (MUST)
+- W MVP0 **nie wymagamy** control-lease dla podstawowego cyklu pick/drop (uprosczenie).
+- Manualne sterowanie nie blokuje automatyki, ale **wstrzymuje** zadanie na czas manuala.
+
+### 5.4.5 Kryteria akceptacji (MUST)
+- Operator oznacza pick jako `filled`.
+- Core tworzy task, przypisuje robota i rozpoczyna realizacje.
+- Robot dojezdza do pick, wykonuje `ForkLoad`, jedzie do drop, wykonuje `ForkUnload`,
+  aktualizuje occupancy (pick -> empty, drop -> filled).
+- Jesli nie ma kolejnych zadan: jedzie na `parkNodeId`.
+- UI w czasie rzeczywistym pokazuje postep (task status + robot status).
+
+### 5.4.6 Testy MVP0 (MUST)
+- E2E: 1 scena, 1 robot, pick->drop->park (scenariusz happy path).
+- Testy integracyjne core: poprawna zmiana occupancy po `task.completed`.
+- Testy UI: akcja "mark filled" tworzy task i odswieza statusy.
+
+### 5.4.7 Runbook MVP0 (MUST)
+Minimalny krok uruchomienia:
+1) Import sceny (folder) do core.
+2) Aktywacja sceny.
+3) Start UI -> klik/oznaczenie pick jako `filled`.
+4) Obserwacja wykonania i powrotu na parking.
+
 ## 5. Runbook (MVP) — uruchamianie komponentów (AI-friendly)
 
 Cel: żeby można było wprost mówić do AI/Codexa: „uruchom komponent X z configiem Y”, bez interpretacji.
@@ -318,6 +364,21 @@ fleet-core \
   --config ./configs/fleet-core.local.json5 \
   --data-dir ./var/core \
   --print-effective-config
+```
+
+### 5.3 Dev bootstrap (scene folder)
+Cel: uruchomienie calosci tylko z jednym katalogiem sceny.
+
+Plan (SHOULD):
+- core wspiera `--scene-dir <path>` + `--auto-activate`,
+- UI jest statyczne i wskazuje na core,
+- gateway tylko wykonuje komendy.
+
+Przyklad:
+```bash
+fleet-core --config ./configs/fleet-core.local.json5 \
+  --scene-dir ./scenes/warehouse_01 \
+  --auto-activate
 ```
 
 ### 5.3 fleet-gateway — uruchomienie (MVP)

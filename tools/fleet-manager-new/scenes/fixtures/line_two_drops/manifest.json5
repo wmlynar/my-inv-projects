@@ -1,0 +1,10 @@
+{
+  sceneId: "fixture-line-two-drops",
+  sceneName: "Fixture: Line Two Drops",
+  createdTsMs: 1760000000000,
+  contractsVersion: "fm-contracts-v0.7",
+  source: { type: "fixture", notes: "scenes/fixtures/line_two_drops" },
+  checksums: {
+    "compiled/compiledMap.json": "sha256:40e3ddb667b2d7fe6cbe38e9ae32bf50d50d822379db162b53f5300e5bc4fed8"
+  }
+}

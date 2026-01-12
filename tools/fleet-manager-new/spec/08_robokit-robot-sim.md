@@ -14,7 +14,7 @@ Zasady:
 - Gateway MUST móc przełączyć robota na robokit-robot-sim bez zmiany logiki Core/Algo.
 - Scenariusze E2E SHOULD pokrywać: internalSim (czysto), robokit-robot-sim (protokół), real robot (docelowo).
 
-Related: `11_*`, `18_*`.
+Related: `07_robot-controller.md`, `10_adapters-robokit.md`, `08b_robokit-robot-sim-architecture.md`.
 Architektura i refactoring: `08b_robokit-robot-sim-architecture.md`.
 
 ## 3. Minimalny kontrakt zachowania (MVP)
@@ -23,7 +23,8 @@ Architektura i refactoring: `08b_robokit-robot-sim-architecture.md`.
   - `forkHeight` także jako `goTarget` z `operation: "ForkHeight"` (observed),
   - `robot_config_req_4005` / `robot_config_req_4006` (seize control),
   - statusy: co najmniej `robot_status_loc_req` (1004), `robot_status_block_req` (1006),
-    `robot_status_fork_req` (1028) oraz `robot_status_current_lock_req` (1060).
+    `robot_status_fork_req` (1028), `robot_status_task_req` (1020) oraz
+    `robot_status_current_lock_req` (1060).
 - Sim MUST zachowywać się stabilnie przy reconnectach i powtarzanych `commandId` (idempotencja po stronie gateway nadal obowiązuje).
 
 
@@ -81,6 +82,7 @@ Sim MUST odpowiadać na:
 - `robot_status_loc_req` (1004) → pozycja robota,
 - `robot_status_block_req` (1006) → blocked/obstacle,
 - `robot_status_fork_req` (1028) → wysokość wideł,
+- `robot_status_task_req` (1020) → `task_status` (required for task completion),
 - `robot_status_current_lock_req` (1060) → stan seize control,
 - (opcjonalnie) push na porcie `push` (19301).
 

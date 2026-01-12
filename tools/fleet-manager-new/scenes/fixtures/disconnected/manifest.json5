@@ -1,0 +1,10 @@
+{
+  sceneId: "fixture-disconnected",
+  sceneName: "Fixture: Disconnected",
+  createdTsMs: 1760000000000,
+  contractsVersion: "fm-contracts-v0.7",
+  source: { type: "fixture", notes: "scenes/fixtures/disconnected" },
+  checksums: {
+    "compiled/compiledMap.json": "sha256:3056273f0d7623593f435643630abf2767bfd31afd1caf5df6ac8bfa156d47c5"
+  }
+}

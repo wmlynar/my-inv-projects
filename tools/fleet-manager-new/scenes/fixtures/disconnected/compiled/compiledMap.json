@@ -1,0 +1,961 @@
+{
+  "compiledMapVersion": "0.5.0",
+  "source": {
+    "smapPath": "scenes/fixtures/disconnected/map/raw.smap"
+  },
+  "parameters": {
+    "cellLenM": 0.5,
+    "arcLutStepM": 0.1,
+    "sweepSampleStepM": 0.25,
+    "geomEpsM": 0.000001,
+    "maxRectsPerCell": 32,
+    "turningEpsRad": 0.05,
+    "tangentEpsRad": 0.0873,
+    "inflateMarginScale": 0
+  },
+  "nodes": [
+    {
+      "nodeId": "AP1",
+      "nodeType": "actionPoint",
+      "className": "ActionPoint",
+      "pos": {
+        "xM": 2,
+        "yM": 0
+      },
+      "angleRad": 0
+    },
+    {
+      "nodeId": "AP2",
+      "nodeType": "actionPoint",
+      "className": "ActionPoint",
+      "pos": {
+        "xM": 1,
+        "yM": 1
+      },
+      "angleRad": 0
+    },
+    {
+      "nodeId": "LM1",
+      "nodeType": "locationMark",
+      "className": "LocationMark",
+      "pos": {
+        "xM": 0,
+        "yM": 0
+      },
+      "angleRad": 0
+    },
+    {
+      "nodeId": "LM2",
+      "nodeType": "locationMark",
+      "className": "LocationMark",
+      "pos": {
+        "xM": 1,
+        "yM": -1
+      },
+      "angleRad": 0
+    }
+  ],
+  "edges": [
+    {
+      "edgeId": "LM1-AP1",
+      "className": "DegenerateBezier",
+      "startNodeId": "LM1",
+      "endNodeId": "AP1",
+      "p0": {
+        "xM": 0,
+        "yM": 0
+      },
+      "p1": {
+        "xM": 0.7,
+        "yM": 0
+      },
+      "p2": {
+        "xM": 1.3,
+        "yM": 0
+      },
+      "p3": {
+        "xM": 2,
+        "yM": 0
+      },
+      "props": {
+        "direction": 1,
+        "movestyle": 0,
+        "width": 2
+      },
+      "lengthM": 2,
+      "samples": {
+        "arcLengthM": 2,
+        "stepM": 0.1,
+        "points": [
+          {
+            "xM": 0,
+            "yM": 0
+          },
+          {
+            "xM": 0.10427499999999998,
+            "yM": 0
+          },
+          {
+            "xM": 0.20720000000000002,
+            "yM": 0
+          },
+          {
+            "xM": 0.30892499999999995,
+            "yM": 0
+          },
+          {
+            "xM": 0.4096000000000001,
+            "yM": 0
+          },
+          {
+            "xM": 0.509375,
+            "yM": 0
+          },
+          {
+            "xM": 0.6083999999999999,
+            "yM": 0
+          },
+          {
+            "xM": 0.706825,
+            "yM": 0
+          },
+          {
+            "xM": 0.8048000000000001,
+            "yM": 0
+          },
+          {
+            "xM": 0.9024750000000001,
+            "yM": 0
+          },
+          {
+            "xM": 1,
+            "yM": 0
+          },
+          {
+            "xM": 1.097525,
+            "yM": 0
+          },
+          {
+            "xM": 1.1952,
+            "yM": 0
+          },
+          {
+            "xM": 1.2931750000000002,
+            "yM": 0
+          },
+          {
+            "xM": 1.3916,
+            "yM": 0
+          },
+          {
+            "xM": 1.490625,
+            "yM": 0
+          },
+          {
+            "xM": 1.5904000000000003,
+            "yM": 0
+          },
+          {
+            "xM": 1.6910749999999999,
+            "yM": 0
+          },
+          {
+            "xM": 1.7928000000000002,
+            "yM": 0
+          },
+          {
+            "xM": 1.8957249999999999,
+            "yM": 0
+          },
+          {
+            "xM": 2,
+            "yM": 0
+          }
+        ]
+      },
+      "propsCompiled": {
+        "direction": "forwardOnly",
+        "lengthM": 2,
+        "corridorWidthM": 2
+      }
+    },
+    {
+      "edgeId": "LM2-AP2",
+      "className": "DegenerateBezier",
+      "startNodeId": "LM2",
+      "endNodeId": "AP2",
+      "p0": {
+        "xM": 1,
+        "yM": -1
+      },
+      "p1": {
+        "xM": 1,
+        "yM": -0.3
+      },
+      "p2": {
+        "xM": 1,
+        "yM": 0.3
+      },
+      "p3": {
+        "xM": 1,
+        "yM": 1
+      },
+      "props": {
+        "direction": 1,
+        "movestyle": 0,
+        "width": 2
+      },
+      "lengthM": 2,
+      "samples": {
+        "arcLengthM": 2,
+        "stepM": 0.1,
+        "points": [
+          {
+            "xM": 1,
+            "yM": -1
+          },
+          {
+            "xM": 1,
+            "yM": -0.8957249999999999
+          },
+          {
+            "xM": 1,
+            "yM": -0.7928000000000001
+          },
+          {
+            "xM": 0.9999999999999999,
+            "yM": -0.6910749999999999
+          },
+          {
+            "xM": 1.0000000000000002,
+            "yM": -0.5904000000000001
+          },
+          {
+            "xM": 1,
+            "yM": -0.490625
+          },
+          {
+            "xM": 0.9999999999999998,
+            "yM": -0.3915999999999999
+          },
+          {
+            "xM": 1,
+            "yM": -0.293175
+          },
+          {
+            "xM": 1,
+            "yM": -0.19519999999999998
+          },
+          {
+            "xM": 1,
+            "yM": -0.09752500000000003
+          },
+          {
+            "xM": 1,
+            "yM": 0
+          },
+          {
+            "xM": 1,
+            "yM": 0.0975250000000001
+          },
+          {
+            "xM": 1,
+            "yM": 0.19519999999999998
+          },
+          {
+            "xM": 1,
+            "yM": 0.2931750000000001
+          },
+          {
+            "xM": 1,
+            "yM": 0.3915999999999999
+          },
+          {
+            "xM": 1,
+            "yM": 0.490625
+          },
+          {
+            "xM": 1,
+            "yM": 0.5904000000000001
+          },
+          {
+            "xM": 1,
+            "yM": 0.6910749999999999
+          },
+          {
+            "xM": 1,
+            "yM": 0.7928000000000001
+          },
+          {
+            "xM": 1,
+            "yM": 0.8957249999999999
+          },
+          {
+            "xM": 1,
+            "yM": 1
+          }
+        ]
+      },
+      "propsCompiled": {
+        "direction": "forwardOnly",
+        "lengthM": 2,
+        "corridorWidthM": 2
+      }
+    }
+  ],
+  "corridors": [
+    {
+      "corridorId": "C:AP1→LM1:ef7bdca3",
+      "aNodeId": "AP1",
+      "bNodeId": "LM1",
+      "lengthM": 2,
+      "singleLane": true,
+      "segments": [
+        {
+          "edgeId": "LM1-AP1",
+          "corridorS0M": 0,
+          "corridorS1M": 2,
+          "aligned": false
+        }
+      ]
+    },
+    {
+      "corridorId": "C:AP2→LM2:d7579194",
+      "aNodeId": "AP2",
+      "bNodeId": "LM2",
+      "lengthM": 2,
+      "singleLane": true,
+      "segments": [
+        {
+          "edgeId": "LM2-AP2",
+          "corridorS0M": 0,
+          "corridorS1M": 2,
+          "aligned": false
+        }
+      ]
+    }
+  ],
+  "cells": [
+    {
+      "cellId": "C:AP1→LM1:ef7bdca3#i=0#dir=B_TO_A",
+      "corridorId": "C:AP1→LM1:ef7bdca3",
+      "dir": "B_TO_A",
+      "corridorS0M": 0,
+      "corridorS1M": 0.5,
+      "spans": [
+        {
+          "edgeId": "LM1-AP1",
+          "edgeS0M": 1.5,
+          "edgeS1M": 2
+        }
+      ],
+      "sweptShape": {
+        "kind": "multiRect",
+        "bbox": {
+          "minXM": 0.5,
+          "minYM": -0.5,
+          "maxXM": 3,
+          "maxYM": 0.5
+        },
+        "rects": [
+          {
+            "cxM": 1.5,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 1.5,
+            "pivotYM": 0,
+            "frontXM": 2.5,
+            "frontYM": 0
+          },
+          {
+            "cxM": 1.75,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 1.75,
+            "pivotYM": 0,
+            "frontXM": 2.75,
+            "frontYM": 0
+          },
+          {
+            "cxM": 2,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 2,
+            "pivotYM": 0,
+            "frontXM": 3,
+            "frontYM": 0
+          }
+        ]
+      },
+      "conflictSet": [
+        "C:AP1→LM1:ef7bdca3#i=0#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=1#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=2#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=3#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=0#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=1#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=2#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=3#dir=B_TO_A"
+      ]
+    },
+    {
+      "cellId": "C:AP1→LM1:ef7bdca3#i=1#dir=B_TO_A",
+      "corridorId": "C:AP1→LM1:ef7bdca3",
+      "dir": "B_TO_A",
+      "corridorS0M": 0.5,
+      "corridorS1M": 1,
+      "spans": [
+        {
+          "edgeId": "LM1-AP1",
+          "edgeS0M": 1,
+          "edgeS1M": 1.5
+        }
+      ],
+      "sweptShape": {
+        "kind": "multiRect",
+        "bbox": {
+          "minXM": 0,
+          "minYM": -0.5,
+          "maxXM": 2.5,
+          "maxYM": 0.5
+        },
+        "rects": [
+          {
+            "cxM": 1,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 1,
+            "pivotYM": 0,
+            "frontXM": 2,
+            "frontYM": 0
+          },
+          {
+            "cxM": 1.25,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 1.25,
+            "pivotYM": 0,
+            "frontXM": 2.25,
+            "frontYM": 0
+          },
+          {
+            "cxM": 1.5,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 1.5,
+            "pivotYM": 0,
+            "frontXM": 2.5,
+            "frontYM": 0
+          }
+        ]
+      },
+      "conflictSet": [
+        "C:AP1→LM1:ef7bdca3#i=0#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=1#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=2#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=3#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=0#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=1#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=2#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=3#dir=B_TO_A"
+      ]
+    },
+    {
+      "cellId": "C:AP1→LM1:ef7bdca3#i=2#dir=B_TO_A",
+      "corridorId": "C:AP1→LM1:ef7bdca3",
+      "dir": "B_TO_A",
+      "corridorS0M": 1,
+      "corridorS1M": 1.5,
+      "spans": [
+        {
+          "edgeId": "LM1-AP1",
+          "edgeS0M": 0.5,
+          "edgeS1M": 1
+        }
+      ],
+      "sweptShape": {
+        "kind": "multiRect",
+        "bbox": {
+          "minXM": -0.5,
+          "minYM": -0.5,
+          "maxXM": 2,
+          "maxYM": 0.5
+        },
+        "rects": [
+          {
+            "cxM": 0.5,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 0.5,
+            "pivotYM": 0,
+            "frontXM": 1.5,
+            "frontYM": 0
+          },
+          {
+            "cxM": 0.75,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 0.75,
+            "pivotYM": 0,
+            "frontXM": 1.75,
+            "frontYM": 0
+          },
+          {
+            "cxM": 1,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 1,
+            "pivotYM": 0,
+            "frontXM": 2,
+            "frontYM": 0
+          }
+        ]
+      },
+      "conflictSet": [
+        "C:AP1→LM1:ef7bdca3#i=0#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=1#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=2#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=3#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=0#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=1#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=2#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=3#dir=B_TO_A"
+      ]
+    },
+    {
+      "cellId": "C:AP1→LM1:ef7bdca3#i=3#dir=B_TO_A",
+      "corridorId": "C:AP1→LM1:ef7bdca3",
+      "dir": "B_TO_A",
+      "corridorS0M": 1.5,
+      "corridorS1M": 2,
+      "spans": [
+        {
+          "edgeId": "LM1-AP1",
+          "edgeS0M": 0,
+          "edgeS1M": 0.5
+        }
+      ],
+      "sweptShape": {
+        "kind": "multiRect",
+        "bbox": {
+          "minXM": -1,
+          "minYM": -0.5,
+          "maxXM": 1.5,
+          "maxYM": 0.5
+        },
+        "rects": [
+          {
+            "cxM": 0,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 0,
+            "pivotYM": 0,
+            "frontXM": 1,
+            "frontYM": 0
+          },
+          {
+            "cxM": 0.25,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 0.25,
+            "pivotYM": 0,
+            "frontXM": 1.25,
+            "frontYM": 0
+          },
+          {
+            "cxM": 0.5,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 0.5,
+            "pivotYM": 0,
+            "frontXM": 1.5,
+            "frontYM": 0
+          }
+        ]
+      },
+      "conflictSet": [
+        "C:AP1→LM1:ef7bdca3#i=0#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=1#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=2#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=3#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=0#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=1#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=2#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=3#dir=B_TO_A"
+      ]
+    },
+    {
+      "cellId": "C:AP2→LM2:d7579194#i=0#dir=B_TO_A",
+      "corridorId": "C:AP2→LM2:d7579194",
+      "dir": "B_TO_A",
+      "corridorS0M": 0,
+      "corridorS1M": 0.5,
+      "spans": [
+        {
+          "edgeId": "LM2-AP2",
+          "edgeS0M": 1.5,
+          "edgeS1M": 2
+        }
+      ],
+      "sweptShape": {
+        "kind": "multiRect",
+        "bbox": {
+          "minXM": 0.4999999999999999,
+          "minYM": -0.5000000000000001,
+          "maxXM": 1.5,
+          "maxYM": 2
+        },
+        "rects": [
+          {
+            "cxM": 1,
+            "cyM": 0.4999999999999999,
+            "angleRad": 1.5707963267948966,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 1,
+            "pivotYM": 0.4999999999999999,
+            "frontXM": 1,
+            "frontYM": 1.5
+          },
+          {
+            "cxM": 1,
+            "cyM": 0.7499999999999999,
+            "angleRad": 1.5707963267948966,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 1,
+            "pivotYM": 0.7499999999999999,
+            "frontXM": 1,
+            "frontYM": 1.75
+          },
+          {
+            "cxM": 1,
+            "cyM": 1,
+            "angleRad": 1.5707963267948966,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 1,
+            "pivotYM": 1,
+            "frontXM": 1,
+            "frontYM": 2
+          }
+        ]
+      },
+      "conflictSet": [
+        "C:AP1→LM1:ef7bdca3#i=0#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=1#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=2#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=3#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=0#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=1#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=2#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=3#dir=B_TO_A"
+      ]
+    },
+    {
+      "cellId": "C:AP2→LM2:d7579194#i=1#dir=B_TO_A",
+      "corridorId": "C:AP2→LM2:d7579194",
+      "dir": "B_TO_A",
+      "corridorS0M": 0.5,
+      "corridorS1M": 1,
+      "spans": [
+        {
+          "edgeId": "LM2-AP2",
+          "edgeS0M": 1,
+          "edgeS1M": 1.5
+        }
+      ],
+      "sweptShape": {
+        "kind": "multiRect",
+        "bbox": {
+          "minXM": 0.4999999999999999,
+          "minYM": -1,
+          "maxXM": 1.5,
+          "maxYM": 1.5
+        },
+        "rects": [
+          {
+            "cxM": 1,
+            "cyM": 0,
+            "angleRad": 1.5707963267948966,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 1,
+            "pivotYM": 0,
+            "frontXM": 1,
+            "frontYM": 1
+          },
+          {
+            "cxM": 1,
+            "cyM": 0.24999999999999992,
+            "angleRad": 1.5707963267948966,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 1,
+            "pivotYM": 0.24999999999999992,
+            "frontXM": 1,
+            "frontYM": 1.25
+          },
+          {
+            "cxM": 1,
+            "cyM": 0.4999999999999999,
+            "angleRad": 1.5707963267948966,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 1,
+            "pivotYM": 0.4999999999999999,
+            "frontXM": 1,
+            "frontYM": 1.5
+          }
+        ]
+      },
+      "conflictSet": [
+        "C:AP1→LM1:ef7bdca3#i=0#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=1#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=2#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=3#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=0#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=1#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=2#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=3#dir=B_TO_A"
+      ]
+    },
+    {
+      "cellId": "C:AP2→LM2:d7579194#i=2#dir=B_TO_A",
+      "corridorId": "C:AP2→LM2:d7579194",
+      "dir": "B_TO_A",
+      "corridorS0M": 1,
+      "corridorS1M": 1.5,
+      "spans": [
+        {
+          "edgeId": "LM2-AP2",
+          "edgeS0M": 0.5,
+          "edgeS1M": 1
+        }
+      ],
+      "sweptShape": {
+        "kind": "multiRect",
+        "bbox": {
+          "minXM": 0.4999999999999988,
+          "minYM": -1.5000000000000002,
+          "maxXM": 1.500000000000001,
+          "maxYM": 1
+        },
+        "rects": [
+          {
+            "cxM": 1,
+            "cyM": -0.5,
+            "angleRad": 1.5707963267948961,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 1,
+            "pivotYM": -0.5,
+            "frontXM": 1.0000000000000004,
+            "frontYM": 0.5
+          },
+          {
+            "cxM": 1,
+            "cyM": -0.24999999999999994,
+            "angleRad": 1.5707963267948954,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 1,
+            "pivotYM": -0.24999999999999994,
+            "frontXM": 1.000000000000001,
+            "frontYM": 0.75
+          },
+          {
+            "cxM": 1,
+            "cyM": 0,
+            "angleRad": 1.5707963267948966,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 1,
+            "pivotYM": 0,
+            "frontXM": 1,
+            "frontYM": 1
+          }
+        ]
+      },
+      "conflictSet": [
+        "C:AP1→LM1:ef7bdca3#i=0#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=1#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=2#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=3#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=0#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=1#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=2#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=3#dir=B_TO_A"
+      ]
+    },
+    {
+      "cellId": "C:AP2→LM2:d7579194#i=3#dir=B_TO_A",
+      "corridorId": "C:AP2→LM2:d7579194",
+      "dir": "B_TO_A",
+      "corridorS0M": 1.5,
+      "corridorS1M": 2,
+      "spans": [
+        {
+          "edgeId": "LM2-AP2",
+          "edgeS0M": 0,
+          "edgeS1M": 0.5
+        }
+      ],
+      "sweptShape": {
+        "kind": "multiRect",
+        "bbox": {
+          "minXM": 0.49999999999999944,
+          "minYM": -2,
+          "maxXM": 1.5000000000000007,
+          "maxYM": 0.5000000000000002
+        },
+        "rects": [
+          {
+            "cxM": 1,
+            "cyM": -1,
+            "angleRad": 1.5707963267948966,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 1,
+            "pivotYM": -1,
+            "frontXM": 1,
+            "frontYM": 0
+          },
+          {
+            "cxM": 1,
+            "cyM": -0.75,
+            "angleRad": 1.5707963267948972,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 1,
+            "pivotYM": -0.75,
+            "frontXM": 0.9999999999999994,
+            "frontYM": 0.25
+          },
+          {
+            "cxM": 1,
+            "cyM": -0.5,
+            "angleRad": 1.5707963267948961,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 1,
+            "pivotYM": -0.5,
+            "frontXM": 1.0000000000000004,
+            "frontYM": 0.5
+          }
+        ]
+      },
+      "conflictSet": [
+        "C:AP1→LM1:ef7bdca3#i=0#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=1#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=2#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=3#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=0#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=1#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=2#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=3#dir=B_TO_A"
+      ]
+    }
+  ],
+  "nodeStopZones": [
+    {
+      "nodeId": "AP1",
+      "radiusM": 1.118033988749895,
+      "capacity": 1,
+      "conflictCells": [
+        "C:AP1→LM1:ef7bdca3#i=0#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=1#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=2#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=3#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=0#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=1#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=2#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=3#dir=B_TO_A"
+      ]
+    },
+    {
+      "nodeId": "AP2",
+      "radiusM": 1.118033988749895,
+      "capacity": 1,
+      "conflictCells": [
+        "C:AP1→LM1:ef7bdca3#i=0#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=1#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=2#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=3#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=0#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=1#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=2#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=3#dir=B_TO_A"
+      ]
+    },
+    {
+      "nodeId": "LM1",
+      "radiusM": 1.118033988749895,
+      "capacity": 1,
+      "conflictCells": [
+        "C:AP1→LM1:ef7bdca3#i=0#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=1#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=2#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=3#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=0#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=1#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=2#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=3#dir=B_TO_A"
+      ]
+    },
+    {
+      "nodeId": "LM2",
+      "radiusM": 1.118033988749895,
+      "capacity": 1,
+      "conflictCells": [
+        "C:AP1→LM1:ef7bdca3#i=0#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=1#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=2#dir=B_TO_A",
+        "C:AP1→LM1:ef7bdca3#i=3#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=0#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=1#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=2#dir=B_TO_A",
+        "C:AP2→LM2:d7579194#i=3#dir=B_TO_A"
+      ]
+    }
+  ],
+  "transitions": [],
+  "meta": {
+    "compiledMapHash": "sha256:e294852a90b6c1d5ae4573bf883fe06b2bb1594e2b387bb9279ebe0111b1cec3",
+    "paramsHash": "sha256:d3f43f82cc1bb1f4d2681ce136b6e884ce59c0a0bc2d3e7b2584dde6e698e677",
+    "compileParams": {
+      "cellLenM": 0.5,
+      "arcLutStepM": 0.1,
+      "sweepSampleStepM": 0.25,
+      "geomEpsM": 0.000001,
+      "maxRectsPerCell": 32,
+      "turningEpsRad": 0.05,
+      "tangentEpsRad": 0.0873,
+      "inflateMarginScale": 0
+    }
+  }
+}

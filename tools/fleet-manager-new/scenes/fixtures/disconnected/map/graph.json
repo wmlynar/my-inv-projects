@@ -1,0 +1,292 @@
+{
+  "nodes": [
+    {
+      "nodeId": "AP1",
+      "nodeType": "actionPoint",
+      "className": "ActionPoint",
+      "pos": {
+        "xM": 2,
+        "yM": 0
+      },
+      "angleRad": 0
+    },
+    {
+      "nodeId": "AP2",
+      "nodeType": "actionPoint",
+      "className": "ActionPoint",
+      "pos": {
+        "xM": 1,
+        "yM": 1
+      },
+      "angleRad": 0
+    },
+    {
+      "nodeId": "LM1",
+      "nodeType": "locationMark",
+      "className": "LocationMark",
+      "pos": {
+        "xM": 0,
+        "yM": 0
+      },
+      "angleRad": 0
+    },
+    {
+      "nodeId": "LM2",
+      "nodeType": "locationMark",
+      "className": "LocationMark",
+      "pos": {
+        "xM": 1,
+        "yM": -1
+      },
+      "angleRad": 0
+    }
+  ],
+  "edges": [
+    {
+      "edgeId": "LM1-AP1",
+      "className": "DegenerateBezier",
+      "startNodeId": "LM1",
+      "endNodeId": "AP1",
+      "p0": {
+        "xM": 0,
+        "yM": 0
+      },
+      "p1": {
+        "xM": 0.7,
+        "yM": 0
+      },
+      "p2": {
+        "xM": 1.3,
+        "yM": 0
+      },
+      "p3": {
+        "xM": 2,
+        "yM": 0
+      },
+      "props": {
+        "direction": 1,
+        "movestyle": 0,
+        "width": 2
+      },
+      "lengthM": 2,
+      "samples": {
+        "arcLengthM": 2,
+        "stepM": 0.1,
+        "points": [
+          {
+            "xM": 0,
+            "yM": 0
+          },
+          {
+            "xM": 0.10427499999999998,
+            "yM": 0
+          },
+          {
+            "xM": 0.20720000000000002,
+            "yM": 0
+          },
+          {
+            "xM": 0.30892499999999995,
+            "yM": 0
+          },
+          {
+            "xM": 0.4096000000000001,
+            "yM": 0
+          },
+          {
+            "xM": 0.509375,
+            "yM": 0
+          },
+          {
+            "xM": 0.6083999999999999,
+            "yM": 0
+          },
+          {
+            "xM": 0.706825,
+            "yM": 0
+          },
+          {
+            "xM": 0.8048000000000001,
+            "yM": 0
+          },
+          {
+            "xM": 0.9024750000000001,
+            "yM": 0
+          },
+          {
+            "xM": 1,
+            "yM": 0
+          },
+          {
+            "xM": 1.097525,
+            "yM": 0
+          },
+          {
+            "xM": 1.1952,
+            "yM": 0
+          },
+          {
+            "xM": 1.2931750000000002,
+            "yM": 0
+          },
+          {
+            "xM": 1.3916,
+            "yM": 0
+          },
+          {
+            "xM": 1.490625,
+            "yM": 0
+          },
+          {
+            "xM": 1.5904000000000003,
+            "yM": 0
+          },
+          {
+            "xM": 1.6910749999999999,
+            "yM": 0
+          },
+          {
+            "xM": 1.7928000000000002,
+            "yM": 0
+          },
+          {
+            "xM": 1.8957249999999999,
+            "yM": 0
+          },
+          {
+            "xM": 2,
+            "yM": 0
+          }
+        ]
+      },
+      "propsCompiled": {
+        "direction": "forwardOnly",
+        "lengthM": 2,
+        "corridorWidthM": 2
+      }
+    },
+    {
+      "edgeId": "LM2-AP2",
+      "className": "DegenerateBezier",
+      "startNodeId": "LM2",
+      "endNodeId": "AP2",
+      "p0": {
+        "xM": 1,
+        "yM": -1
+      },
+      "p1": {
+        "xM": 1,
+        "yM": -0.3
+      },
+      "p2": {
+        "xM": 1,
+        "yM": 0.3
+      },
+      "p3": {
+        "xM": 1,
+        "yM": 1
+      },
+      "props": {
+        "direction": 1,
+        "movestyle": 0,
+        "width": 2
+      },
+      "lengthM": 2,
+      "samples": {
+        "arcLengthM": 2,
+        "stepM": 0.1,
+        "points": [
+          {
+            "xM": 1,
+            "yM": -1
+          },
+          {
+            "xM": 1,
+            "yM": -0.8957249999999999
+          },
+          {
+            "xM": 1,
+            "yM": -0.7928000000000001
+          },
+          {
+            "xM": 0.9999999999999999,
+            "yM": -0.6910749999999999
+          },
+          {
+            "xM": 1.0000000000000002,
+            "yM": -0.5904000000000001
+          },
+          {
+            "xM": 1,
+            "yM": -0.490625
+          },
+          {
+            "xM": 0.9999999999999998,
+            "yM": -0.3915999999999999
+          },
+          {
+            "xM": 1,
+            "yM": -0.293175
+          },
+          {
+            "xM": 1,
+            "yM": -0.19519999999999998
+          },
+          {
+            "xM": 1,
+            "yM": -0.09752500000000003
+          },
+          {
+            "xM": 1,
+            "yM": 0
+          },
+          {
+            "xM": 1,
+            "yM": 0.0975250000000001
+          },
+          {
+            "xM": 1,
+            "yM": 0.19519999999999998
+          },
+          {
+            "xM": 1,
+            "yM": 0.2931750000000001
+          },
+          {
+            "xM": 1,
+            "yM": 0.3915999999999999
+          },
+          {
+            "xM": 1,
+            "yM": 0.490625
+          },
+          {
+            "xM": 1,
+            "yM": 0.5904000000000001
+          },
+          {
+            "xM": 1,
+            "yM": 0.6910749999999999
+          },
+          {
+            "xM": 1,
+            "yM": 0.7928000000000001
+          },
+          {
+            "xM": 1,
+            "yM": 0.8957249999999999
+          },
+          {
+            "xM": 1,
+            "yM": 1
+          }
+        ]
+      },
+      "propsCompiled": {
+        "direction": "forwardOnly",
+        "lengthM": 2,
+        "corridorWidthM": 2
+      }
+    }
+  ]
+}

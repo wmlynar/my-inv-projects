@@ -11,10 +11,18 @@ function buildRobokitCommand(command) {
   }
   if (command.type === 'goTarget') {
     const targetId = resolveTargetId(command);
+    const extra = command.payload || {};
+    const payload = { id: targetId };
+    for (const [key, value] of Object.entries(extra)) {
+      if (key === 'targetRef' || key === 'targetExternalId') continue;
+      if (value !== undefined) {
+        payload[key] = value;
+      }
+    }
     return {
       port: 'task',
       apiNo: API.robot_task_gotarget_req,
-      payload: { id: targetId }
+      payload
     };
   }
   if (command.type === 'forkHeight') {

@@ -1,0 +1,82 @@
+{
+  "header": {
+    "mapType": "2D-Map",
+    "mapName": "fixture-line-two-drops",
+    "version": "1.0.0"
+  },
+  "advancedPointList": [
+    { "className": "LocationMark", "instanceName": "LM1", "pos": { "x": 0, "y": 0 }, "dir": 0.0 },
+    { "className": "ActionPoint", "instanceName": "AP1", "pos": { "x": 1, "y": 0 }, "dir": 0.0 },
+    { "className": "LocationMark", "instanceName": "LM2", "pos": { "x": 2, "y": 0 }, "dir": 0.0 },
+    { "className": "ActionPoint", "instanceName": "AP2", "pos": { "x": 3, "y": 0 }, "dir": 0.0 },
+    { "className": "LocationMark", "instanceName": "LM3", "pos": { "x": 4, "y": 0 }, "dir": 0.0 },
+    { "className": "ActionPoint", "instanceName": "AP3", "pos": { "x": 5, "y": 0 }, "dir": 0.0 }
+  ],
+  "advancedCurveList": [
+    {
+      "className": "DegenerateBezier",
+      "instanceName": "LM1-AP1",
+      "startPos": { "instanceName": "LM1", "pos": { "x": 0, "y": 0 } },
+      "endPos": { "instanceName": "AP1", "pos": { "x": 1, "y": 0 } },
+      "controlPos1": { "x": 0.3, "y": 0 },
+      "controlPos2": { "x": 0.7, "y": 0 },
+      "property": [
+        { "key": "direction", "type": "int", "int32Value": 1 },
+        { "key": "movestyle", "type": "int", "int32Value": 0 },
+        { "key": "width", "type": "double", "doubleValue": 2.0 }
+      ]
+    },
+    {
+      "className": "DegenerateBezier",
+      "instanceName": "AP1-LM2",
+      "startPos": { "instanceName": "AP1", "pos": { "x": 1, "y": 0 } },
+      "endPos": { "instanceName": "LM2", "pos": { "x": 2, "y": 0 } },
+      "controlPos1": { "x": 1.3, "y": 0 },
+      "controlPos2": { "x": 1.7, "y": 0 },
+      "property": [
+        { "key": "direction", "type": "int", "int32Value": 1 },
+        { "key": "movestyle", "type": "int", "int32Value": 0 },
+        { "key": "width", "type": "double", "doubleValue": 2.0 }
+      ]
+    },
+    {
+      "className": "DegenerateBezier",
+      "instanceName": "LM2-AP2",
+      "startPos": { "instanceName": "LM2", "pos": { "x": 2, "y": 0 } },
+      "endPos": { "instanceName": "AP2", "pos": { "x": 3, "y": 0 } },
+      "controlPos1": { "x": 2.3, "y": 0 },
+      "controlPos2": { "x": 2.7, "y": 0 },
+      "property": [
+        { "key": "direction", "type": "int", "int32Value": 1 },
+        { "key": "movestyle", "type": "int", "int32Value": 0 },
+        { "key": "width", "type": "double", "doubleValue": 2.0 }
+      ]
+    },
+    {
+      "className": "DegenerateBezier",
+      "instanceName": "AP2-LM3",
+      "startPos": { "instanceName": "AP2", "pos": { "x": 3, "y": 0 } },
+      "endPos": { "instanceName": "LM3", "pos": { "x": 4, "y": 0 } },
+      "controlPos1": { "x": 3.3, "y": 0 },
+      "controlPos2": { "x": 3.7, "y": 0 },
+      "property": [
+        { "key": "direction", "type": "int", "int32Value": 1 },
+        { "key": "movestyle", "type": "int", "int32Value": 0 },
+        { "key": "width", "type": "double", "doubleValue": 2.0 }
+      ]
+    },
+    {
+      "className": "DegenerateBezier",
+      "instanceName": "LM3-AP3",
+      "startPos": { "instanceName": "LM3", "pos": { "x": 4, "y": 0 } },
+      "endPos": { "instanceName": "AP3", "pos": { "x": 5, "y": 0 } },
+      "controlPos1": { "x": 4.3, "y": 0 },
+      "controlPos2": { "x": 4.7, "y": 0 },
+      "property": [
+        { "key": "direction", "type": "int", "int32Value": 1 },
+        { "key": "movestyle", "type": "int", "int32Value": 0 },
+        { "key": "width", "type": "double", "doubleValue": 2.0 }
+      ]
+    }
+  ]
+}

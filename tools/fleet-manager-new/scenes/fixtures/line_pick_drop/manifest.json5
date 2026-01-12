@@ -1,0 +1,10 @@
+{
+  sceneId: "fixture-line-pick-drop",
+  sceneName: "Fixture: Line Pick/Drop",
+  createdTsMs: 1760000000000,
+  contractsVersion: "fm-contracts-v0.7",
+  source: { type: "fixture", notes: "scenes/fixtures/line_pick_drop" },
+  checksums: {
+    "compiled/compiledMap.json": "sha256:25e2255d23c8841812658ee11680c05f3758ba47e6b936dfd30a54825a38e02b"
+  }
+}

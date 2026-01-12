@@ -1,47 +1,67 @@
 const DEFAULT_TOLERANCE_M = 0.02;
 const DEFAULT_PICK_HEIGHT_M = 1.2;
 const DEFAULT_DROP_HEIGHT_M = 0.1;
+const DEFAULT_PICK_START_HEIGHT_M = 0.1;
 
 function buildPickDropSteps(task) {
   const steps = [];
-  const pickHeight = Number.isFinite(task.pickHeightM) ? task.pickHeightM : DEFAULT_PICK_HEIGHT_M;
-  const dropHeight = Number.isFinite(task.dropHeightM) ? task.dropHeightM : DEFAULT_DROP_HEIGHT_M;
+  const pickParams = buildPickParams(task);
+  const dropParams = buildDropParams(task, pickParams);
 
   let index = 1;
   if (task.fromNodeId) {
-    steps.push(buildMoveStep(task, task.fromNodeId, index++));
+    steps.push(buildMoveStep(task, task.fromNodeId, index++, pickParams));
   }
-  steps.push(buildForkStep(task, pickHeight, index++));
   if (task.toNodeId) {
-    steps.push(buildMoveStep(task, task.toNodeId, index++));
-  }
-  steps.push(buildForkStep(task, dropHeight, index++));
-  if (task.parkNodeId) {
-    steps.push(buildMoveStep(task, task.parkNodeId, index++));
+    steps.push(buildMoveStep(task, task.toNodeId, index++, dropParams));
   }
 
   return steps;
 }
 
-function buildMoveStep(task, nodeId, index) {
+function buildMoveStep(task, nodeId, index, params) {
   return {
     stepId: `${task.taskId}:step:${index}`,
     type: 'moveTo',
     status: 'pending',
     statusReasonCode: 'NONE',
     targetRef: { nodeId },
-    params: null
+    params: params || null
   };
 }
 
-function buildForkStep(task, toHeightM, index) {
+function normalizeOperationParams(params, operation) {
+  const base = params && typeof params === 'object' ? { ...params } : {};
+  base.operation = base.operation || operation;
+  return base;
+}
+
+function buildPickParams(task) {
+  if (task.pickParams) {
+    return normalizeOperationParams(task.pickParams, 'ForkLoad');
+  }
+  const pickHeight = Number.isFinite(task.pickHeightM) ? task.pickHeightM : DEFAULT_PICK_HEIGHT_M;
   return {
-    stepId: `${task.taskId}:step:${index}`,
-    type: 'forkHeight',
-    status: 'pending',
-    statusReasonCode: 'NONE',
-    targetRef: null,
-    params: { toHeightM }
+    operation: 'ForkLoad',
+    start_height: DEFAULT_PICK_START_HEIGHT_M,
+    end_height: pickHeight,
+    recognize: false
+  };
+}
+
+function buildDropParams(task, pickParams) {
+  if (task.dropParams) {
+    return normalizeOperationParams(task.dropParams, 'ForkUnload');
+  }
+  const pickHeight = Number.isFinite(task.pickHeightM)
+    ? task.pickHeightM
+    : (Number.isFinite(pickParams?.end_height) ? pickParams.end_height : DEFAULT_PICK_HEIGHT_M);
+  const dropHeight = Number.isFinite(task.dropHeightM) ? task.dropHeightM : DEFAULT_DROP_HEIGHT_M;
+  return {
+    operation: 'ForkUnload',
+    start_height: pickHeight,
+    end_height: dropHeight,
+    recognize: false
   };
 }
 
@@ -95,7 +115,7 @@ function commandForStep(robotId, step) {
     return {
       robotId,
       type: 'goTarget',
-      payload: { targetRef: { nodeId: step.targetRef.nodeId } }
+      payload: buildGoTargetPayload(step)
     };
   }
   if (step.type === 'forkHeight') {
@@ -107,6 +127,19 @@ function commandForStep(robotId, step) {
     };
   }
   return null;
+}
+
+function buildGoTargetPayload(step) {
+  const payload = { targetRef: { nodeId: step.targetRef.nodeId } };
+  const params = step.params || {};
+  if (params.operation) payload.operation = params.operation;
+  if (params.start_height !== undefined) payload.start_height = params.start_height;
+  if (params.end_height !== undefined) payload.end_height = params.end_height;
+  if (params.recognize !== undefined) payload.recognize = params.recognize;
+  if (params.recfile !== undefined) payload.recfile = params.recfile;
+  if (params.rec_height !== undefined) payload.rec_height = params.rec_height;
+  if (params.skill_name !== undefined) payload.skill_name = params.skill_name;
+  return payload;
 }
 
 module.exports = {

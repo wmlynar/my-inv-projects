@@ -34,14 +34,15 @@ Map Compiler MUST przyjmować:
 ### 2.2 Wyjścia
 Map Compiler MUST produkować:
 
-- `sceneGraph.json` — kanoniczny `SceneGraph` (nodes/edges + geometria + lengthM),
+- `graph.json` — kanoniczny `SceneGraph` (nodes/edges + geometria + lengthM),
 - `compiledMap.json` — kanoniczny `CompiledMap` (corridors/cells/conflictSet).
 
 W Scene Package (`fleet-core`), pliki te trafiają do:
 
 ```text
+map/
+  graph.json
 compiled/
-  sceneGraph.json
   compiledMap.json
 ```
 
@@ -54,7 +55,7 @@ compiled/
 Map Compiler MUST dostarczyć CLI, które jest „promptable”:
 
 ```bash
-map-compiler compile   --smap ./raw/map.smap   --out-dir ./compiled   --robot-profile ./config/robotProfile.json5   --config ./config/compiler.json5
+map-compiler compile   --smap ./map/raw.smap   --out-dir ./scene   --robot-profile ./config/robotProfile.json5   --config ./config/compiler.json5
 ```
 
 CLI MUST:
@@ -68,9 +69,9 @@ Przykładowy output:
   compilerVersion: "map-compiler-0.9.0",
   inputs: { smapPath: "./raw/map.smap", robotProfile: "./config/robotProfile.json5" },
   outputs: {
-    sceneGraphPath: "./compiled/sceneGraph.json",
-    compiledMapPath: "./compiled/compiledMap.json",
-    sceneGraphHash: "sha256:...",
+    graphPath: "./scene/map/graph.json",
+    compiledMapPath: "./scene/compiled/compiledMap.json",
+    graphHash: "sha256:...",
     compiledMapHash: "sha256:..."
   },
   stats: { nodes: 120, edges: 240, corridors: 55, cells: 4800 }
@@ -94,6 +95,7 @@ ale w MVP nie jest to wymagane.
     {
       nodeId: "LM2",                 // LocationMark lub ActionPoint
       nodeType: "locationMark",      // locationMark | actionPoint
+      className: "LocationMark",     // zachowane z mapy źródłowej
       pos: { xM: 21.42, yM: 22.44 }, // metry
       angleRad: 0.0,                 // radiany (jeśli znane)
       externalRefs: { stationId: "LM2" } // mapowanie do protokołu robota (opcjonalnie)
@@ -110,12 +112,13 @@ ale w MVP nie jest to wymagane.
       p2: { xM: 21.42, yM: 20.60 },
       p3: { xM: 21.42, yM: 19.75 },
       props: {
-        direction: 1,
-        moveStyle: "forward",   // forward | reverse (w domenie FM)
-        widthM: 4.0,
+        direction: 1,           // kierunek z mapy źródłowej
+        movestyle: 0,           // typ ruchu z mapy źródłowej
+        width: 4.0,             // szerokość z mapy źródłowej
         forbiddenRotAngleRad: 1.57079632679
       },
-      lengthM: 2.69
+      lengthM: 2.69,
+      samples: { arcLengthM: 2.69, stepM: 0.2, points: [ /* ... */ ] }
     }
   ]
 }
@@ -189,7 +192,7 @@ parse .smap
   -> discretize corridors into cells (cellLenM)
   -> compute sweptShape (multiRect) for each cell using robotGeometryProfile
   -> compute conflictSet by OBB intersection (spatial index)
-  -> write sceneGraph.json + compiledMap.json (canonical ordering)
+  -> write map/graph.json + compiled/compiledMap.json (canonical ordering)
 ```
 
 ### 5.2 Walidacje (MUST)
@@ -208,7 +211,7 @@ Map Compiler MUST walidować:
 ---
 
 ## 6. Testy (MUST)
-- Golden: `.smap` → `sceneGraph.json` + `compiledMap.json`.
+- Golden: `.smap` → `graph.json` + `compiledMap.json`.
 - Determinism: ten sam input → bitowo identyczny output.
 - Geometry sanity: długości krawędzi dodatnie, konfliktSet symetryczny, self-membership.
 - Performance smoke: duża mapa mieści się w budżecie czasu (na CI) i w budżecie pamięci.
@@ -220,7 +223,7 @@ Map Compiler MUST walidować:
 - `roboshop-bridge` MUST używać map-compiler do budowy Scene Package.
 - `fleet-core` MUST przechowywać artefakty kompilacji w `sceneStoreDir`.
 - `algorithm-service` MUST używać `compiledMap` (DCL‑2D), a `sceneGraph` do routingu/rolling target.
-- `internalSim` (w gateway) MAY używać `sceneGraph.geometrySamples` do symulacji ruchu.
+- `internalSim` (w gateway) MAY używać `sceneGraph.edges[].samples` do symulacji ruchu.
 
 
 ---
@@ -236,7 +239,7 @@ Input:
 - opcjonalne dodatkowe pliki (np. nazwy warstw, metadane)
 
 Output:
-- `map/graph.json` zgodny z `04_kontrakty_scena_i_mapa.md`.
+- `map/graph.json` zgodny z `spec/07_scene-management.md`.
 
 ## 2. Wymagania deterministyczności (MUST)
 - Dla tego samego `.smap` wynik `graph.json` MUST być identyczny (bitwise), chyba że zmieniono wersję kompilatora.

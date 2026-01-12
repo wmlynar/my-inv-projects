@@ -26,10 +26,10 @@ Fleet Gateway MUST NOT:
 #### Interfaces
 Wystawia (private): opisane w **Załączniku A** (w tym pliku).
 
-Konsumuje (external): RoboCore/Robokit TCP — `10_protokol_robocore_robokit.md`.
+Konsumuje (external): RoboCore/Robokit TCP — `10_adapters-robokit.md`.
 
 #### Ważna zasada: mapowanie NodeId → external station id
-- Fleet Core SHOULD rozwiązywać `targetRef.nodeId` do identyfikatora zewnętrznego (`targetExternalId`) na podstawie `SceneGraph.nodes[].externalRefs`.
+- Fleet Core SHOULD rozwiązywać `targetRef.nodeId` do identyfikatora zewnętrznego (`targetExternalId`) na podstawie `SceneGraph.nodes[].externalRefs.stationId`.
 - Gateway MUST preferować `payload.targetExternalId` jeśli jest podane.
 - Jeśli `targetExternalId` brak, Gateway MAY użyć `targetRef.nodeId` jako fallback (przy założeniu, że NodeId = stationId).
 
@@ -41,6 +41,50 @@ Konsumuje (external): RoboCore/Robokit TCP — `10_protokol_robocore_robokit.md`
 - MUST mieć golden captures dla parsowania ramek i generowania ramek (z proxy-recorder).
 
 Related: `01_fleet-core.md`, `10_adapters-robokit.md`, `06_proxy-recorder.md`, `99_pozostale.md` (testy/E2E).
+
+## 2.1 MVP0 Gateway contract (commands + telemetry)
+This section removes ambiguity for MVP0 (Level0) execution.
+
+### 2.1.1 Command mapping (MUST)
+Gateway MUST map `CommandRecord.type` to RoboCore ports and apiNo as follows:
+
+| CommandRecord.type | Port  | apiNo | Notes |
+|---|---|---|---|
+| `goTarget` | `TASK` | `3051` | Used for normal navigation and composite ForkLoad/ForkUnload |
+| `stop` | `CTRL` | `2000` | Best-effort stop |
+| `forkHeight` | `OTHER` | `6040` | Legacy/manual; **not** used for pick/drop in MVP0 |
+
+If `goTarget` includes `operation` (ForkLoad/ForkUnload/ForkHeight), Gateway MUST
+send it on `TASK` (3051) and MUST NOT split it into separate commands.
+
+### 2.1.2 Payload pass-through (MUST)
+For `goTarget`, Gateway MUST forward all payload fields **as-is** to the robot:
+- `id` (or `targetExternalId` if provided),
+- `operation`, `start_height`, `end_height`, `recognize`, `recfile`, `rec_height`,
+- any additional fields present in payload.
+
+Gateway MUST NOT drop unknown fields or rename keys. It may only inject/override
+`id` based on `targetExternalId` resolution.
+
+### 2.1.3 Ack semantics in Gateway (MUST)
+Gateway MUST return HTTP 200 (transport ACK) if it accepted the command for dispatch.
+Gateway MUST include in the response:
+- `robotAck.status = ok | timeout | notSupported | error`,
+- `robotAck.apiNo` if ACK received,
+- `robotAck.retCode` if present in robot response.
+
+If the command cannot be sent at all (encode error, socket closed, robot offline),
+Gateway MUST return HTTP error with a reason code (`ROBOT_OFFLINE`, `ENCODE_ERROR`,
+`TCP_SEND_FAILED`, `PROTOCOL_ERROR`).
+
+### 2.1.4 Telemetry fields required by Core (MUST)
+Gateway MUST expose a normalized robot status that includes:
+- `task_status` (raw value),
+- `current_station`/`nodeId` (if available),
+- `fork_height` (if available),
+- `blocked/soft_emc/manual` flags.
+
+Source and precedence of `task_status` are defined in `10_adapters-robokit.md`.
 
 ## 3. Interfejsy
 ### 3.1 Wystawiane (private, tylko dla Core)
@@ -374,7 +418,7 @@ Każdy provider w gateway MUST implementować:
 - `sendCommand(command)`
 - `configurePush()` (jeśli wspiera)
 
-Szczegóły protokołu TCP w `10_protokol_robocore_robokit.md`.
+Szczegóły protokołu TCP w `10_adapters-robokit.md`.
 
 ---
 

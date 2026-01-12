@@ -45,7 +45,8 @@ function createRuntime(options = {}) {
       forkHeightM: null,
       pose: null,
       lastSeenTsMs: null,
-      blocked: false
+      blocked: false,
+      parkNodeId: null
     };
     if (update.status) robot.status = update.status;
     if (update.nodeId !== undefined) robot.nodeId = update.nodeId;
@@ -63,6 +64,7 @@ function createRuntime(options = {}) {
       }
     }
     if (update.blocked !== undefined) robot.blocked = Boolean(update.blocked);
+    if (update.parkNodeId !== undefined) robot.parkNodeId = update.parkNodeId;
     robot.lastSeenTsMs = now;
     robots.set(robotId, robot);
     return robot;
@@ -82,6 +84,8 @@ function createRuntime(options = {}) {
       parkNodeId: task.parkNodeId || null,
       pickHeightM: task.pickHeightM,
       dropHeightM: task.dropHeightM,
+      pickParams: task.pickParams || null,
+      dropParams: task.dropParams || null,
       assignedRobotId: task.assignedRobotId || null,
       steps: Array.isArray(task.steps) ? task.steps.map((step) => ({ ...step })) : null
     };
@@ -131,12 +135,6 @@ function createRuntime(options = {}) {
       task.steps = buildPickDropSteps(task);
     }
 
-    const hasPendingTasks = (excludeTaskId) => tasks.some((entry) => (
-      entry.taskId !== excludeTaskId
-      && entry.status === 'created'
-      && !entry.assignedRobotId
-    ));
-
     for (const task of tasks) {
       if (!task.assignedRobotId) continue;
       if (task.status === 'completed' || task.status === 'failed' || task.status === 'canceled') continue;
@@ -144,18 +142,31 @@ function createRuntime(options = {}) {
       if (!robot || robot.status !== 'online' || robot.blocked) continue;
 
       let { activeStep } = updateTaskForRobot(task, robot, { toleranceM: DEFAULT_TOLERANCE_M });
-      if (activeStep && activeStep.type === 'moveTo' && activeStep.targetRef?.nodeId === task.parkNodeId) {
-        if (hasPendingTasks(task.taskId)) {
-          activeStep.status = 'completed';
-          ({ activeStep } = updateTaskForRobot(task, robot, { toleranceM: DEFAULT_TOLERANCE_M }));
-        }
-      }
       if (!activeStep) continue;
 
       const cmd = commandForStep(robot.robotId, activeStep);
       if (!cmd) continue;
       if (shouldSendCommand(robot.robotId, cmd, now)) {
         commands.push(cmd);
+      }
+    }
+
+    for (const robot of onlineRobots) {
+      const hasActiveTask = tasks.some((task) => (
+        task.assignedRobotId === robot.robotId
+        && task.status !== 'completed'
+        && task.status !== 'failed'
+        && task.status !== 'canceled'
+      ));
+      if (hasActiveTask) continue;
+      if (!robot.parkNodeId || robot.nodeId === robot.parkNodeId) continue;
+      const parkCmd = {
+        robotId: robot.robotId,
+        type: 'goTarget',
+        payload: { targetRef: { nodeId: robot.parkNodeId } }
+      };
+      if (shouldSendCommand(robot.robotId, parkCmd, now)) {
+        commands.push(parkCmd);
       }
     }
 

@@ -29,6 +29,7 @@ const DEFAULTS = {
 
 const DEG_PER_RAD = 180 / Math.PI;
 const RAD_PER_DEG = Math.PI / 180;
+const AUTO_SEIZE_INTERVAL_MS = 2000;
 
 function parseArgs(argv) {
   const args = {};
@@ -125,13 +126,15 @@ function printHelp() {
     '  Enter: soft EMC on',
     '  Backspace: soft EMC off',
     '  Arrow Up/Down/Left/Right: move/rotate',
-    '  G: go target (prompt)',
     '  S: pause task, D: resume task, F: stop task',
     '  Space: stop robot and forks',
     '  +/-: adjust target speed',
     '  Q/W: adjust target angular speed',
     '  A/Z: fork up/down',
+    '  C: go target (prompt)',
+    '  V: multi station (prompt twice)',
     '  P/L: seize/release control',
+    '  U/I: auto-seize on/off',
     '  Ctrl+C: exit'
   ];
   // eslint-disable-next-line no-console
@@ -161,6 +164,21 @@ function formatNumber(value, digits, fallback = '0') {
 
 function formatBool(value, onText, offText) {
   return value ? onText : offText;
+}
+
+function formatPercent(value) {
+  if (!Number.isFinite(value)) {
+    return 'n/a';
+  }
+  const pct = value > 1.01 ? value : value * 100;
+  return `${pct.toFixed(0)}%`;
+}
+
+function formatCount(value) {
+  if (!Number.isFinite(value)) {
+    return 'n/a';
+  }
+  return String(value);
 }
 
 function formatConn(client) {
@@ -202,8 +220,13 @@ const state = {
   currentStation: '',
   lastStation: '',
   forkHeight: 0,
+  batteryLevel: null,
   softEmc: false,
-  lock: { locked: false, nickName: '' }
+  lock: { locked: false, nickName: '' },
+  pathCount: null,
+  slowPathCount: null,
+  stopPathCount: null,
+  avoidPathCount: null
 };
 let lastMotionSent = { vx: 0, w: 0 };
 
@@ -231,6 +254,11 @@ let inputBuffer = '';
 let inputMessage = '';
 let inputMessageAt = 0;
 let lastGoTarget = null;
+let inputKind = 'go';
+let inputStep = 0;
+let multiTargets = [];
+let autoSeize = false;
+let lastAutoSeizeAt = 0;
 
 function openKeyLog() {
   if (!options.keyLogPath) {
@@ -350,6 +378,16 @@ function updateStatus(payload) {
   if (!payload || typeof payload !== 'object') {
     return;
   }
+  const countPathPoints = (value) => {
+    if (Array.isArray(value)) {
+      return value.length;
+    }
+    if (value && typeof value === 'object' && Array.isArray(value.point)) {
+      return value.point.length;
+    }
+    return null;
+  };
+
   state.statusUpdatedAt = Date.now();
   if (Number.isFinite(payload.x)) state.x = payload.x;
   if (Number.isFinite(payload.y)) state.y = payload.y;
@@ -360,14 +398,20 @@ function updateStatus(payload) {
   if (typeof payload.current_station === 'string') state.currentStation = payload.current_station;
   if (typeof payload.last_station === 'string') state.lastStation = payload.last_station;
   if (Number.isFinite(payload.fork_height)) state.forkHeight = payload.fork_height;
+  if (Number.isFinite(payload.battery_level)) state.batteryLevel = payload.battery_level;
   if (payload.soft_emc !== undefined) state.softEmc = Boolean(payload.soft_emc);
   if (payload.current_lock && typeof payload.current_lock === 'object') {
     state.lock.locked = Boolean(payload.current_lock.locked);
     state.lock.nickName = payload.current_lock.nick_name || '';
   }
+  state.pathCount = countPathPoints(payload.path);
+  state.slowPathCount = countPathPoints(payload.slow_path);
+  state.stopPathCount = countPathPoints(payload.stop_path);
+  state.avoidPathCount = countPathPoints(payload.avoid_path);
   if (forkTarget === null && Number.isFinite(state.forkHeight)) {
     forkTarget = state.forkHeight;
   }
+  maybeAutoSeize();
 }
 
 function handleFrame(client, msg) {
@@ -381,7 +425,9 @@ function handleFrame(client, msg) {
     return;
   }
   if (client.name === 'task') {
-    if (msg.apiNo === responseApi(API.robot_task_gotarget_req)) {
+    if (msg.apiNo === responseApi(API.robot_task_gotarget_req)
+      || msg.apiNo === responseApi(API.robot_task_multistation_req)
+      || msg.apiNo === responseApi(API.robot_tasklist_req)) {
       const payload = msg.payload || {};
       lastGoTarget = {
         id: lastGoTarget && lastGoTarget.id ? lastGoTarget.id : '',
@@ -472,12 +518,83 @@ function sendGoTarget(id) {
   };
 }
 
+function buildTasklistPayload(stations) {
+  const now = Date.now();
+  const taskName = `task_${new Date(now).toISOString().replace(/\D/g, '').slice(0, 17)}`;
+  const groups = stations.map((stationId, index) => ({
+    actions: [
+      {
+        actionName: 'move_action',
+        pluginName: 'MoveFactory',
+        params: [
+          { key: 'skill_name', stringValue: 'GotoSpecifiedPose' },
+          { key: 'target_name', stringValue: stationId }
+        ],
+        ignoreReturn: false,
+        overtime: 0,
+        externalOverId: -1,
+        needResult: false,
+        sleepTime: 0,
+        actionId: 0
+      }
+    ],
+    actionGroupName: `group ${index + 1}`,
+    actionGroupId: index,
+    checked: true
+  }));
+
+  return {
+    name: taskName,
+    tasks: [
+      {
+        taskId: 0,
+        desc: '',
+        actionGroups: groups,
+        checked: true
+      }
+    ],
+    loop: false
+  };
+}
+
+function sendMultiStation(targets) {
+  const list = Array.isArray(targets) ? targets.filter(Boolean) : [];
+  if (list.length < 2) {
+    inputMessage = 'Need two stations for multi station.';
+    inputMessageAt = Date.now();
+    return;
+  }
+  const payload = buildTasklistPayload(list);
+  const ok = clients.task.send(API.robot_tasklist_req, payload);
+  lastGoTarget = {
+    id: list.join(' -> '),
+    tsMs: Date.now(),
+    retCode: ok ? null : 1,
+    message: ok ? 'multi station sent' : 'task port not connected'
+  };
+}
+
 function seizeControl() {
   clients.config.send(API.robot_config_req_4005, { nick_name: options.nickName });
 }
 
 function releaseControl() {
   clients.config.send(API.robot_config_req_4006, null);
+}
+
+function maybeAutoSeize() {
+  if (!autoSeize) {
+    return;
+  }
+  if (state.lock.locked) {
+    return;
+  }
+  const now = Date.now();
+  if (now - lastAutoSeizeAt < AUTO_SEIZE_INTERVAL_MS) {
+    return;
+  }
+  lastAutoSeizeAt = now;
+  seizeControl();
 }
 
 function applyLinear(direction) {
@@ -522,8 +639,11 @@ function adjustFork(delta) {
   sendForkHeight(next);
 }
 
-function enterTargetPrompt() {
+function enterTargetPrompt(kind = 'go') {
   inputMode = true;
+  inputKind = kind;
+  inputStep = kind === 'multi' ? 1 : 0;
+  multiTargets = [];
   inputBuffer = '';
   inputMessage = '';
   inputMessageAt = 0;
@@ -538,6 +658,9 @@ function enterTargetPrompt() {
 
 function exitTargetPrompt() {
   inputMode = false;
+  inputKind = 'go';
+  inputStep = 0;
+  multiTargets = [];
   inputBuffer = '';
 }
 
@@ -570,6 +693,25 @@ function installKeyHandler() {
       }
       if (key && (key.name === 'return' || key.name === 'enter')) {
         const target = inputBuffer.trim();
+        if (inputKind === 'multi') {
+          if (!target) {
+            inputMessage = 'Empty target id.';
+            inputMessageAt = Date.now();
+            return;
+          }
+          if (inputStep === 1) {
+            multiTargets = [target];
+            inputBuffer = '';
+            inputStep = 2;
+            return;
+          }
+          if (inputStep === 2) {
+            multiTargets = [...multiTargets, target];
+            exitTargetPrompt();
+            sendMultiStation(multiTargets);
+            return;
+          }
+        }
         exitTargetPrompt();
         sendGoTarget(target);
         return;
@@ -618,7 +760,11 @@ function installKeyHandler() {
       sendForkLoad();
       return;
     }
-    if (str === 'g' || str === 'G') {
+    if (str === 'v' || str === 'V') {
+      enterTargetPrompt('multi');
+      return;
+    }
+    if (str === 'c' || str === 'C') {
       enterTargetPrompt();
       return;
     }
@@ -666,6 +812,19 @@ function installKeyHandler() {
       seizeControl();
       return;
     }
+    if (str === 'u' || str === 'U') {
+      autoSeize = true;
+      inputMessage = 'Auto-seize enabled.';
+      inputMessageAt = Date.now();
+      maybeAutoSeize();
+      return;
+    }
+    if (str === 'i' || str === 'I') {
+      autoSeize = false;
+      inputMessage = 'Auto-seize disabled.';
+      inputMessageAt = Date.now();
+      return;
+    }
     if (str === 'l' || str === 'L') {
       releaseControl();
       return;
@@ -683,10 +842,13 @@ function render() {
   const lockText = state.lock.locked
     ? `LOCKED ${state.lock.nickName ? '(' + state.lock.nickName + ')' : ''}`
     : 'UNLOCKED';
+  const autoSeizeText = autoSeize ? 'AUTO' : 'MANUAL';
   const forkTargetText = Number.isFinite(forkTarget) ? formatNumber(forkTarget, 2) : formatNumber(state.forkHeight, 2);
   const statusAgeText = statusAge === null ? 'n/a' : `${statusAge.toFixed(1)}s`;
   const promptText = inputMode
-    ? `Go target (LM/AP): ${inputBuffer}`
+    ? (inputKind === 'multi'
+      ? `Multi station (${inputStep}/2) ${inputStep === 2 && multiTargets[0] ? `first ${multiTargets[0]} -> ` : ''}${inputBuffer}`
+      : `Go target (LM/AP): ${inputBuffer}`)
     : lastGoTarget
       ? `Last goTarget: ${lastGoTarget.id || '-'} (${lastGoTarget.message || 'ack'})`
       : 'Last goTarget: -';
@@ -695,23 +857,24 @@ function render() {
     inputMessageAt = 0;
   }
   const hintText = inputMode
-    ? 'Enter to send, Esc to cancel'
+    ? (inputMessage || 'Enter to send, Esc to cancel')
     : inputMessage || '';
 
   const lines = [
     'Robokit Robot Console Controller',
     `Host: ${options.host} | Ports: state ${options.statePort} task ${options.taskPort} ctrl ${options.ctrlPort} other ${options.otherPort} config ${options.configPort}`,
     `Connections: state ${formatConn(clients.state)} | task ${formatConn(clients.task)} | ctrl ${formatConn(clients.ctrl)} | other ${formatConn(clients.other)} | config ${formatConn(clients.config)}`,
-    `Soft EMC: ${softEmcText} | Control: ${lockText} | Status age: ${statusAgeText} | Key log: ${options.keyLogPath || 'off'}`,
+    `Soft EMC: ${softEmcText} | Control: ${lockText} | Mode: ${autoSeizeText} | Battery: ${formatPercent(state.batteryLevel)} | Status age: ${statusAgeText} | Key log: ${options.keyLogPath || 'off'}`,
     `Target speed: ${formatNumber(targetSpeed, 1)} m/s | Target angular: ${formatNumber(targetOmegaDeg, 0)} deg/s | Fork target: ${forkTargetText} m`,
     `Command: linear ${formatNumber(command.linearCmd, 2)} m/s | angular ${formatNumber(command.angularCmd * DEG_PER_RAD, 1)} deg/s`,
     `Actual: linear ${formatNumber(linearActual, 2)} m/s | angular ${formatNumber(angularActualDeg, 1)} deg/s`,
     `Pose: x ${formatNumber(state.x, 3)} y ${formatNumber(state.y, 3)} yaw ${formatNumber(yawDeg, 1)} deg`,
     `Stations: current ${state.currentStation || '-'} | last ${state.lastStation || '-'}`,
+    `Paths: path ${formatCount(state.pathCount)} | slow ${formatCount(state.slowPathCount)} | stop ${formatCount(state.stopPathCount)} | avoid ${formatCount(state.avoidPathCount)}`,
     promptText,
     hintText,
-    'Keys: Enter soft-EMC ON | Backspace soft-EMC OFF | Space stop | P seize | L release | S pause | D resume | F stop | X pickup',
-    'Keys: Arrows move | +/- speed | Q/W angular | A/Z fork up/down | G go target | Ctrl+C exit'
+    'Keys: Enter soft-EMC ON | Backspace soft-EMC OFF | Space stop | P seize | L release | U auto on | I auto off | S pause | D resume | F stop | X pickup',
+    'Keys: Arrows move | +/- speed | Q/W angular | A/Z fork up/down | C go target | V multi station | Ctrl+C exit'
   ];
 
   process.stdout.write('\x1b[2J\x1b[H' + lines.join('\n') + '\n');

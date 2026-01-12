@@ -331,7 +331,7 @@ CLI MUST logować:
 ### 4.2 Zasady (MUST)
 - `listeners[].name` MUST być unikalne w sesji.
 - `listen.port` MUST nie kolidować między listenerami.
-- Dla `decode.kind="robocore"` proxy MUST próbować dekodować framing zgodnie z `10_protokol_robocore_robokit.md`,
+- Dla `decode.kind="robocore"` proxy MUST próbować dekodować framing zgodnie z `10_adapters-robokit.md`,
   ale nawet przy decode error MUST zachować raw bytes, jeśli `limits.captureRawBytes=true`
   (a gdy raw bytes są wyłączone, zachować co najmniej `binaryTailBase64` dla ramek bez JSON).
 

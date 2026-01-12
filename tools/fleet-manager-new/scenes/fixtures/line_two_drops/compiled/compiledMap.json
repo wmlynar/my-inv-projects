@@ -1,0 +1,1352 @@
+{
+  "compiledMapVersion": "0.5.0",
+  "source": {
+    "smapPath": "scenes/fixtures/line_two_drops/map/raw.smap"
+  },
+  "parameters": {
+    "cellLenM": 0.5,
+    "arcLutStepM": 0.1,
+    "sweepSampleStepM": 0.25,
+    "geomEpsM": 0.000001,
+    "maxRectsPerCell": 32,
+    "turningEpsRad": 0.05,
+    "tangentEpsRad": 0.0873,
+    "inflateMarginScale": 0
+  },
+  "nodes": [
+    {
+      "nodeId": "AP1",
+      "nodeType": "actionPoint",
+      "className": "ActionPoint",
+      "pos": {
+        "xM": 1,
+        "yM": 0
+      },
+      "angleRad": 0
+    },
+    {
+      "nodeId": "AP2",
+      "nodeType": "actionPoint",
+      "className": "ActionPoint",
+      "pos": {
+        "xM": 3,
+        "yM": 0
+      },
+      "angleRad": 0
+    },
+    {
+      "nodeId": "AP3",
+      "nodeType": "actionPoint",
+      "className": "ActionPoint",
+      "pos": {
+        "xM": 5,
+        "yM": 0
+      },
+      "angleRad": 0
+    },
+    {
+      "nodeId": "LM1",
+      "nodeType": "locationMark",
+      "className": "LocationMark",
+      "pos": {
+        "xM": 0,
+        "yM": 0
+      },
+      "angleRad": 0
+    },
+    {
+      "nodeId": "LM2",
+      "nodeType": "locationMark",
+      "className": "LocationMark",
+      "pos": {
+        "xM": 2,
+        "yM": 0
+      },
+      "angleRad": 0
+    },
+    {
+      "nodeId": "LM3",
+      "nodeType": "locationMark",
+      "className": "LocationMark",
+      "pos": {
+        "xM": 4,
+        "yM": 0
+      },
+      "angleRad": 0
+    }
+  ],
+  "edges": [
+    {
+      "edgeId": "AP1-LM2",
+      "className": "DegenerateBezier",
+      "startNodeId": "AP1",
+      "endNodeId": "LM2",
+      "p0": {
+        "xM": 1,
+        "yM": 0
+      },
+      "p1": {
+        "xM": 1.3,
+        "yM": 0
+      },
+      "p2": {
+        "xM": 1.7,
+        "yM": 0
+      },
+      "p3": {
+        "xM": 2,
+        "yM": 0
+      },
+      "props": {
+        "direction": 1,
+        "movestyle": 0,
+        "width": 2
+      },
+      "lengthM": 1,
+      "samples": {
+        "arcLengthM": 1,
+        "stepM": 0.1,
+        "points": [
+          {
+            "xM": 1,
+            "yM": 0
+          },
+          {
+            "xM": 1.0928000000000002,
+            "yM": 0
+          },
+          {
+            "xM": 1.1904000000000003,
+            "yM": 0
+          },
+          {
+            "xM": 1.2915999999999999,
+            "yM": 0
+          },
+          {
+            "xM": 1.3952000000000002,
+            "yM": 0
+          },
+          {
+            "xM": 1.5,
+            "yM": 0
+          },
+          {
+            "xM": 1.6048,
+            "yM": 0
+          },
+          {
+            "xM": 1.7084000000000001,
+            "yM": 0
+          },
+          {
+            "xM": 1.8096,
+            "yM": 0
+          },
+          {
+            "xM": 1.9072,
+            "yM": 0
+          },
+          {
+            "xM": 2,
+            "yM": 0
+          }
+        ]
+      },
+      "propsCompiled": {
+        "direction": "forwardOnly",
+        "lengthM": 1,
+        "corridorWidthM": 2
+      }
+    },
+    {
+      "edgeId": "AP2-LM3",
+      "className": "DegenerateBezier",
+      "startNodeId": "AP2",
+      "endNodeId": "LM3",
+      "p0": {
+        "xM": 3,
+        "yM": 0
+      },
+      "p1": {
+        "xM": 3.3,
+        "yM": 0
+      },
+      "p2": {
+        "xM": 3.7,
+        "yM": 0
+      },
+      "p3": {
+        "xM": 4,
+        "yM": 0
+      },
+      "props": {
+        "direction": 1,
+        "movestyle": 0,
+        "width": 2
+      },
+      "lengthM": 1,
+      "samples": {
+        "arcLengthM": 1,
+        "stepM": 0.1,
+        "points": [
+          {
+            "xM": 3,
+            "yM": 0
+          },
+          {
+            "xM": 3.0928,
+            "yM": 0
+          },
+          {
+            "xM": 3.190400000000001,
+            "yM": 0
+          },
+          {
+            "xM": 3.2915999999999994,
+            "yM": 0
+          },
+          {
+            "xM": 3.395200000000001,
+            "yM": 0
+          },
+          {
+            "xM": 3.5,
+            "yM": 0
+          },
+          {
+            "xM": 3.6048,
+            "yM": 0
+          },
+          {
+            "xM": 3.7084,
+            "yM": 0
+          },
+          {
+            "xM": 3.8096000000000005,
+            "yM": 0
+          },
+          {
+            "xM": 3.9072000000000005,
+            "yM": 0
+          },
+          {
+            "xM": 4,
+            "yM": 0
+          }
+        ]
+      },
+      "propsCompiled": {
+        "direction": "forwardOnly",
+        "lengthM": 1,
+        "corridorWidthM": 2
+      }
+    },
+    {
+      "edgeId": "LM1-AP1",
+      "className": "DegenerateBezier",
+      "startNodeId": "LM1",
+      "endNodeId": "AP1",
+      "p0": {
+        "xM": 0,
+        "yM": 0
+      },
+      "p1": {
+        "xM": 0.3,
+        "yM": 0
+      },
+      "p2": {
+        "xM": 0.7,
+        "yM": 0
+      },
+      "p3": {
+        "xM": 1,
+        "yM": 0
+      },
+      "props": {
+        "direction": 1,
+        "movestyle": 0,
+        "width": 2
+      },
+      "lengthM": 1,
+      "samples": {
+        "arcLengthM": 1,
+        "stepM": 0.1,
+        "points": [
+          {
+            "xM": 0,
+            "yM": 0
+          },
+          {
+            "xM": 0.09280000000000001,
+            "yM": 0
+          },
+          {
+            "xM": 0.19040000000000004,
+            "yM": 0
+          },
+          {
+            "xM": 0.29159999999999997,
+            "yM": 0
+          },
+          {
+            "xM": 0.39520000000000005,
+            "yM": 0
+          },
+          {
+            "xM": 0.49999999999999994,
+            "yM": 0
+          },
+          {
+            "xM": 0.6048,
+            "yM": 0
+          },
+          {
+            "xM": 0.7083999999999999,
+            "yM": 0
+          },
+          {
+            "xM": 0.8096000000000001,
+            "yM": 0
+          },
+          {
+            "xM": 0.9072,
+            "yM": 0
+          },
+          {
+            "xM": 1,
+            "yM": 0
+          }
+        ]
+      },
+      "propsCompiled": {
+        "direction": "forwardOnly",
+        "lengthM": 1,
+        "corridorWidthM": 2
+      }
+    },
+    {
+      "edgeId": "LM2-AP2",
+      "className": "DegenerateBezier",
+      "startNodeId": "LM2",
+      "endNodeId": "AP2",
+      "p0": {
+        "xM": 2,
+        "yM": 0
+      },
+      "p1": {
+        "xM": 2.3,
+        "yM": 0
+      },
+      "p2": {
+        "xM": 2.7,
+        "yM": 0
+      },
+      "p3": {
+        "xM": 3,
+        "yM": 0
+      },
+      "props": {
+        "direction": 1,
+        "movestyle": 0,
+        "width": 2
+      },
+      "lengthM": 1,
+      "samples": {
+        "arcLengthM": 1,
+        "stepM": 0.1,
+        "points": [
+          {
+            "xM": 2,
+            "yM": 0
+          },
+          {
+            "xM": 2.0928000000000004,
+            "yM": 0
+          },
+          {
+            "xM": 2.1904000000000003,
+            "yM": 0
+          },
+          {
+            "xM": 2.2915999999999994,
+            "yM": 0
+          },
+          {
+            "xM": 2.3952000000000004,
+            "yM": 0
+          },
+          {
+            "xM": 2.5,
+            "yM": 0
+          },
+          {
+            "xM": 2.6048,
+            "yM": 0
+          },
+          {
+            "xM": 2.7084,
+            "yM": 0
+          },
+          {
+            "xM": 2.8096000000000005,
+            "yM": 0
+          },
+          {
+            "xM": 2.9072,
+            "yM": 0
+          },
+          {
+            "xM": 3,
+            "yM": 0
+          }
+        ]
+      },
+      "propsCompiled": {
+        "direction": "forwardOnly",
+        "lengthM": 1,
+        "corridorWidthM": 2
+      }
+    },
+    {
+      "edgeId": "LM3-AP3",
+      "className": "DegenerateBezier",
+      "startNodeId": "LM3",
+      "endNodeId": "AP3",
+      "p0": {
+        "xM": 4,
+        "yM": 0
+      },
+      "p1": {
+        "xM": 4.3,
+        "yM": 0
+      },
+      "p2": {
+        "xM": 4.7,
+        "yM": 0
+      },
+      "p3": {
+        "xM": 5,
+        "yM": 0
+      },
+      "props": {
+        "direction": 1,
+        "movestyle": 0,
+        "width": 2
+      },
+      "lengthM": 1,
+      "samples": {
+        "arcLengthM": 1,
+        "stepM": 0.1,
+        "points": [
+          {
+            "xM": 4,
+            "yM": 0
+          },
+          {
+            "xM": 4.0928,
+            "yM": 0
+          },
+          {
+            "xM": 4.190400000000001,
+            "yM": 0
+          },
+          {
+            "xM": 4.291599999999999,
+            "yM": 0
+          },
+          {
+            "xM": 4.395200000000001,
+            "yM": 0
+          },
+          {
+            "xM": 4.5,
+            "yM": 0
+          },
+          {
+            "xM": 4.604800000000001,
+            "yM": 0
+          },
+          {
+            "xM": 4.7084,
+            "yM": 0
+          },
+          {
+            "xM": 4.8096000000000005,
+            "yM": 0
+          },
+          {
+            "xM": 4.9072000000000005,
+            "yM": 0
+          },
+          {
+            "xM": 5,
+            "yM": 0
+          }
+        ]
+      },
+      "propsCompiled": {
+        "direction": "forwardOnly",
+        "lengthM": 1,
+        "corridorWidthM": 2
+      }
+    }
+  ],
+  "corridors": [
+    {
+      "corridorId": "C:AP3→LM1:ae9d8940",
+      "aNodeId": "AP3",
+      "bNodeId": "LM1",
+      "lengthM": 5,
+      "singleLane": true,
+      "segments": [
+        {
+          "edgeId": "LM3-AP3",
+          "corridorS0M": 0,
+          "corridorS1M": 1,
+          "aligned": false
+        },
+        {
+          "edgeId": "AP2-LM3",
+          "corridorS0M": 1,
+          "corridorS1M": 2,
+          "aligned": false
+        },
+        {
+          "edgeId": "LM2-AP2",
+          "corridorS0M": 2,
+          "corridorS1M": 3,
+          "aligned": false
+        },
+        {
+          "edgeId": "AP1-LM2",
+          "corridorS0M": 3,
+          "corridorS1M": 4,
+          "aligned": false
+        },
+        {
+          "edgeId": "LM1-AP1",
+          "corridorS0M": 4,
+          "corridorS1M": 5,
+          "aligned": false
+        }
+      ]
+    }
+  ],
+  "cells": [
+    {
+      "cellId": "C:AP3→LM1:ae9d8940#i=0#dir=B_TO_A",
+      "corridorId": "C:AP3→LM1:ae9d8940",
+      "dir": "B_TO_A",
+      "corridorS0M": 0,
+      "corridorS1M": 0.5,
+      "spans": [
+        {
+          "edgeId": "LM3-AP3",
+          "edgeS0M": 0.5,
+          "edgeS1M": 1
+        }
+      ],
+      "sweptShape": {
+        "kind": "multiRect",
+        "bbox": {
+          "minXM": 3.5,
+          "minYM": -0.5,
+          "maxXM": 6,
+          "maxYM": 0.5
+        },
+        "rects": [
+          {
+            "cxM": 4.5,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 4.5,
+            "pivotYM": 0,
+            "frontXM": 5.5,
+            "frontYM": 0
+          },
+          {
+            "cxM": 4.75,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 4.75,
+            "pivotYM": 0,
+            "frontXM": 5.75,
+            "frontYM": 0
+          },
+          {
+            "cxM": 5,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 5,
+            "pivotYM": 0,
+            "frontXM": 6,
+            "frontYM": 0
+          }
+        ]
+      },
+      "conflictSet": [
+        "C:AP3→LM1:ae9d8940#i=0#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=1#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=2#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=3#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=4#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=5#dir=B_TO_A"
+      ]
+    },
+    {
+      "cellId": "C:AP3→LM1:ae9d8940#i=1#dir=B_TO_A",
+      "corridorId": "C:AP3→LM1:ae9d8940",
+      "dir": "B_TO_A",
+      "corridorS0M": 0.5,
+      "corridorS1M": 1,
+      "spans": [
+        {
+          "edgeId": "LM3-AP3",
+          "edgeS0M": 0,
+          "edgeS1M": 0.5
+        }
+      ],
+      "sweptShape": {
+        "kind": "multiRect",
+        "bbox": {
+          "minXM": 3,
+          "minYM": -0.5,
+          "maxXM": 5.5,
+          "maxYM": 0.5
+        },
+        "rects": [
+          {
+            "cxM": 4,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 4,
+            "pivotYM": 0,
+            "frontXM": 5,
+            "frontYM": 0
+          },
+          {
+            "cxM": 4.25,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 4.25,
+            "pivotYM": 0,
+            "frontXM": 5.25,
+            "frontYM": 0
+          },
+          {
+            "cxM": 4.5,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 4.5,
+            "pivotYM": 0,
+            "frontXM": 5.5,
+            "frontYM": 0
+          }
+        ]
+      },
+      "conflictSet": [
+        "C:AP3→LM1:ae9d8940#i=0#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=1#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=2#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=3#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=4#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=5#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=6#dir=B_TO_A"
+      ]
+    },
+    {
+      "cellId": "C:AP3→LM1:ae9d8940#i=2#dir=B_TO_A",
+      "corridorId": "C:AP3→LM1:ae9d8940",
+      "dir": "B_TO_A",
+      "corridorS0M": 1,
+      "corridorS1M": 1.5,
+      "spans": [
+        {
+          "edgeId": "AP2-LM3",
+          "edgeS0M": 0.5,
+          "edgeS1M": 1
+        }
+      ],
+      "sweptShape": {
+        "kind": "multiRect",
+        "bbox": {
+          "minXM": 2.5,
+          "minYM": -0.5,
+          "maxXM": 5,
+          "maxYM": 0.5
+        },
+        "rects": [
+          {
+            "cxM": 3.5,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 3.5,
+            "pivotYM": 0,
+            "frontXM": 4.5,
+            "frontYM": 0
+          },
+          {
+            "cxM": 3.75,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 3.75,
+            "pivotYM": 0,
+            "frontXM": 4.75,
+            "frontYM": 0
+          },
+          {
+            "cxM": 4,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 4,
+            "pivotYM": 0,
+            "frontXM": 5,
+            "frontYM": 0
+          }
+        ]
+      },
+      "conflictSet": [
+        "C:AP3→LM1:ae9d8940#i=0#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=1#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=2#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=3#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=4#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=5#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=6#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=7#dir=B_TO_A"
+      ]
+    },
+    {
+      "cellId": "C:AP3→LM1:ae9d8940#i=3#dir=B_TO_A",
+      "corridorId": "C:AP3→LM1:ae9d8940",
+      "dir": "B_TO_A",
+      "corridorS0M": 1.5,
+      "corridorS1M": 2,
+      "spans": [
+        {
+          "edgeId": "AP2-LM3",
+          "edgeS0M": 0,
+          "edgeS1M": 0.5
+        }
+      ],
+      "sweptShape": {
+        "kind": "multiRect",
+        "bbox": {
+          "minXM": 2,
+          "minYM": -0.5,
+          "maxXM": 4.5,
+          "maxYM": 0.5
+        },
+        "rects": [
+          {
+            "cxM": 3,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 3,
+            "pivotYM": 0,
+            "frontXM": 4,
+            "frontYM": 0
+          },
+          {
+            "cxM": 3.25,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 3.25,
+            "pivotYM": 0,
+            "frontXM": 4.25,
+            "frontYM": 0
+          },
+          {
+            "cxM": 3.5,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 3.5,
+            "pivotYM": 0,
+            "frontXM": 4.5,
+            "frontYM": 0
+          }
+        ]
+      },
+      "conflictSet": [
+        "C:AP3→LM1:ae9d8940#i=0#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=1#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=2#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=3#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=4#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=5#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=6#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=7#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=8#dir=B_TO_A"
+      ]
+    },
+    {
+      "cellId": "C:AP3→LM1:ae9d8940#i=4#dir=B_TO_A",
+      "corridorId": "C:AP3→LM1:ae9d8940",
+      "dir": "B_TO_A",
+      "corridorS0M": 2,
+      "corridorS1M": 2.5,
+      "spans": [
+        {
+          "edgeId": "LM2-AP2",
+          "edgeS0M": 0.5,
+          "edgeS1M": 1
+        }
+      ],
+      "sweptShape": {
+        "kind": "multiRect",
+        "bbox": {
+          "minXM": 1.5,
+          "minYM": -0.5,
+          "maxXM": 4,
+          "maxYM": 0.5
+        },
+        "rects": [
+          {
+            "cxM": 2.5,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 2.5,
+            "pivotYM": 0,
+            "frontXM": 3.5,
+            "frontYM": 0
+          },
+          {
+            "cxM": 2.75,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 2.75,
+            "pivotYM": 0,
+            "frontXM": 3.75,
+            "frontYM": 0
+          },
+          {
+            "cxM": 3,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 3,
+            "pivotYM": 0,
+            "frontXM": 4,
+            "frontYM": 0
+          }
+        ]
+      },
+      "conflictSet": [
+        "C:AP3→LM1:ae9d8940#i=0#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=1#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=2#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=3#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=4#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=5#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=6#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=7#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=8#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=9#dir=B_TO_A"
+      ]
+    },
+    {
+      "cellId": "C:AP3→LM1:ae9d8940#i=5#dir=B_TO_A",
+      "corridorId": "C:AP3→LM1:ae9d8940",
+      "dir": "B_TO_A",
+      "corridorS0M": 2.5,
+      "corridorS1M": 3,
+      "spans": [
+        {
+          "edgeId": "LM2-AP2",
+          "edgeS0M": 0,
+          "edgeS1M": 0.5
+        }
+      ],
+      "sweptShape": {
+        "kind": "multiRect",
+        "bbox": {
+          "minXM": 1,
+          "minYM": -0.5,
+          "maxXM": 3.5,
+          "maxYM": 0.5
+        },
+        "rects": [
+          {
+            "cxM": 2,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 2,
+            "pivotYM": 0,
+            "frontXM": 3,
+            "frontYM": 0
+          },
+          {
+            "cxM": 2.25,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 2.25,
+            "pivotYM": 0,
+            "frontXM": 3.25,
+            "frontYM": 0
+          },
+          {
+            "cxM": 2.5,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 2.5,
+            "pivotYM": 0,
+            "frontXM": 3.5,
+            "frontYM": 0
+          }
+        ]
+      },
+      "conflictSet": [
+        "C:AP3→LM1:ae9d8940#i=0#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=1#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=2#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=3#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=4#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=5#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=6#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=7#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=8#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=9#dir=B_TO_A"
+      ]
+    },
+    {
+      "cellId": "C:AP3→LM1:ae9d8940#i=6#dir=B_TO_A",
+      "corridorId": "C:AP3→LM1:ae9d8940",
+      "dir": "B_TO_A",
+      "corridorS0M": 3,
+      "corridorS1M": 3.5,
+      "spans": [
+        {
+          "edgeId": "AP1-LM2",
+          "edgeS0M": 0.5,
+          "edgeS1M": 1
+        }
+      ],
+      "sweptShape": {
+        "kind": "multiRect",
+        "bbox": {
+          "minXM": 0.5,
+          "minYM": -0.5,
+          "maxXM": 3,
+          "maxYM": 0.5
+        },
+        "rects": [
+          {
+            "cxM": 1.5,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 1.5,
+            "pivotYM": 0,
+            "frontXM": 2.5,
+            "frontYM": 0
+          },
+          {
+            "cxM": 1.75,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 1.75,
+            "pivotYM": 0,
+            "frontXM": 2.75,
+            "frontYM": 0
+          },
+          {
+            "cxM": 2,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 2,
+            "pivotYM": 0,
+            "frontXM": 3,
+            "frontYM": 0
+          }
+        ]
+      },
+      "conflictSet": [
+        "C:AP3→LM1:ae9d8940#i=1#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=2#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=3#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=4#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=5#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=6#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=7#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=8#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=9#dir=B_TO_A"
+      ]
+    },
+    {
+      "cellId": "C:AP3→LM1:ae9d8940#i=7#dir=B_TO_A",
+      "corridorId": "C:AP3→LM1:ae9d8940",
+      "dir": "B_TO_A",
+      "corridorS0M": 3.5,
+      "corridorS1M": 4,
+      "spans": [
+        {
+          "edgeId": "AP1-LM2",
+          "edgeS0M": 0,
+          "edgeS1M": 0.5
+        }
+      ],
+      "sweptShape": {
+        "kind": "multiRect",
+        "bbox": {
+          "minXM": 0,
+          "minYM": -0.5,
+          "maxXM": 2.5,
+          "maxYM": 0.5
+        },
+        "rects": [
+          {
+            "cxM": 1,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 1,
+            "pivotYM": 0,
+            "frontXM": 2,
+            "frontYM": 0
+          },
+          {
+            "cxM": 1.25,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 1.25,
+            "pivotYM": 0,
+            "frontXM": 2.25,
+            "frontYM": 0
+          },
+          {
+            "cxM": 1.5,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 1.5,
+            "pivotYM": 0,
+            "frontXM": 2.5,
+            "frontYM": 0
+          }
+        ]
+      },
+      "conflictSet": [
+        "C:AP3→LM1:ae9d8940#i=2#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=3#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=4#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=5#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=6#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=7#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=8#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=9#dir=B_TO_A"
+      ]
+    },
+    {
+      "cellId": "C:AP3→LM1:ae9d8940#i=8#dir=B_TO_A",
+      "corridorId": "C:AP3→LM1:ae9d8940",
+      "dir": "B_TO_A",
+      "corridorS0M": 4,
+      "corridorS1M": 4.5,
+      "spans": [
+        {
+          "edgeId": "LM1-AP1",
+          "edgeS0M": 0.5,
+          "edgeS1M": 1
+        }
+      ],
+      "sweptShape": {
+        "kind": "multiRect",
+        "bbox": {
+          "minXM": -0.5,
+          "minYM": -0.5,
+          "maxXM": 2,
+          "maxYM": 0.5
+        },
+        "rects": [
+          {
+            "cxM": 0.5,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 0.5,
+            "pivotYM": 0,
+            "frontXM": 1.5,
+            "frontYM": 0
+          },
+          {
+            "cxM": 0.75,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 0.75,
+            "pivotYM": 0,
+            "frontXM": 1.75,
+            "frontYM": 0
+          },
+          {
+            "cxM": 1,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 1,
+            "pivotYM": 0,
+            "frontXM": 2,
+            "frontYM": 0
+          }
+        ]
+      },
+      "conflictSet": [
+        "C:AP3→LM1:ae9d8940#i=3#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=4#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=5#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=6#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=7#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=8#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=9#dir=B_TO_A"
+      ]
+    },
+    {
+      "cellId": "C:AP3→LM1:ae9d8940#i=9#dir=B_TO_A",
+      "corridorId": "C:AP3→LM1:ae9d8940",
+      "dir": "B_TO_A",
+      "corridorS0M": 4.5,
+      "corridorS1M": 5,
+      "spans": [
+        {
+          "edgeId": "LM1-AP1",
+          "edgeS0M": 0,
+          "edgeS1M": 0.5
+        }
+      ],
+      "sweptShape": {
+        "kind": "multiRect",
+        "bbox": {
+          "minXM": -1,
+          "minYM": -0.5,
+          "maxXM": 1.5,
+          "maxYM": 0.5
+        },
+        "rects": [
+          {
+            "cxM": 0,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 0,
+            "pivotYM": 0,
+            "frontXM": 1,
+            "frontYM": 0
+          },
+          {
+            "cxM": 0.25,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 0.25,
+            "pivotYM": 0,
+            "frontXM": 1.25,
+            "frontYM": 0
+          },
+          {
+            "cxM": 0.5,
+            "cyM": 0,
+            "angleRad": 0,
+            "hxM": 1,
+            "hyM": 0.5,
+            "pivotXM": 0.5,
+            "pivotYM": 0,
+            "frontXM": 1.5,
+            "frontYM": 0
+          }
+        ]
+      },
+      "conflictSet": [
+        "C:AP3→LM1:ae9d8940#i=4#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=5#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=6#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=7#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=8#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=9#dir=B_TO_A"
+      ]
+    }
+  ],
+  "nodeStopZones": [
+    {
+      "nodeId": "AP1",
+      "radiusM": 1.118033988749895,
+      "capacity": 1,
+      "conflictCells": [
+        "C:AP3→LM1:ae9d8940#i=3#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=4#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=5#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=6#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=7#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=8#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=9#dir=B_TO_A"
+      ]
+    },
+    {
+      "nodeId": "AP2",
+      "radiusM": 1.118033988749895,
+      "capacity": 1,
+      "conflictCells": [
+        "C:AP3→LM1:ae9d8940#i=0#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=1#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=2#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=3#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=4#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=5#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=6#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=7#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=8#dir=B_TO_A"
+      ]
+    },
+    {
+      "nodeId": "AP3",
+      "radiusM": 1.118033988749895,
+      "capacity": 1,
+      "conflictCells": [
+        "C:AP3→LM1:ae9d8940#i=0#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=1#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=2#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=3#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=4#dir=B_TO_A"
+      ]
+    },
+    {
+      "nodeId": "LM1",
+      "radiusM": 1.118033988749895,
+      "capacity": 1,
+      "conflictCells": [
+        "C:AP3→LM1:ae9d8940#i=5#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=6#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=7#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=8#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=9#dir=B_TO_A"
+      ]
+    },
+    {
+      "nodeId": "LM2",
+      "radiusM": 1.118033988749895,
+      "capacity": 1,
+      "conflictCells": [
+        "C:AP3→LM1:ae9d8940#i=1#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=2#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=3#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=4#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=5#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=6#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=7#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=8#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=9#dir=B_TO_A"
+      ]
+    },
+    {
+      "nodeId": "LM3",
+      "radiusM": 1.118033988749895,
+      "capacity": 1,
+      "conflictCells": [
+        "C:AP3→LM1:ae9d8940#i=0#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=1#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=2#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=3#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=4#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=5#dir=B_TO_A",
+        "C:AP3→LM1:ae9d8940#i=6#dir=B_TO_A"
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "nodeId": "AP1",
+      "inEdgeId": "LM1-AP1",
+      "outEdgeId": "AP1-LM2",
+      "inEdgeDir": "forward",
+      "outEdgeDir": "forward",
+      "transitionGeomKind": "TANGENT"
+    },
+    {
+      "nodeId": "AP2",
+      "inEdgeId": "LM2-AP2",
+      "outEdgeId": "AP2-LM3",
+      "inEdgeDir": "forward",
+      "outEdgeDir": "forward",
+      "transitionGeomKind": "TANGENT"
+    },
+    {
+      "nodeId": "LM2",
+      "inEdgeId": "AP1-LM2",
+      "outEdgeId": "LM2-AP2",
+      "inEdgeDir": "forward",
+      "outEdgeDir": "forward",
+      "transitionGeomKind": "TANGENT"
+    },
+    {
+      "nodeId": "LM3",
+      "inEdgeId": "AP2-LM3",
+      "outEdgeId": "LM3-AP3",
+      "inEdgeDir": "forward",
+      "outEdgeDir": "forward",
+      "transitionGeomKind": "TANGENT"
+    }
+  ],
+  "meta": {
+    "compiledMapHash": "sha256:0d633ff69fb8514fb26b17dd4e169d7686360b52b36f3e670357b579f23af769",
+    "paramsHash": "sha256:d3f43f82cc1bb1f4d2681ce136b6e884ce59c0a0bc2d3e7b2584dde6e698e677",
+    "compileParams": {
+      "cellLenM": 0.5,
+      "arcLutStepM": 0.1,
+      "sweepSampleStepM": 0.25,
+      "geomEpsM": 0.000001,
+      "maxRectsPerCell": 32,
+      "turningEpsRad": 0.05,
+      "tangentEpsRad": 0.0873,
+      "inflateMarginScale": 0
+    }
+  }
+}
