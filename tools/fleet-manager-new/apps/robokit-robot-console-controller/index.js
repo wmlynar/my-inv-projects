@@ -125,7 +125,8 @@ function printHelp() {
     '  Enter: soft EMC on',
     '  Backspace: soft EMC off',
     '  Arrow Up/Down/Left/Right: move/rotate',
-    '  S: go target (prompt)',
+    '  G: go target (prompt)',
+    '  S: pause task, D: resume task, F: stop task',
     '  Space: stop robot and forks',
     '  +/-: adjust target speed',
     '  Q/W: adjust target angular speed',
@@ -443,6 +444,17 @@ function sendForkHeight(height) {
   });
 }
 
+function sendForkLoad() {
+  // Match Roboshop: pallet pickup via ForkLoad on goTarget (3051).
+  clients.task.send(API.robot_task_gotarget_req, {
+    id: state.currentStation || '',
+    operation: 'ForkLoad',
+    start_height: 0,
+    end_height: 0.5,
+    recognize: false
+  });
+}
+
 function sendGoTarget(id) {
   if (!id) {
     inputMessage = 'Empty target id.';
@@ -591,6 +603,22 @@ function installKeyHandler() {
       return;
     }
     if (str === 's' || str === 'S') {
+      clients.task.send(API.robot_task_pause_req, null);
+      return;
+    }
+    if (str === 'd' || str === 'D') {
+      clients.task.send(API.robot_task_resume_req, null);
+      return;
+    }
+    if (str === 'f' || str === 'F') {
+      clients.task.send(API.robot_task_cancel_req, null);
+      return;
+    }
+    if (str === 'x' || str === 'X') {
+      sendForkLoad();
+      return;
+    }
+    if (str === 'g' || str === 'G') {
       enterTargetPrompt();
       return;
     }
@@ -682,8 +710,8 @@ function render() {
     `Stations: current ${state.currentStation || '-'} | last ${state.lastStation || '-'}`,
     promptText,
     hintText,
-    'Keys: Enter soft-EMC ON | Backspace soft-EMC OFF | Space stop | P seize | L release',
-    'Keys: Arrows move | +/- speed | Q/W angular | A/Z fork up/down | S go target | Ctrl+C exit'
+    'Keys: Enter soft-EMC ON | Backspace soft-EMC OFF | Space stop | P seize | L release | S pause | D resume | F stop | X pickup',
+    'Keys: Arrows move | +/- speed | Q/W angular | A/Z fork up/down | G go target | Ctrl+C exit'
   ];
 
   process.stdout.write('\x1b[2J\x1b[H' + lines.join('\n') + '\n');
