@@ -72,6 +72,64 @@ Mozliwa implementacja:
 - Przycisk "Next error" skacze do kolejnego error w liscie.
 - Przy zmianie windowMs, UI nie resetuje pozycji suwaka.
 
+## 5a. Kontrakty czasu i okna (MUST)
+Definicje:
+- **t**: czas aktualnego suwaka w ms, liczony z `trajectory[sliderIndex].tsMs`.
+- Okno czasu: **[t, t + windowMs]** (inkluzivne na obu koncach).
+- Wszystkie operacje highlightu i filtrowania odnosza sie do **tsMs z logow**.
+
+Konsekwencje:
+- Gdy `windowMs=0`, highlight dotyczy tylko punktow o `tsMs == t`.
+- Gdy w oknie brak punktow, highlight nie jest rysowany.
+- Highlight wykorzystuje **downsampled trajectory** z `/api/trajectory` (brak odrebnego raw stream).
+
+## 5b. Algorytm statusChanges (MUST)
+Zakres pol, ktore bierzemy do diff:
+- `blocked`, `manualBlock`, `slowed`, `slow_reason`,
+- `emergency`, `soft_emc`, `driver_emc`,
+- `running_status`, `task_status`,
+- `current_station`, `target_id`.
+
+Zasady:
+- `statusChanges` zawiera rekord tylko, gdy **jakiekolwiek** z powyzszych pol zmienilo wartosc.
+- Dla pol tekstowych (`current_station`, `target_id`): zmiana na inny string lub `null`.
+- Dla pol liczbowych: zmiana wartosci.
+- Dla booleans: zmiana true/false.
+
+Format statusChanges:
+```
+{ tsMs, x, y, changed: { blocked: { prev, next }, ... }, snapshot: { ...full status... } }
+```
+
+## 5c. Kontrakt /api/status (MUST)
+Endpoint:
+- `GET /api/status` domyslnie zwraca **statusFrames**.
+- `GET /api/status?mode=changes` zwraca **statusChanges**.
+
+Zasady mapowania polozenia:
+- `x/y` bierzemy z frame statusu.
+- Jesli `x/y` brak (nie powinno sie zdarzyc w statusach), ustawiac `null`.
+
+## 5d. Powiazanie blokad i bledow (MUST)
+Panel bledow pokazuje dodatkowo:
+- `block_points_in_window`: liczba block/nearest punktow w [t, t+windowMs].
+- `blocked_status`: wartosc `blocked` w czasie t (snapshot).
+
+Definicja "punkty blokujace wozek":
+- wszystkie punkty z `blocks` w oknie czasu.
+- opcjonalnie `nearest` jako osobna kolumna (licznik).
+
+## 5e. Render i wydajnosc (MUST)
+- Highlight okna czasu NIE przebudowuje calych warstw SVG.
+- Implementacja zalecana: class `is-window` na markerach i osobny `<path>` dla podswietlonego fragmentu trajektorii.
+- Uzywac binarnego wyszukiwania po `tsMs` dla wyznaczenia indeksow okna.
+
+## 5f. Edge cases (MUST)
+- Brak `/api/status`: ukryc panel Status i markery zmian statusu.
+- Brak `trajectory`: mapa pokazuje tylko errors/obstacles bez highlightu; suwak disabled.
+- Brak `errors`: panel bledow pokazuje "0 errors" i jest zwijany.
+- Brak mapy: highlight i panning dzialaja na bbox trajektorii jak w v0.1.
+
 ## 6. Testy (SHOULD)
 - Unit tests parsera: sprawdz czy `statusChanges` zwraca zmiany blocked/slowed/emergency.
 - UI smoke test (manual): przewijanie suwaka -> aktualizacja panelu statusu i listy bledow.
