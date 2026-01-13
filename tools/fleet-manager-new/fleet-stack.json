@@ -1,0 +1,70 @@
+{
+  "profiles": {
+    "full": [
+      {
+        "name": "ui",
+        "cwd": "apps/fleet-ui",
+        "cmd": "node",
+        "args": ["server.js"],
+        "env": {
+          "PORT": "8091",
+          "HOST": "0.0.0.0"
+        },
+        "readyUrl": "http://127.0.0.1:8091/"
+      },
+      {
+        "name": "gateway",
+        "cwd": "apps/fleet-gateway",
+        "cmd": "node",
+        "args": ["cli/cli.js", "--config", "{configDir}/fleet-gateway.local.json5"],
+        "env": {
+          "FLEET_DATA_DIR": "{dataDir}"
+        },
+        "readyUrl": "http://127.0.0.1:8081/gateway/v1/health"
+      },
+      {
+        "name": "core",
+        "cwd": "apps/fleet-core",
+        "cmd": "node",
+        "args": ["cli/cli.js", "--config", "{configDir}/fleet-core.local.json5"],
+        "env": {
+          "FLEET_DATA_DIR": "{dataDir}"
+        },
+        "readyUrl": "http://127.0.0.1:8080/api/v1/health"
+      }
+    ],
+    "mock": [
+      {
+        "name": "ui",
+        "cwd": "apps/fleet-ui",
+        "cmd": "node",
+        "args": ["server.js"],
+        "env": {
+          "PORT": "8091",
+          "HOST": "0.0.0.0"
+        },
+        "readyUrl": "http://127.0.0.1:8091/"
+      },
+      {
+        "name": "gateway",
+        "cwd": "apps/fleet-gateway",
+        "cmd": "node",
+        "args": ["cli/cli.js", "--config", "{configDir}/fleet-gateway.local.json5"],
+        "env": {
+          "FLEET_DATA_DIR": "{dataDir}"
+        },
+        "readyUrl": "http://127.0.0.1:8081/gateway/v1/health"
+      },
+      {
+        "name": "core",
+        "cwd": "apps/fleet-core",
+        "cmd": "node",
+        "args": ["cli/cli.js", "--config", "{configDir}/fleet-core.local.json5"],
+        "env": {
+          "FLEET_DATA_DIR": "{dataDir}"
+        },
+        "readyUrl": "http://127.0.0.1:8080/api/v1/health"
+      }
+    ]
+  }
+}

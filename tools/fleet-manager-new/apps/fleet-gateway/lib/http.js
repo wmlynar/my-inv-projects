@@ -1,6 +1,18 @@
 const http = require('http');
 const https = require('https');
 
+const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 50 });
+const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 50 });
+
+const DEFAULT_RETRY_ERRORS = [
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'ETIMEDOUT',
+  'EPIPE',
+  'ENOTFOUND',
+  'EAI_AGAIN'
+];
+
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -25,7 +37,8 @@ function requestJson(urlInput, options = {}) {
     retries = 0,
     retryDelayMs = 100,
     retryBackoffFactor = 2,
-    retryStatuses = [502, 503, 504]
+    retryStatuses = [502, 503, 504],
+    retryErrors = DEFAULT_RETRY_ERRORS
   } = options;
 
   const body = payload == null ? null : JSON.stringify(payload);
@@ -41,41 +54,65 @@ function requestJson(urlInput, options = {}) {
   }
 
   async function attemptRequest(attempt) {
-    const result = await new Promise((resolve, reject) => {
-      const transport = url.protocol === 'https:' ? https : http;
-      const req = transport.request(buildRequestOptions(url, method, headers), (res) => {
-        const chunks = [];
-        res.on('data', (chunk) => chunks.push(chunk));
-        res.on('end', () => {
-          const text = Buffer.concat(chunks).toString('utf8');
-          let json = null;
-          if (text) {
-            try {
-              json = JSON.parse(text);
-            } catch (_err) {
-              json = null;
-            }
+    let result = null;
+    try {
+      result = await new Promise((resolve, reject) => {
+        const isHttps = url.protocol === 'https:';
+        const transport = isHttps ? https : http;
+        const agent = isHttps ? httpsAgent : httpAgent;
+        const req = transport.request(
+          { ...buildRequestOptions(url, method, headers), agent },
+          (res) => {
+            const chunks = [];
+            res.on('data', (chunk) => chunks.push(chunk));
+            res.on('end', () => {
+              const text = Buffer.concat(chunks).toString('utf8');
+              let json = null;
+              if (text) {
+                try {
+                  json = JSON.parse(text);
+                } catch (_err) {
+                  json = null;
+                }
+              }
+              resolve({
+                status: res.statusCode || 0,
+                ok: Boolean(res.statusCode && res.statusCode >= 200 && res.statusCode < 300),
+                headers: res.headers || {},
+                text,
+                json
+              });
+            });
           }
-          resolve({
-            status: res.statusCode || 0,
-            ok: Boolean(res.statusCode && res.statusCode >= 200 && res.statusCode < 300),
-            headers: res.headers || {},
-            text,
-            json
-          });
+        );
+
+        req.on('error', reject);
+        req.setTimeout(timeoutMs, () => {
+          req.destroy(Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' }));
         });
-      });
 
-      req.on('error', reject);
-      req.setTimeout(timeoutMs, () => {
-        req.destroy(Object.assign(new Error('timeout'), { code: 'timeout' }));
+        if (body != null) {
+          req.write(body);
+        }
+        req.end();
       });
-
-      if (body != null) {
-        req.write(body);
+    } catch (err) {
+      const code = err?.code;
+      if (retryErrors.includes(code) && attempt < retries) {
+        const backoff = Math.min(retryDelayMs * Math.pow(retryBackoffFactor, attempt), 5000);
+        await delay(backoff);
+        return attemptRequest(attempt + 1);
       }
-      req.end();
-    });
+      return {
+        status: 0,
+        ok: false,
+        headers: {},
+        text: '',
+        json: null,
+        error: err?.message || 'network_error',
+        errorCode: code || 'UNKNOWN'
+      };
+    }
 
     if (retryStatuses.includes(result.status) && attempt < retries) {
       const backoff = Math.min(retryDelayMs * Math.pow(retryBackoffFactor, attempt), 5000);

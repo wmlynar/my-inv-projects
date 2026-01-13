@@ -1,6 +1,9 @@
 (() => {
   const App = window.FleetUI.App;
   const { constants, state, elements, helpers, services } = App;
+  const LEASE_RENEW_MARGIN_MS = 3000;
+  const LEASE_TTL_MS = 15000;
+  let clientLease = null;
 
   const isRemoteSim = () => [constants.LOCAL_SIM_MODE, constants.ROBOKIT_SIM_MODE].includes(state.simMode);
   const isRobokitSim = () => state.simMode === constants.ROBOKIT_SIM_MODE;
@@ -44,6 +47,62 @@
     } catch (_error) {
       return null;
     }
+  };
+
+  const postJsonRaw = async (path, payload = null) => {
+    if (services.dataSource?.postJson) {
+      return services.dataSource.postJson(path, payload);
+    }
+    const body = payload ? JSON.stringify(payload) : null;
+    const response = await fetch(path, {
+      method: "POST",
+      headers: body ? { "Content-Type": "application/json" } : {},
+      body
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || `post_failed_${response.status}`);
+    }
+    return response.json().catch(() => null);
+  };
+
+  const ensureLease = async () => {
+    if (!state.fleetCoreAvailable || !state.fleetApiBase) return null;
+    const now = Date.now();
+    if (
+      clientLease &&
+      Number.isFinite(clientLease.expiresTsMs) &&
+      clientLease.expiresTsMs > now + LEASE_RENEW_MARGIN_MS
+    ) {
+      return clientLease;
+    }
+    if (clientLease?.leaseId) {
+      try {
+        const renew = await postJsonRaw(`${state.fleetApiBase}/control-lease/renew`, {
+          leaseId: clientLease.leaseId,
+          ttlMs: LEASE_TTL_MS
+        });
+        if (renew?.lease) {
+          clientLease = renew.lease;
+          return clientLease;
+        }
+      } catch (_err) {
+        // fallthrough to seize
+      }
+    }
+    try {
+      const seized = await postJsonRaw(`${state.fleetApiBase}/control-lease/seize`, {
+        ttlMs: LEASE_TTL_MS,
+        request: { clientId: "fleet-ui" }
+      });
+      if (seized?.lease) {
+        clientLease = seized.lease;
+        return clientLease;
+      }
+    } catch (_err) {
+      // ignore lease conflicts
+    }
+    return null;
   };
 
   const loadAlgorithmCatalog = async () => {
@@ -435,7 +494,7 @@
     if (status === "completed") return "Completed";
     if (status === "failed") return "Failed";
     if (status === "paused") return "Paused";
-    if (status === "cancelled") return "Cancelled";
+    if (status === "cancelled" || status === "canceled") return "Cancelled";
     return "In progress";
   };
 
@@ -604,6 +663,9 @@
     services.manualDriveService?.syncRobotAvailability?.();
     App.bus?.emit?.("state:changed", { reason: "fleet_status" });
     App.map?.updateWorksiteStateFromCore?.(payload.worksites || []);
+    if (payload.controlLease) {
+      state.controlLease = payload.controlLease;
+    }
   };
 
   const refreshFleetStatus = async () => {
@@ -734,20 +796,15 @@
 
   const postFleetJson = async (path, payload = null) => {
     const target = `${state.fleetApiBase}${path}`;
-    if (services.dataSource?.postJson) {
-      return services.dataSource.postJson(target, payload);
+    const needsLease = /^\/(tasks|scenes\/(import|activate)|robots\/[^/]+\/commands|robots\/[^/]+\/provider-switch)/.test(path);
+    let bodyPayload = payload;
+    if (needsLease) {
+      const lease = await ensureLease();
+      if (lease?.leaseId) {
+        bodyPayload = { ...(payload || {}), leaseId: lease.leaseId };
+      }
     }
-    const body = payload ? JSON.stringify(payload) : null;
-    const response = await fetch(target, {
-      method: "POST",
-      headers: body ? { "Content-Type": "application/json" } : {},
-      body
-    });
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(text || `fleet_post_failed_${response.status}`);
-    }
-    return response.json();
+    return postJsonRaw(target, bodyPayload);
   };
 
   const postSimJson = async (path, payload) => {

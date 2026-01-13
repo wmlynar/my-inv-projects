@@ -1,7 +1,18 @@
 const http = require('http');
-const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const {
+  createId,
+  resolveRequestId,
+  sendJson,
+  sendText,
+  sendOptions,
+  sendError,
+  readJsonBody,
+  safeDecode,
+  wrapAsync,
+  createSseHub
+} = require('../../packages/fleet-kit');
 const { createRuntime } = require('./mvp0/runtime');
 const { createGatewayClient } = require('./mvp0/gateway_client');
 const { createDclRuntime } = require('./orchestrator/runtime_dcl');
@@ -11,83 +22,32 @@ function nowMs() {
   return Date.now();
 }
 
-function createId(prefix) {
-  const rand = crypto.randomBytes(6).toString('hex');
-  return `${prefix}_${Date.now().toString(36)}_${rand}`;
-}
-
-function sendJson(res, statusCode, payload) {
-  const body = JSON.stringify(payload);
-  res.writeHead(statusCode, {
-    'Content-Type': 'application/json; charset=utf-8',
-    'Content-Length': Buffer.byteLength(body),
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type'
-  });
-  res.end(body);
-}
-
-function sendText(res, statusCode, text) {
-  res.writeHead(statusCode, {
-    'Content-Type': 'text/plain; charset=utf-8',
-    'Content-Length': Buffer.byteLength(text),
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type'
-  });
-  res.end(text);
-}
-
-function readJsonBody(req, limitBytes = 1_000_000) {
-  return new Promise((resolve, reject) => {
-    let total = 0;
-    const chunks = [];
-    req.on('data', (chunk) => {
-      total += chunk.length;
-      if (total > limitBytes) {
-        const err = new Error('payload too large');
-        err.code = 'payload_too_large';
-        req.destroy(err);
-        return;
-      }
-      chunks.push(chunk);
-    });
-    req.on('end', () => {
-      if (!chunks.length) {
-        resolve(null);
-        return;
-      }
-      const text = Buffer.concat(chunks).toString('utf8').trim();
-      if (!text) {
-        resolve(null);
-        return;
-      }
-      try {
-        resolve(JSON.parse(text));
-      } catch (err) {
-        err.code = 'invalid_json';
-        reject(err);
-      }
-    });
-    req.on('error', reject);
-  });
-}
-
-function startSse(req, res) {
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream; charset=utf-8',
-    'Cache-Control': 'no-cache',
-    Connection: 'keep-alive',
-    'Access-Control-Allow-Origin': '*'
-  });
-  res.write(`event: hello\ndata: ${JSON.stringify({ tsMs: nowMs() })}\n\n`);
-  const interval = setInterval(() => {
-    res.write(`: ping ${nowMs()}\n\n`);
-  }, 15000);
-  req.on('close', () => {
-    clearInterval(interval);
-  });
+function buildErrorResponse(err, requestId) {
+  if (err && err.code === 'payload_too_large') {
+    return {
+      code: 'validationError',
+      causeCode: 'PAYLOAD_TOO_LARGE',
+      message: 'Payload too large',
+      status: 413,
+      requestId
+    };
+  }
+  if (err && err.code === 'invalid_json') {
+    return {
+      code: 'validationError',
+      causeCode: 'INVALID_JSON',
+      message: 'Invalid JSON payload',
+      status: 400,
+      requestId
+    };
+  }
+  return {
+    code: 'internalError',
+    causeCode: 'UNKNOWN',
+    message: err?.message || 'Internal error',
+    status: 500,
+    requestId
+  };
 }
 
 function startServer(config) {
@@ -96,7 +56,22 @@ function startServer(config) {
     scenes: [],
     activeSceneId: null
   };
-  const streamClients = new Set();
+  const streamHub = createSseHub({
+    eventName: 'state',
+    heartbeatMs: 15000,
+    retryMs: 2000,
+    headers: {
+      'X-Accel-Buffering': 'no'
+    }
+  });
+  const eventsHub = createSseHub({
+    eventName: 'hello',
+    heartbeatMs: 15000,
+    retryMs: 2000,
+    headers: {
+      'X-Accel-Buffering': 'no'
+    }
+  });
 
   const runtimeMode = config.runtime?.mode || 'mvp0';
   const resolveConfigPath = (filePath) => {
@@ -136,15 +111,7 @@ function startServer(config) {
       : 200;
 
   const broadcastState = (payload) => {
-    if (!streamClients.size) return;
-    const data = `event: state\ndata: ${JSON.stringify(payload)}\n\n`;
-    for (const res of streamClients) {
-      try {
-        res.write(data);
-      } catch (_err) {
-        streamClients.delete(res);
-      }
-    }
+    streamHub.send(payload);
   };
 
   const buildStreamPayload = (snapshot) => ({
@@ -156,44 +123,104 @@ function startServer(config) {
     tasks: snapshot.tasks
   });
 
-  setInterval(() => {
-    const decision = runtime.tick({ nowMs: nowMs() });
-    for (const command of decision.commands) {
-      gatewayClient.sendCommand(command).catch((err) => {
-        console.warn(`gateway command failed: ${err.message}`);
-      });
+  const expireLeaseIfNeeded = () => {
+    if (!state.lease) return;
+    if (state.lease.expiresTsMs <= nowMs()) {
+      state.lease = null;
     }
-    broadcastState(buildStreamPayload(decision));
-  }, tickMs);
-
-  const startStateStream = (req, res) => {
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream; charset=utf-8',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-      'Access-Control-Allow-Origin': '*'
-    });
-    res.write(':\n\n');
-    const snapshot = runtime.getState();
-    res.write(`event: state\ndata: ${JSON.stringify(buildStreamPayload(snapshot))}\n\n`);
-    streamClients.add(res);
-    req.on('close', () => {
-      streamClients.delete(res);
-    });
   };
 
-  const server = http.createServer(async (req, res) => {
+  const requireLease = (payload, requestId) => {
+    expireLeaseIfNeeded();
+    if (!state.lease) {
+      return {
+        ok: false,
+        error: {
+          code: 'conflict',
+          causeCode: 'CONTROL_LEASE_REQUIRED',
+          message: 'control lease required',
+          requestId
+        }
+      };
+    }
+    if (!payload?.leaseId) {
+      return {
+        ok: false,
+        error: {
+          code: 'conflict',
+          causeCode: 'CONTROL_LEASE_REQUIRED',
+          message: 'leaseId is required for mutating requests',
+          requestId
+        }
+      };
+    }
+    if (payload.leaseId !== state.lease.leaseId) {
+      return {
+        ok: false,
+        error: {
+          code: 'conflict',
+          causeCode: 'INVALID_LEASE',
+          message: 'invalid control lease',
+          requestId
+        }
+      };
+    }
+    return { ok: true, lease: state.lease };
+  };
+
+  const readPayload = async (req, res, requestId) => {
+    try {
+      return await readJsonBody(req);
+    } catch (err) {
+      sendError(res, buildErrorResponse(err, requestId));
+      return undefined;
+    }
+  };
+
+  let tickRunning = false;
+  let tickTimer = null;
+  const runTick = async () => {
+    if (tickRunning) return;
+    tickRunning = true;
+    const started = nowMs();
+    try {
+      const decision = runtime.tick({ nowMs: started });
+      expireLeaseIfNeeded();
+      for (const command of decision.commands) {
+        gatewayClient.sendCommand(command).catch((err) => {
+          console.warn(`gateway command failed: ${err.message}`);
+        });
+      }
+      broadcastState(buildStreamPayload(decision));
+    } catch (err) {
+      console.warn(`tick failed: ${err.message}`);
+    } finally {
+      tickRunning = false;
+      const elapsed = nowMs() - started;
+      const delay = Math.max(0, tickMs - elapsed);
+      tickTimer = setTimeout(runTick, delay);
+    }
+  };
+  tickTimer = setTimeout(runTick, tickMs);
+
+  const startStateStream = (req, res) => {
+    const snapshot = runtime.getState();
+    streamHub.addClient(req, res, buildStreamPayload(snapshot));
+  };
+
+  const startEventsStream = (req, res) => {
+    eventsHub.addClient(req, res, { tsMs: nowMs() });
+  };
+
+  const server = http.createServer(wrapAsync(async (req, res) => {
+    const requestId = resolveRequestId(req, res);
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const { pathname } = url;
 
+    expireLeaseIfNeeded();
+
     if (req.method === 'OPTIONS') {
-      res.writeHead(204, {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
-        'Access-Control-Max-Age': '86400'
-      });
-      res.end();
+      sendOptions(res);
       return;
     }
 
@@ -221,21 +248,21 @@ function startServer(config) {
     }
 
     if (req.method === 'GET' && (pathname === '/api/v1/events' || pathname === '/api/v1/events/stream')) {
-      startSse(req, res);
+      startEventsStream(req, res);
       return;
     }
 
     if (req.method === 'POST' && pathname === '/api/v1/control-lease/seize') {
-      let payload = null;
-      try {
-        payload = await readJsonBody(req);
-      } catch (err) {
-        sendJson(res, 400, { error: err.code || 'invalid_json' });
-        return;
-      }
+      const payload = await readPayload(req, res, requestId);
+      if (payload === undefined) return;
       const force = Boolean(payload && payload.force);
       if (state.lease && !force) {
-        sendJson(res, 409, { error: 'conflict', causeCode: 'CONFLICT' });
+        sendError(res, {
+          code: 'conflict',
+          causeCode: 'CONTROL_LEASE_SEIZED',
+          message: 'lease already held',
+          requestId
+        });
         return;
       }
       const ttlMs = Number.isFinite(payload?.ttlMs) ? payload.ttlMs : 15000;
@@ -247,38 +274,40 @@ function startServer(config) {
         },
         expiresTsMs: nowMs() + ttlMs
       };
-      sendJson(res, 200, { lease: state.lease });
+      sendJson(res, 200, { lease: state.lease, ok: true });
       return;
     }
 
     if (req.method === 'POST' && pathname === '/api/v1/control-lease/renew') {
-      let payload = null;
-      try {
-        payload = await readJsonBody(req);
-      } catch (err) {
-        sendJson(res, 400, { error: err.code || 'invalid_json' });
-        return;
-      }
+      const payload = await readPayload(req, res, requestId);
+      if (payload === undefined) return;
+      expireLeaseIfNeeded();
       if (!state.lease || state.lease.leaseId !== payload?.leaseId) {
-        sendJson(res, 409, { error: 'invalid_lease' });
+        sendError(res, {
+          code: 'conflict',
+          causeCode: 'INVALID_LEASE',
+          message: 'invalid lease',
+          requestId
+        });
         return;
       }
       const ttlMs = Number.isFinite(payload?.ttlMs) ? payload.ttlMs : 15000;
       state.lease = { ...state.lease, expiresTsMs: nowMs() + ttlMs };
-      sendJson(res, 200, { lease: state.lease });
+      sendJson(res, 200, { lease: state.lease, ok: true });
       return;
     }
 
     if (req.method === 'POST' && pathname === '/api/v1/control-lease/release') {
-      let payload = null;
-      try {
-        payload = await readJsonBody(req);
-      } catch (err) {
-        sendJson(res, 400, { error: err.code || 'invalid_json' });
-        return;
-      }
+      const payload = await readPayload(req, res, requestId);
+      if (payload === undefined) return;
+      expireLeaseIfNeeded();
       if (!state.lease || state.lease.leaseId !== payload?.leaseId) {
-        sendJson(res, 409, { error: 'invalid_lease' });
+        sendError(res, {
+          code: 'conflict',
+          causeCode: 'INVALID_LEASE',
+          message: 'invalid lease',
+          requestId
+        });
         return;
       }
       state.lease = null;
@@ -287,11 +316,11 @@ function startServer(config) {
     }
 
     if (req.method === 'POST' && pathname === '/api/v1/scenes/import') {
-      let payload = null;
-      try {
-        payload = await readJsonBody(req);
-      } catch (err) {
-        sendJson(res, 400, { error: err.code || 'invalid_json' });
+      const payload = await readPayload(req, res, requestId);
+      if (payload === undefined) return;
+      const lease = requireLease(payload, requestId);
+      if (!lease.ok) {
+        sendError(res, lease.error);
         return;
       }
       const sceneId = createId('scene');
@@ -306,15 +335,20 @@ function startServer(config) {
     }
 
     if (req.method === 'POST' && pathname === '/api/v1/scenes/activate') {
-      let payload = null;
-      try {
-        payload = await readJsonBody(req);
-      } catch (err) {
-        sendJson(res, 400, { error: err.code || 'invalid_json' });
+      const payload = await readPayload(req, res, requestId);
+      if (payload === undefined) return;
+      const lease = requireLease(payload, requestId);
+      if (!lease.ok) {
+        sendError(res, lease.error);
         return;
       }
       if (!payload?.sceneId) {
-        sendJson(res, 400, { error: 'missing_scene_id' });
+        sendError(res, {
+          code: 'validationError',
+          causeCode: 'VALIDATION_FAILED',
+          message: 'sceneId is required',
+          requestId
+        });
         return;
       }
       state.activeSceneId = payload.sceneId;
@@ -323,72 +357,111 @@ function startServer(config) {
     }
 
     if (req.method === 'POST' && pathname === '/api/v1/tasks') {
-      let payload = null;
-      try {
-        payload = await readJsonBody(req);
-      } catch (err) {
-        sendJson(res, 400, { error: err.code || 'invalid_json' });
+      const payload = await readPayload(req, res, requestId);
+      if (payload === undefined) return;
+      const lease = requireLease(payload, requestId);
+      if (!lease.ok) {
+        sendError(res, lease.error);
         return;
       }
       try {
         const task = runtime.createTask(payload?.task || {}, nowMs());
-        sendJson(res, 200, { taskId: task.taskId, ok: true });
+        sendJson(res, 201, { taskId: task.taskId, ok: true });
       } catch (err) {
-        sendJson(res, 400, { error: err.message || 'invalid_task' });
+        sendError(res, {
+          code: 'validationError',
+          causeCode: 'VALIDATION_FAILED',
+          message: err.message || 'invalid task',
+          requestId
+        });
       }
       return;
     }
 
     const commandMatch = pathname.match(/^\/api\/v1\/robots\/([^/]+)\/commands$/);
     if (req.method === 'POST' && commandMatch) {
-      let payload = null;
-      try {
-        payload = await readJsonBody(req);
-      } catch (err) {
-        sendJson(res, 400, { error: err.code || 'invalid_json' });
+      const payload = await readPayload(req, res, requestId);
+      if (payload === undefined) return;
+      const lease = requireLease(payload, requestId);
+      if (!lease.ok) {
+        sendError(res, lease.error);
         return;
       }
-      const robotId = commandMatch[1];
+      const robotId = safeDecode(commandMatch[1]);
+      if (!robotId) {
+        sendError(res, {
+          code: 'validationError',
+          causeCode: 'INVALID_PATH',
+          message: 'invalid robotId',
+          requestId
+        });
+        return;
+      }
       const commandId = createId('cmd');
       const command = { ...(payload?.command || {}), robotId };
       try {
         await gatewayClient.sendCommand(command);
         sendJson(res, 200, { ok: true, robotId, commandId });
       } catch (err) {
-        sendJson(res, 503, { ok: false, robotId, commandId, error: err.message || 'gateway_error' });
+        sendError(res, {
+          code: 'dependencyUnavailable',
+          causeCode: 'DEPENDENCY_OFFLINE',
+          message: err.message || 'gateway error',
+          status: 503,
+          requestId,
+          details: { robotId, commandId }
+        });
       }
       return;
     }
 
     const providerMatch = pathname.match(/^\/api\/v1\/robots\/([^/]+)\/provider-switch$/);
     if (req.method === 'POST' && providerMatch) {
-      let payload = null;
-      try {
-        payload = await readJsonBody(req);
-      } catch (err) {
-        sendJson(res, 400, { error: err.code || 'invalid_json' });
+      const payload = await readPayload(req, res, requestId);
+      if (payload === undefined) return;
+      const lease = requireLease(payload, requestId);
+      if (!lease.ok) {
+        sendError(res, lease.error);
         return;
       }
-      const robotId = providerMatch[1];
+      const robotId = safeDecode(providerMatch[1]);
+      if (!robotId) {
+        sendError(res, {
+          code: 'validationError',
+          causeCode: 'INVALID_PATH',
+          message: 'invalid robotId',
+          requestId
+        });
+        return;
+      }
       sendJson(res, 200, { ok: true, robotId, provider: payload?.targetProvider || null });
       return;
     }
 
     const statusMatch = pathname.match(/^\/api\/v1\/robots\/([^/]+)\/status$/);
     if (req.method === 'POST' && statusMatch) {
-      let payload = null;
-      try {
-        payload = await readJsonBody(req);
-      } catch (err) {
-        sendJson(res, 400, { error: err.code || 'invalid_json' });
+      const payload = await readPayload(req, res, requestId);
+      if (!payload && payload !== null) return;
+      const robotId = safeDecode(statusMatch[1]);
+      if (!robotId) {
+        sendError(res, {
+          code: 'validationError',
+          causeCode: 'INVALID_PATH',
+          message: 'invalid robotId',
+          requestId
+        });
         return;
       }
-      const robotId = statusMatch[1];
       try {
         const updated = runtime.upsertRobotStatus(robotId, payload?.status || {}, nowMs());
         sendJson(res, 200, { ok: true, robot: updated });
       } catch (err) {
-        sendJson(res, 400, { error: err.message || 'invalid_robot_status' });
+        sendError(res, {
+          code: 'validationError',
+          causeCode: 'VALIDATION_FAILED',
+          message: err.message || 'invalid robot status',
+          requestId
+        });
       }
       return;
     }
@@ -398,13 +471,27 @@ function startServer(config) {
       return;
     }
 
-    sendText(res, 404, 'not found');
-  });
+    sendError(res, {
+      code: 'notFound',
+      causeCode: 'NOT_FOUND',
+      message: 'not found',
+      requestId
+    });
+  }, (err, req, res) => {
+    const requestId = resolveRequestId(req, res);
+    sendError(res, buildErrorResponse(err, requestId));
+  }));
 
   const host = config.server?.host || '0.0.0.0';
   const port = config.server?.port || 8080;
   server.listen(port, host, () => {
     console.log(`fleet-core listening on ${host}:${port}`);
+  });
+
+  server.on('close', () => {
+    if (tickTimer) clearTimeout(tickTimer);
+    streamHub.close();
+    eventsHub.close();
   });
 
   return server;

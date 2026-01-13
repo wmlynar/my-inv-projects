@@ -2,6 +2,7 @@ const fs = require('fs');
 const http = require('http');
 const https = require('https');
 const path = require('path');
+const { createSseHub, safeDecode, wrapAsync } = require('../../packages/fleet-kit');
 
 const ROOT_DIR = path.resolve(__dirname, 'public');
 const SHARED_PUBLIC_DIR = path.resolve(__dirname, '..', '..', 'packages', 'robokit-map-ui', 'public');
@@ -719,7 +720,8 @@ function buildFleetState() {
 
 function resolvePath(requestUrl) {
   const parsed = new URL(requestUrl, URL_BASE);
-  const decoded = decodeURIComponent(parsed.pathname || '/');
+  const decoded = safeDecode(parsed.pathname || '/');
+  if (!decoded) return ROOT_DIR;
   const safePath = path.normalize(decoded).replace(/^(\.\.(\/|\\|$))+/, '');
   return path.join(ROOT_DIR, safePath);
 }
@@ -760,8 +762,10 @@ function readBody(req, limit) {
     req.on('data', (chunk) => {
       total += chunk.length;
       if (total > limit) {
-        reject(new Error('body too large'));
-        req.destroy();
+        const err = new Error('body too large');
+        err.code = 'payload_too_large';
+        reject(err);
+        req.resume();
         return;
       }
       chunks.push(chunk);
@@ -781,43 +785,34 @@ async function readJsonBody(req) {
   }
 }
 
-const streamClients = new Set();
+const streamHub = createSseHub({
+  eventName: 'state',
+  heartbeatMs: 15000,
+  retryMs: 2000,
+  headers: {
+    'X-Accel-Buffering': 'no',
+    'X-Content-Type-Options': 'nosniff'
+  }
+});
 let streamTimer = null;
 
 function startStreamTimer() {
   if (streamTimer) return;
   streamTimer = setInterval(() => {
-    if (!streamClients.size) {
+    if (!streamHub.size()) {
       clearInterval(streamTimer);
       streamTimer = null;
       return;
     }
     const payload = buildFleetState();
-    const data = `event: state\ndata: ${JSON.stringify({ ok: true, ...payload })}\n\n`;
-    streamClients.forEach((res) => {
-      try {
-        res.write(data);
-      } catch (_err) {
-        streamClients.delete(res);
-      }
-    });
+    streamHub.send({ ok: true, ...payload });
   }, streamIntervalMs);
 }
 
 function handleFleetStream(req, res) {
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    Connection: 'keep-alive',
-    'X-Accel-Buffering': 'no',
-    'X-Content-Type-Options': 'nosniff'
-  });
-  res.write(':\n\n');
-  streamClients.add(res);
+  const payload = buildFleetState();
+  streamHub.addClient(req, res, { ok: true, ...payload });
   startStreamTimer();
-  req.on('close', () => {
-    streamClients.delete(res);
-  });
 }
 
 function getRobotById(id) {
@@ -1021,7 +1016,11 @@ async function handleApi(req, res, pathname) {
 
   const logWorksiteMatch = pathname.match(/^\/api\/log\/worksites\/([^/]+)$/);
   if (logWorksiteMatch && req.method === 'POST') {
-    const siteId = decodeURIComponent(logWorksiteMatch[1]);
+    const siteId = safeDecode(logWorksiteMatch[1]);
+    if (!siteId) {
+      send(res, 400, 'invalid worksite id');
+      return;
+    }
     const payload = await readJsonBody(req);
     if (payload && typeof payload === 'object') {
       logEvent('worksite.log', {
@@ -1039,14 +1038,22 @@ async function handleApi(req, res, pathname) {
   if (req.method === 'POST') {
     const robotMatch = pathname.match(/^\/api\/fleet\/robots\/([^/]+)\/([^/]+)$/);
     if (robotMatch) {
-      const robotId = decodeURIComponent(robotMatch[1]);
+      const robotId = safeDecode(robotMatch[1]);
+      if (!robotId) {
+        send(res, 400, 'invalid robot id');
+        return;
+      }
       const action = robotMatch[2];
       await handleRobotCommand(req, res, robotId, action);
       return;
     }
     const worksiteMatch = pathname.match(/^\/api\/fleet\/worksites\/([^/]+)$/);
     if (worksiteMatch) {
-      const siteId = decodeURIComponent(worksiteMatch[1]);
+      const siteId = safeDecode(worksiteMatch[1]);
+      if (!siteId) {
+        send(res, 400, 'invalid worksite id');
+        return;
+      }
       await handleWorksiteUpdate(req, res, siteId);
       return;
     }
@@ -1113,7 +1120,7 @@ async function handleGatewayCommand(req, res, robotId) {
 startCoreSync();
 startRobotStatusLog();
 
-const server = http.createServer(async (req, res) => {
+const server = http.createServer(wrapAsync(async (req, res) => {
   if (!req.url) {
     send(res, 400, 'bad request');
     return;
@@ -1125,7 +1132,11 @@ const server = http.createServer(async (req, res) => {
   if (pathname.startsWith('/gateway/')) {
     const match = pathname.match(/^\/gateway\/v1\/robots\/([^/]+)\/commands$/);
     if (match && req.method === 'POST') {
-      const robotId = decodeURIComponent(match[1]);
+      const robotId = safeDecode(match[1]);
+      if (!robotId) {
+        send(res, 400, 'invalid robot id');
+        return;
+      }
       await handleGatewayCommand(req, res, robotId);
       return;
     }
@@ -1172,7 +1183,13 @@ const server = http.createServer(async (req, res) => {
   }
 
   sendFile(res, filePath);
-});
+}, (err, _req, res) => {
+  if (err?.code === 'payload_too_large') {
+    send(res, 413, 'payload too large');
+    return;
+  }
+  send(res, 500, err?.message || 'internal error');
+}));
 
 server.listen(PORT, HOST, () => {
   console.log(`fleet-ui listening on http://${HOST}:${PORT}`);
