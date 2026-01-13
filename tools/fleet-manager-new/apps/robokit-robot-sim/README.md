@@ -12,23 +12,25 @@ For the HTTP-only RDS/Roboshop stub, use `apps/robokit-rds-sim`.
 npm --prefix /home/inovatica/seal/fleet-manager-new/apps/robokit-robot-sim start
 ```
 
-Profile example (local simulator behind proxy):
+Config example (local simulator behind proxy):
 
 ```bash
-SIM_PROFILE=local npm --prefix /home/inovatica/seal/fleet-manager-new/apps/robokit-robot-sim start
+SIM_CONFIG=local npm --prefix /home/inovatica/seal/fleet-manager-new/apps/robokit-robot-sim start
 ```
 
-Profile example (map + start node):
+Config example (map + start node):
 
 ```bash
-SIM_PROFILE=map-sanden-smalll npm --prefix /home/inovatica/seal/fleet-manager-new/apps/robokit-robot-sim start
+SIM_CONFIG=map-sanden-smalll npm --prefix /home/inovatica/seal/fleet-manager-new/apps/robokit-robot-sim start
 ```
 
-Profile example (log-aligned unload, non-ground):
+Config example (log-aligned unload, non-ground):
 
 ```bash
-SIM_PROFILE=map-sanden-smalll-unload-not-ground npm --prefix /home/inovatica/seal/fleet-manager-new/apps/robokit-robot-sim start
+SIM_CONFIG=map-sanden-smalll-unload-not-ground npm --prefix /home/inovatica/seal/fleet-manager-new/apps/robokit-robot-sim start
 ```
+
+`SIM_CONFIG` resolves to `apps/robokit-robot-sim/configs/<name>.json` unless `SIM_CONFIG_PATH` is provided.
 
 Defaults:
 - Robod port: `19200`
@@ -183,8 +185,8 @@ Config via env:
 - `MAX_PUSH_CONNECTIONS`
 - `MAX_TASK_NODES`
 - `BIND_HOST`
-- `SIM_PROFILE`
-- `SIM_PROFILE_PATH`
+- `SIM_CONFIG`
+- `SIM_CONFIG_PATH`
 
 Notes:
 - The simulator uses the Robokit TCP frame header (16 bytes, JSON body).

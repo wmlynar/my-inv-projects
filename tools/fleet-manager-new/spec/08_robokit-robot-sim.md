@@ -131,11 +131,13 @@ in-place rotations between segments.
 npm --prefix /home/inovatica/seal/monorepo/tools/fleet-manager-new/apps/robokit-robot-sim start
 ```
 
-Profile example (local simulator behind proxy):
+Config example (local simulator behind proxy):
 
 ```bash
-SIM_PROFILE=local npm --prefix /home/inovatica/seal/monorepo/tools/fleet-manager-new/apps/robokit-robot-sim start
+SIM_CONFIG=local npm --prefix /home/inovatica/seal/monorepo/tools/fleet-manager-new/apps/robokit-robot-sim start
 ```
+
+`SIM_CONFIG` resolves to `apps/robokit-robot-sim/configs/<name>.json` unless `SIM_CONFIG_PATH` is provided.
 
 Defaults:
 - Robod port: `19200`
@@ -248,8 +250,8 @@ Config via env:
 - `BLOCK_REASON_MANUAL`
 - `BLOCK_REASON_OBSTACLE`
 - `BIND_HOST`
-- `SIM_PROFILE`
-- `SIM_PROFILE_PATH`
+- `SIM_CONFIG`
+- `SIM_CONFIG_PATH`
 
 Notes:
 - The simulator uses the Robokit TCP frame header (16 bytes, JSON body).

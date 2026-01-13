@@ -21,7 +21,7 @@ Uproscic demo i poprawic balans miedzy liczba procesow, spojnosc kontraktow i ob
               |
               v
   +------------------------+        HTTP/SSE        +------------------------+
-  | fleet-ui-mock (UI)     | <--------------------> | fleet-core             |
+  | fleet-ui (UI)     | <--------------------> | fleet-core             |
   | - mapa, roboty, tasks  |                       | - runtime: DCL (default)|
   +------------------------+                       | - orchestrator + logs   |
                                                    +-----------+------------+
@@ -45,7 +45,7 @@ Uproscic demo i poprawic balans miedzy liczba procesow, spojnosc kontraktow i ob
 - fleet-core (runtime.mode=dcl)
 - fleet-gateway
 - robokit-robot-sim
-- fleet-ui-mock
+- fleet-ui
 
 ## Tryb e2e obserwowalny (UI + logi)
 Cel: uruchomic testy e2e calego fleet managera tak, aby:
@@ -55,7 +55,7 @@ Cel: uruchomic testy e2e calego fleet managera tak, aby:
 - te opisy dalo sie potem zamienic w specyfikacje i nowe testy e2e.
 
 ### Wymagania uruchomienia
-- Jedno polecenie uruchamia: `fleet-core`, `fleet-gateway`, `robokit-robot-sim`, `fleet-ui-mock` oraz runner e2e.
+- Jedno polecenie uruchamia: `fleet-core`, `fleet-gateway`, `robokit-robot-sim`, `fleet-ui` oraz runner e2e.
 - UI dziala w normalnym trybie (nie headless), aby mozna bylo obserwowac przebieg scenariusza.
 - Runner e2e startuje dopiero po health-checkach wszystkich procesow.
 

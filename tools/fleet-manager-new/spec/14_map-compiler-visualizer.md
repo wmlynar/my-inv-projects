@@ -12,8 +12,8 @@ uruchamiania calego systemu.
 - Odczyt artefaktow z dysku, bez modyfikacji.
 - Warstwy debugowe i podglad danych.
 
-#### Wariant implementacyjny: reuse mapy z `fleet-ui-mock` (MUST)
-- UI MUST bazowac na mapowym layoutcie i stylach z `apps/fleet-ui-mock/public`.
+#### Wariant implementacyjny: reuse mapy z `fleet-ui` (MUST)
+- UI MUST bazowac na mapowym layoutcie i stylach z `apps/fleet-ui/public`.
 - Wymagane identyfikatory DOM: `map-shell`, `map-wrap`, `map-svg`, `mini-map-svg`,
   `fit-view-btn`, `reset-view-btn`.
 - Visualizer MUST uzywac modulu: `map_runtime.js` z `packages/robokit-map-ui/public`
@@ -22,7 +22,7 @@ uruchamiania calego systemu.
   bez loginu i paneli domenowych (robots/tasks/packaging).
 - Visualizer MUST pozostac w pelni offline: usunac z HTML zewnetrzne fonty/asset
   lub zapewnic lokalny fallback.
-- Visualizer MUST NOT ladowac `apps/fleet-ui-mock/public/app.js` ani domenowych
+- Visualizer MUST NOT ladowac `apps/fleet-ui/public/app.js` ani domenowych
   modulow (robot/task/packaging); uzywa tylko mapowych modulow + wlasnego `viewer.js`.
 
 #### Responsibilities (MUST)
@@ -211,7 +211,7 @@ Minimalny stan:
 - `roboshop-bridge` i `map-compiler` jedynie przygotowuja dane na dysku.
 
 ## 11. Warstwy i adaptery (MUST, reuse mock-ui)
-W ramach reuse z `fleet-ui-mock`:
+W ramach reuse z `fleet-ui`:
 - `map_layers` rejestruje warstwy: `sceneGraph`, `corridors`, `cells`, `conflicts`, `nodes`.
 - `map_adapters` dostarcza adapter, ktory mapuje `map/graph.json` i `compiledMap.json`
   na stan mapy (min/max bounds, listy elementow, indeksery).

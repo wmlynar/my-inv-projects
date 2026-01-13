@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Robokit Obstacle Visualizer</title>
+    <link rel="stylesheet" href="/mock/styles.css" />
+    <link rel="stylesheet" href="/viewer.css" />
+  </head>
+  <body>
+    <div class="ambient-glow"></div>
+    <main class="shell viewer-shell">
+      <section class="app">
+        <aside class="sidebar">
+          <div class="sidebar-header">
+            <div class="brand-mark small"></div>
+            <div>
+              <p class="brand-title">Robokit</p>
+              <p class="brand-subtitle">Obstacle Visualizer</p>
+            </div>
+          </div>
+          <div class="sidebar-section">
+            <p class="section-title">Map input</p>
+            <div class="input-stack">
+              <label class="input-label">
+                SceneGraph JSON
+                <input id="scene-file" type="file" accept=".json,.json5" />
+              </label>
+              <label class="input-label">
+                CompiledMap JSON
+                <input id="compiled-file" type="file" accept=".json,.json5" />
+              </label>
+              <button id="clear-map-btn" class="ghost-btn small">Clear map</button>
+            </div>
+            <p id="map-warning" class="hint-text"></p>
+          </div>
+          <div class="sidebar-footer">
+            <div class="status-pill">
+              <span class="status-dot"></span>
+              <span id="status-text">loading</span>
+            </div>
+          </div>
+        </aside>
+
+        <section class="content">
+          <header class="content-header">
+            <div>
+              <h1 id="view-title">Map</h1>
+              <p id="view-subtitle">Trajectory + obstacles from proxy logs</p>
+              <p id="meta-line" class="viewer-meta"></p>
+            </div>
+          </header>
+
+          <div class="panel-stack">
+            <section class="panel active map-panel">
+              <div class="panel-header">
+                <div>
+                  <h2>Viewer</h2>
+                  <p>Map + trajectory overlay</p>
+                </div>
+                <div class="panel-actions">
+                  <div class="map-actions">
+                    <button id="fit-view-btn" class="ghost-btn small">Fit</button>
+                    <button id="reset-view-btn" class="ghost-btn small">Reset</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="viewer-toolbar">
+                <div class="viewer-controls">
+                  <label class="viewer-toggle">
+                    <input type="checkbox" data-layer="edges" checked />
+                    <span>Edges</span>
+                  </label>
+                  <label class="viewer-toggle">
+                    <input type="checkbox" data-layer="nodes" checked />
+                    <span>Nodes</span>
+                  </label>
+                  <label class="viewer-toggle">
+                    <input type="checkbox" data-layer="trajectory" checked />
+                    <span>Trajectory</span>
+                  </label>
+                  <label class="viewer-toggle">
+                    <input type="checkbox" data-layer="blocks" checked />
+                    <span>Block</span>
+                  </label>
+                  <label class="viewer-toggle">
+                    <input type="checkbox" data-layer="nearest" checked />
+                    <span>Nearest</span>
+                  </label>
+                  <label class="viewer-toggle">
+                    <input type="checkbox" data-layer="errors" checked />
+                    <span>Errors</span>
+                  </label>
+                  <label class="viewer-toggle">
+                    <input type="checkbox" data-layer="grid" checked />
+                    <span>Grid</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="viewer-toolbar playback-toolbar">
+                <div class="viewer-controls">
+                  <button id="play-btn" class="ghost-btn small">Play</button>
+                  <button id="next-event-btn" class="ghost-btn small">Next event</button>
+                  <label class="viewer-toggle">
+                    <span>Speed</span>
+                    <select id="speed-select">
+                      <option value="0.5">0.5x</option>
+                      <option value="1" selected>1x</option>
+                      <option value="2">2x</option>
+                      <option value="5">5x</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="viewer-controls timeline-controls">
+                  <input id="time-slider" type="range" min="0" max="0" value="0" />
+                  <span id="time-label" class="timeline-label">--:--</span>
+                </div>
+              </div>
+
+              <div id="map-shell" class="map-shell">
+                <div id="map-wrap" class="map-wrap">
+                  <svg id="map-svg" aria-label="Map"></svg>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>Details</h2>
+                  <p>Click error marker to inspect.</p>
+                </div>
+              </div>
+              <pre id="selection-details" class="viewer-pre">{}</pre>
+              <div class="viewer-details">
+                <h3>Events</h3>
+                <div id="event-list" class="event-list">No events loaded.</div>
+              </div>
+            </section>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script src="/shared/map_runtime.js"></script>
+    <script src="/shared/map_bundle.js"></script>
+    <script src="/viewer.js"></script>
+  </body>
+</html>

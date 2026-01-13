@@ -250,7 +250,7 @@ Session name zostanie wygenerowana automatycznie jako `YYYY-MM-DD_HH_MM_robot_sm
 proxy-recorder start \
   --session 2026-01-07_mixed_roboshop_upload_map \
   --description "Upload mapy + konfiguracja sceny w Roboshop" \
-  --config ./configs/proxy.roboshop_upload.json5
+  --config ~/fleet_data/config/robokit-all.json5
 ```
 
 #### C) „Zakończ i zarchiwizuj”

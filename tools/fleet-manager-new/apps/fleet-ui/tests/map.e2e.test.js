@@ -43,7 +43,7 @@ const startServer = (port) =>
 
     const handleStdout = (chunk) => {
       const text = chunk.toString();
-      if (text.includes('fleet-ui-mock listening')) {
+      if (text.includes('fleet-ui listening')) {
         clearTimeout(timeout);
         child.stdout.off('data', handleStdout);
         resolve(child);

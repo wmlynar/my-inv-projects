@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { loadConfig } = require('../lib/config');
 
@@ -43,6 +45,38 @@ function toBool(value, fallback = false) {
   return fallback;
 }
 
+function expandHome(input) {
+  if (!input) return input;
+  if (input.startsWith('~/')) {
+    return path.join(os.homedir(), input.slice(2));
+  }
+  return input;
+}
+
+function resolveFleetDataDir() {
+  const envDir = process.env.FLEET_DATA_DIR;
+  const baseDir = envDir ? expandHome(envDir) : path.join(os.homedir(), 'fleet_data');
+  return path.resolve(baseDir);
+}
+
+function resolveConfigPath(options) {
+  if (options.config) return path.resolve(expandHome(options.config));
+  if (process.env.FLEET_CONFIG) return path.resolve(expandHome(process.env.FLEET_CONFIG));
+  return path.join(resolveFleetDataDir(), 'config', 'roboshop-bridge.local.json5');
+}
+
+function ensureConfigPath(configPath) {
+  if (fs.existsSync(configPath)) return;
+  console.error(`config not found: ${configPath}`);
+  console.error('Run: node bin/fleet-init.js');
+  process.exit(1);
+}
+
+function resolvePathFromConfig(value, configDir) {
+  if (!value || path.isAbsolute(value)) return value;
+  return path.resolve(configDir, value);
+}
+
 function printHelp() {
   const text = [
     'Usage:',
@@ -80,8 +114,17 @@ function main() {
     process.exit(command ? 0 : 1);
   }
 
-  const configPath = options.config || path.join(__dirname, '..', 'configs', 'roboshop-bridge.local.json5');
-  const config = loadConfig(DEFAULT_CONFIG, configPath);
+  const configPath = resolveConfigPath(options);
+  ensureConfigPath(configPath);
+  const configDir = path.dirname(configPath);
+  let config = loadConfig(DEFAULT_CONFIG, configPath);
+  config = {
+    ...config,
+    smap: resolvePathFromConfig(config.smap, configDir),
+    worksites: resolvePathFromConfig(config.worksites, configDir),
+    streams: resolvePathFromConfig(config.streams, configDir),
+    robots: resolvePathFromConfig(config.robots, configDir)
+  };
 
   if (toBool(options['print-effective-config'], false)) {
     console.log(JSON.stringify(config, null, 2));

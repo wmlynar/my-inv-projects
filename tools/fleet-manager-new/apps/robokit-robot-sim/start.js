@@ -1,4 +1,4 @@
-const { loadProfileFromEnv } = require('../../packages/robokit-sim-profiles/loader');
+const { loadConfigFromEnv } = require('./config_loader');
 
-loadProfileFromEnv();
+loadConfigFromEnv();
 require('./app/server');

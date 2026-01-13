@@ -5,7 +5,8 @@ HTTP gateway for robot providers (internalSim, simDirect, robokitSim, robocore) 
 ## Run
 
 ```bash
-node apps/fleet-gateway/cli/cli.js --config apps/fleet-gateway/configs/fleet-gateway.local.json5
+node bin/fleet-init.js
+node apps/fleet-gateway/cli/cli.js
 ```
 
 ## Endpoints

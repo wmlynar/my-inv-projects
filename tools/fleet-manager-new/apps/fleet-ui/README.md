@@ -1,6 +1,6 @@
-# fleet-ui-mock
+# fleet-ui
 
-Minimalny serwer statyczny dla mock UI.
+Minimalny serwer statyczny dla UI.
 
 ## Start
 

@@ -730,7 +730,7 @@ Szczegóły: `01_fleet-core.md`, `07_scene-management.md`, `09_map-compiler.md`.
 ```json5
 {
   worksiteId: "PICK_01",
-  occupancy: "filled",    // unknown | empty | filled | reserved (legacy "occupied" => "filled")
+  occupancy: "filled",    // unknown | empty | filled | reserved
   occupancyReasonCode: "NONE",
   updatedTsMs: 1736160000123,
 }
@@ -750,7 +750,7 @@ Stream jest **kanonicznym** opisem procesu transportu. W MVP obslugujemy tylko
 
   params: {
     pickGroup: ["PICK_01", "PICK_02"],          // MUST (lista worksites typu pickup)
-    dropGroup: ["DROP_01", "DROP_02"],          // MUST (lista worksites typu dropoff, z kolejnoscia)
+    dropGroupOrder: ["DROP_01", "DROP_02"],     // MUST (lista worksites typu dropoff, z kolejnoscia)
     commitDistanceM: 8.0,                       // MAY (patrz 3.1.4)
 
     pickPolicy: {                               // MAY (patrz 3.1.2)
@@ -782,11 +782,10 @@ Stream jest **kanonicznym** opisem procesu transportu. W MVP obslugujemy tylko
 ### 3.1.1 Wymagania ogolne (MUST)
 - `streamId` jest unikalne w scenie.
 - `kind` w MVP MUSI byc `pickDrop`.
-- `params.pickGroup` i `params.dropGroup` MUSZA byc:
-  - listą **worksiteId**, albo
-  - nazwą grupy (string), która jest rozwiazywana do listy podczas importu/aktywacji.
+- `params.pickGroup` i `params.dropGroupOrder` MUSZA byc:
+  - niepustymi listami **worksiteId** (string).
 - Lista `pickGroup` musi zawierac tylko worksites typu `pickup`.
-- Lista `dropGroup` musi zawierac tylko worksites typu `dropoff`.
+- Lista `dropGroupOrder` musi zawierac tylko worksites typu `dropoff`.
 - Nie dopuszczamy nieznanych pol (strict validation).
 
 ### 3.1.2 Pick policy (MVP)
@@ -796,11 +795,11 @@ Stream jest **kanonicznym** opisem procesu transportu. W MVP obslugujemy tylko
 
 ### 3.1.3 Drop policy (MVP)
 `params.dropPolicy.selection` (MAY, domyslnie `first_available_in_order`):
-- `first_available_in_order` — pierwszy `empty` z `dropGroup` (w tej kolejnosci).
+- `first_available_in_order` — pierwszy `empty` z `dropGroupOrder` (w tej kolejnosci).
 
 `params.dropPolicy.accessRule` (MAY, domyslnie `preceding_empty`):
 - `preceding_empty` — drop N jest mozliwy tylko, gdy wszystkie poprzednie
-  dropy w `dropGroup` sa `empty`.
+  dropy w `dropGroupOrder` sa `empty`.
 - `none` — brak dodatkowej reguly (MVP: tylko do testow).
 
 ### 3.1.4 Commit distance (MVP)
@@ -825,19 +824,17 @@ Domyslne wartosci (MVP fallback):
 
 ### 3.1.6 Walidacja strumieni (MUST)
 Core **MUST** odrzucic stream, gdy:
-- `pickGroup` lub `dropGroup` jest puste.
+- `pickGroup` lub `dropGroupOrder` jest puste.
 - w listach sa nieistniejace `worksiteId`.
-- `pickGroup`/`dropGroup` jest nazwa grupy, ktora nie istnieje.
 - `pickGroup` zawiera worksite nie typu `pickup`.
-- `dropGroup` zawiera worksite nie typu `dropoff`.
-- `pickGroup` i `dropGroup` maja wspolne elementy (ten sam worksite).
+- `dropGroupOrder` zawiera worksite nie typu `dropoff`.
+- `pickGroup` i `dropGroupOrder` maja wspolne elementy (ten sam worksite).
 - brakuje wymaganych pol `pickParams`/`dropParams` przy wysylaniu komend.
 
 ### 3.1.7 Normalizacja (MUST)
-- `config/streams.json5` w paczce sceny jest **kanoniczny** i moze zawierac
-  listy `worksiteId` **lub** nazwy grup (string).
-- Jesli uzywane sa nazwy grup, Core MUST rozwiązać je deterministycznie
-  podczas importu/aktywacji (z zachowaniem kolejnosci).
+- `config/streams.json5` w paczce sceny jest **kanoniczny** i MUSI zawierac
+  tylko listy `worksiteId` (bez nazw grup).
+- Kazde nieznane pole powoduje `validationError` (strict).
 
 ## 4. Tasks
 

@@ -86,12 +86,11 @@ Cel: minimalne efekty uboczne, przewidywalnosc i latwe testowanie.
 ### 4.0.1 Docelowa struktura repo (SHOULD)
 ```
 apps/
-  robokit-robot-sim/          # adapter TCP
+  robokit-robot-sim/          # adapter TCP + sim configs + schema
   robokit-http-stub/          # adapter HTTP (RDS, osobny kanal)
 packages/
   robokit-sim-core/           # czysty core
   robokit-protocol/           # rbk codec + router + policy
-  robokit-sim-profiles/       # profile-packs + schemas
 tests/
   replay/                     # harness CLI
   fixtures/                   # golden logs
@@ -119,12 +118,11 @@ schemas/
 - `protocol/api_map.js` — mapa API + dozwolone porty.
 - `protocol/errors.js` — kody bledow i helpery.
 
-**packages/robokit-sim-profiles/**
-- `profiles/loader.js` — load + merge + precedence.
-- `profiles/schema.json` — walidacja profilu.
-- `profiles/default.json5` — default identity.
-
 **apps/robokit-robot-sim/**
+- `config_loader.js` — load + merge + precedence.
+- `configs/schema.json` — walidacja configu symulatora.
+- `configs/default.json5` — default identity.
+- `configs/*.json` — config packi symulatora.
 - `app/server.js` — bootstrap + wiring modulu.
 - `app/runtime_servers.js` — TCP/HTTP/push serwery + tick loop.
 - `app/runtime_helpers.js` — helpery nawigacji, pose, diagnostyka.
@@ -145,7 +143,7 @@ schemas/
 Celem jest zrownowazony rozklad kodu:
 - runtime file nie powinien przekraczac ~800 linii,
 - runtime file nie powinien byc >2x mediany rozmiaru pliku runtime,
-- wyjatki: pliki danych (profile/schema) oraz generowane listy.
+- wyjatki: pliki danych (config/schema) oraz generowane listy.
 
 Refactoring NIE jest zakonczony, dopoki istnieja pliki wyraznie wieksze od innych
 wg powyzszych progow.
@@ -242,34 +240,34 @@ Core powinien umiec zwrocic "dlaczego":
 - `views/FileResponseBuilder.ts`
   - file list, map files, device types
 
-### 4.4.1 Profile packs (MUST)
+### 4.4.1 Config packs (MUST)
 Identycznosc robota nie powinna byc kodowana w kodzie.
-Wprowadzamy profile (JSON/JSON5) jako data-driven zrodlo:
+Wprowadzamy config packi (JSON/JSON5) jako data-driven zrodlo:
 - VERSION_LIST
 - robot_params (API 11400)
 - deviceTypes i file lists
 - map list / md5 / metadata
 - domyslne feature flags
 
-Sciezka profilu:
-- `SIM_PROFILE_PATH=/abs/path/to/profile.json5`
-- lub `SIM_PROFILE_ID=robokit-amb-01` (szukaj w `profiles/`)
+Sciezka configu:
+- `SIM_CONFIG_PATH=/abs/path/to/config.json`
+- lub `SIM_CONFIG=robokit-amb-01` (szukaj w `configs/`)
 
 Precedencja:
 1) explicit env vars
-2) profile pack
+2) config pack
 3) defaulty w kodzie
 
-### 4.4.3 Profile jako single source of truth (MUST)
-Wszystkie dane "identity" robota powinny byc w profilu, a nie w kodzie:
+### 4.4.3 Config jako single source of truth (MUST)
+Wszystkie dane "identity" robota powinny byc w configu, a nie w kodzie:
 - VERSION_LIST, robot_params, deviceTypes, map list
 - defaultowe feature flags
 
 Kod moze tylko:
-- walidowac profile,
+- walidowac configi,
 - nadpisac wybrane pola przez env (np. dla testow).
 
-### 4.4.2 Przykladowy profile-pack (INFORMATIVE)
+### 4.4.2 Przykladowy config-pack (INFORMATIVE)
 ```json5
 {
   "id": "robokit-amb-01",
@@ -322,7 +320,7 @@ To ujednolici replay i diff.
 
 ### 4.6 Reuse w Fleet Managerze (MUST)
 Fleet Manager powinien moc uzyc core bez TCP:
-- `createSimulator({ profile, mapProvider, configProvider, clock, rng })`
+- `createSimulator({ simConfig, mapProvider, configProvider, clock, rng })`
 - `sim.step(inputs, dt)` lub `sim.tick(nowMs)`
 - `sim.getSnapshot()` jako stabilny kontrakt
 
@@ -676,7 +674,7 @@ Domyslne wartosci (zalecane):
 ### 10.3 Kontrakty DTO i schema (SHOULD)
 Zdefiniuj schematy JSON (np. JSON Schema) dla:
 - request/response per API
-- profile packs
+- config packs
 - snapshot stanu
 
 To stabilizuje replay, diffy i uzycie przez AI.
@@ -757,17 +755,17 @@ Minimalne zasady, aby aplikacja byla stabilna i "production-like":
 
 
 ## 12. Plan refactoringu (kolejnosc bez ryzyka)
-1) **Docelowa mapa plikow (kompaktowa)**: ustal 3 pakiety (`sim-core`, `protocol`, `profiles`) + adapter `robokit-robot-sim` (<=30 plikow runtime).
+1) **Docelowa mapa plikow (kompaktowa)**: ustal 3 pakiety (`sim-core`, `protocol`, `sim-configs`) + adapter `robokit-robot-sim` (<=30 plikow runtime).
 2) **Extract View**: przenies `build*Response` do jednego pliku `app/views.js` (status+push razem).
 3) **Extract Protocol**: `codec/router/policy/command_cache` do `packages/robokit-protocol`.
 4) **Extract Core**: `state/engine/task/nav/fork/obstacles/charge` do `packages/robokit-sim-core`.
 5) **Pure core step**: `step(state, inputs, dt)` + deterministyczny clock/RNG (bez IO).
-6) **Profile packs**: przenies VERSION_LIST / params / deviceTypes / mapy do profilu (single source of truth).
+6) **Config packs**: przenies VERSION_LIST / params / deviceTypes / mapy do configu (single source of truth).
 7) **Adaptery**: TCP/HTTP/replay jako cienkie warstwy w `apps/robokit-robot-sim`.
 8) **ClientRegistry + ControlArbiter**: jeden moduł na logike klientow/locka (bez duplikacji).
 9) **Push**: per-connection config i limity w `app/push_manager.js`.
 10) **Explainability**: event bus + JSONL diag + `explain()` w core.
-11) **Schema/DTO**: formalne kontrakty payloadow + profile schema.
+11) **Schema/DTO**: formalne kontrakty payloadow + config schema.
 12) **Tests**: multi-client + lock preemption + status regression + replay.
 
 ## 12.1 Kryteria akceptacji (MUST)
@@ -779,18 +777,18 @@ Kazdy krok powinien miec jasne kryteria "Done":
 
 Przyklady:
 - **Pure core step**: testy deterministyczne (`seed`), brak zaleznosci od czasu systemowego.
-- **Profile packs**: replay z wybranej sesji przechodzi po dopasowaniu profilu.
+- **Config packs**: replay z wybranej sesji przechodzi po dopasowaniu configu.
 - **Adaptery**: te same testy e2e uruchamiane na adapterze TCP i replay.
 
 ## 12.2 Ryzyka i mitigacje (SHOULD)
-- **Replay diff** z realnymi logami -> stosuj `SIM_REPLAY_IGNORE_FIELDS` + profile-packs.
+- **Replay diff** z realnymi logami -> stosuj `SIM_REPLAY_IGNORE_FIELDS` + config packs.
 - **Lock/reguły kontroli** -> osobne testy e2e + strict gating.
 - **Ruch/odometri** -> testy "no teleport" i "heading jump".
 
 ## 12.3 Migracja i kompatybilnosc (MUST)
 - Stare sciezki powinny byc deprecjonowane etapami, nie usuwane od razu.
-- Każda zmiana powinna byc wprowadzona za flaga (np. `SIM_PROFILE_ID`).
-- Backward compatibility: jesli profil brak, symulator powinien uruchomic sie na defaultach.
+- Każda zmiana powinna byc wprowadzona za flaga (np. `SIM_CONFIG`).
+- Backward compatibility: jesli config brak, symulator powinien uruchomic sie na defaultach.
 
 ## 12.4 Matryca API (SHOULD)
 Zdefiniuj liste API w 3 klasach:
@@ -798,10 +796,10 @@ Zdefiniuj liste API w 3 klasach:
 - **SHOULD** (nice-to-have)
 - **IGNORE** (legacy/nieobslugiwane)
 
-## 12.5 Workflow profili (SHOULD)
-- `profile-extract` z logow -> JSON5
-- walidacja profile schema w CI
-- repo `profiles/` jako kanoniczne zrodlo profili
+## 12.5 Workflow configow (SHOULD)
+- `config-extract` z logow -> JSON5
+- walidacja config schema w CI
+- repo `configs/` jako kanoniczne zrodlo configow
 
 ## 13. Test matrix (SHOULD)
 - Wymaganie: multi-client -> test `client_registry` + e2e z 2 klientami
@@ -809,8 +807,8 @@ Zdefiniuj liste API w 3 klasach:
 - Wymaganie: replay -> `e2e_roboshop_replay`
 
 ## 14. Kompatybilnosc i wersjonowanie (MUST)
-- Profile-pack maja wersje (`profile_version`).
-- Zmiana profilu nie zmienia protokolu.
+- Config-pack maja wersje (`config_version`).
+- Zmiana configu nie zmienia protokolu.
 - Zmiana payloadu wymaga aktualizacji schema + replay ignore list.
 
 ## 13. Testy i walidacja

@@ -4,7 +4,7 @@ const path = require('path');
 const { validateArtifacts } = require('./lib/validation');
 
 const PUBLIC_DIR = path.resolve(__dirname, 'public');
-const MOCK_PUBLIC_DIR = path.resolve(__dirname, '..', 'fleet-ui-mock', 'public');
+const UI_PUBLIC_DIR = path.resolve(__dirname, '..', 'fleet-ui', 'public');
 const SHARED_PUBLIC_DIR = path.resolve(__dirname, '..', '..', 'packages', 'robokit-map-ui', 'public');
 const LIB_DIR = path.resolve(__dirname, '..', '..', 'packages', 'robokit-lib');
 
@@ -235,7 +235,7 @@ function startServer(config) {
 
     if (pathname.startsWith('/mock/')) {
       const rel = pathname.replace('/mock/', '');
-      const filePath = path.resolve(MOCK_PUBLIC_DIR, rel);
+      const filePath = path.resolve(UI_PUBLIC_DIR, rel);
       sendFile(res, filePath);
       return;
     }

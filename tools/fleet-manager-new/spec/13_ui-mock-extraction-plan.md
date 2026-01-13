@@ -98,7 +98,7 @@
   - `worksites[]`: `{ id, filled, blocked }` (dla menu worksite).
 
 ## 4) Nowy projekt UI-only
-- Utworzyc nowy projekt (np. `apps/fleet-ui-mock`).
+- Utworzyc nowy projekt (np. `apps/fleet-ui`).
 - Skonfigurowac aliasy/sciezki, aby importy dzialaly bez zmian.
 - Zachowac oryginalne bundlery/konwencje (o ile mozliwe).
 
@@ -471,7 +471,7 @@
 - Porownac liste plikow mapy/menu przed i po (diff).
 - Sprawdzic, czy wszystkie zaleznosci i importy sa spojne.
 - Sprawdzic, czy struktura DOM i klasy w mapie/menu nie zostaly naruszone.
-- Utrzymac liste w `apps/fleet-ui-mock/VALIDATION.md` (checklisty statyczne + opcjonalne smoke/E2E).
+- Utrzymac liste w `apps/fleet-ui/VALIDATION.md` (checklisty statyczne + opcjonalne smoke/E2E).
 - Zweryfikowac kolejnosc skryptow w `public/index.html` (bez zmian).
 - Zweryfikowac kontrakty danych `public/data/*` (graph/workflow/robots/packaging).
 
@@ -486,10 +486,10 @@
 - Opis co jest mockiem, co jest 1:1 ze starego UI (README).
 - Lista zachowanych komponentow i ich lokalizacja (README).
 - Instrukcja jak podmienic mock na realny backend (README).
-- Checklista walidacji w `apps/fleet-ui-mock/VALIDATION.md`.
+- Checklista walidacji w `apps/fleet-ui/VALIDATION.md`.
 
 ## 15) Plan migracji krok po kroku (stary prototyp -> UI mock)
-- Krok 1: przygotuj nowy projekt `apps/fleet-ui-mock` (minimalny build + statyczny hosting).
+- Krok 1: przygotuj nowy projekt `apps/fleet-ui` (minimalny build + statyczny hosting).
 - Krok 2: skopiuj `apps/traffic-lab/public/` 1:1 (HTML/CSS/JS + `public/data/*`).
 - Krok 3: uruchom mock serwer statyczny dla `public/` (bez zmian w kodzie UI).
 - Krok 4: dodaj mock API `/api/fleet/status` zgodny z kontraktem (na start stale dane).

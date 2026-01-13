@@ -1175,6 +1175,6 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`fleet-ui-mock listening on http://${HOST}:${PORT}`);
+  console.log(`fleet-ui listening on http://${HOST}:${PORT}`);
   console.log(`serving ${ROOT_DIR}`);
 });

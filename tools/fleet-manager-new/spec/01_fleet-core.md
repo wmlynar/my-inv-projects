@@ -83,6 +83,11 @@ Szczegóły endpointów: **Załącznik A** (pełny kontrakt API).
 Szczegóły formatu i replay: patrz `99_pozostale.md` → „Obserwowalność i replay”.
 
 ### 4.2 Konfiguracja (FleetCoreConfig)
+Domyslne sciezki (jesli nie podano w config/CLI):
+- `dataDir = ${FLEET_DATA_DIR}/core` (FLEET_DATA_DIR default `~/fleet_data`)
+- `sceneStoreDir = ${FLEET_DATA_DIR}/scenes`
+- config file (discovery): `${FLEET_DATA_DIR}/config/fleet-core.local.json5`
+
 ### 6.1 FleetCoreConfig
 ```json5
 {
@@ -195,10 +200,9 @@ HELD -- force seize --> HELD(new owner)
 ### 3.2 Procedura aktywacji (MUST)
 1) Validate scene package (manifest + graph + config).
    - `config/streams.json5` MUST follow kanoniczny format z `spec/99_pozostale.md`.
-   - `pickGroup` i `dropGroup` MUSZA byc listami `worksiteId` **lub** nazwami grup (string),
-     które Core rozwiązuje deterministycznie podczas importu/aktywacji.
+   - `pickGroup` i `dropGroupOrder` MUSZA byc niepustymi listami `worksiteId`.
    - `pickGroup` zawiera tylko worksites typu `pickup`.
-   - `dropGroup` zawiera tylko worksites typu `dropoff`.
+   - `dropGroupOrder` zawiera tylko worksites typu `dropoff`.
    - Brak nieznanych pol (strict validation) — inaczej `validationError`.
 2) Build derived runtime state:
    - index nodes/edges,
@@ -547,6 +551,7 @@ Ta checklista pomaga implementować komponentami.
 - `GET /api/v1/events` lub `GET /api/v1/events/stream` (SSE)
 - `POST /api/v1/scenes/import`
 - `POST /api/v1/scenes/activate`
+- `GET /api/v1/scenes/:id/package?hash=sha256:...`
 - `POST /api/v1/tasks` (minimum: create pickDrop)
 - `POST /api/v1/robots/{robotId}/commands` (minimum: stop + goTarget)
 - `POST /api/v1/robots/{robotId}/provider-switch`
@@ -626,12 +631,22 @@ Response:
 ### POST /scenes/activate
 Request:
 ```json5
-{ sceneId: "scene_01...", leaseId: "lease_01...", request: { clientId: "ui-01", requestId: "req_01..." } }
+{ sceneId: "scene_01...", sceneHash: "sha256:...", leaseId: "lease_01...", request: { clientId: "ui-01", requestId: "req_01..." } }
 ```
 Response 200:
 ```json5
 { ok: true, activeSceneId: "scene_01..." }
 ```
+
+### GET /scenes/:id
+Response:
+```json5
+{ sceneId: "scene_01...", manifest: { /* SceneManifest */ } }
+```
+
+### GET /scenes/:id/package?hash=sha256:...
+Response: zip paczki sceny (content-type `application/zip`).
+Jeśli `hash` nie pasuje do `sceneHash`, zwróć `409` z `causeCode=SCENE_HASH_MISMATCH`.
 
 ## 5. State (snapshot)
 ### GET /state

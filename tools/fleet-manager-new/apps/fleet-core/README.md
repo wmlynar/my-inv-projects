@@ -5,7 +5,8 @@ Minimal HTTP skeleton for Fleet Core based on `spec/01_fleet-core.md`.
 ## Run
 
 ```bash
-node apps/fleet-core/cli/cli.js --config apps/fleet-core/configs/fleet-core.local.json5
+node bin/fleet-init.js
+node apps/fleet-core/cli/cli.js
 ```
 
 ## Endpoints (stub)

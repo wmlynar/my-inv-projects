@@ -24,7 +24,7 @@ node apps/proxy-recorder/cli/cli.js start \
 Simulator + proxy wiring (no port collisions):
 ```
 # start simulator on alternate ports
-SIM_PROFILE=simulator-proxy npm --prefix /home/inovatica/seal/monorepo/tools/fleet-manager-new/apps/robokit-robot-sim start
+SIM_CONFIG=simulator-proxy npm --prefix /home/inovatica/seal/monorepo/tools/fleet-manager-new/apps/robokit-robot-sim start
 
 # start proxy on standard RoboKit ports and forward to simulator
 cd /home/inovatica/seal/monorepo/tools/fleet-manager-new
@@ -34,7 +34,7 @@ node apps/proxy-recorder/cli/cli.js start \
   --robot-id counterbalast
 ```
 Notes:
-- The `simulator-proxy` profile runs the simulator on 29xxx/18xxx ports so it does not collide with RoboKit defaults.
+- The `simulator-proxy` config runs the simulator on 29xxx/18xxx ports so it does not collide with RoboKit defaults.
 - In Roboshop, point the robot IP/host to `127.0.0.1` and keep the standard RoboKit ports (`19200/19204/19205/19206/19207/19208/19210/19301`).
 - If Roboshop runs on a different machine, set the proxy listeners to `0.0.0.0` and use the proxy host IP in Roboshop.
 

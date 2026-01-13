@@ -2,7 +2,7 @@
 
 Structure created to satisfy the spec and future implementation:
 
-- `configs/` – JSON5 config presets and CLI defaults.
+- `configs/` – JSON5 config presets (copied by `bin/fleet-init.js` to `~/fleet_data/config`).
 - `cli/` – CLI tooling, helpers, parsers, manifest builders.
 - `docs/` – operational runbooks, format definitions, archive procedures.
 - `tests/` – unit/integration fixtures for parser/archival logic.

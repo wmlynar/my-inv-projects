@@ -102,6 +102,42 @@ pomiedzy `graph.json`, `worksites.json5` i `streams.json5`.
   z lista nieobslugiwanych sekcji/pol. Komunikat dla uzytkownika ma jasno mowic,
   ze trzeba rozszerzyc format/specyfikacje (np. z pomoca AI) i powtorzyc import.
 
+### 5.4 SceneHash (MUST, deterministyczny)
+`sceneHash` identyfikuje **konkretna** zawartosc kanonicznej paczki sceny.
+MUSI byc deterministyczny miedzy maszynami i importami.
+
+Wejscie (pliki kanoniczne):
+- `manifest.json5`
+- `map/graph.json`
+- `compiled/compiledMap.json`
+- `config/worksites.json5`
+- `config/streams.json5`
+- dodatkowo: kazdy plik wymieniony w `manifest.checksums` (opcjonalne), sortowane po `path`.
+
+Algorytm:
+1) Zbuduj liste plikow wejscia jako **sume** (union) listy kanonicznej i `manifest.checksums`;
+   duplikaty po `path` usun.
+2) Dla kazdego pliku wejscia oblicz `sha256` z **surowych bajtow** pliku.
+3) Zbuduj `SceneHashInput`:
+```
+{
+  version: 1,
+  files: [
+    { path: "compiled/compiledMap.json", sha256: "<hex>" },
+    { path: "config/streams.json5", sha256: "<hex>" },
+    ...
+  ]
+}
+```
+4) `files` MUSI byc posortowane leksykograficznie po `path`.
+5) `SceneHashInput` MUSI byc zakodowany jako kanoniczny JSON:
+   - klucze obiektow posortowane leksykograficznie,
+   - UTF-8,
+   - bez dodatkowych spacji/nowych linii.
+6) `sceneHash = "sha256:" + sha256(SceneHashInput_json_bytes)`.
+
+Core MUST przechowywac `sceneHash` w `activeScene` i zwracac go w API.
+
 ## 6. Scene lifecycle
 1) **Import**
    - UI/CLI -> core: SMAP (zrodlo importu) lub Scene Package.
@@ -151,6 +187,11 @@ POST /gateway/v1/scenes/activate
 }
 ```
 
+Reguly `sceneUrl` (MUST):
+- Core MUST wystawiac `GET /api/v1/scenes/:id/package?hash=...` jako zip paczki sceny.
+- Gateway MUST pobrac zip z `sceneUrl` i zweryfikowac `sceneHash` przed oznaczeniem `ready`.
+- Mismatch hash -> `state=error` + czytelny `message`.
+
 ```
 POST /api/v1/scenes/sync
 {
@@ -173,6 +214,7 @@ Idempotencja:
 - `POST /api/v1/scenes/sync` (status z gateway)
 - `GET /api/v1/scenes` (lista + aktywna + status sync)
 - `GET /api/v1/scenes/:id` (manifest + meta)
+- `GET /api/v1/scenes/:id/package?hash=sha256:...` (zip paczki sceny)
 - `POST /api/v1/scenes/:id/clone` (opcjonalnie)
 - `POST /api/v1/scenes/:id/delete`
 
@@ -182,6 +224,7 @@ Idempotencja:
 
 ## 9. Persistence and versioning
 - core przechowuje sceny w `sceneStoreDir`.
+- Domyslnie `sceneStoreDir = ${FLEET_DATA_DIR}/scenes` (FLEET_DATA_DIR default `~/fleet_data`).
 - kazda zmiana sceny tworzy nowa wersje (hash).
 - `activeSceneId` + `activeSceneHash` w state.
 - core loguje: import, activate, delete, sync status.
@@ -207,6 +250,9 @@ Idempotencja:
 - Unit tests: sceny minimalne (2-5 wezlow).
 - Integration/E2E: sceny srednie, wersjonowane, deterministyczne.
 - Każda scena testowa ma `sceneId`, `sceneHash`, `compiledMapHash`.
+- Sceny testowe (fixtures) sa wersjonowane w repo: `scenes/fixtures/*`.
+- Sceny runtime sa przechowywane tylko w `${FLEET_DATA_DIR}/scenes`.
+- Brak automatycznego zapisu scen runtime do repo (export tylko jawnie).
 
 ## 12. UX flows (UI)
 - New scene wizard: name -> robot(s) -> map source -> workflow -> save -> activate.
@@ -244,7 +290,7 @@ Requirements:
 
 Example flow (future CLI):
 ```
-fleet-core --config ./configs/fleet-core.local.json5 \
+fleet-core --config ~/fleet_data/config/fleet-core.local.json5 \
   --scene-dir ./scenes/warehouse_01 \
   --auto-activate
 ```

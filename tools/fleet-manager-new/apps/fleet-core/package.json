@@ -8,7 +8,7 @@
     "fleet-core": "cli/cli.js"
   },
   "scripts": {
-    "start": "node cli/cli.js --config ./configs/fleet-core.local.json5",
-    "print-config": "node cli/cli.js --config ./configs/fleet-core.local.json5 --print-effective-config"
+    "start": "node cli/cli.js",
+    "print-config": "node cli/cli.js --print-effective-config"
   }
 }

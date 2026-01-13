@@ -1,7 +1,7 @@
 {
   "compilerVersion": "map-compiler-0.0.0",
-  "outDir": "./compiled",
-  "smap": "./maps/example.smap",
+  "outDir": "../compiled",
+  "smap": "../maps/sanden_smalll.smap",
   "robotProfile": "./robot-profile.local.json5",
   "compileParams": {
     "cellLenM": 0.5,

@@ -303,7 +303,7 @@ Cel: jeden robot wykonuje prosty cykl pick -> drop -> park w jednym widoku UI.
 - Jedna scena z:
   - `map/graph.json`, `compiled/compiledMap.json`
   - `config/worksites.json5` (min. 1 pick, 1 drop)
-  - `config/streams.json5` (kanoniczne `pickGroup` + `dropGroup` jako listy worksiteId lub nazwy grup)
+  - `config/streams.json5` (kanoniczne `pickGroup` + `dropGroupOrder` jako listy worksiteId)
 - Jeden robot w `config/robots.json5` albo zdefiniowany w runtime.
 - `parkNodeId` zdefiniowany w scenie lub konfiguracji core.
 
@@ -353,6 +353,55 @@ Każdy komponent uruchamiany jako proces (`fleet-core`, `fleet-gateway`, `algori
 
 Jeśli dany komponent ma persystencję, MUST wspierać `--data-dir <path>`.
 
+### 5.1.1 Domyslny katalog danych i konfiguracji (MUST)
+Domyslny root danych to `FLEET_DATA_DIR` (env). Jesli brak, MUST default to `~/fleet_data`.
+
+Domyslne sciezki:
+- `configDir = ${FLEET_DATA_DIR}/config`
+- `sceneStoreDir = ${FLEET_DATA_DIR}/scenes`
+- `dataDir` per komponent:
+  - `fleet-core`: `${FLEET_DATA_DIR}/core`
+  - `fleet-gateway`: `${FLEET_DATA_DIR}/gateway`
+  - pozostale: `${FLEET_DATA_DIR}/<module>`
+
+Kolejnosc rozwiazywania configu (MUST):
+1) `--config <path>`
+2) `FLEET_CONFIG`
+3) `${FLEET_DATA_DIR}/config/<module>.local.json5`
+Brak fallback do `./configs/*` (MUST). Ma byc jednoznacznie i deterministycznie.
+
+Nazwy plikow configu:
+- `fleet-core`: `fleet-core.local.json5`
+- `fleet-gateway`: `fleet-gateway.local.json5`
+- `algorithm-service`: `algo.local.json5`
+
+Testy MUST nadpisywac `FLEET_DATA_DIR` lub `--config` (bez zapisu do `~/fleet_data`).
+Bootstrap (MUST): uruchom `node bin/fleet-init.js`, aby skopiowac szablony configow
+do `${FLEET_DATA_DIR}/config`.
+
+### 5.1.2 Seed vs runtime (MUST, spojnosc repo + runtime)
+Zasada: repo trzyma **seed** (wersjonowane wzorce), runtime trzyma **dane robocze**.
+
+Repo (seed, wersjonowane):
+- `apps/*/configs/*.json5` (szablony configow),
+- `scenes/fixtures/*` (male sceny testowe),
+- `maps/*` (male SMAPy do testow),
+- `apps/robokit-robot-sim/configs/*` (configi symulatora).
+
+Runtime (`${FLEET_DATA_DIR}`, niewersjonowane):
+- `config/` (skopiowane szablony, edytowane lokalnie),
+- `scenes/` (aktywne paczki scen),
+- `compiled/` (artefakty kompilacji map),
+- `exports/` (import/eksport z Roboshop),
+- `core/events`, `core/snapshots`,
+- `gateway/capture`, `logs/` (jeśli uzywane).
+
+Reguly (MUST):
+- Procesy **NIE** moga zapisywac nic do repo.
+- Wszystko, co runtime generuje, laduje w `${FLEET_DATA_DIR}`.
+- „Promocja” runtime → repo tylko jawnie (manual copy lub dedykowany skrypt, np. przyszly
+  `bin/fleet-export.js`). Brak automatycznego zapisu do repo.
+
 ### 5.2 fleet-core — uruchomienie (MVP)
 Kontrakt:
 - słucha na `http://0.0.0.0:<corePort>/api/v1`
@@ -361,8 +410,7 @@ Kontrakt:
 Przykład:
 ```bash
 fleet-core \
-  --config ./configs/fleet-core.local.json5 \
-  --data-dir ./var/core \
+  --config ~/fleet_data/config/fleet-core.local.json5 \
   --print-effective-config
 ```
 
@@ -376,7 +424,7 @@ Plan (SHOULD):
 
 Przyklad:
 ```bash
-fleet-core --config ./configs/fleet-core.local.json5 \
+fleet-core --config ~/fleet_data/config/fleet-core.local.json5 \
   --scene-dir ./scenes/warehouse_01 \
   --auto-activate
 ```
@@ -390,7 +438,7 @@ Kontrakt:
 Przykład:
 ```bash
 fleet-gateway \
-  --config ./configs/fleet-gateway.local.json5 \
+  --config ~/fleet_data/config/fleet-gateway.local.json5 \
   --print-effective-config
 ```
 
@@ -401,7 +449,7 @@ Kontrakt:
 
 Przykład:
 ```bash
-algorithm-service --config ./configs/algo.local.json5 --print-effective-config
+algorithm-service --config ~/fleet_data/config/algo.local.json5 --print-effective-config
 ```
 
 ### 5.5 ui-frontend — uruchomienie (MVP)

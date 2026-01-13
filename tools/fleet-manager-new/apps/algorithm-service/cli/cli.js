@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { loadConfig } = require('../lib/config');
 const { startServer } = require('../server');
@@ -38,9 +40,36 @@ function toBool(value, fallback = false) {
   return fallback;
 }
 
+function expandHome(input) {
+  if (!input) return input;
+  if (input.startsWith('~/')) {
+    return path.join(os.homedir(), input.slice(2));
+  }
+  return input;
+}
+
+function resolveFleetDataDir() {
+  const envDir = process.env.FLEET_DATA_DIR;
+  const baseDir = envDir ? expandHome(envDir) : path.join(os.homedir(), 'fleet_data');
+  return path.resolve(baseDir);
+}
+
+function resolveConfigPath(args) {
+  if (args.config) return path.resolve(expandHome(args.config));
+  if (process.env.FLEET_CONFIG) return path.resolve(expandHome(process.env.FLEET_CONFIG));
+  return path.join(resolveFleetDataDir(), 'config', 'algo.local.json5');
+}
+
+function ensureConfigPath(configPath) {
+  if (fs.existsSync(configPath)) return;
+  console.error(`config not found: ${configPath}`);
+  console.error('Run: node bin/fleet-init.js');
+  process.exit(1);
+}
+
 function printHelp() {
   const text = [
-    'Usage: algorithm-service --config ./configs/algo.local.json5 [--print-effective-config]',
+    'Usage: algorithm-service [--config <path>] [--print-effective-config]',
     'Options:',
     '  --config <path>                 Path to JSON5 config',
     '  --print-effective-config        Print merged config before starting',
@@ -56,7 +85,8 @@ function main() {
     process.exit(0);
   }
 
-  const configPath = args.config || path.join(__dirname, '..', 'configs', 'algo.local.json5');
+  const configPath = resolveConfigPath(args);
+  ensureConfigPath(configPath);
   const config = loadConfig(DEFAULT_CONFIG, configPath);
 
   if (toBool(args['print-effective-config'], false)) {

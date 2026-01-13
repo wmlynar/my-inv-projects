@@ -5,7 +5,8 @@ Minimal HTTP skeleton for Algorithm Service based on `spec/03_algorithm-service.
 ## Run
 
 ```bash
-node apps/algorithm-service/cli/cli.js --config apps/algorithm-service/configs/algo.local.json5
+node bin/fleet-init.js
+node apps/algorithm-service/cli/cli.js
 ```
 
 ## Endpoints (stub)

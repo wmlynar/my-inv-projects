@@ -1,10 +1,11 @@
 # map-compiler-visualizer (skeleton)
 
-Viewer for `sceneGraph.json` + `compiledMap.json` based on the map layout in `apps/fleet-ui-mock/public`.
+Viewer for `sceneGraph.json` + `compiledMap.json` based on the map layout in `apps/fleet-ui/public`.
 
 ## Run
 
 ```bash
+node bin/fleet-init.js
 node apps/map-compiler-visualizer/cli/cli.js --dir ./compiled --open false
 ```
 

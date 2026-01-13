@@ -1,17 +1,23 @@
 const fs = require('fs');
 const path = require('path');
 
-function loadProfile() {
-  const profile = process.env.SIM_PROFILE || process.env.PROFILE;
-  if (!profile) {
+function loadConfig() {
+  const configName = process.env.SIM_CONFIG || process.env.SIM_PROFILE || process.env.PROFILE;
+  const configPath =
+    process.env.SIM_CONFIG_PATH ||
+    process.env.SIM_PROFILE_PATH ||
+    (configName ? path.resolve(__dirname, 'configs', `${configName}.json`) : null);
+  if (!configPath) {
     return;
   }
-  const profilePath = process.env.SIM_PROFILE_PATH || path.resolve(__dirname, 'profiles', `${profile}.json`);
+  if (!process.env.SIM_CONFIG && !process.env.SIM_CONFIG_PATH && (process.env.SIM_PROFILE || process.env.SIM_PROFILE_PATH)) {
+    console.warn('robokit-rds-sim: SIM_PROFILE* is deprecated; use SIM_CONFIG or SIM_CONFIG_PATH.');
+  }
   let data;
   try {
-    data = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
+    data = JSON.parse(fs.readFileSync(configPath, 'utf8'));
   } catch (err) {
-    console.error(`robokit-rds-sim failed to load profile ${profilePath}: ${err.message}`);
+    console.error(`robokit-rds-sim failed to load config ${configPath}: ${err.message}`);
     process.exit(1);
   }
   if (!data || typeof data !== 'object') {
@@ -22,8 +28,8 @@ function loadProfile() {
       process.env[key] = String(value);
     }
   }
-  console.log(`robokit-rds-sim profile: ${profilePath}`);
+  console.log(`robokit-rds-sim config: ${configPath}`);
 }
 
-loadProfile();
+loadConfig();
 require('./server');

@@ -9,11 +9,13 @@ behaviour for local testing.
 npm --prefix /home/inovatica/seal/fleet-manager-new/apps/robokit-rds-sim start
 ```
 
-Profile example:
+Config example:
 
 ```bash
-SIM_PROFILE=local npm --prefix /home/inovatica/seal/fleet-manager-new/apps/robokit-rds-sim start
+SIM_CONFIG=local npm --prefix /home/inovatica/seal/fleet-manager-new/apps/robokit-rds-sim start
 ```
+
+`SIM_CONFIG` resolves to `apps/robokit-rds-sim/configs/<name>.json` unless `SIM_CONFIG_PATH` is provided.
 
 Defaults:
 - HTTP ports: `8088`

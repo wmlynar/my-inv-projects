@@ -86,6 +86,17 @@ Gateway MUST expose a normalized robot status that includes:
 
 Source and precedence of `task_status` are defined in `10_adapters-robokit.md`.
 
+### 2.2 Scene activation (MVP)
+Gateway MUST expose:
+- `POST /gateway/v1/scenes/activate` with payload `{ activationId, sceneId, sceneHash, sceneUrl }`.
+
+Behavior (MUST):
+- Return fast ACK (HTTP 202).
+- Download scene package from `sceneUrl` (zip) and verify `sceneHash`.
+- Load scene into the active provider(s).
+- Report status back to Core: `POST /api/v1/scenes/sync`.
+- Treat repeated `activationId` as idempotent.
+
 ## 3. Interfejsy
 ### 3.1 Wystawiane (private, tylko dla Core)
 - HTTP Base URL: `http://<gateway-host>:<port>/gateway/v1`
@@ -96,6 +107,11 @@ Source and precedence of `task_status` are defined in `10_adapters-robokit.md`.
 - Kanoniczny opis framingu i payloadów: `10_adapters-robokit.md` (w tej paczce).
 
 ## 4. Konfiguracja (FleetGatewayConfig)
+Domyslne sciezki (jesli nie podano w config/CLI):
+- `dataDir = ${FLEET_DATA_DIR}/gateway` (FLEET_DATA_DIR default `~/fleet_data`)
+- `captureDir = ${FLEET_DATA_DIR}/gateway/capture`
+- config file (discovery): `${FLEET_DATA_DIR}/config/fleet-gateway.local.json5`
+
 ### 6.2 FleetGatewayConfig
 ```json5
 {

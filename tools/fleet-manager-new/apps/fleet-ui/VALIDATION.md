@@ -1,4 +1,4 @@
-# fleet-ui-mock validation checklist
+# fleet-ui validation checklist
 
 ## Zakres
 Checklisty dla migracji UI (bez uruchamiania starego prototypu).

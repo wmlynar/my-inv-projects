@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { loadConfig } = require('../lib/config');
 const { resolveArtifacts, ensureArtifacts, runValidation, startServer } = require('../server');
@@ -47,6 +48,53 @@ function toBool(value, fallback = false) {
 function toNumber(value, fallback) {
   const parsed = Number.parseFloat(String(value));
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function expandHome(input) {
+  if (!input) return input;
+  if (input.startsWith('~/')) {
+    return path.join(os.homedir(), input.slice(2));
+  }
+  return input;
+}
+
+function resolveFleetDataDir() {
+  const envDir = process.env.FLEET_DATA_DIR;
+  const baseDir = envDir ? expandHome(envDir) : path.join(os.homedir(), 'fleet_data');
+  return path.resolve(baseDir);
+}
+
+function resolveConfigPath(args) {
+  if (args.config) return path.resolve(expandHome(args.config));
+  if (process.env.FLEET_CONFIG) return path.resolve(expandHome(process.env.FLEET_CONFIG));
+  return path.join(resolveFleetDataDir(), 'config', 'visualizer.local.json5');
+}
+
+function ensureConfigPath(configPath) {
+  if (fs.existsSync(configPath)) return;
+  console.error(`config not found: ${configPath}`);
+  console.error('Run: node bin/fleet-init.js');
+  process.exit(1);
+}
+
+function resolvePathFromConfig(value, configDir) {
+  if (!value || path.isAbsolute(value)) return value;
+  return path.resolve(configDir, value);
+}
+
+function resolveArtifactsFromConfig(config, configDir) {
+  if (!config.artifacts) return config;
+  return {
+    ...config,
+    artifacts: {
+      ...config.artifacts,
+      dir: resolvePathFromConfig(config.artifacts.dir, configDir),
+      sceneGraph: resolvePathFromConfig(config.artifacts.sceneGraph, configDir),
+      compiledMap: resolvePathFromConfig(config.artifacts.compiledMap, configDir),
+      meta: resolvePathFromConfig(config.artifacts.meta, configDir),
+      compareDir: resolvePathFromConfig(config.artifacts.compareDir, configDir)
+    }
+  };
 }
 
 function printHelp() {
@@ -139,14 +187,11 @@ function main() {
     process.exit(0);
   }
 
-  const configPath = args.config ? path.resolve(args.config) : null;
-  const defaultConfigPath = path.join(__dirname, '..', 'configs', 'visualizer.local.json5');
-  let baseConfig = { ...DEFAULT_CONFIG };
-  if (configPath) {
-    baseConfig = loadConfig(DEFAULT_CONFIG, configPath);
-  } else if (fs.existsSync(defaultConfigPath)) {
-    baseConfig = loadConfig(DEFAULT_CONFIG, defaultConfigPath);
-  }
+  const configPath = resolveConfigPath(args);
+  ensureConfigPath(configPath);
+  const configDir = path.dirname(configPath);
+  let baseConfig = loadConfig(DEFAULT_CONFIG, configPath);
+  baseConfig = resolveArtifactsFromConfig(baseConfig, configDir);
   const config = applyOverrides(baseConfig, args);
 
   if (toBool(args['print-effective-config'], false)) {

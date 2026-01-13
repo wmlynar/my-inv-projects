@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { loadConfig } = require('../lib/config');
 const { parseSmap } = require('../lib/smap_parser');
@@ -54,6 +55,33 @@ function toBool(value, fallback = false) {
   return fallback;
 }
 
+function expandHome(input) {
+  if (!input) return input;
+  if (input.startsWith('~/')) {
+    return path.join(os.homedir(), input.slice(2));
+  }
+  return input;
+}
+
+function resolveFleetDataDir() {
+  const envDir = process.env.FLEET_DATA_DIR;
+  const baseDir = envDir ? expandHome(envDir) : path.join(os.homedir(), 'fleet_data');
+  return path.resolve(baseDir);
+}
+
+function resolveConfigPath(options) {
+  if (options.config) return path.resolve(expandHome(options.config));
+  if (process.env.FLEET_CONFIG) return path.resolve(expandHome(process.env.FLEET_CONFIG));
+  return path.join(resolveFleetDataDir(), 'config', 'compiler.local.json5');
+}
+
+function ensureConfigPath(configPath) {
+  if (fs.existsSync(configPath)) return;
+  console.error(`config not found: ${configPath}`);
+  console.error('Run: node bin/fleet-init.js');
+  process.exit(1);
+}
+
 function printHelp() {
   const text = [
     'Usage:',
@@ -94,6 +122,11 @@ function resolveRobotProfilePath(config, configDir) {
     return { ...config, robotProfile: configPath };
   }
   return config;
+}
+
+function resolvePathFromConfig(value, configDir) {
+  if (!value || path.isAbsolute(value)) return value;
+  return path.resolve(configDir, value);
 }
 
 function compile(options, config) {
@@ -169,10 +202,15 @@ function main() {
     process.exit(command ? 0 : 1);
   }
 
-  const configPath = options.config || path.join(__dirname, '..', 'configs', 'compiler.local.json5');
-  const resolvedConfigPath = path.resolve(configPath);
+  const resolvedConfigPath = resolveConfigPath(options);
+  ensureConfigPath(resolvedConfigPath);
   const configDir = path.dirname(resolvedConfigPath);
   let config = loadConfig(DEFAULT_CONFIG, resolvedConfigPath);
+  config = {
+    ...config,
+    smap: resolvePathFromConfig(config.smap, configDir),
+    outDir: resolvePathFromConfig(config.outDir, configDir)
+  };
   config = resolveRobotProfilePath(config, configDir);
 
   if (toBool(options['print-effective-config'], false)) {

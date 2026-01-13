@@ -7,7 +7,7 @@
     "map-compiler": "cli/cli.js"
   },
   "scripts": {
-    "compile": "node cli/cli.js compile --config ./configs/compiler.local.json5",
+    "compile": "node cli/cli.js compile",
     "test": "node --test"
   }
 }

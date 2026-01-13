@@ -4,15 +4,15 @@
     "port": 8080
   },
   "storage": {
-    "sceneStoreDir": "./data/scenes",
-    "eventLogDir": "./data/events"
+    "sceneStoreDir": "../scenes",
+    "eventLogDir": "../core/events"
   },
   "gateway": {
     "baseUrl": "http://127.0.0.1:8091"
   },
   "runtime": {
     "mode": "mvp0",
-    "compiledMapPath": "../../compiled/compiledMap.json",
+    "compiledMapPath": "../compiled/compiledMap.json",
     "trafficMode": "NONE",
     "statusAgeMaxMs": 1500,
     "commandCooldownMs": 5000

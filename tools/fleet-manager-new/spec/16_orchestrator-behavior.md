@@ -43,7 +43,8 @@ stream: {
   enabled: true,
   params: {
     pickGroup: ["PICK_01", "PICK_02"],
-    dropGroup: ["DROP_01", "DROP_02"], // ordered list
+    dropGroupOrder: ["DROP_01", "DROP_02"], // ordered list
+    commitDistanceM: 8,
     pickParams: {                       // optional, shared for whole stream (MVP)
       operation: "ForkLoad",
       start_height: 0.1,
@@ -61,8 +62,7 @@ stream: {
     pickPolicy: { selection: "filled_only" },
     dropPolicy: {
       selection: "first_available_in_order",
-      accessRule: "preceding_empty",
-      commitDistanceM: 8
+      accessRule: "preceding_empty"
     }
   },
   meta: { label: "Inbound" }
@@ -112,8 +112,7 @@ Initial state:
 - `RB-01` online, `loadState=empty`.
 - `PICK_01` occupancy = `filled`.
 - `DROP_01` occupancy = `empty`.
-- `stream_pick_drop` enabled (pickGroup `PICK_01`, dropGroup `DROP_01`).
-- `stream_pick_drop` enabled (pickGroup `PICK_01`, dropGroup `DROP_01`).
+- `stream_pick_drop` enabled (pickGroup `PICK_01`, dropGroupOrder `DROP_01`).
 
 Expected loop:
 1) Orchestrator selects `PICK_01 -> DROP_01` and creates a task.
@@ -159,7 +158,7 @@ Task steps for simple stream:
 Selection rules (simple stream):
 - **pickPolicy.selection = filled_only**: pick only from `filled` worksites.
 - **dropPolicy.selection = first_available_in_order**: pick first `empty` worksite
-  in `dropGroup` order.
+  in `dropGroupOrder` order.
 - **dropPolicy.accessRule = preceding_empty**: drop worksite N is eligible only if
   all preceding worksites in order are `empty`.
 - **commitDistanceM**: once robot is within this distance to the chosen drop,
@@ -206,7 +205,7 @@ MOVE_TO_PICK --(task_status 2->4/6)--> PICK_DONE
 
 Selection rules (simple stream, MVP0):
 - `pickPolicy.selection=filled_only`: pick only from `filled`.
-- `dropPolicy.selection=first_available_in_order`: choose first `empty` from `dropGroup` (in order).
+- `dropPolicy.selection=first_available_in_order`: choose first `empty` from `dropGroupOrder` (in order).
 - `dropPolicy.accessRule=preceding_empty`: drop N only if all previous are `empty`.
 - If no candidates → park (idle command).
 
@@ -235,7 +234,7 @@ Fail-safe (MVP0):
   without parking between tasks.
 - **Reservation timing**: in simple stream, source + target are reserved at the
   moment the first move command is issued (same tick as task creation).
-- **Ordering**: `dropGroup` is already ordered in the stream definition;
+- **Ordering**: `dropGroupOrder` is already ordered in the stream definition;
   orchestrator MUST follow that order (no group resolution in MVP).
 - **Pick/Drop params** (prototype): use the same parameters for all pick steps
   and the same parameters for all drop steps (e.g., fork heights). Per‑worksite
@@ -516,9 +515,9 @@ Optional policies:
 ## 11. Advanced stream types (planned)
 New stream types should be pluggable without breaking the core loop:
 - **buffered**: source -> buffer -> target (two-stage).
-- **roundRobin**: cycle through `dropGroup` in fixed order.
+- **roundRobin**: cycle through `dropGroupOrder` in fixed order.
 - **batch**: pickup N items before first drop.
-- **replenish**: keep target worksites (from `dropGroup`) above a threshold.
+- **replenish**: keep target worksites (from `dropGroupOrder`) above a threshold.
 - **shuttle**: fixed shuttle between two nodes.
 
 Each type MUST define:
