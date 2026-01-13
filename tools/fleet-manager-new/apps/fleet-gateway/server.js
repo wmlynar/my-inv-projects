@@ -62,6 +62,11 @@ function startServer(config, options = {}) {
       return;
     }
 
+    if (req.method === 'GET' && (pathname === '/gateway/v1/ready' || pathname === '/ready')) {
+      sendJson(res, 200, { status: 'ok', tsMs: nowMs() });
+      return;
+    }
+
     if (req.method === 'GET' && pathname === '/gateway/v1/robots') {
       const robots = await gateway.listRobots();
       sendJson(res, 200, { robots });
@@ -119,7 +124,7 @@ function startServer(config, options = {}) {
       if (!command.commandId) {
         command.commandId = createId('cmd');
       }
-      const result = await gateway.sendCommand(robotId, command);
+      const result = await gateway.sendCommand(robotId, command, nowMs(), { requestId });
       if (!result.ok && !result.ack) {
         sendError(res, {
           code: 'dependencyUnavailable',

@@ -638,6 +638,15 @@
   const applyFleetStatus = (payload) => {
     if (!payload || typeof payload !== "object") return;
     if (!state.graphData) return;
+    if (payload.serverInstanceId) {
+      if (state.serverInstanceId && payload.serverInstanceId !== state.serverInstanceId && state.fleetStream) {
+        state.needsFleetResync = true;
+      }
+      state.serverInstanceId = payload.serverInstanceId;
+    }
+    if (Number.isFinite(payload.cursor)) {
+      state.fleetCursor = payload.cursor;
+    }
     const baseRobots = App.robots?.buildRobots?.(state.graphData, state.worksites, state.robotsConfig) || [];
     const mappedTasks = mapCoreTasks(payload.tasks || []);
     const mappedRobots = mapCoreRobots(payload.robots || [], baseRobots, mappedTasks);
@@ -675,6 +684,9 @@
       const statusPath = state.fleetStatePath || `${state.fleetApiBase}/status`;
       const payload = await fetchJson(statusPath);
       applyFleetStatus(payload);
+      if (state.needsFleetResync && !state.fleetStream) {
+        state.needsFleetResync = false;
+      }
       if (isLocalSim()) {
         App.packaging?.refreshPackagingState?.();
         App.map?.refreshSimObstacles?.();
@@ -716,6 +728,11 @@
             App.packaging?.refreshPackagingState?.();
             App.map?.refreshSimObstacles?.();
           }
+          if (state.needsFleetResync) {
+            state.needsFleetResync = false;
+            stopFleetStream();
+            startFleetUpdates();
+          }
         },
         onError: () => {
           stopFleetStream();
@@ -748,6 +765,11 @@
       if (isLocalSim()) {
         App.packaging?.refreshPackagingState?.();
         App.map?.refreshSimObstacles?.();
+      }
+      if (state.needsFleetResync) {
+        state.needsFleetResync = false;
+        stopFleetStream();
+        startFleetUpdates();
       }
     });
     state.fleetStream.addEventListener("error", () => {

@@ -107,7 +107,7 @@ function createGateway(config = {}, deps = {}) {
     };
   }
 
-  async function sendCommand(robotId, command, nowMsValue = nowMs()) {
+  async function sendCommand(robotId, command, nowMsValue = nowMs(), options = {}) {
     const entry = robots.get(robotId);
     if (!entry) {
       return { ok: false, httpStatus: 404, error: 'robot_not_found' };
@@ -156,7 +156,7 @@ function createGateway(config = {}, deps = {}) {
 
     let result = null;
     try {
-      result = await entry.provider.sendCommand(normalized, nowMsValue);
+      result = await entry.provider.sendCommand(normalized, nowMsValue, options);
     } catch (err) {
       result = {
         ok: false,

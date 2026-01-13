@@ -20,7 +20,7 @@
         "env": {
           "FLEET_DATA_DIR": "{dataDir}"
         },
-        "readyUrl": "http://127.0.0.1:8081/gateway/v1/health"
+        "readyUrl": "http://127.0.0.1:8081/gateway/v1/ready"
       },
       {
         "name": "core",
@@ -30,7 +30,7 @@
         "env": {
           "FLEET_DATA_DIR": "{dataDir}"
         },
-        "readyUrl": "http://127.0.0.1:8080/api/v1/health"
+        "readyUrl": "http://127.0.0.1:8080/api/v1/ready"
       }
     ],
     "mock": [
@@ -53,7 +53,7 @@
         "env": {
           "FLEET_DATA_DIR": "{dataDir}"
         },
-        "readyUrl": "http://127.0.0.1:8081/gateway/v1/health"
+        "readyUrl": "http://127.0.0.1:8081/gateway/v1/ready"
       },
       {
         "name": "core",
@@ -63,7 +63,7 @@
         "env": {
           "FLEET_DATA_DIR": "{dataDir}"
         },
-        "readyUrl": "http://127.0.0.1:8080/api/v1/health"
+        "readyUrl": "http://127.0.0.1:8080/api/v1/ready"
       }
     ]
   }

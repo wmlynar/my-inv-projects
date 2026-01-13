@@ -310,6 +310,7 @@
     fleetApiBase: constants.FLEET_API_BASE_DEFAULT,
     fleetStreamPath: constants.FLEET_STREAM_PATH_DEFAULT,
     fleetStatePath: constants.FLEET_STATE_PATH_DEFAULT,
+    fleetCursor: null,
     fleetPollMs: 200,
     fleetPollTimer: null,
     fleetPollInFlight: false,
@@ -317,6 +318,8 @@
     fleetSimModeMutable: true,
     fleetStream: null,
     lastFleetUpdateAt: null,
+    serverInstanceId: null,
+    needsFleetResync: false,
     mvp0: {
       enabled: false,
       pickHeightM: null,

@@ -107,19 +107,21 @@ class InternalSimProvider extends BaseProvider {
     return new URL(path, this.baseUrl);
   }
 
-  async sendCommand(command, nowMs) {
+  async sendCommand(command, nowMs, options = {}) {
     const payload = this.commandEnvelope === 'wrapped' ? { command } : command;
     const url = this.buildCommandUrl();
+    const requestId = options.requestId;
+    const headers = requestId ? { 'X-Request-Id': requestId } : null;
     let response;
     try {
-      response = await this.httpClient.postJson(url, payload, { timeoutMs: this.timeoutMs });
+      response = await this.httpClient.postJson(url, payload, { timeoutMs: this.timeoutMs, headers });
     } catch (err) {
       this.markError(err);
       return {
         ok: false,
         statusReasonCode: 'NETWORK_ERROR',
         httpStatus: 503,
-        providerCommand: { url: url.toString(), payload }
+        providerCommand: { url: url.toString(), payload, requestId }
       };
     }
     if (!response.ok) {
@@ -127,13 +129,13 @@ class InternalSimProvider extends BaseProvider {
         ok: false,
         statusReasonCode: 'HTTP_ERROR',
         httpStatus: response.status || 502,
-        providerCommand: { url: url.toString(), payload }
+        providerCommand: { url: url.toString(), payload, requestId }
       };
     }
     this.markSeen(nowMs);
     return {
       ok: true,
-      providerCommand: { url: url.toString(), payload },
+      providerCommand: { url: url.toString(), payload, requestId },
       robotAck: { status: 'received', receivedTsMs: nowMs }
     };
   }
@@ -208,7 +210,7 @@ class SimDirectProvider extends BaseProvider {
     this.connectionStatus = 'offline';
   }
 
-  async sendCommand(command, nowMs) {
+  async sendCommand(command, nowMs, options = {}) {
     let path = null;
     let body = null;
     if (command.type === 'goTarget') {
@@ -230,16 +232,18 @@ class SimDirectProvider extends BaseProvider {
     }
 
     const url = new URL(path, this.baseUrl);
+    const requestId = options.requestId;
+    const headers = requestId ? { 'X-Request-Id': requestId } : null;
     let response;
     try {
-      response = await this.httpClient.postJson(url, body, { timeoutMs: this.timeoutMs });
+      response = await this.httpClient.postJson(url, body, { timeoutMs: this.timeoutMs, headers });
     } catch (err) {
       this.markError(err);
       return {
         ok: false,
         statusReasonCode: 'NETWORK_ERROR',
         httpStatus: 503,
-        providerCommand: { url: url.toString(), payload: body }
+        providerCommand: { url: url.toString(), payload: body, requestId }
       };
     }
 
@@ -248,13 +252,13 @@ class SimDirectProvider extends BaseProvider {
         ok: false,
         statusReasonCode: 'HTTP_ERROR',
         httpStatus: response.status || 502,
-        providerCommand: { url: url.toString(), payload: body }
+        providerCommand: { url: url.toString(), payload: body, requestId }
       };
     }
     this.markSeen(nowMs);
     return {
       ok: true,
-      providerCommand: { url: url.toString(), payload: body },
+      providerCommand: { url: url.toString(), payload: body, requestId },
       robotAck: { status: 'received', receivedTsMs: nowMs }
     };
   }

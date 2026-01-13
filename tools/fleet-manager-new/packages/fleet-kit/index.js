@@ -190,10 +190,11 @@ function createSseHub(options = {}) {
   const clients = new Set();
   let heartbeatTimer = null;
 
-  const formatMessage = (payload, nameOverride) => {
+  const formatMessage = (payload, nameOverride, id) => {
     const data = typeof payload === 'string' ? payload : JSON.stringify(payload);
     const name = nameOverride || eventName;
-    return `event: ${name}\ndata: ${data}\n\n`;
+    const idLine = id != null ? `id: ${id}\n` : '';
+    return `${idLine}event: ${name}\ndata: ${data}\n\n`;
   };
 
   const removeClient = (client) => {
@@ -270,7 +271,7 @@ function createSseHub(options = {}) {
     }, heartbeatMs);
   };
 
-  const addClient = (req, res, initialPayload) => {
+  const addClient = (req, res, initialPayload, initialId) => {
     res.writeHead(200, headers);
     res.write(`retry: ${retryMs}\n\n`);
     res.write(':\n\n');
@@ -282,16 +283,16 @@ function createSseHub(options = {}) {
     };
     clients.add(client);
     if (initialPayload !== undefined) {
-      sendToClient(client, formatMessage(initialPayload));
+      sendToClient(client, formatMessage(initialPayload, null, initialId));
     }
     startHeartbeat();
     req.on('close', () => removeClient(client));
     res.on('error', () => removeClient(client));
   };
 
-  const send = (payload, nameOverride) => {
+  const send = (payload, nameOverride, id) => {
     if (!clients.size) return;
-    const message = formatMessage(payload, nameOverride);
+    const message = formatMessage(payload, nameOverride, id);
     clients.forEach((client) => sendToClient(client, message));
   };
 

@@ -11,18 +11,22 @@ const RETRY_ERROR_CODES = new Set([
   'EAI_AGAIN'
 ]);
 
-function sendJson(url, payload, timeoutMs = 1200) {
+function sendJson(url, payload, timeoutMs = 1200, extraHeaders = null) {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify(payload);
+    const headers = {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Length': Buffer.byteLength(data)
+    };
+    if (extraHeaders) {
+      Object.assign(headers, extraHeaders);
+    }
     const req = http.request(
       url,
       {
         method: 'POST',
         agent: httpAgent,
-        headers: {
-          'Content-Type': 'application/json; charset=utf-8',
-          'Content-Length': Buffer.byteLength(data)
-        },
+        headers,
         timeout: timeoutMs
       },
       (res) => {
@@ -52,16 +56,18 @@ function createGatewayClient(config = {}) {
 
   const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  async function sendCommand(command) {
+  async function sendCommand(command, options = {}) {
     if (!command || !command.robotId) {
       throw new Error('command.robotId required');
     }
     const url = new URL(`/gateway/v1/robots/${command.robotId}/commands`, baseUrl);
     const payload = { command };
+    const requestId = options.requestId;
+    const headers = requestId ? { 'X-Request-Id': requestId } : null;
     let attempt = 0;
     while (true) {
       try {
-        const result = await sendJson(url, payload, timeoutMs);
+        const result = await sendJson(url, payload, timeoutMs, headers);
         if (RETRY_STATUS.includes(result.status) && attempt < retries) {
           const backoff = Math.min(retryDelayMs * Math.pow(retryBackoff, attempt), 5000);
           await delay(backoff);

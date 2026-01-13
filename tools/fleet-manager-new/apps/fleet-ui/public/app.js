@@ -13,9 +13,22 @@
 
   const initViews = () => {
     services.dataSource = window.FleetUI?.DataSource?.create?.() || window.FleetUI?.DataSource || null;
+    const scenesPostJson = (path, payload) => {
+      if (App.data?.postFleetJson && state.fleetCoreAvailable && path.startsWith("/api/")) {
+        const relative = path.replace("/api", "");
+        return App.data.postFleetJson(relative, payload);
+      }
+      if (services.dataSource?.postJson) {
+        return services.dataSource.postJson(path, payload);
+      }
+      if (window.FleetUI?.DataSource?.postJson) {
+        return window.FleetUI.DataSource.postJson(path, payload);
+      }
+      return null;
+    };
     services.scenesManager = window.FleetUI?.ScenesManager?.create?.({
       fetchJson: App.data?.fetchJson,
-      postJson: services.dataSource?.postJson || window.FleetUI?.DataSource?.postJson,
+      postJson: scenesPostJson,
       logger: services.logger,
       events: services.events
     });

@@ -1,4 +1,4 @@
-# robokit-obstacle-visualizer — Ulepszenia (v0.2)
+# robokit-obstacle-visualizer - Ulepszenia (v0.2)
 
 ## 1. Cel
 Rozszerzyc obecne narzedzie o lepszy przeglad zmian w czasie:
@@ -11,7 +11,7 @@ Rozszerzyc obecne narzedzie o lepszy przeglad zmian w czasie:
 Gdy uzytkownik przesuwa suwak czasu:
 - aktywne jest okno [t, t + windowMs].
 - wszystkie punkty z tego zakresu sa podswietlane:
-  - trajectory: grubszy/jaśniejszy odcinek,
+  - trajectory: grubszy/jasniejszy odcinek,
   - blocks/nearest: powiekszone markery,
   - errors: marker z obwodka (zachowac obecny styl).
 
@@ -76,14 +76,27 @@ Mozliwa implementacja:
 - Unit tests parsera: sprawdz czy `statusChanges` zwraca zmiany blocked/slowed/emergency.
 - UI smoke test (manual): przewijanie suwaka -> aktualizacja panelu statusu i listy bledow.
 
+## 6a. Minimalizacja ryzyka regresji (MUST)
+Zasady, ktore maja ograniczyc ryzyko pogorszenia obecnej aplikacji:
+- **Brak zmian domyslnych**: nowe funkcje sa domyslnie wylaczone (np. `windowMs=0`, panel bledow zwiniety).
+- **Backward compatibility**: istniejace endpointy i formaty odpowiedzi pozostaja bez zmian; nowe dane sa dodawane tylko jako dodatkowe pola/endpointy.
+- **Feature flagi**: w UI przelaczniki dla highlightu okna czasu i panelu bledow (toggle on/off).
+- **Bez naruszania renderu mapy**: brak zmian w warstwach edges/nodes/trajectory poza nowymi klasami CSS.
+- **Wydajnosc**: highlight i panel bledow nie moga powodowac pelnego przebudowywania SVG przy kazdym ticku playbacku.
+- **Degradacja lagodna**: jesli brak `/api/status` lub brakuje pol w logach, UI dziala jak dzis (bez status panelu).
+
+Akceptacja regresji (MUST):
+- uruchomienie z `windowMs=0` i bez mapy daje identyczny widok i zachowanie jak obecny v0.1.
+- `GET /api/trajectory`, `/api/obstacles`, `/api/errors`, `/api/events` pozostaja bez zmian.
+
 ## 7. Plan wdrozenia (MUST)
 1) Rozszerzyc `log_pipeline.js` o statusFrames + statusChanges.
 2) Dodac endpoint `/api/status`.
 3) Rozbudowac `viewer.js`:
-   - okno czasowe i highlight,
-   - panel bledow na dole,
-   - panel statusu w Details,
-   - event markers dla zmian statusow.
+ - okno czasowe i highlight,
+ - panel bledow na dole,
+ - panel statusu w Details,
+ - event markers dla zmian statusow.
 4) Dodac style w `viewer.css`.
 5) Dodac testy parsera.
 

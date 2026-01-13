@@ -56,6 +56,8 @@ function startServer(config) {
     scenes: [],
     activeSceneId: null
   };
+  const serverInstanceId = createId('core');
+  let cursor = 0;
   const streamHub = createSseHub({
     eventName: 'state',
     heartbeatMs: 15000,
@@ -114,9 +116,11 @@ function startServer(config) {
     streamHub.send(payload);
   };
 
-  const buildStreamPayload = (snapshot) => ({
+  const buildStreamPayload = (snapshot, cursorValue) => ({
     ok: true,
+    cursor: cursorValue,
     tsMs: nowMs(),
+    serverInstanceId,
     activeSceneId: state.activeSceneId,
     controlLease: state.lease,
     robots: snapshot.robots,
@@ -186,12 +190,14 @@ function startServer(config) {
     try {
       const decision = runtime.tick({ nowMs: started });
       expireLeaseIfNeeded();
+      cursor += 1;
+      const payload = buildStreamPayload(decision, cursor);
       for (const command of decision.commands) {
         gatewayClient.sendCommand(command).catch((err) => {
           console.warn(`gateway command failed: ${err.message}`);
         });
       }
-      broadcastState(buildStreamPayload(decision));
+      broadcastState(payload);
     } catch (err) {
       console.warn(`tick failed: ${err.message}`);
     } finally {
@@ -205,7 +211,7 @@ function startServer(config) {
 
   const startStateStream = (req, res) => {
     const snapshot = runtime.getState();
-    streamHub.addClient(req, res, buildStreamPayload(snapshot));
+    streamHub.addClient(req, res, buildStreamPayload(snapshot, cursor), cursor);
   };
 
   const startEventsStream = (req, res) => {
@@ -225,15 +231,26 @@ function startServer(config) {
     }
 
     if (req.method === 'GET' && (pathname === '/api/v1/health' || pathname === '/health')) {
-      sendJson(res, 200, { status: 'ok', tsMs: nowMs() });
+      sendJson(res, 200, { status: 'ok', tsMs: nowMs(), serverInstanceId });
       return;
     }
 
-    if (req.method === 'GET' && pathname === '/api/v1/state') {
+    if (req.method === 'GET' && (pathname === '/api/v1/ready' || pathname === '/ready')) {
+      sendJson(res, 200, {
+        status: 'ok',
+        tsMs: nowMs(),
+        serverInstanceId,
+        runtimeMode
+      });
+      return;
+    }
+
+    if (req.method === 'GET' && (pathname === '/api/v1/state' || pathname === '/api/fleet/state' || pathname === '/api/fleet/status')) {
       const runtimeState = runtime.getState();
       sendJson(res, 200, {
-        cursor: 0,
+        cursor,
         tsMs: nowMs(),
+        serverInstanceId,
         activeSceneId: state.activeSceneId,
         controlLease: state.lease,
         robots: runtimeState.robots,
@@ -242,13 +259,54 @@ function startServer(config) {
       return;
     }
 
-    if (req.method === 'GET' && pathname === '/api/v1/stream') {
+    if (req.method === 'GET' && (pathname === '/api/v1/stream' || pathname === '/api/fleet/stream')) {
       startStateStream(req, res);
       return;
     }
 
     if (req.method === 'GET' && (pathname === '/api/v1/events' || pathname === '/api/v1/events/stream')) {
       startEventsStream(req, res);
+      return;
+    }
+
+    if (req.method === 'GET' && (pathname === '/api/fleet/config' || pathname === '/api/v1/ui-config')) {
+      const apiBase = '/api/v1';
+      sendJson(res, 200, {
+        apiBase,
+        statePath: `${apiBase}/state`,
+        streamPath: `${apiBase}/stream`,
+        pollMs: tickMs,
+        simMode: 'robokit',
+        simModeMutable: false,
+        coreConfigured: true
+      });
+      return;
+    }
+
+    if (req.method === 'GET' && pathname === '/api/scenes') {
+      sendJson(res, 200, { activeSceneId: state.activeSceneId, scenes: state.scenes });
+      return;
+    }
+
+    if (req.method === 'POST' && pathname === '/api/scenes/activate') {
+      const payload = await readPayload(req, res, requestId);
+      if (payload === undefined) return;
+      const lease = requireLease(payload, requestId);
+      if (!lease.ok) {
+        sendError(res, lease.error);
+        return;
+      }
+      if (!payload?.sceneId) {
+        sendError(res, {
+          code: 'validationError',
+          causeCode: 'VALIDATION_FAILED',
+          message: 'sceneId is required',
+          requestId
+        });
+        return;
+      }
+      state.activeSceneId = payload.sceneId;
+      sendJson(res, 200, { activeSceneId: payload.sceneId, activeMapId: payload.mapId || null });
       return;
     }
 
@@ -400,7 +458,7 @@ function startServer(config) {
       const commandId = createId('cmd');
       const command = { ...(payload?.command || {}), robotId };
       try {
-        await gatewayClient.sendCommand(command);
+        await gatewayClient.sendCommand(command, { requestId });
         sendJson(res, 200, { ok: true, robotId, commandId });
       } catch (err) {
         sendError(res, {
