@@ -1,0 +1,50 @@
+{
+  rds: {
+    host: "http://127.0.0.1:8080",
+    username: "admin",
+    password: "123456"
+  },
+  tasks: {
+    mainLabel: "sanden_bring_empty_p1",
+    putDownLabel: "sanden_put_down"
+  },
+  flags: {
+    enableAutoStart: true,
+    enableAutoKillOnEmptySource: false,
+    enableDispatchableSnapshotFix: true,
+    respectDispatchableInAutostart: false,
+    debugLog: true,
+    enableOldTaskCleanup: false
+  },
+  intervals: {
+    loopMs: 500,
+    emptyTimeoutMs: 1000,
+    dispatchableFixDelayMs: 1000
+  },
+  autoStartCooldownMs: 1500,
+  tempBlock: {
+    timeoutMs: 300000,
+    checkEveryNCycles: 60,
+    tagPrefix: "TEMP_BLOCKED_AT="
+  },
+  dispatch: {
+    targetActiveTasks: 1
+  },
+  managedRobots: [],
+  http: {
+    port: 3100
+  },
+  cleanup: {
+    keepTotal: 1000,
+    everyNCycles: 600
+  },
+  request: {
+    worksiteId: "A1_P1_BRING"
+  },
+  source: {
+    groupName: "PICK_EMPTY_A1"
+  },
+  target: {
+    siteLabel: "A1_P1_BRING"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  rds: {
+    host: "http://127.0.0.1:8080",
+    useMock: false
+  },
+  http: {
+    port: 3100
+  },
+  lineId: "A1",
+  ui: {
+    title: "Linia A1",
+    showWorksiteIds: false,
+    flipLeftRight: false
+  },
+  labels: {
+    p1Bring: "Przywolaj puste opakowanie",
+    p1Remove: "Zabierz puste opakowanie",
+    p3Remove: "Zabierz pelne opakowanie"
+  },
+  worksites: {
+    p1Bring: "A1_P1_BRING",
+    p1Remove: "A1_P1_REMOVE",
+    p3Remove: "A1_P3_REMOVE"
+  },
+  backend: {
+    pollMs: 500,
+    statusPollMs: 1000,
+    fetchTimeoutMs: 2500,
+    localUpdateGraceMs: 500,
+    reloadOnReconnect: true
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "sanden-etap1-buf-ui",
+  "version": "1.0.0",
+  "description": "UI buforow alejek Sanden (Etap 1)",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "body-parser": "^1.20.3",
+    "express": "^4.21.2",
+    "json5": "^2.2.3",
+    "md5": "^2.3.0"
+  }
+}

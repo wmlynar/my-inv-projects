@@ -1,0 +1,17 @@
+{
+  target: "prod",
+  kind: "ssh",
+  host: "CHANGE_ME",
+  user: "admin",
+  sshPort: 22,
+  serviceScope: "system",
+  installDir: "/srv2/sanden-prod-ui",
+  serviceName: "sanden-prod-ui",
+  packager: "auto",
+  config: "prod",
+  readiness: {
+    enabled: true,
+    mode: "both",
+    url: "http://127.0.0.1:3100/api/status",
+  },
+}

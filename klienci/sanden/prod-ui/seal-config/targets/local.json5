@@ -1,0 +1,16 @@
+{
+  target: "local",
+  kind: "local",
+  host: "127.0.0.1",
+  user: "local",
+  serviceScope: "user",
+  installDir: "~/.local/share/seal/sanden-prod-ui",
+  serviceName: "sanden-prod-ui-sandbox",
+  packager: "auto",
+  config: "local",
+  readiness: {
+    enabled: true,
+    mode: "both",
+    url: "http://127.0.0.1:3100/api/status",
+  },
+}

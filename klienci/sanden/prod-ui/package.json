@@ -1,0 +1,16 @@
+{
+  "name": "sanden-prod-ui",
+  "version": "1.0.0",
+  "description": "UI tabletu linii produkcyjnej A1/A2 dla Sanden (Etap 1)",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "body-parser": "^1.20.3",
+    "express": "^4.21.2",
+    "json5": "^2.2.3",
+    "md5": "^2.3.0"
+  }
+}

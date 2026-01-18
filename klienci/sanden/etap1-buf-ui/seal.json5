@@ -1,0 +1,4 @@
+{
+  appName: "sanden-etap1-buf-ui",
+  entry: "server.js"
+}

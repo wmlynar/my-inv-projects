@@ -1,0 +1,4 @@
+{
+  appName: "sanden-prod-ui",
+  entry: "server.js"
+}

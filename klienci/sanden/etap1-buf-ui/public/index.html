@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sanden - Bufory</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #020617;
+      --panel: #0f172a;
+      --panel-inner: #0b1222;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --border: #273248;
+      --accent: #f59e0b;
+      --accent-strong: #fbbf24;
+      --accent-text: #111827;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .app {
+      width: min(100vw - 32px, 760px);
+      height: min(100vh - 32px, 960px);
+      background: var(--panel);
+      border-radius: 16px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+      display: flex;
+      flex-direction: column;
+      padding: 16px 20px 20px;
+      gap: 12px;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 16px;
+    }
+
+    .title {
+      font-size: 20px;
+      font-weight: 600;
+      margin: 0;
+    }
+
+    .subtitle {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .tabs {
+      display: inline-flex;
+      align-self: flex-start;
+      background: #020617;
+      border-radius: 999px;
+      padding: 8px;
+      gap: 4px;
+      border: 1px solid #1f2937;
+    }
+
+    .tab-button {
+      all: unset;
+      cursor: pointer;
+      padding: 12px 28px;
+      border-radius: 999px;
+      font-size: 24px;
+      color: var(--text);
+      background: transparent;
+      transition: background-color 0.15s ease, color 0.15s ease;
+      touch-action: none;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .tab-button:hover {
+      background: #111827;
+    }
+
+    .tab-button.active {
+      background: var(--accent);
+      color: var(--accent-text);
+      font-weight: 600;
+    }
+
+    .aisles {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      background: var(--panel-inner);
+      border-radius: 14px;
+      padding: 16px;
+      border: 1px solid var(--border);
+    }
+
+    .aisle {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .aisle-header {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .aisle-title {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .aisle-sub {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .slot-list {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .slot {
+      all: unset;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 12px 8px;
+      border-radius: 12px;
+      border: 2px solid #374151;
+      background: #111827;
+      color: var(--text);
+      min-height: 70px;
+      transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.05s ease;
+      cursor: pointer;
+      user-select: none;
+      touch-action: none;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      flex: 1;
+    }
+
+    .slot:hover {
+      transform: translateY(-1px);
+    }
+
+    .slot-filled {
+      background: var(--accent);
+      border-color: var(--accent-strong);
+      color: var(--accent-text);
+    }
+
+    .slot-label {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .slot-status {
+      margin-top: 6px;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .slot-filled .slot-status {
+      color: rgba(17, 24, 39, 0.85);
+    }
+
+    .slot-id {
+      font-size: 10px;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+
+    .slot-id.hidden {
+      display: none;
+    }
+
+    .backend-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(2, 6, 23, 0.8);
+      color: #f8fafc;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      z-index: 9999;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+      backdrop-filter: blur(2px);
+    }
+
+    .backend-overlay.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .backend-overlay .overlay-box {
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 18px 22px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+      max-width: 420px;
+    }
+
+    .backend-overlay .overlay-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    .backend-overlay .overlay-sub {
+      font-size: 13px;
+      color: #cbd5f5;
+    }
+
+    @media (max-width: 720px) {
+      .aisles {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div>
+        <h1 class="title" id="screen-title">Bufory Sanden</h1>
+        <div class="subtitle" id="screen-subtitle">Bufor: Puste opakowania</div>
+      </div>
+      <div class="subtitle" id="connection-hint">Stan: lokalny</div>
+    </header>
+
+    <div class="tabs" id="tabs"></div>
+
+    <div class="aisles">
+      <section class="aisle" id="aisle-a2">
+        <div class="aisle-header">
+          <div class="aisle-title" id="aisle-a2-title">A2</div>
+          <div class="aisle-sub" id="aisle-a2-sub">Lewa alejka</div>
+        </div>
+        <div class="slot-list" id="aisle-a2-list"></div>
+      </section>
+
+      <section class="aisle" id="aisle-a1">
+        <div class="aisle-header">
+          <div class="aisle-title" id="aisle-a1-title">A1</div>
+          <div class="aisle-sub" id="aisle-a1-sub">Prawa alejka</div>
+        </div>
+        <div class="slot-list" id="aisle-a1-list"></div>
+      </section>
+    </div>
+  </div>
+
+  <div id="backend-overlay" class="backend-overlay" aria-live="polite" aria-hidden="true">
+    <div class="overlay-box">
+      <div class="overlay-title" id="backend-overlay-title">Brak polaczenia z serwerem aplikacji</div>
+      <div class="overlay-sub" id="backend-overlay-sub">Czekam na wznowienie polaczenia.</div>
+    </div>
+  </div>
+
+  <script>
+    const DEFAULT_CONFIG = {
+      ui: {
+        title: "Bufory Sanden",
+        showWorksiteIds: false,
+        aisleLabels: {
+          A2: "A2",
+          A1: "A1"
+        },
+        aisleHints: {
+          A2: "Lewa alejka",
+          A1: "Prawa alejka"
+        }
+      },
+      tabs: [
+        {
+          id: "empty",
+          label: "Puste opakowania",
+          aisles: {
+            A2: ["A2_EMPTY_01", "A2_EMPTY_02", "A2_EMPTY_03", "A2_EMPTY_04", "A2_EMPTY_05", "A2_EMPTY_06"],
+            A1: ["A1_EMPTY_01", "A1_EMPTY_02", "A1_EMPTY_03", "A1_EMPTY_04", "A1_EMPTY_05", "A1_EMPTY_06"]
+          }
+        },
+        {
+          id: "full",
+          label: "Pelne opakowania",
+          aisles: {
+            A2: ["A2_FULL_01", "A2_FULL_02", "A2_FULL_03", "A2_FULL_04", "A2_FULL_05", "A2_FULL_06"],
+            A1: ["A1_FULL_01", "A1_FULL_02", "A1_FULL_03", "A1_FULL_04", "A1_FULL_05", "A1_FULL_06"]
+          }
+        }
+      ],
+      backend: {
+        pollMs: 500,
+        statusPollMs: 1000,
+        fetchTimeoutMs: 2500,
+        localUpdateGraceMs: 500,
+        reloadOnReconnect: true
+      }
+    };
+
+    function isObject(value) {
+      return value && typeof value === "object" && !Array.isArray(value);
+    }
+
+    function str(value, fallback) {
+      return typeof value === "string" && value.trim() ? value : fallback;
+    }
+
+    function bool(value, fallback) {
+      return typeof value === "boolean" ? value : fallback;
+    }
+
+    function num(value, fallback) {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : fallback;
+    }
+
+    function normalizeAisleList(value, fallback) {
+      const raw = Array.isArray(value) ? value : Array.isArray(fallback) ? fallback : [];
+      return raw.map((item) => (typeof item === "string" ? item : "")).filter((item) => item.length);
+    }
+
+    function normalizeTab(tab, fallback) {
+      const t = isObject(tab) ? tab : {};
+      const f = isObject(fallback) ? fallback : {};
+      const fAisles = isObject(f.aisles) ? f.aisles : {};
+      const tAisles = isObject(t.aisles) ? t.aisles : {};
+
+      return {
+        id: str(t.id, str(f.id, "tab")),
+        label: str(t.label, str(f.label, "Tab")),
+        aisles: {
+          A2: normalizeAisleList(tAisles.A2, fAisles.A2),
+          A1: normalizeAisleList(tAisles.A1, fAisles.A1)
+        }
+      };
+    }
+
+    function normalizeConfig(raw) {
+      const cfg = isObject(raw) ? raw : {};
+      const ui = isObject(cfg.ui) ? cfg.ui : {};
+      const uiAisleLabels = isObject(ui.aisleLabels) ? ui.aisleLabels : {};
+      const uiAisleHints = isObject(ui.aisleHints) ? ui.aisleHints : {};
+      const backend = isObject(cfg.backend) ? cfg.backend : {};
+
+      const rawTabs = Array.isArray(cfg.tabs) && cfg.tabs.length ? cfg.tabs : DEFAULT_CONFIG.tabs;
+      const fallbackTabs = DEFAULT_CONFIG.tabs;
+      const tabs = rawTabs.map((tab, idx) => normalizeTab(tab, fallbackTabs[idx] || fallbackTabs[0]));
+
+      return {
+        ui: {
+          title: str(ui.title, DEFAULT_CONFIG.ui.title),
+          showWorksiteIds: bool(ui.showWorksiteIds, DEFAULT_CONFIG.ui.showWorksiteIds),
+          aisleLabels: {
+            A2: str(uiAisleLabels.A2, DEFAULT_CONFIG.ui.aisleLabels.A2),
+            A1: str(uiAisleLabels.A1, DEFAULT_CONFIG.ui.aisleLabels.A1)
+          },
+          aisleHints: {
+            A2: str(uiAisleHints.A2, DEFAULT_CONFIG.ui.aisleHints.A2),
+            A1: str(uiAisleHints.A1, DEFAULT_CONFIG.ui.aisleHints.A1)
+          }
+        },
+        tabs,
+        backend: {
+          pollMs: num(backend.pollMs, DEFAULT_CONFIG.backend.pollMs),
+          statusPollMs: num(backend.statusPollMs, DEFAULT_CONFIG.backend.statusPollMs),
+          fetchTimeoutMs: num(backend.fetchTimeoutMs, DEFAULT_CONFIG.backend.fetchTimeoutMs),
+          localUpdateGraceMs: num(backend.localUpdateGraceMs, DEFAULT_CONFIG.backend.localUpdateGraceMs),
+          reloadOnReconnect: bool(backend.reloadOnReconnect, DEFAULT_CONFIG.backend.reloadOnReconnect)
+        }
+      };
+    }
+
+    async function fetchWithTimeout(url, options = {}, timeoutMs = 2500) {
+      if (typeof AbortController === "undefined") return fetch(url, options);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        return await fetch(url, { ...options, signal: controller.signal });
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    async function loadUiConfig() {
+      try {
+        const resp = await fetchWithTimeout("/api/ui-config", { cache: "no-store" }, 2000);
+        const data = await resp.json();
+        return normalizeConfig(data);
+      } catch (err) {
+        console.warn("Nie udalo sie zaladowac konfiguracji UI:", err);
+        return normalizeConfig(DEFAULT_CONFIG);
+      }
+    }
+
+    const elements = {
+      title: document.getElementById("screen-title"),
+      subtitle: document.getElementById("screen-subtitle"),
+      connectionHint: document.getElementById("connection-hint"),
+      tabs: document.getElementById("tabs"),
+      aisleA2: document.getElementById("aisle-a2-list"),
+      aisleA1: document.getElementById("aisle-a1-list"),
+      aisleA2Title: document.getElementById("aisle-a2-title"),
+      aisleA2Sub: document.getElementById("aisle-a2-sub"),
+      aisleA1Title: document.getElementById("aisle-a1-title"),
+      aisleA1Sub: document.getElementById("aisle-a1-sub"),
+      overlay: document.getElementById("backend-overlay"),
+      overlayTitle: document.getElementById("backend-overlay-title"),
+      overlaySub: document.getElementById("backend-overlay-sub")
+    };
+
+    let config = normalizeConfig(DEFAULT_CONFIG);
+    let activeTabId = null;
+    let slotElements = new Map();
+    const stateByWorksiteId = {};
+    const lastLocalChange = {};
+
+    function getActiveTab() {
+      if (!config.tabs.length) return null;
+      if (!activeTabId) activeTabId = config.tabs[0].id;
+      return config.tabs.find((tab) => tab.id === activeTabId) || config.tabs[0];
+    }
+
+    function getActiveWorksiteIds() {
+      const tab = getActiveTab();
+      if (!tab) return [];
+      return [...tab.aisles.A2, ...tab.aisles.A1].filter(Boolean);
+    }
+
+    function setSlotState(worksiteId, filled) {
+      stateByWorksiteId[worksiteId] = !!filled;
+      const entry = slotElements.get(worksiteId);
+      if (!entry) return;
+      entry.button.classList.toggle("slot-filled", !!filled);
+      entry.status.textContent = filled ? "Zajete" : "Wolne";
+    }
+
+    function setupPressAction(button, handler) {
+      if (!button) return;
+
+      const END_SLOP_PX = 22;
+      const IGNORE_CLICK_MS = 800;
+
+      let isDown = false;
+      let activePointerId = null;
+      let lastActivateTs = 0;
+      let activatedOnDown = false;
+
+      const run = (e) => {
+        const res = handler(e);
+        if (res && typeof res.catch === "function") {
+          res.catch((err) => console.error("Button action failed:", err));
+        }
+      };
+
+      const activate = (e) => {
+        lastActivateTs = Date.now();
+        run(e);
+      };
+
+      button.addEventListener("contextmenu", (e) => e.preventDefault());
+
+      const hasPointer = typeof window !== "undefined" && "PointerEvent" in window;
+      if (hasPointer) {
+        button.addEventListener("pointerdown", (e) => {
+          if (typeof e.button === "number" && e.button !== 0) return;
+          const isTouchLike = e.pointerType === "touch" || e.pointerType === "pen";
+          if (isTouchLike) e.preventDefault();
+
+          isDown = true;
+          activePointerId = e.pointerId;
+          try {
+            button.setPointerCapture(e.pointerId);
+          } catch {
+            // ignore
+          }
+
+          if (isTouchLike) {
+            activatedOnDown = true;
+            activate(e);
+          }
+        });
+
+        button.addEventListener("pointercancel", () => {
+          isDown = false;
+          activePointerId = null;
+          activatedOnDown = false;
+        });
+
+        button.addEventListener("pointerup", (e) => {
+          if (!isDown || e.pointerId !== activePointerId) return;
+
+          isDown = false;
+          activePointerId = null;
+
+          try {
+            button.releasePointerCapture(e.pointerId);
+          } catch {
+            // ignore
+          }
+
+          if (activatedOnDown && (e.pointerType === "touch" || e.pointerType === "pen")) {
+            activatedOnDown = false;
+            return;
+          }
+
+          const rect = button.getBoundingClientRect();
+          const inside =
+            e.clientX >= rect.left - END_SLOP_PX &&
+            e.clientX <= rect.right + END_SLOP_PX &&
+            e.clientY >= rect.top - END_SLOP_PX &&
+            e.clientY <= rect.bottom + END_SLOP_PX;
+          if (!inside) return;
+
+          activate(e);
+        });
+      } else {
+        let activeTouch = false;
+        button.addEventListener("touchstart", (e) => {
+          activeTouch = true;
+          e.preventDefault();
+          activate(e);
+        });
+        button.addEventListener("touchend", (e) => {
+          if (!activeTouch) return;
+          activeTouch = false;
+          e.preventDefault();
+        });
+        button.addEventListener("touchcancel", () => {
+          activeTouch = false;
+        });
+      }
+
+      button.addEventListener("click", (e) => {
+        if (Date.now() - lastActivateTs < IGNORE_CLICK_MS) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        activate(e);
+      });
+
+      button.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          activate(e);
+        }
+      });
+    }
+
+    async function sendWorksiteUpdate(worksiteId, filled) {
+      try {
+        const resp = await fetchWithTimeout(
+          `/api/worksites/${encodeURIComponent(worksiteId)}/set-filled`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ filled: !!filled })
+          },
+          config.backend.fetchTimeoutMs
+        );
+        if (!resp.ok) {
+          console.warn("Worksite update failed:", resp.status);
+        }
+      } catch (err) {
+        console.warn("Worksite update error:", err);
+      }
+    }
+
+    function onToggle(worksiteId) {
+      const nextState = !stateByWorksiteId[worksiteId];
+      setSlotState(worksiteId, nextState);
+      lastLocalChange[worksiteId] = Date.now();
+      sendWorksiteUpdate(worksiteId, nextState);
+    }
+
+    function createSlotButton(worksiteId, index) {
+      const button = document.createElement("button");
+      button.className = "slot";
+
+      const label = document.createElement("div");
+      label.className = "slot-label";
+      label.textContent = `M${index + 1}`;
+
+      const status = document.createElement("div");
+      status.className = "slot-status";
+      status.textContent = "Wolne";
+
+      const idLabel = document.createElement("div");
+      idLabel.className = "slot-id";
+      idLabel.textContent = worksiteId || "";
+      idLabel.classList.toggle("hidden", !config.ui.showWorksiteIds);
+
+      button.appendChild(label);
+      button.appendChild(status);
+      button.appendChild(idLabel);
+
+      if (worksiteId) {
+        setupPressAction(button, () => onToggle(worksiteId));
+      } else {
+        button.setAttribute("disabled", "true");
+      }
+
+      slotElements.set(worksiteId, { button, status, idLabel });
+
+      const initial = !!stateByWorksiteId[worksiteId];
+      setSlotState(worksiteId, initial);
+
+      return button;
+    }
+
+    function renderAisles() {
+      slotElements = new Map();
+      elements.aisleA2.innerHTML = "";
+      elements.aisleA1.innerHTML = "";
+
+      const tab = getActiveTab();
+      if (!tab) return;
+
+      tab.aisles.A2.forEach((worksiteId, idx) => {
+        const btn = createSlotButton(worksiteId, idx);
+        elements.aisleA2.appendChild(btn);
+      });
+
+      tab.aisles.A1.forEach((worksiteId, idx) => {
+        const btn = createSlotButton(worksiteId, idx);
+        elements.aisleA1.appendChild(btn);
+      });
+
+      elements.subtitle.textContent = `Bufor: ${tab.label}`;
+    }
+
+    function renderTabs() {
+      elements.tabs.innerHTML = "";
+      if (!config.tabs.length) return;
+
+      config.tabs.forEach((tab) => {
+        const btn = document.createElement("button");
+        btn.className = "tab-button";
+        btn.textContent = tab.label;
+        btn.dataset.tabId = tab.id;
+        if (tab.id === activeTabId || (!activeTabId && config.tabs[0].id === tab.id)) {
+          btn.classList.add("active");
+          activeTabId = tab.id;
+        }
+        setupPressAction(btn, () => {
+          if (activeTabId === tab.id) return;
+          activeTabId = tab.id;
+          document.querySelectorAll(".tab-button").forEach((el) => el.classList.remove("active"));
+          btn.classList.add("active");
+          renderAisles();
+          refreshStateFromServer();
+        });
+        elements.tabs.appendChild(btn);
+      });
+    }
+
+    function applyConfig(cfg) {
+      config = normalizeConfig(cfg);
+      elements.title.textContent = config.ui.title;
+      document.title = `Sanden - ${config.ui.title}`;
+      elements.aisleA2Title.textContent = config.ui.aisleLabels.A2;
+      elements.aisleA1Title.textContent = config.ui.aisleLabels.A1;
+      elements.aisleA2Sub.textContent = config.ui.aisleHints.A2;
+      elements.aisleA1Sub.textContent = config.ui.aisleHints.A1;
+      renderTabs();
+      renderAisles();
+    }
+
+    const backendMonitor = {
+      lastOkAt: Date.now(),
+      lastBuildId: null,
+      inFlight: false,
+      reloadPending: false,
+      isDown: false
+    };
+
+    const rdsMonitor = {
+      lastOkAt: Date.now()
+    };
+
+    const BACKEND_GRACE_MS = 2000;
+    const RDS_GRACE_MS = 2000;
+
+    function updateConnectionOverlay() {
+      const backendDown = Date.now() - backendMonitor.lastOkAt > BACKEND_GRACE_MS;
+      const rdsDown = Date.now() - rdsMonitor.lastOkAt > RDS_GRACE_MS;
+
+      let visible = false;
+      let title = "";
+      let sub = "";
+
+      if (backendDown) {
+        visible = true;
+        title = "Brak polaczenia z serwerem aplikacji";
+        sub = "Czekam na wznowienie polaczenia.";
+      } else if (rdsDown) {
+        visible = true;
+        title = "Brak polaczenia serwera z RDS";
+        sub = "Serwer dziala, ale nie ma dostepu do RDS.";
+      }
+
+      backendMonitor.isDown = backendDown;
+      elements.overlay.classList.toggle("visible", visible);
+      elements.overlay.setAttribute("aria-hidden", visible ? "false" : "true");
+      if (title) elements.overlayTitle.textContent = title;
+      if (sub) elements.overlaySub.textContent = sub;
+      elements.connectionHint.textContent = visible ? "Stan: offline" : "Stan: online";
+    }
+
+    async function pollBackendStatus() {
+      if (backendMonitor.inFlight) return;
+      backendMonitor.inFlight = true;
+      const wasDown = backendMonitor.isDown;
+      try {
+        const resp = await fetchWithTimeout("/api/status", { cache: "no-store" }, config.backend.fetchTimeoutMs);
+        if (!resp.ok) throw new Error(`status ${resp.status}`);
+        const data = await resp.json();
+        backendMonitor.lastOkAt = Date.now();
+        if (!data || data.rdsOk !== false) {
+          rdsMonitor.lastOkAt = Date.now();
+        }
+        if (data && data.buildId) {
+          if (backendMonitor.lastBuildId && data.buildId !== backendMonitor.lastBuildId) {
+            if (!backendMonitor.reloadPending) {
+              backendMonitor.reloadPending = true;
+              window.location.reload();
+            }
+            return;
+          }
+          backendMonitor.lastBuildId = data.buildId;
+        }
+        updateConnectionOverlay();
+        if (config.backend.reloadOnReconnect && wasDown && !backendMonitor.isDown && !backendMonitor.reloadPending) {
+          backendMonitor.reloadPending = true;
+          window.location.reload();
+          return;
+        }
+      } catch (err) {
+        updateConnectionOverlay();
+      } finally {
+        backendMonitor.inFlight = false;
+      }
+    }
+
+    let statePollInFlight = false;
+
+    async function refreshStateFromServer() {
+      if (statePollInFlight) return;
+      const ids = getActiveWorksiteIds();
+      if (!ids.length) return;
+      statePollInFlight = true;
+      try {
+        const url = `/api/worksites?ids=${encodeURIComponent(ids.join(","))}`;
+        const resp = await fetchWithTimeout(url, { cache: "no-store" }, config.backend.fetchTimeoutMs);
+        let data = null;
+        try {
+          data = await resp.json();
+        } catch {
+          updateConnectionOverlay();
+          return;
+        }
+
+        if (!data || data.rdsOk !== false) {
+          rdsMonitor.lastOkAt = Date.now();
+        }
+        updateConnectionOverlay();
+        if (!data || !Array.isArray(data.items)) return;
+
+        for (const item of data.items) {
+          const lastTs = lastLocalChange[item.worksiteId] || 0;
+          if (Date.now() - lastTs < config.backend.localUpdateGraceMs) continue;
+          const filled = !!item.filled;
+          if (stateByWorksiteId[item.worksiteId] !== filled) {
+            setSlotState(item.worksiteId, filled);
+          }
+        }
+      } catch (err) {
+        updateConnectionOverlay();
+      } finally {
+        statePollInFlight = false;
+      }
+    }
+
+    async function start() {
+      const cfg = await loadUiConfig();
+      applyConfig(cfg);
+
+      refreshStateFromServer();
+      pollBackendStatus();
+
+      setInterval(refreshStateFromServer, config.backend.pollMs);
+      setInterval(pollBackendStatus, config.backend.statusPollMs);
+    }
+
+    start();
+  </script>
+</body>
+</html>

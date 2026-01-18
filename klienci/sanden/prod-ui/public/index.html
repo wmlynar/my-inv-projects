@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sanden - Linia A1</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #020617;
+      --panel: #0f172a;
+      --panel-inner: #0b1222;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --border: #273248;
+      --accent: #f59e0b;
+      --accent-strong: #fbbf24;
+      --accent-text: #111827;
+      --danger: #ef4444;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .app {
+      width: min(100vw - 32px, 1160px);
+      height: min(100vh - 32px, 720px);
+      background: var(--panel);
+      border-radius: 16px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+      display: flex;
+      flex-direction: column;
+      padding: 16px 20px 20px;
+      gap: 12px;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 16px;
+    }
+
+    .title {
+      font-size: 20px;
+      font-weight: 600;
+      margin: 0;
+    }
+
+    .subtitle {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .panel-wrap {
+      flex: 1;
+      display: flex;
+      gap: 12px;
+    }
+
+    .panel-wrap.flip {
+      flex-direction: row-reverse;
+    }
+
+    .panel {
+      flex: 1;
+      background: var(--panel-inner);
+      border-radius: 14px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      border: 1px solid var(--border);
+    }
+
+    .panel-header {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .panel-title {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .panel-sub {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .button-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      flex: 1;
+      justify-content: flex-start;
+    }
+
+    .action-button {
+      all: unset;
+      cursor: pointer;
+      border: 2px solid #374151;
+      border-radius: 14px;
+      padding: 18px 16px;
+      background: #111827;
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-height: 130px;
+      transition: border-color 0.15s ease, background 0.15s ease, transform 0.05s ease;
+      touch-action: none;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .action-button:hover {
+      transform: translateY(-1px);
+    }
+
+    .action-button.is-on {
+      background: var(--accent);
+      border-color: var(--accent-strong);
+      color: var(--accent-text);
+    }
+
+    .btn-label {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .btn-meta {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .action-button.is-on .btn-meta {
+      color: rgba(17, 24, 39, 0.75);
+    }
+
+    .btn-state {
+      margin-top: auto;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+
+    .action-button.is-on .btn-state {
+      color: rgba(17, 24, 39, 0.85);
+    }
+
+    .btn-meta.hidden {
+      display: none;
+    }
+
+    .backend-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(2, 6, 23, 0.8);
+      color: #f8fafc;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      z-index: 9999;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+      backdrop-filter: blur(2px);
+    }
+
+    .backend-overlay.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .backend-overlay .overlay-box {
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 18px 22px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+      max-width: 420px;
+    }
+
+    .backend-overlay .overlay-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    .backend-overlay .overlay-sub {
+      font-size: 13px;
+      color: #cbd5f5;
+    }
+
+    @media (max-width: 900px) {
+      .panel-wrap {
+        flex-direction: column;
+      }
+
+      .panel-wrap.flip {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div>
+        <h1 class="title" id="line-title">Linia A1</h1>
+        <div class="subtitle">Panel P1 / P3</div>
+      </div>
+      <div class="subtitle" id="connection-hint">Stan: lokalny</div>
+    </header>
+
+    <div class="panel-wrap" id="panel-wrap">
+      <section class="panel" id="panel-p1">
+        <div class="panel-header">
+          <div class="panel-title">P1</div>
+          <div class="panel-sub">Puste opakowania</div>
+        </div>
+        <div class="button-stack">
+          <button class="action-button" id="btn-p1-bring" data-key="p1Bring">
+            <div class="btn-label" id="label-p1-bring">Przywolaj puste opakowanie</div>
+            <div class="btn-meta" id="meta-p1-bring"></div>
+            <div class="btn-state" id="state-p1-bring">Nieaktywne</div>
+          </button>
+          <button class="action-button" id="btn-p1-remove" data-key="p1Remove">
+            <div class="btn-label" id="label-p1-remove">Zabierz puste opakowanie</div>
+            <div class="btn-meta" id="meta-p1-remove"></div>
+            <div class="btn-state" id="state-p1-remove">Nieaktywne</div>
+          </button>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-p3">
+        <div class="panel-header">
+          <div class="panel-title">P3</div>
+          <div class="panel-sub">Produkt gotowy</div>
+        </div>
+        <div class="button-stack">
+          <button class="action-button" id="btn-p3-remove" data-key="p3Remove">
+            <div class="btn-label" id="label-p3-remove">Zabierz pelne opakowanie</div>
+            <div class="btn-meta" id="meta-p3-remove"></div>
+            <div class="btn-state" id="state-p3-remove">Nieaktywne</div>
+          </button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div id="backend-overlay" class="backend-overlay" aria-live="polite" aria-hidden="true">
+    <div class="overlay-box">
+      <div class="overlay-title" id="backend-overlay-title">Brak polaczenia z serwerem aplikacji</div>
+      <div class="overlay-sub" id="backend-overlay-sub">Czekam na wznowienie polaczenia.</div>
+    </div>
+  </div>
+
+  <script>
+    const DEFAULT_CONFIG = {
+      lineId: "A1",
+      ui: {
+        title: "Linia A1",
+        showWorksiteIds: false,
+        flipLeftRight: false
+      },
+      labels: {
+        p1Bring: "Przywolaj puste opakowanie",
+        p1Remove: "Zabierz puste opakowanie",
+        p3Remove: "Zabierz pelne opakowanie"
+      },
+      worksites: {
+        p1Bring: "A1_P1_BRING",
+        p1Remove: "A1_P1_REMOVE",
+        p3Remove: "A1_P3_REMOVE"
+      },
+      backend: {
+        pollMs: 500,
+        statusPollMs: 1000,
+        fetchTimeoutMs: 2500,
+        localUpdateGraceMs: 500,
+        reloadOnReconnect: true
+      }
+    };
+
+    function isObject(value) {
+      return value && typeof value === "object" && !Array.isArray(value);
+    }
+
+    function str(value, fallback) {
+      return typeof value === "string" && value.trim() ? value : fallback;
+    }
+
+    function bool(value, fallback) {
+      return typeof value === "boolean" ? value : fallback;
+    }
+
+    function num(value, fallback) {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : fallback;
+    }
+
+    function normalizeConfig(raw) {
+      const cfg = isObject(raw) ? raw : {};
+      const ui = isObject(cfg.ui) ? cfg.ui : {};
+      const labels = isObject(cfg.labels) ? cfg.labels : {};
+      const worksites = isObject(cfg.worksites) ? cfg.worksites : {};
+      const backend = isObject(cfg.backend) ? cfg.backend : {};
+
+      return {
+        lineId: str(cfg.lineId, DEFAULT_CONFIG.lineId),
+        ui: {
+          title: str(ui.title, DEFAULT_CONFIG.ui.title),
+          showWorksiteIds: bool(ui.showWorksiteIds, DEFAULT_CONFIG.ui.showWorksiteIds),
+          flipLeftRight: bool(ui.flipLeftRight, DEFAULT_CONFIG.ui.flipLeftRight)
+        },
+        labels: {
+          p1Bring: str(labels.p1Bring, DEFAULT_CONFIG.labels.p1Bring),
+          p1Remove: str(labels.p1Remove, DEFAULT_CONFIG.labels.p1Remove),
+          p3Remove: str(labels.p3Remove, DEFAULT_CONFIG.labels.p3Remove)
+        },
+        worksites: {
+          p1Bring: str(worksites.p1Bring, DEFAULT_CONFIG.worksites.p1Bring),
+          p1Remove: str(worksites.p1Remove, DEFAULT_CONFIG.worksites.p1Remove),
+          p3Remove: str(worksites.p3Remove, DEFAULT_CONFIG.worksites.p3Remove)
+        },
+        backend: {
+          pollMs: num(backend.pollMs, DEFAULT_CONFIG.backend.pollMs),
+          statusPollMs: num(backend.statusPollMs, DEFAULT_CONFIG.backend.statusPollMs),
+          fetchTimeoutMs: num(backend.fetchTimeoutMs, DEFAULT_CONFIG.backend.fetchTimeoutMs),
+          localUpdateGraceMs: num(backend.localUpdateGraceMs, DEFAULT_CONFIG.backend.localUpdateGraceMs),
+          reloadOnReconnect: bool(backend.reloadOnReconnect, DEFAULT_CONFIG.backend.reloadOnReconnect)
+        }
+      };
+    }
+
+    async function fetchWithTimeout(url, options = {}, timeoutMs = 2500) {
+      if (typeof AbortController === "undefined") return fetch(url, options);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        return await fetch(url, { ...options, signal: controller.signal });
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    async function loadUiConfig() {
+      try {
+        const resp = await fetchWithTimeout("/api/ui-config", { cache: "no-store" }, 2000);
+        const data = await resp.json();
+        return normalizeConfig(data);
+      } catch (err) {
+        console.warn("Nie udalo sie zaladowac konfiguracji UI:", err);
+        return normalizeConfig(DEFAULT_CONFIG);
+      }
+    }
+
+    const elements = {
+      lineTitle: document.getElementById("line-title"),
+      connectionHint: document.getElementById("connection-hint"),
+      panelWrap: document.getElementById("panel-wrap"),
+      overlay: document.getElementById("backend-overlay"),
+      overlayTitle: document.getElementById("backend-overlay-title"),
+      overlaySub: document.getElementById("backend-overlay-sub"),
+      buttons: {
+        p1Bring: {
+          btn: document.getElementById("btn-p1-bring"),
+          label: document.getElementById("label-p1-bring"),
+          meta: document.getElementById("meta-p1-bring"),
+          state: document.getElementById("state-p1-bring")
+        },
+        p1Remove: {
+          btn: document.getElementById("btn-p1-remove"),
+          label: document.getElementById("label-p1-remove"),
+          meta: document.getElementById("meta-p1-remove"),
+          state: document.getElementById("state-p1-remove")
+        },
+        p3Remove: {
+          btn: document.getElementById("btn-p3-remove"),
+          label: document.getElementById("label-p3-remove"),
+          meta: document.getElementById("meta-p3-remove"),
+          state: document.getElementById("state-p3-remove")
+        }
+      }
+    };
+
+    const stateByKey = {
+      p1Bring: false,
+      p1Remove: false,
+      p3Remove: false
+    };
+
+    const lastLocalChange = {};
+    let config = normalizeConfig(DEFAULT_CONFIG);
+    let worksiteIdByKey = { ...config.worksites };
+    let keyByWorksiteId = {};
+    let worksiteIds = [];
+
+    function rebuildWorksiteMaps() {
+      keyByWorksiteId = {};
+      worksiteIdByKey = { ...config.worksites };
+      worksiteIds = [];
+      Object.entries(worksiteIdByKey).forEach(([key, id]) => {
+        if (!id) return;
+        keyByWorksiteId[id] = key;
+        worksiteIds.push(id);
+      });
+    }
+
+    function setButtonState(key, active) {
+      const entry = elements.buttons[key];
+      if (!entry) return;
+      stateByKey[key] = !!active;
+      entry.btn.classList.toggle("is-on", !!active);
+      entry.state.textContent = active ? "Aktywne" : "Nieaktywne";
+    }
+
+    function applyConfig(cfg) {
+      config = normalizeConfig(cfg);
+      rebuildWorksiteMaps();
+      elements.lineTitle.textContent = config.ui.title || `Linia ${config.lineId}`;
+      document.title = `Sanden - ${elements.lineTitle.textContent}`;
+      elements.panelWrap.classList.toggle("flip", !!config.ui.flipLeftRight);
+
+      Object.entries(elements.buttons).forEach(([key, entry]) => {
+        if (config.labels[key]) {
+          entry.label.textContent = config.labels[key];
+        }
+        const wsId = config.worksites[key] || "";
+        entry.meta.textContent = wsId;
+        entry.meta.classList.toggle("hidden", !config.ui.showWorksiteIds);
+        setButtonState(key, stateByKey[key]);
+      });
+    }
+
+    function setupPressAction(button, handler) {
+      if (!button) return;
+
+      const END_SLOP_PX = 22;
+      const IGNORE_CLICK_MS = 800;
+
+      let isDown = false;
+      let activePointerId = null;
+      let lastActivateTs = 0;
+      let activatedOnDown = false;
+
+      const run = (e) => {
+        const res = handler(e);
+        if (res && typeof res.catch === "function") {
+          res.catch((err) => console.error("Button action failed:", err));
+        }
+      };
+
+      const activate = (e) => {
+        lastActivateTs = Date.now();
+        run(e);
+      };
+
+      button.addEventListener("contextmenu", (e) => e.preventDefault());
+
+      const hasPointer = typeof window !== "undefined" && "PointerEvent" in window;
+      if (hasPointer) {
+        button.addEventListener("pointerdown", (e) => {
+          if (typeof e.button === "number" && e.button !== 0) return;
+          const isTouchLike = e.pointerType === "touch" || e.pointerType === "pen";
+          if (isTouchLike) e.preventDefault();
+
+          isDown = true;
+          activePointerId = e.pointerId;
+          try {
+            button.setPointerCapture(e.pointerId);
+          } catch {
+            // ignore
+          }
+
+          if (isTouchLike) {
+            activatedOnDown = true;
+            activate(e);
+          }
+        });
+
+        button.addEventListener("pointercancel", () => {
+          isDown = false;
+          activePointerId = null;
+          activatedOnDown = false;
+        });
+
+        button.addEventListener("pointerup", (e) => {
+          if (!isDown || e.pointerId !== activePointerId) return;
+
+          isDown = false;
+          activePointerId = null;
+
+          try {
+            button.releasePointerCapture(e.pointerId);
+          } catch {
+            // ignore
+          }
+
+          if (activatedOnDown && (e.pointerType === "touch" || e.pointerType === "pen")) {
+            activatedOnDown = false;
+            return;
+          }
+
+          const rect = button.getBoundingClientRect();
+          const inside =
+            e.clientX >= rect.left - END_SLOP_PX &&
+            e.clientX <= rect.right + END_SLOP_PX &&
+            e.clientY >= rect.top - END_SLOP_PX &&
+            e.clientY <= rect.bottom + END_SLOP_PX;
+          if (!inside) return;
+
+          activate(e);
+        });
+      } else {
+        let activeTouch = false;
+        button.addEventListener("touchstart", (e) => {
+          activeTouch = true;
+          e.preventDefault();
+          activate(e);
+        });
+        button.addEventListener("touchend", (e) => {
+          if (!activeTouch) return;
+          activeTouch = false;
+          e.preventDefault();
+        });
+        button.addEventListener("touchcancel", () => {
+          activeTouch = false;
+        });
+      }
+
+      button.addEventListener("click", (e) => {
+        if (Date.now() - lastActivateTs < IGNORE_CLICK_MS) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        activate(e);
+      });
+
+      button.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          activate(e);
+        }
+      });
+    }
+
+    async function sendWorksiteUpdate(worksiteId, filled) {
+      try {
+        const resp = await fetchWithTimeout(
+          `/api/worksites/${encodeURIComponent(worksiteId)}/set-filled`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ filled: !!filled })
+          },
+          config.backend.fetchTimeoutMs
+        );
+        if (!resp.ok) {
+          console.warn("Worksite update failed:", resp.status);
+        }
+      } catch (err) {
+        console.warn("Worksite update error:", err);
+      }
+    }
+
+    function onToggle(key) {
+      const worksiteId = worksiteIdByKey[key];
+      if (!worksiteId) return;
+
+      const nextState = !stateByKey[key];
+
+      if (key === "p1Bring" || key === "p1Remove") {
+        const otherKey = key === "p1Bring" ? "p1Remove" : "p1Bring";
+        const otherId = worksiteIdByKey[otherKey];
+        if (nextState && otherId && stateByKey[otherKey]) {
+          stateByKey[otherKey] = false;
+          setButtonState(otherKey, false);
+          lastLocalChange[otherId] = Date.now();
+          sendWorksiteUpdate(otherId, false);
+        }
+      }
+
+      setButtonState(key, nextState);
+      lastLocalChange[worksiteId] = Date.now();
+      sendWorksiteUpdate(worksiteId, nextState);
+    }
+
+    const backendMonitor = {
+      lastOkAt: Date.now(),
+      lastBuildId: null,
+      inFlight: false,
+      reloadPending: false,
+      isDown: false
+    };
+
+    const rdsMonitor = {
+      lastOkAt: Date.now()
+    };
+
+    const BACKEND_GRACE_MS = 2000;
+    const RDS_GRACE_MS = 2000;
+
+    function updateConnectionOverlay() {
+      const backendDown = Date.now() - backendMonitor.lastOkAt > BACKEND_GRACE_MS;
+      const rdsDown = Date.now() - rdsMonitor.lastOkAt > RDS_GRACE_MS;
+
+      let visible = false;
+      let title = "";
+      let sub = "";
+
+      if (backendDown) {
+        visible = true;
+        title = "Brak polaczenia z serwerem aplikacji";
+        sub = "Czekam na wznowienie polaczenia.";
+      } else if (rdsDown) {
+        visible = true;
+        title = "Brak polaczenia serwera z RDS";
+        sub = "Serwer dziala, ale nie ma dostepu do RDS.";
+      }
+
+      backendMonitor.isDown = backendDown;
+      elements.overlay.classList.toggle("visible", visible);
+      elements.overlay.setAttribute("aria-hidden", visible ? "false" : "true");
+      if (title) elements.overlayTitle.textContent = title;
+      if (sub) elements.overlaySub.textContent = sub;
+      elements.connectionHint.textContent = visible ? "Stan: offline" : "Stan: online";
+    }
+
+    async function pollBackendStatus() {
+      if (backendMonitor.inFlight) return;
+      backendMonitor.inFlight = true;
+      const wasDown = backendMonitor.isDown;
+      try {
+        const resp = await fetchWithTimeout("/api/status", { cache: "no-store" }, config.backend.fetchTimeoutMs);
+        if (!resp.ok) throw new Error(`status ${resp.status}`);
+        const data = await resp.json();
+        backendMonitor.lastOkAt = Date.now();
+        if (!data || data.rdsOk !== false) {
+          rdsMonitor.lastOkAt = Date.now();
+        }
+        if (data && data.buildId) {
+          if (backendMonitor.lastBuildId && data.buildId !== backendMonitor.lastBuildId) {
+            if (!backendMonitor.reloadPending) {
+              backendMonitor.reloadPending = true;
+              window.location.reload();
+            }
+            return;
+          }
+          backendMonitor.lastBuildId = data.buildId;
+        }
+        updateConnectionOverlay();
+        if (config.backend.reloadOnReconnect && wasDown && !backendMonitor.isDown && !backendMonitor.reloadPending) {
+          backendMonitor.reloadPending = true;
+          window.location.reload();
+          return;
+        }
+      } catch (err) {
+        updateConnectionOverlay();
+      } finally {
+        backendMonitor.inFlight = false;
+      }
+    }
+
+    let statePollInFlight = false;
+
+    async function refreshStateFromServer() {
+      if (statePollInFlight) return;
+      if (!worksiteIds.length) return;
+      statePollInFlight = true;
+      try {
+        const url = `/api/worksites?ids=${encodeURIComponent(worksiteIds.join(","))}`;
+        const resp = await fetchWithTimeout(url, { cache: "no-store" }, config.backend.fetchTimeoutMs);
+        let data = null;
+        try {
+          data = await resp.json();
+        } catch {
+          updateConnectionOverlay();
+          return;
+        }
+
+        if (!data || data.rdsOk !== false) {
+          rdsMonitor.lastOkAt = Date.now();
+        }
+        updateConnectionOverlay();
+        if (!data || !Array.isArray(data.items)) return;
+
+        for (const item of data.items) {
+          const key = keyByWorksiteId[item.worksiteId];
+          if (!key) continue;
+          const lastTs = lastLocalChange[item.worksiteId] || 0;
+          if (Date.now() - lastTs < config.backend.localUpdateGraceMs) continue;
+          const filled = !!item.filled;
+          if (stateByKey[key] !== filled) {
+            setButtonState(key, filled);
+          }
+        }
+      } catch (err) {
+        updateConnectionOverlay();
+      } finally {
+        statePollInFlight = false;
+      }
+    }
+
+    function setupButtons() {
+      Object.entries(elements.buttons).forEach(([key, entry]) => {
+        setupPressAction(entry.btn, () => onToggle(key));
+      });
+    }
+
+    async function start() {
+      const cfg = await loadUiConfig();
+      applyConfig(cfg);
+      setupButtons();
+
+      refreshStateFromServer();
+      pollBackendStatus();
+
+      setInterval(refreshStateFromServer, config.backend.pollMs);
+      setInterval(pollBackendStatus, config.backend.statusPollMs);
+    }
+
+    start();
+  </script>
+</body>
+</html>

@@ -1,0 +1,49 @@
+{
+  rds: {
+    host: "http://127.0.0.1:8080",
+    useMock: false,
+    username: "admin",
+    password: "123456",
+    language: "pl"
+  },
+  http: {
+    port: 3200
+  },
+  ui: {
+    title: "Bufory Sanden",
+    showWorksiteIds: false,
+    aisleLabels: {
+      A2: "A2",
+      A1: "A1"
+    },
+    aisleHints: {
+      A2: "Lewa alejka",
+      A1: "Prawa alejka"
+    }
+  },
+  tabs: [
+    {
+      id: "empty",
+      label: "Puste opakowania",
+      aisles: {
+        A2: ["A2_EMPTY_01", "A2_EMPTY_02", "A2_EMPTY_03", "A2_EMPTY_04", "A2_EMPTY_05", "A2_EMPTY_06"],
+        A1: ["A1_EMPTY_01", "A1_EMPTY_02", "A1_EMPTY_03", "A1_EMPTY_04", "A1_EMPTY_05", "A1_EMPTY_06"]
+      }
+    },
+    {
+      id: "full",
+      label: "Pelne opakowania",
+      aisles: {
+        A2: ["A2_FULL_01", "A2_FULL_02", "A2_FULL_03", "A2_FULL_04", "A2_FULL_05", "A2_FULL_06"],
+        A1: ["A1_FULL_01", "A1_FULL_02", "A1_FULL_03", "A1_FULL_04", "A1_FULL_05", "A1_FULL_06"]
+      }
+    }
+  ],
+  backend: {
+    pollMs: 500,
+    statusPollMs: 1000,
+    fetchTimeoutMs: 2500,
+    localUpdateGraceMs: 500,
+    reloadOnReconnect: true
+  }
+}
